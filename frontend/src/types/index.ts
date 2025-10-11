@@ -66,18 +66,35 @@ export interface Comment {
 export interface LockTask {
   id: string
   user: User
+  task_type: 'lock' | 'board'
   title: string
   description: string
-  duration_type: 'fixed' | 'random'
-  duration_value: number
+  status: 'pending' | 'active' | 'completed' | 'failed' | 'open' | 'taken' | 'submitted'
+  // 带锁任务字段
+  duration_type?: 'fixed' | 'random'
+  duration_value?: number
   duration_max?: number
-  difficulty: 'easy' | 'normal' | 'hard' | 'hell'
-  unlock_type: 'time' | 'vote'
+  difficulty?: 'easy' | 'normal' | 'hard' | 'hell'
+  unlock_type?: 'time' | 'vote'
   vote_threshold?: number
+  vote_agreement_ratio?: number // 投票同意比例 (0.5 = 50%)
   key_holder?: User
-  start_time: string
+  key_id?: string
+  overtime_multiplier?: number // 加时惩罚倍数 (3, 5, 10)
+  overtime_duration?: number // 置顶时间 (分钟)
+  start_time?: string
   end_time?: string
-  status: 'pending' | 'active' | 'completed' | 'failed'
+  // 任务板字段
+  reward?: number
+  deadline?: string
+  max_duration?: number // 任务最大完成时间 (小时)
+  taker?: User
+  taken_at?: string
+  completion_proof?: string
+  completed_at?: string
+  // 计算字段
+  vote_count?: number
+  vote_agreement_count?: number
   created_at: string
   updated_at: string
 }
@@ -89,11 +106,23 @@ export interface TaskBoard {
   description: string
   reward: number
   deadline: string
+  max_duration: number // 任务最大完成时间 (小时)
   status: 'open' | 'taken' | 'completed' | 'failed'
   taker?: User
+  taken_at?: string
   completion_proof?: string
+  completed_at?: string
   created_at: string
   updated_at: string
+}
+
+export interface TaskKey {
+  id: string
+  task_id: string
+  holder: User
+  created_at: string
+  used_at?: string
+  status: 'active' | 'used'
 }
 
 // Game Types
@@ -174,14 +203,23 @@ export interface PostCreateRequest {
 }
 
 export interface TaskCreateRequest {
+  task_type: 'lock' | 'board'
   title: string
   description: string
-  duration_type: 'fixed' | 'random'
-  duration_value: number
+  // 带锁任务字段
+  duration_type?: 'fixed' | 'random'
+  duration_value?: number
   duration_max?: number
-  difficulty: 'easy' | 'normal' | 'hard' | 'hell'
-  unlock_type: 'time' | 'vote'
+  difficulty?: 'easy' | 'normal' | 'hard' | 'hell'
+  unlock_type?: 'time' | 'vote'
   vote_threshold?: number
+  vote_agreement_ratio?: number
+  overtime_multiplier?: number
+  overtime_duration?: number
+  // 任务板字段
+  reward?: number
+  deadline?: string
+  max_duration?: number
 }
 
 // Store Types
