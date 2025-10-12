@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import Post, PostImage, PostLike, Comment, CommentLike
+from .models import Post, PostImage, PostLike, Comment, CommentImage, CommentLike
 from users.serializers import UserPublicSerializer
 
 
@@ -12,10 +12,20 @@ class PostImageSerializer(serializers.ModelSerializer):
         read_only_fields = ['id', 'created_at']
 
 
+class CommentImageSerializer(serializers.ModelSerializer):
+    """评论图片序列化器"""
+
+    class Meta:
+        model = CommentImage
+        fields = ['id', 'image', 'order', 'created_at']
+        read_only_fields = ['id', 'created_at']
+
+
 class CommentSerializer(serializers.ModelSerializer):
     """评论序列化器"""
 
     user = UserPublicSerializer(read_only=True)
+    images = CommentImageSerializer(many=True, read_only=True)
     replies = serializers.SerializerMethodField()
     is_liked = serializers.SerializerMethodField()
 
@@ -23,7 +33,7 @@ class CommentSerializer(serializers.ModelSerializer):
         model = Comment
         fields = [
             'id', 'user', 'content', 'parent', 'likes_count',
-            'replies', 'is_liked', 'created_at', 'updated_at'
+            'images', 'replies', 'is_liked', 'created_at', 'updated_at'
         ]
         read_only_fields = ['id', 'user', 'likes_count', 'created_at', 'updated_at']
 
@@ -145,9 +155,16 @@ class PostCreateSerializer(serializers.ModelSerializer):
 class CommentCreateSerializer(serializers.ModelSerializer):
     """评论创建序列化器"""
 
+    images = serializers.ListField(
+        child=serializers.ImageField(),
+        required=False,
+        allow_empty=True,
+        max_length=3  # 最多3张图片
+    )
+
     class Meta:
         model = Comment
-        fields = ['content', 'parent']
+        fields = ['content', 'parent', 'images']
 
     def validate_content(self, value):
         if len(value.strip()) < 1:
@@ -170,6 +187,7 @@ class CommentCreateSerializer(serializers.ModelSerializer):
         return value
 
     def create(self, validated_data):
+        images_data = validated_data.pop('images', [])
         user = self.context['request'].user
         post_id = self.context['post_id']
         post = Post.objects.get(id=post_id)
@@ -180,6 +198,14 @@ class CommentCreateSerializer(serializers.ModelSerializer):
             post=post,
             **validated_data
         )
+
+        # 创建评论图片
+        for i, image in enumerate(images_data):
+            CommentImage.objects.create(
+                comment=comment,
+                image=image,
+                order=i
+            )
 
         # 更新动态评论数
         post.comments_count += 1

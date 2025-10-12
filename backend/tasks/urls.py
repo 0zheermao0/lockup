@@ -26,9 +26,13 @@ urlpatterns = [
     # 钥匙管理
     path('keys/my/', views.my_keys, name='my-keys'),
 
-    # 自动完成过期任务
+    # 自动完成过期任务和处理投票结果
     path('check-expired/', views.check_and_complete_expired_tasks, name='check-expired-tasks'),
+    path('process-voting/', views.process_voting_results, name='process-voting-results'),
 
     # 任务时间线
     path('<uuid:pk>/timeline/', views.get_task_timeline, name='task-timeline'),
+
+    # 小时奖励
+    path('process-hourly-rewards/', views.process_hourly_rewards, name='process-hourly-rewards'),
 ]

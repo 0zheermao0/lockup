@@ -8,7 +8,7 @@ from django.db.models import Q
 from datetime import timedelta
 import random
 
-from .models import LockTask, TaskKey, TaskVote, OvertimeAction, TaskTimelineEvent
+from .models import LockTask, TaskKey, TaskVote, OvertimeAction, TaskTimelineEvent, HourlyReward
 from store.models import ItemType, UserInventory, Item
 from .serializers import (
     LockTaskSerializer, LockTaskCreateSerializer,
@@ -113,7 +113,11 @@ class LockTaskListCreateView(generics.ListCreateAPIView):
                 end_time = task.start_time + timezone.timedelta(minutes=task.duration_value)
             elif task.duration_type == 'random':
                 # 在范围内随机选择时间
-                random_minutes = random.randint(task.duration_value, task.duration_max or task.duration_value)
+                if task.duration_max and task.duration_max > task.duration_value:
+                    random_minutes = random.randint(task.duration_value, task.duration_max)
+                else:
+                    # 如果没有设置最大时间或最大时间不合理，使用固定时间
+                    random_minutes = task.duration_value
                 end_time = task.start_time + timezone.timedelta(minutes=random_minutes)
             else:
                 end_time = None
@@ -197,7 +201,11 @@ def start_task(request, pk):
         end_time = task.start_time + timezone.timedelta(minutes=task.duration_value)
     elif task.duration_type == 'random':
         # 在范围内随机选择时间
-        random_minutes = random.randint(task.duration_value, task.duration_max or task.duration_value)
+        if task.duration_max and task.duration_max > task.duration_value:
+            random_minutes = random.randint(task.duration_value, task.duration_max)
+        else:
+            # 如果没有设置最大时间或最大时间不合理，使用固定时间
+            random_minutes = task.duration_value
         end_time = task.start_time + timezone.timedelta(minutes=random_minutes)
     else:
         end_time = None
@@ -216,11 +224,31 @@ def complete_task(request, pk):
     task = get_object_or_404(LockTask, pk=pk)
 
     # 检查任务状态
-    if task.status != 'active':
+    if task.status not in ['active', 'voting']:
         return Response(
-            {'error': '任务不是进行中状态'},
+            {'error': '任务不在可完成状态'},
             status=status.HTTP_400_BAD_REQUEST
         )
+
+    # 如果任务处于投票期，需要先检查投票期是否结束
+    if task.status == 'voting':
+        if task.voting_end_time and timezone.now() < task.voting_end_time:
+            return Response(
+                {'error': '投票期未结束，无法完成任务'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # 投票期结束，先处理投票结果
+        process_voting_results(request)
+        # 重新获取任务状态
+        task.refresh_from_db()
+
+        # 如果处理后任务不是active状态，说明投票失败了
+        if task.status != 'active':
+            return Response(
+                {'error': '投票未通过，任务已加时，请等待新的倒计时结束'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
 
     # 检查是否是带锁任务，如果是，需要满足所有完成条件
     if task.task_type == 'lock':
@@ -231,20 +259,20 @@ def complete_task(request, pk):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-        # 条件2: 如果是投票解锁类型，必须达到投票门槛
+        # 条件2: 如果是投票解锁类型，必须有投票且达到同意比例
         if task.unlock_type == 'vote':
             total_votes = task.votes.count()
             agree_votes = task.votes.filter(agree=True).count()
 
-            if total_votes < (task.vote_threshold or 0):
+            if total_votes == 0:
                 return Response(
-                    {'error': f'投票数不足：当前{total_votes}票，需要{task.vote_threshold}票'},
+                    {'error': '投票解锁任务需要经历完整的投票流程才能完成'},
                     status=status.HTTP_400_BAD_REQUEST
                 )
 
-            if total_votes > 0 and agree_votes / total_votes < (task.vote_agreement_ratio or 0):
+            if agree_votes / total_votes < (task.vote_agreement_ratio or 0.5):
                 return Response(
-                    {'error': f'投票同意比例不足：当前{agree_votes}/{total_votes}，需要{task.vote_agreement_ratio*100:.0f}%以上同意'},
+                    {'error': f'投票同意比例不足：当前{agree_votes}/{total_votes}({agree_votes/total_votes*100:.1f}%)，需要{(task.vote_agreement_ratio or 0.5)*100:.0f}%以上同意'},
                     status=status.HTTP_400_BAD_REQUEST
                 )
 
@@ -301,7 +329,8 @@ def complete_task(request, pk):
             completion_metadata.update({
                 'total_votes': total_votes,
                 'agree_votes': agree_votes,
-                'vote_threshold': task.vote_threshold,
+                'agreement_ratio': agree_votes / total_votes if total_votes > 0 else 0,
+                'required_ratio': task.vote_agreement_ratio or 0.5,
                 'vote_agreement_ratio': task.vote_agreement_ratio
             })
 
@@ -451,6 +480,46 @@ def vote_task(request, pk):
             status=status.HTTP_400_BAD_REQUEST
         )
 
+    # 检查任务状态 - 必须是活跃状态且倒计时已结束，或者是投票期状态
+    if task.status == 'active':
+        # 如果是活跃状态，检查倒计时是否结束
+        if task.end_time and timezone.now() < task.end_time:
+            return Response(
+                {'error': '请等待倒计时结束后再投票'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # 倒计时已结束，自动进入投票期
+        task.status = 'voting'
+        task.voting_start_time = timezone.now()
+        task.voting_end_time = task.voting_start_time + timezone.timedelta(minutes=task.voting_duration)
+        task.save()
+
+        # 创建进入投票期事件
+        TaskTimelineEvent.objects.create(
+            task=task,
+            event_type='voting_started',
+            user=None,  # 系统事件
+            description=f'倒计时结束，进入{task.voting_duration}分钟投票期',
+            metadata={
+                'voting_duration_minutes': task.voting_duration,
+                'voting_start_time': task.voting_start_time.isoformat(),
+                'voting_end_time': task.voting_end_time.isoformat()
+            }
+        )
+    elif task.status == 'voting':
+        # 检查投票期是否已结束
+        if task.voting_end_time and timezone.now() >= task.voting_end_time:
+            return Response(
+                {'error': '投票期已结束'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+    else:
+        return Response(
+            {'error': '任务不在可投票状态'},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+
     # 检查是否是自己的任务
     if task.user == request.user:
         return Response(
@@ -474,13 +543,9 @@ def vote_task(request, pk):
     if serializer.is_valid():
         vote = serializer.save()
 
-        # 检查是否达到解锁条件，但不自动完成任务
+        # 获取当前投票统计
         total_votes = task.votes.count()
         agree_votes = task.votes.filter(agree=True).count()
-
-        # 记录投票状态，但任务需要手动完成
-        vote_passed = (total_votes >= task.vote_threshold and
-                      agree_votes / total_votes >= task.vote_agreement_ratio)
 
         # 创建投票事件记录
         TaskTimelineEvent.objects.create(
@@ -492,9 +557,10 @@ def vote_task(request, pk):
                 'vote_agree': vote.agree,
                 'total_votes': total_votes,
                 'agree_votes': agree_votes,
-                'vote_threshold_met': total_votes >= task.vote_threshold,
-                'agreement_ratio_met': agree_votes / total_votes >= task.vote_agreement_ratio if total_votes > 0 else False,
-                'vote_passed': vote_passed
+                'agreement_ratio': agree_votes / total_votes if total_votes > 0 else 0,
+                'required_ratio': task.vote_agreement_ratio or 0.5,
+                'voting_period': True,
+                'voting_end_time': task.voting_end_time.isoformat() if task.voting_end_time else None
             }
         )
 
@@ -687,6 +753,109 @@ def my_keys(request):
 
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
+def process_voting_results(request):
+    """处理投票期结束的任务"""
+    now = timezone.now()
+
+    # 找到投票期已结束的任务
+    voting_ended_tasks = LockTask.objects.filter(
+        status='voting',
+        voting_end_time__lte=now
+    )
+
+    processed_tasks = []
+
+    for task in voting_ended_tasks:
+        # 统计投票结果
+        total_votes = task.votes.count()
+        agree_votes = task.votes.filter(agree=True).count()
+
+        if total_votes > 0:
+            agreement_ratio = agree_votes / total_votes
+            required_ratio = task.vote_agreement_ratio or 0.5
+            vote_passed = agreement_ratio >= required_ratio
+        else:
+            # 没有投票，视为投票失败
+            agreement_ratio = 0
+            required_ratio = task.vote_agreement_ratio or 0.5
+            vote_passed = False
+
+        if vote_passed:
+            # 投票通过 - 任务回到active状态，可以手动完成
+            task.status = 'active'
+            task.save()
+
+            # 创建投票通过事件
+            TaskTimelineEvent.objects.create(
+                task=task,
+                event_type='vote_passed',
+                user=None,  # 系统事件
+                description=f'投票通过：{agree_votes}/{total_votes}票同意（{agreement_ratio*100:.1f}%），任务可以完成',
+                metadata={
+                    'total_votes': total_votes,
+                    'agree_votes': agree_votes,
+                    'agreement_ratio': agreement_ratio,
+                    'required_ratio': required_ratio,
+                    'can_complete': True
+                }
+            )
+
+            processed_tasks.append({
+                'id': str(task.id),
+                'title': task.title,
+                'result': 'passed',
+                'votes': f'{agree_votes}/{total_votes}',
+                'ratio': f'{agreement_ratio*100:.1f}%'
+            })
+        else:
+            # 投票失败 - 根据难度等级加时，回到active状态
+            penalty_minutes = task.get_vote_penalty_minutes()
+
+            # 计算新的结束时间
+            if task.end_time:
+                task.end_time = task.end_time + timezone.timedelta(minutes=penalty_minutes)
+            else:
+                task.end_time = now + timezone.timedelta(minutes=penalty_minutes)
+
+            task.status = 'active'
+            task.vote_failed_penalty_minutes = penalty_minutes
+            task.save()
+
+            # 创建投票失败事件
+            TaskTimelineEvent.objects.create(
+                task=task,
+                event_type='vote_failed',
+                user=None,  # 系统事件
+                time_change_minutes=penalty_minutes,
+                new_end_time=task.end_time,
+                description=f'投票失败：{agree_votes}/{total_votes}票同意（{agreement_ratio*100:.1f}%），按{task.difficulty}难度加时{penalty_minutes}分钟',
+                metadata={
+                    'total_votes': total_votes,
+                    'agree_votes': agree_votes,
+                    'agreement_ratio': agreement_ratio,
+                    'required_ratio': required_ratio,
+                    'penalty_minutes': penalty_minutes,
+                    'difficulty': task.difficulty
+                }
+            )
+
+            processed_tasks.append({
+                'id': str(task.id),
+                'title': task.title,
+                'result': 'failed',
+                'votes': f'{agree_votes}/{total_votes}',
+                'ratio': f'{agreement_ratio*100:.1f}%',
+                'penalty_minutes': penalty_minutes
+            })
+
+    return Response({
+        'message': f'Processed {len(processed_tasks)} voting results',
+        'processed_tasks': processed_tasks
+    })
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
 def check_and_complete_expired_tasks(request):
     """检查过期的带锁任务（但不自动完成，只是为了兼容性）"""
     # 注意：带锁任务不应该自动完成，需要手动完成并满足所有条件
@@ -709,6 +878,9 @@ def check_and_complete_expired_tasks(request):
             'note': '时间已到，等待手动完成并满足所有条件'
         })
 
+    # 同时处理投票结果
+    process_voting_results(request)
+
     return Response({
         'message': f'Found {len(expired_task_info)} expired lock task(s) awaiting manual completion',
         'expired_tasks': expired_task_info,
@@ -730,4 +902,95 @@ def get_task_timeline(request, pk):
         'task_id': str(task.id),
         'task_title': task.title,
         'timeline_events': serializer.data
+    })
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def process_hourly_rewards(request):
+    """处理带锁任务的每小时积分奖励"""
+    now = timezone.now()
+
+    # 找到所有活跃状态的带锁任务
+    active_lock_tasks = LockTask.objects.filter(
+        task_type='lock',
+        status__in=['active', 'voting']  # 活跃状态和投票期都算活跃
+    )
+
+    processed_rewards = []
+
+    for task in active_lock_tasks:
+        if not task.start_time:
+            continue
+
+        # 计算任务已运行的总时间（小时）
+        elapsed_time = now - task.start_time
+        elapsed_hours = int(elapsed_time.total_seconds() // 3600)
+
+        if elapsed_hours < 1:
+            # 任务运行不满一小时，跳过
+            continue
+
+        # 检查上次奖励时间
+        if task.last_hourly_reward_at:
+            # 如果已经有奖励记录，检查是否需要新的奖励
+            time_since_last_reward = now - task.last_hourly_reward_at
+            hours_since_last_reward = int(time_since_last_reward.total_seconds() // 3600)
+
+            if hours_since_last_reward < 1:
+                # 距离上次奖励不足一小时，跳过
+                continue
+
+            # 计算需要补发的奖励小时数
+            next_reward_hour = task.total_hourly_rewards + 1
+        else:
+            # 第一次发放奖励，从第1小时开始
+            next_reward_hour = 1
+
+        # 发放所有应该获得但还没有获得的小时奖励
+        rewards_to_give = elapsed_hours - task.total_hourly_rewards
+
+        for hour_num in range(next_reward_hour, next_reward_hour + rewards_to_give):
+            # 给用户增加1点活跃度积分
+            task.user.activity_score += 1
+            task.user.save()
+
+            # 创建奖励记录
+            hourly_reward = HourlyReward.objects.create(
+                task=task,
+                user=task.user,
+                reward_amount=1,
+                hour_count=hour_num
+            )
+
+            # 记录到时间线
+            TaskTimelineEvent.objects.create(
+                task=task,
+                event_type='hourly_reward',
+                user=None,  # 系统事件
+                description=f'第{hour_num}小时奖励：{task.user.username}获得1积分',
+                metadata={
+                    'reward_amount': 1,
+                    'hour_count': hour_num,
+                    'total_activity_score': task.user.activity_score
+                }
+            )
+
+            processed_rewards.append({
+                'task_id': str(task.id),
+                'task_title': task.title,
+                'user': task.user.username,
+                'hour_count': hour_num,
+                'reward_amount': 1
+            })
+
+        # 更新任务的奖励记录
+        if rewards_to_give > 0:
+            task.total_hourly_rewards += rewards_to_give
+            task.last_hourly_reward_at = now
+            task.save()
+
+    return Response({
+        'message': f'Processed {len(processed_rewards)} hourly rewards',
+        'rewards': processed_rewards
     })

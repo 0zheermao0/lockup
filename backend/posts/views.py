@@ -31,7 +31,7 @@ class PostListCreateView(generics.ListCreateAPIView):
 
         # 重新获取post实例，确保正确的预取关联关系
         post = Post.objects.select_related('user').prefetch_related(
-            'images', 'likes', 'comments'
+            'images', 'likes', 'comments__images'
         ).get(id=post.id)
 
         # 使用PostSerializer序列化响应
@@ -41,7 +41,7 @@ class PostListCreateView(generics.ListCreateAPIView):
 
     def get_queryset(self):
         queryset = Post.objects.select_related('user').prefetch_related(
-            'images', 'likes', 'comments'
+            'images', 'likes', 'comments__images'
         )
 
         # 筛选参数
@@ -212,7 +212,7 @@ def get_post_detail(request, post_id):
     """获取单个动态详情"""
     try:
         post = Post.objects.select_related('user').prefetch_related(
-            'images', 'likes', 'comments__user', 'comments__likes'
+            'images', 'likes', 'comments__user', 'comments__likes', 'comments__images'
         ).get(id=post_id)
     except Post.DoesNotExist:
         return Response(

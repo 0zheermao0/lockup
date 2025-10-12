@@ -18,6 +18,8 @@ class LockTaskSerializer(serializers.ModelSerializer):
             'duration_type', 'duration_value', 'duration_max', 'difficulty',
             'unlock_type', 'vote_threshold', 'vote_agreement_ratio',
             'overtime_multiplier', 'overtime_duration',
+            # 投票期相关字段
+            'voting_start_time', 'voting_end_time', 'voting_duration', 'vote_failed_penalty_minutes',
             # 任务板字段
             'reward', 'deadline', 'max_duration', 'taker', 'taken_at',
             'completion_proof', 'completed_at',
@@ -90,8 +92,6 @@ class LockTaskCreateSerializer(serializers.ModelSerializer):
 
             # 投票解锁需要投票相关参数
             if data.get('unlock_type') == 'vote':
-                if not data.get('vote_threshold'):
-                    raise serializers.ValidationError("投票解锁必须设置投票门槛")
                 if not data.get('vote_agreement_ratio'):
                     raise serializers.ValidationError("投票解锁必须设置同意比例")
 

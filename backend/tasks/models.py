@@ -33,6 +33,7 @@ class LockTask(models.Model):
         # 带锁任务状态
         ('pending', '待开始'),
         ('active', '进行中'),
+        ('voting', '投票期'),  # 新增：投票解锁任务的投票期状态
         ('completed', '已完成'),
         ('failed', '已失败'),
         # 任务板特有状态
@@ -60,6 +61,12 @@ class LockTask(models.Model):
     overtime_multiplier = models.IntegerField(blank=True, null=True, help_text='加时惩罚倍数')
     overtime_duration = models.IntegerField(blank=True, null=True, help_text='置顶时间（分钟）')
 
+    # 投票期相关字段
+    voting_start_time = models.DateTimeField(blank=True, null=True, help_text='投票开始时间')
+    voting_end_time = models.DateTimeField(blank=True, null=True, help_text='投票结束时间')
+    voting_duration = models.IntegerField(default=10, help_text='投票持续时间（分钟）')
+    vote_failed_penalty_minutes = models.IntegerField(blank=True, null=True, help_text='投票失败加时分钟数')
+
     # 任务板字段
     reward = models.IntegerField(blank=True, null=True, help_text='奖励金额')
     deadline = models.DateTimeField(blank=True, null=True, help_text='截止时间')
@@ -76,8 +83,22 @@ class LockTask(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
+    # 小时奖励字段
+    last_hourly_reward_at = models.DateTimeField(blank=True, null=True, help_text='上次获得小时奖励的时间')
+    total_hourly_rewards = models.IntegerField(default=0, help_text='总共获得的小时奖励数')
+
     class Meta:
         ordering = ['-created_at']
+
+    def get_vote_penalty_minutes(self):
+        """根据难度等级获取投票失败的加时分钟数"""
+        penalty_map = {
+            'easy': 10,
+            'normal': 20,
+            'hard': 30,
+            'hell': 60,
+        }
+        return penalty_map.get(self.difficulty, 20)  # 默认20分钟
 
     def __str__(self):
         return f"{self.get_task_type_display()}: {self.title}"
@@ -144,12 +165,17 @@ class TaskTimelineEvent(models.Model):
         ('time_wheel_increase', '时间转盘增加时间'),
         ('time_wheel_decrease', '时间转盘减少时间'),
         ('overtime_added', '他人加时'),
+        ('voting_started', '投票期开始'),
+        ('voting_ended', '投票期结束'),
+        ('vote_passed', '投票通过'),
+        ('vote_failed', '投票失败'),
         ('task_voted', '任务投票'),
         ('task_completed', '任务完成'),
         ('task_stopped', '任务停止'),
         ('task_failed', '任务失败'),
         ('deadline_extended', '截止时间延长'),
         ('manual_adjustment', '手动调整'),
+        ('hourly_reward', '小时奖励'),
     ]
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
@@ -181,3 +207,24 @@ class TaskTimelineEvent(models.Model):
     def __str__(self):
         user_info = f" by {self.user.username}" if self.user else ""
         return f"{self.get_event_type_display()}{user_info} for {self.task.title}"
+
+
+class HourlyReward(models.Model):
+    """带锁任务小时奖励记录"""
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    task = models.ForeignKey(LockTask, on_delete=models.CASCADE, related_name='hourly_rewards')
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='hourly_rewards')
+    reward_amount = models.IntegerField(default=1, help_text='奖励积分数量')
+    hour_count = models.IntegerField(help_text='任务运行的小时数')
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['task', '-created_at']),
+            models.Index(fields=['user', '-created_at']),
+        ]
+
+    def __str__(self):
+        return f"{self.user.username} received {self.reward_amount} points for hour {self.hour_count} of {self.task.title}"

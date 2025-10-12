@@ -183,6 +183,35 @@ class Comment(models.Model):
         return f"{self.user.username}: {self.content[:30]}..."
 
 
+class CommentImage(models.Model):
+    """评论图片模型"""
+
+    comment = models.ForeignKey(
+        Comment,
+        on_delete=models.CASCADE,
+        related_name='images',
+        help_text="所属评论"
+    )
+    image = models.ImageField(
+        upload_to='comments/images/',
+        help_text="图片文件"
+    )
+    order = models.IntegerField(
+        default=0,
+        help_text="图片顺序"
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'comment_images'
+        ordering = ['order']
+        verbose_name = '评论图片'
+        verbose_name_plural = '评论图片'
+
+    def __str__(self):
+        return f"{self.comment.user.username} - Comment Image {self.order}"
+
+
 class CommentLike(models.Model):
     """评论点赞模型"""
 
