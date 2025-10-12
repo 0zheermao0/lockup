@@ -5,12 +5,15 @@ from rest_framework.permissions import IsAuthenticated
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from django.db.models import Q
+from datetime import timedelta
 import random
 
-from .models import LockTask, TaskKey, TaskVote
+from .models import LockTask, TaskKey, TaskVote, OvertimeAction, TaskTimelineEvent
+from store.models import ItemType, UserInventory, Item
 from .serializers import (
     LockTaskSerializer, LockTaskCreateSerializer,
-    TaskKeySerializer, TaskVoteSerializer, TaskVoteCreateSerializer
+    TaskKeySerializer, TaskVoteSerializer, TaskVoteCreateSerializer,
+    TaskTimelineEventSerializer
 )
 
 
@@ -49,10 +52,59 @@ class LockTaskListCreateView(generics.ListCreateAPIView):
         return queryset
 
     def perform_create(self, serializer):
+        from rest_framework.exceptions import ValidationError
+
+        # 如果是带锁任务，需要先检查背包容量并生成钥匙道具
+        if serializer.validated_data.get('task_type') == 'lock':
+            user = self.request.user
+
+            # 获取或创建用户背包
+            inventory, _ = UserInventory.objects.get_or_create(user=user)
+
+            # 检查背包是否有空间存放钥匙
+            if not inventory.can_add_item():
+                raise ValidationError({
+                    'non_field_errors': [f'背包已满，无法生成钥匙道具。请先清理背包空间（当前 {inventory.used_slots}/{inventory.max_slots}）']
+                })
+
+            # 获取钥匙道具类型
+            try:
+                key_item_type = ItemType.objects.get(name='key')
+            except ItemType.DoesNotExist:
+                raise ValidationError({
+                    'non_field_errors': ['系统错误：钥匙道具类型不存在']
+                })
+
         task = serializer.save()
 
-        # 如果是带锁任务，创建后直接开始
+        # 创建任务创建事件
+        TaskTimelineEvent.objects.create(
+            task=task,
+            event_type='task_created',
+            user=task.user,
+            description=f'任务创建: {task.title}',
+            metadata={
+                'task_type': task.task_type,
+                'difficulty': task.difficulty,
+                'duration_value': task.duration_value
+            }
+        )
+
+        # 如果是带锁任务，创建后直接开始并生成钥匙道具
         if task.task_type == 'lock':
+            # 生成钥匙道具
+            key_item = Item.objects.create(
+                item_type=key_item_type,
+                owner=task.user,
+                inventory=inventory,
+                properties={
+                    'task_id': str(task.id),
+                    'task_title': task.title,
+                    'created_for_task': True,
+                    'auto_destroy_on_completion': True
+                }
+            )
+
             task.status = 'active'
             task.start_time = timezone.now()
 
@@ -69,11 +121,25 @@ class LockTaskListCreateView(generics.ListCreateAPIView):
             task.end_time = end_time
             task.save()
 
-            # 如果是投票解锁类型，自动创建钥匙
+            # 创建任务开始事件
+            TaskTimelineEvent.objects.create(
+                task=task,
+                event_type='task_started',
+                user=task.user,
+                new_end_time=end_time,
+                description=f'任务开始: 计划时长{task.duration_value}分钟，钥匙道具已生成',
+                metadata={
+                    'duration_type': task.duration_type,
+                    'actual_duration_minutes': random_minutes if task.duration_type == 'random' else task.duration_value,
+                    'key_item_id': str(key_item.id)
+                }
+            )
+
+            # 如果是投票解锁类型，自动创建钥匙记录（兼容现有系统）
             if task.unlock_type == 'vote':
                 TaskKey.objects.create(
                     task=task,
-                    holder=task.user  # 可以改为随机选择用户的逻辑
+                    holder=task.user
                 )
         elif task.task_type == 'board':
             # 任务板创建后设置为开放状态
@@ -149,13 +215,6 @@ def complete_task(request, pk):
     """完成任务"""
     task = get_object_or_404(LockTask, pk=pk)
 
-    # 检查权限
-    if task.user != request.user:
-        return Response(
-            {'error': '只有任务创建者可以完成任务'},
-            status=status.HTTP_403_FORBIDDEN
-        )
-
     # 检查任务状态
     if task.status != 'active':
         return Response(
@@ -163,18 +222,96 @@ def complete_task(request, pk):
             status=status.HTTP_400_BAD_REQUEST
         )
 
-    # 检查是否是带锁任务，如果是，需要倒计时结束后才能完成
-    if task.task_type == 'lock' and task.end_time:
-        if timezone.now() < task.end_time:
+    # 检查是否是带锁任务，如果是，需要满足所有完成条件
+    if task.task_type == 'lock':
+        # 条件1: 倒计时必须结束
+        if task.end_time and timezone.now() < task.end_time:
             return Response(
                 {'error': '带锁任务必须等待倒计时结束后才能完成'},
                 status=status.HTTP_400_BAD_REQUEST
             )
 
+        # 条件2: 如果是投票解锁类型，必须达到投票门槛
+        if task.unlock_type == 'vote':
+            total_votes = task.votes.count()
+            agree_votes = task.votes.filter(agree=True).count()
+
+            if total_votes < (task.vote_threshold or 0):
+                return Response(
+                    {'error': f'投票数不足：当前{total_votes}票，需要{task.vote_threshold}票'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+            if total_votes > 0 and agree_votes / total_votes < (task.vote_agreement_ratio or 0):
+                return Response(
+                    {'error': f'投票同意比例不足：当前{agree_votes}/{total_votes}，需要{task.vote_agreement_ratio*100:.0f}%以上同意'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+        # 条件3: 必须是任务创建者（钥匙持有者）
+        if task.user != request.user:
+            return Response(
+                {'error': '只有任务创建者（钥匙持有者）可以完成带锁任务'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+        # 条件4: 检查用户是否持有对应的钥匙道具
+        task_key_item = Item.objects.filter(
+            item_type__name='key',
+            owner=request.user,
+            status='available',
+            properties__task_id=str(task.id)
+        ).first()
+
+        if not task_key_item:
+            return Response(
+                {'error': '您没有持有该任务的钥匙道具，无法完成任务'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+        # 销毁钥匙道具
+        task_key_item.status = 'used'
+        task_key_item.used_at = timezone.now()
+        task_key_item.inventory = None  # 从背包中移除
+        task_key_item.save()
+
     # 更新任务状态
     task.status = 'completed'
     task.completed_at = timezone.now()
     task.save()
+
+    # 创建任务完成事件
+    completion_metadata = {
+        'completed_by': 'manual',
+        'completion_time': task.completed_at.isoformat(),
+        'key_destroyed': task.task_type == 'lock'
+    }
+
+    if task.task_type == 'lock':
+        # 记录完成时的所有条件状态
+        completion_metadata.update({
+            'time_expired': task.end_time and timezone.now() >= task.end_time,
+            'vote_required': task.unlock_type == 'vote',
+            'key_holder_completed': True
+        })
+
+        if task.unlock_type == 'vote':
+            total_votes = task.votes.count()
+            agree_votes = task.votes.filter(agree=True).count()
+            completion_metadata.update({
+                'total_votes': total_votes,
+                'agree_votes': agree_votes,
+                'vote_threshold': task.vote_threshold,
+                'vote_agreement_ratio': task.vote_agreement_ratio
+            })
+
+    TaskTimelineEvent.objects.create(
+        task=task,
+        event_type='task_completed',
+        user=request.user,
+        description=f'任务手动完成 - 满足所有完成条件{"，钥匙道具已销毁" if task.task_type == "lock" else ""}',
+        metadata=completion_metadata
+    )
 
     serializer = LockTaskSerializer(task)
     return Response(serializer.data)
@@ -204,6 +341,18 @@ def stop_task(request, pk):
     task.status = 'failed'
     task.end_time = timezone.now()
     task.save()
+
+    # 创建任务停止事件
+    TaskTimelineEvent.objects.create(
+        task=task,
+        event_type='task_stopped',
+        user=request.user,
+        description=f'任务手动停止',
+        metadata={
+            'stopped_by': 'manual',
+            'stop_time': task.end_time.isoformat()
+        }
+    )
 
     serializer = LockTaskSerializer(task)
     return Response(serializer.data)
@@ -325,14 +474,29 @@ def vote_task(request, pk):
     if serializer.is_valid():
         vote = serializer.save()
 
-        # 检查是否达到解锁条件
+        # 检查是否达到解锁条件，但不自动完成任务
         total_votes = task.votes.count()
         agree_votes = task.votes.filter(agree=True).count()
 
-        if (total_votes >= task.vote_threshold and
-            agree_votes / total_votes >= task.vote_agreement_ratio):
-            # 达到解锁条件，可以允许用户解锁任务
-            pass  # 这里可以添加自动解锁逻辑
+        # 记录投票状态，但任务需要手动完成
+        vote_passed = (total_votes >= task.vote_threshold and
+                      agree_votes / total_votes >= task.vote_agreement_ratio)
+
+        # 创建投票事件记录
+        TaskTimelineEvent.objects.create(
+            task=task,
+            event_type='task_voted',
+            user=request.user,
+            description=f'{request.user.username} 投票{"同意" if vote.agree else "反对"}（{agree_votes}/{total_votes}票同意）',
+            metadata={
+                'vote_agree': vote.agree,
+                'total_votes': total_votes,
+                'agree_votes': agree_votes,
+                'vote_threshold_met': total_votes >= task.vote_threshold,
+                'agreement_ratio_met': agree_votes / total_votes >= task.vote_agreement_ratio if total_votes > 0 else False,
+                'vote_passed': vote_passed
+            }
+        )
 
         return Response(TaskVoteSerializer(vote).data, status=status.HTTP_201_CREATED)
 
@@ -429,6 +593,20 @@ def add_overtime(request, pk):
             status=status.HTTP_400_BAD_REQUEST
         )
 
+    # 检查一小时内是否已经为同一个发布者的任务加过时
+    one_hour_ago = timezone.now() - timedelta(hours=1)
+    recent_overtime = OvertimeAction.objects.filter(
+        user=request.user,
+        task_publisher=task.user,
+        created_at__gte=one_hour_ago
+    ).exists()
+
+    if recent_overtime:
+        return Response(
+            {'error': '一小时内只能对同一个发布者的带锁任务随机加时一次'},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+
     # 检查任务是否已经结束
     if task.end_time and timezone.now() >= task.end_time:
         return Response(
@@ -451,6 +629,9 @@ def add_overtime(request, pk):
     max_overtime = int(base_overtime * 1.5)
     overtime_minutes = random.randint(min_overtime, max_overtime)
 
+    # 记录时间变化前的状态
+    previous_end_time = task.end_time
+
     # 更新任务结束时间
     if task.end_time:
         task.end_time = task.end_time + timezone.timedelta(minutes=overtime_minutes)
@@ -459,6 +640,30 @@ def add_overtime(request, pk):
         task.end_time = timezone.now() + timezone.timedelta(minutes=overtime_minutes)
 
     task.save()
+
+    # 记录加时操作
+    OvertimeAction.objects.create(
+        task=task,
+        user=request.user,
+        task_publisher=task.user,
+        overtime_minutes=overtime_minutes
+    )
+
+    # 创建时间线事件
+    TaskTimelineEvent.objects.create(
+        task=task,
+        event_type='overtime_added',
+        user=request.user,
+        time_change_minutes=overtime_minutes,
+        previous_end_time=previous_end_time,
+        new_end_time=task.end_time,
+        description=f'{request.user.username} 为任务随机加时 {overtime_minutes} 分钟',
+        metadata={
+            'difficulty': task.difficulty,
+            'overtime_range': f'{min_overtime}-{max_overtime} 分钟',
+            'base_overtime': base_overtime
+        }
+    )
 
     # 返回加时信息
     response_data = {
@@ -478,3 +683,51 @@ def my_keys(request):
     keys = TaskKey.objects.filter(holder=request.user, status='active')
     serializer = TaskKeySerializer(keys, many=True)
     return Response(serializer.data)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def check_and_complete_expired_tasks(request):
+    """检查过期的带锁任务（但不自动完成，只是为了兼容性）"""
+    # 注意：带锁任务不应该自动完成，需要手动完成并满足所有条件
+    # 这个函数保留是为了兼容性，但不执行自动完成
+    now = timezone.now()
+    expired_tasks = LockTask.objects.filter(
+        task_type='lock',
+        status='active',
+        end_time__lte=now
+    )
+
+    expired_task_info = []
+    for task in expired_tasks:
+        # 不自动完成，只记录过期信息
+        expired_task_info.append({
+            'id': str(task.id),
+            'title': task.title,
+            'expired_at': task.end_time.isoformat() if task.end_time else None,
+            'can_complete': True,  # 时间已到，可以手动完成
+            'note': '时间已到，等待手动完成并满足所有条件'
+        })
+
+    return Response({
+        'message': f'Found {len(expired_task_info)} expired lock task(s) awaiting manual completion',
+        'expired_tasks': expired_task_info,
+        'note': 'Lock tasks require manual completion with proper conditions (time + vote + key holder)'
+    })
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def get_task_timeline(request, pk):
+    """获取任务时间线事件"""
+    task = get_object_or_404(LockTask, pk=pk)
+
+    # 获取任务的所有时间线事件，按时间倒序
+    timeline_events = TaskTimelineEvent.objects.filter(task=task).order_by('-created_at')
+
+    serializer = TaskTimelineEventSerializer(timeline_events, many=True)
+    return Response({
+        'task_id': str(task.id),
+        'task_title': task.title,
+        'timeline_events': serializer.data
+    })

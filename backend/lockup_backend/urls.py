@@ -25,9 +25,8 @@ urlpatterns = [
     # API路由
     path('api/auth/', include('users.urls')),
     path('api/posts/', include('posts.urls')),
-    # path('api/tasks/', include('tasks.urls')),  # 任务功能待开发
-    # path('api/games/', include('games.urls')),  # 游戏功能待开发
-    # path('api/shop/', include('shop.urls')),    # 商店功能待开发
+    path('api/tasks/', include('tasks.urls')),  # 任务功能
+    path('api/store/', include('store.urls')),  # 商店和游戏功能
 ]
 
 # 开发环境下提供媒体文件访问

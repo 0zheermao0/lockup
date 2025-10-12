@@ -47,7 +47,7 @@ class PostSerializer(serializers.ModelSerializer):
 
     user = UserPublicSerializer(read_only=True)
     images = PostImageSerializer(many=True, read_only=True)
-    is_liked = serializers.SerializerMethodField()
+    user_has_liked = serializers.SerializerMethodField()
     comments = serializers.SerializerMethodField()
 
     class Meta:
@@ -55,7 +55,7 @@ class PostSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'user', 'post_type', 'content', 'latitude', 'longitude',
             'location_name', 'verification_string', 'is_verified',
-            'likes_count', 'comments_count', 'images', 'is_liked',
+            'likes_count', 'comments_count', 'images', 'user_has_liked',
             'comments', 'created_at', 'updated_at'
         ]
         read_only_fields = [
@@ -63,7 +63,7 @@ class PostSerializer(serializers.ModelSerializer):
             'created_at', 'updated_at'
         ]
 
-    def get_is_liked(self, obj):
+    def get_user_has_liked(self, obj):
         request = self.context.get('request')
         if request and request.user.is_authenticated:
             return PostLike.objects.filter(

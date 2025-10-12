@@ -1,11 +1,14 @@
 from rest_framework import serializers
 from django.contrib.auth import authenticate
 from django.contrib.auth.password_validation import validate_password
+from django.utils import timezone
 from .models import User, Friendship, UserLevelUpgrade
 
 
 class UserSerializer(serializers.ModelSerializer):
     """用户基础序列化器"""
+
+    active_lock_task = serializers.SerializerMethodField()
 
     class Meta:
         model = User
@@ -13,25 +16,101 @@ class UserSerializer(serializers.ModelSerializer):
             'id', 'username', 'email', 'level', 'activity_score',
             'last_active', 'location_precision', 'coins', 'avatar',
             'bio', 'total_posts', 'total_likes_received',
-            'total_tasks_completed', 'created_at', 'updated_at'
+            'total_tasks_completed', 'created_at', 'updated_at',
+            'active_lock_task'
         ]
         read_only_fields = [
             'id', 'level', 'activity_score', 'last_active', 'coins',
             'total_posts', 'total_likes_received', 'total_tasks_completed',
-            'created_at', 'updated_at'
+            'created_at', 'updated_at', 'active_lock_task'
         ]
+
+    def get_active_lock_task(self, obj):
+        """获取用户当前活跃的带锁任务"""
+        from tasks.models import LockTask
+
+        active_task = LockTask.objects.filter(
+            user=obj,
+            task_type='lock',
+            status='active'
+        ).first()
+
+        if not active_task:
+            return None
+
+        now = timezone.now()
+        time_remaining = None
+        is_expired = False
+
+        if active_task.end_time:
+            time_remaining_ms = (active_task.end_time - now).total_seconds() * 1000
+            time_remaining = max(0, int(time_remaining_ms))
+            is_expired = time_remaining <= 0
+
+        return {
+            'id': str(active_task.id),
+            'title': active_task.title,
+            'difficulty': active_task.difficulty,
+            'start_time': active_task.start_time.isoformat() if active_task.start_time else None,
+            'end_time': active_task.end_time.isoformat() if active_task.end_time else None,
+            'time_remaining_ms': time_remaining,
+            'is_expired': is_expired,
+            'can_complete': is_expired,  # Can only complete after time expires
+            'duration_value': active_task.duration_value,
+            'duration_type': active_task.duration_type,
+            'duration_max': active_task.duration_max
+        }
 
 
 class UserPublicSerializer(serializers.ModelSerializer):
     """用户公开信息序列化器（用于显示给其他用户）"""
+
+    active_lock_task = serializers.SerializerMethodField()
 
     class Meta:
         model = User
         fields = [
             'id', 'username', 'level', 'avatar', 'bio',
             'total_posts', 'total_likes_received', 'total_tasks_completed',
-            'created_at'
+            'created_at', 'coins', 'activity_score', 'last_active', 'updated_at',
+            'active_lock_task'
         ]
+
+    def get_active_lock_task(self, obj):
+        """获取用户当前活跃的带锁任务"""
+        from tasks.models import LockTask
+
+        active_task = LockTask.objects.filter(
+            user=obj,
+            task_type='lock',
+            status='active'
+        ).first()
+
+        if not active_task:
+            return None
+
+        now = timezone.now()
+        time_remaining = None
+        is_expired = False
+
+        if active_task.end_time:
+            time_remaining_ms = (active_task.end_time - now).total_seconds() * 1000
+            time_remaining = max(0, int(time_remaining_ms))
+            is_expired = time_remaining <= 0
+
+        return {
+            'id': str(active_task.id),
+            'title': active_task.title,
+            'difficulty': active_task.difficulty,
+            'start_time': active_task.start_time.isoformat() if active_task.start_time else None,
+            'end_time': active_task.end_time.isoformat() if active_task.end_time else None,
+            'time_remaining_ms': time_remaining,
+            'is_expired': is_expired,
+            'can_complete': is_expired,  # Can only complete after time expires
+            'duration_value': active_task.duration_value,
+            'duration_type': active_task.duration_type,
+            'duration_max': active_task.duration_max
+        }
 
 
 class UserRegistrationSerializer(serializers.ModelSerializer):
@@ -83,7 +162,13 @@ class UserProfileUpdateSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = User
-        fields = ['bio', 'avatar', 'location_precision']
+        fields = ['username', 'bio', 'avatar', 'location_precision']
+
+    def validate_username(self, value):
+        """验证用户名是否唯一"""
+        if User.objects.filter(username=value).exclude(id=self.instance.id).exists():
+            raise serializers.ValidationError("用户名已存在")
+        return value
 
     def update(self, instance, validated_data):
         # 更新用户活跃度

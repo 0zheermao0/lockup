@@ -1,0 +1,993 @@
+from rest_framework import generics, status, permissions
+from rest_framework.decorators import api_view, permission_classes
+from rest_framework.response import Response
+from rest_framework.permissions import IsAuthenticated
+from django.shortcuts import get_object_or_404
+from django.utils import timezone
+from django.db import transaction
+from django.core.files.storage import default_storage
+from django.core.files.base import ContentFile
+import random
+import json
+from datetime import timedelta
+
+from .models import (
+    ItemType, UserInventory, Item, StoreItem, Purchase,
+    Game, GameParticipant, DriftBottle, BuriedTreasure, GameSession
+)
+from .serializers import (
+    ItemTypeSerializer, UserInventorySerializer, ItemSerializer,
+    StoreItemSerializer, PurchaseSerializer, GameSerializer,
+    DriftBottleSerializer, BuriedTreasureSerializer, GameSessionSerializer,
+    PurchaseItemSerializer, TimeWheelPlaySerializer, JoinGameSerializer,
+    CreateDriftBottleSerializer, UploadPhotoSerializer, BuryItemSerializer,
+    ExploreZoneSerializer, FindTreasureSerializer
+)
+from tasks.models import LockTask, TaskTimelineEvent
+
+
+class StoreItemListView(generics.ListAPIView):
+    """商店商品列表"""
+    queryset = StoreItem.objects.filter(is_available=True)
+    serializer_class = StoreItemSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        queryset = super().get_queryset()
+        user = self.request.user
+
+        # 根据用户等级过滤
+        if hasattr(user, 'level'):
+            queryset = queryset.filter(level_requirement__lte=user.level)
+
+        return queryset
+
+
+class UserInventoryView(generics.RetrieveAPIView):
+    """用户背包"""
+    serializer_class = UserInventorySerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_object(self):
+        inventory, created = UserInventory.objects.get_or_create(user=self.request.user)
+        return inventory
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def purchase_item(request):
+    """购买商品"""
+    serializer = PurchaseItemSerializer(data=request.data)
+    if serializer.is_valid():
+        store_item_id = serializer.validated_data['store_item_id']
+        quantity = serializer.validated_data.get('quantity', 1)
+
+        try:
+            with transaction.atomic():
+                store_item = get_object_or_404(StoreItem, id=store_item_id, is_available=True)
+                user = request.user
+
+                # 检查用户等级要求
+                if hasattr(user, 'level') and user.level < store_item.level_requirement:
+                    return Response({
+                        'error': f'需要等级 {store_item.level_requirement} 才能购买此商品'
+                    }, status=status.HTTP_403_FORBIDDEN)
+
+                # 检查库存
+                if store_item.stock is not None and store_item.stock < quantity:
+                    return Response({
+                        'error': '库存不足'
+                    }, status=status.HTTP_400_BAD_REQUEST)
+
+                # 检查每日购买限制
+                if store_item.daily_limit:
+                    today_purchases = Purchase.objects.filter(
+                        user=user,
+                        store_item=store_item,
+                        created_at__date=timezone.now().date()
+                    ).count()
+
+                    if today_purchases + quantity > store_item.daily_limit:
+                        return Response({
+                            'error': f'今日购买限制：{store_item.daily_limit}个，已购买{today_purchases}个'
+                        }, status=status.HTTP_400_BAD_REQUEST)
+
+                # 检查用户积分
+                total_cost = store_item.price * quantity
+                if hasattr(user, 'coins') and user.coins < total_cost:
+                    return Response({
+                        'error': '积分不足'
+                    }, status=status.HTTP_400_BAD_REQUEST)
+
+                # 检查背包容量
+                inventory, _ = UserInventory.objects.get_or_create(user=user)
+                if inventory.available_slots < quantity:
+                    return Response({
+                        'error': f'背包空间不足，剩余{inventory.available_slots}格'
+                    }, status=status.HTTP_400_BAD_REQUEST)
+
+                # 扣除积分
+                if hasattr(user, 'coins'):
+                    user.coins -= total_cost
+                    user.save()
+
+                # 减少库存
+                if store_item.stock is not None:
+                    store_item.stock -= quantity
+                    store_item.save()
+
+                # 创建购买记录和物品
+                items_created = []
+                for _ in range(quantity):
+                    # 先创建物品实例
+                    item = Item.objects.create(
+                        item_type=store_item.item_type,
+                        owner=user,
+                        inventory=inventory
+                    )
+
+                    # 然后创建购买记录，关联到物品
+                    purchase = Purchase.objects.create(
+                        user=user,
+                        store_item=store_item,
+                        item=item,
+                        price_paid=store_item.price
+                    )
+                    items_created.append(item)
+
+                # 返回购买结果
+                return Response({
+                    'message': f'成功购买 {quantity} 个 {store_item.name}',
+                    'items': [{'id': str(item.id), 'type': item.item_type.name} for item in items_created],
+                    'remaining_coins': getattr(user, 'coins', 0),
+                    'remaining_slots': inventory.available_slots
+                }, status=status.HTTP_201_CREATED)
+
+        except Exception as e:
+            return Response({
+                'error': f'购买失败: {str(e)}'
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+    return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def upload_photo_to_paper(request):
+    """上传照片到相纸"""
+    serializer = UploadPhotoSerializer(data=request.data)
+    if serializer.is_valid():
+        paper_item_id = serializer.validated_data['paper_item_id']
+        photo = serializer.validated_data['photo']
+
+        try:
+            with transaction.atomic():
+                # 获取相纸道具
+                paper_item = get_object_or_404(
+                    Item,
+                    id=paper_item_id,
+                    owner=request.user,
+                    item_type__name='photo_paper',
+                    status='available'
+                )
+
+                # 保存照片文件
+                file_name = f"photos/{timezone.now().strftime('%Y%m%d_%H%M%S')}_{photo.name}"
+                file_path = default_storage.save(file_name, ContentFile(photo.read()))
+
+                # 更新相纸道具为照片道具
+                paper_item.item_type = ItemType.objects.get(name='photo')
+                paper_item.properties = {
+                    'photo_path': file_path,
+                    'upload_time': timezone.now().isoformat(),
+                    'burn_after_reading': True
+                }
+                paper_item.save()
+
+                return Response({
+                    'message': '照片上传成功',
+                    'photo_item_id': str(paper_item.id)
+                }, status=status.HTTP_200_OK)
+
+        except ItemType.DoesNotExist:
+            return Response({
+                'error': '照片道具类型不存在'
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        except Exception as e:
+            return Response({
+                'error': f'上传失败: {str(e)}'
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+    return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def view_photo(request, photo_id):
+    """查看照片（阅后即焚）"""
+    try:
+        with transaction.atomic():
+            photo_item = get_object_or_404(
+                Item,
+                id=photo_id,
+                item_type__name='photo',
+                status='available'
+            )
+
+            # 检查权限（拥有者或漂流瓶接收者）
+            can_view = False
+            if photo_item.owner == request.user:
+                can_view = True
+            else:
+                # 检查是否是漂流瓶中的照片
+                drift_bottles = DriftBottle.objects.filter(
+                    items__id=photo_id,
+                    finder=request.user,
+                    status='found'
+                )
+                if drift_bottles.exists():
+                    can_view = True
+
+            if not can_view:
+                return Response({
+                    'error': '无权查看此照片'
+                }, status=status.HTTP_403_FORBIDDEN)
+
+            # 获取照片路径
+            photo_path = photo_item.properties.get('photo_path')
+            if not photo_path or not default_storage.exists(photo_path):
+                return Response({
+                    'error': '照片文件不存在'
+                }, status=status.HTTP_404_NOT_FOUND)
+
+            # 读取照片文件
+            with default_storage.open(photo_path, 'rb') as f:
+                photo_data = f.read()
+
+            # 阅后即焚：删除照片文件和标记道具为已使用
+            if photo_item.properties.get('burn_after_reading', True):
+                default_storage.delete(photo_path)
+                photo_item.status = 'used'
+                photo_item.used_at = timezone.now()
+                photo_item.inventory = None  # 从背包中移除
+                photo_item.save()
+
+            from django.http import HttpResponse
+            return HttpResponse(photo_data, content_type='image/jpeg')
+
+    except Exception as e:
+        return Response({
+            'error': f'查看照片失败: {str(e)}'
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def play_time_wheel(request):
+    """时间转盘游戏 - 新版本：接受前端计算的时间变更"""
+    try:
+        # 获取前端传递的参数
+        task_id = request.data.get('task_id')
+        bet_amount = request.data.get('bet_amount')
+        is_increase = request.data.get('is_increase')
+        time_change_minutes = request.data.get('time_change_minutes')
+        base_time = request.data.get('base_time')
+
+        # 验证必要参数
+        if not all([task_id, bet_amount, time_change_minutes is not None, base_time]):
+            return Response({
+                'error': '缺少必要参数：task_id, bet_amount, is_increase, time_change_minutes, base_time'
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        # 验证数据类型和合理性
+        try:
+            bet_amount = int(bet_amount)
+            time_change_minutes = int(time_change_minutes)
+            base_time = int(base_time)
+            is_increase = bool(is_increase)
+        except (ValueError, TypeError):
+            return Response({
+                'error': '参数类型错误'
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        # 验证数据合理性
+        if bet_amount <= 0 or bet_amount > 10:
+            return Response({
+                'error': '投注金额必须在1-10之间'
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        if base_time not in [5, 15, 30, 60]:
+            return Response({
+                'error': '基础时间必须是5、15、30或60分钟'
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        if time_change_minutes != base_time * bet_amount:
+            return Response({
+                'error': '时间变更计算错误'
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        with transaction.atomic():
+            user = request.user
+
+            # 检查指定的锁任务是否存在且属于当前用户且是活跃状态
+            try:
+                lock_task = LockTask.objects.get(
+                    id=task_id,
+                    user=user,
+                    task_type='lock',
+                    status='active'
+                )
+            except LockTask.DoesNotExist:
+                # 提供更详细的错误信息帮助调试
+                task_exists = LockTask.objects.filter(id=task_id).first()
+                if not task_exists:
+                    return Response({
+                        'error': f'任务 {task_id} 不存在'
+                    }, status=status.HTTP_400_BAD_REQUEST)
+                elif task_exists.user != user:
+                    return Response({
+                        'error': f'任务 {task_id} 不属于当前用户'
+                    }, status=status.HTTP_400_BAD_REQUEST)
+                elif task_exists.task_type != 'lock':
+                    return Response({
+                        'error': f'任务 {task_id} 不是带锁任务类型'
+                    }, status=status.HTTP_400_BAD_REQUEST)
+                elif task_exists.status != 'active':
+                    return Response({
+                        'error': f'任务 {task_id} 状态为 {task_exists.status}，不是活跃状态'
+                    }, status=status.HTTP_400_BAD_REQUEST)
+                else:
+                    return Response({
+                        'error': '指定的锁任务不存在、不属于您或不是活跃状态'
+                    }, status=status.HTTP_400_BAD_REQUEST)
+
+            # 检查积分
+            if hasattr(user, 'coins') and user.coins < bet_amount:
+                return Response({
+                    'error': '积分不足'
+                }, status=status.HTTP_400_BAD_REQUEST)
+
+            # 扣除积分
+            if hasattr(user, 'coins'):
+                user.coins -= bet_amount
+                user.save()
+
+            # 记录时间变化前的状态
+            previous_end_time = lock_task.end_time
+
+            # 更新指定锁任务的时间
+            if is_increase:
+                # 增加锁时间
+                if lock_task.end_time:
+                    lock_task.end_time += timedelta(minutes=time_change_minutes)
+                else:
+                    lock_task.end_time = timezone.now() + timedelta(minutes=time_change_minutes)
+            else:
+                # 减少锁时间
+                if lock_task.end_time:
+                    new_time = lock_task.end_time - timedelta(minutes=time_change_minutes)
+                    # 不能减少到当前时间之前
+                    lock_task.end_time = max(new_time, timezone.now())
+                else:
+                    # 如果任务没有结束时间，设置为当前时间（表示立即可以完成）
+                    lock_task.end_time = timezone.now()
+
+            lock_task.save()
+
+            # 创建时间线事件记录
+            event_type = 'time_wheel_increase' if is_increase else 'time_wheel_decrease'
+            actual_change = time_change_minutes if is_increase else -time_change_minutes
+
+            TaskTimelineEvent.objects.create(
+                task=lock_task,
+                event_type=event_type,
+                user=user,
+                time_change_minutes=actual_change,
+                previous_end_time=previous_end_time,
+                new_end_time=lock_task.end_time,
+                description=f'时间转盘游戏: 投入{bet_amount}积分，转出{base_time}分钟{"增加" if is_increase else "减少"}时间（总计{time_change_minutes}分钟）',
+                metadata={
+                    'bet_amount': bet_amount,
+                    'base_time_minutes': base_time,
+                    'final_time_change': time_change_minutes,
+                    'wheel_result': 'increase' if is_increase else 'decrease',
+                    'frontend_calculated': True
+                }
+            )
+
+            # 创建游戏会话记录
+            GameSession.objects.create(
+                user=user,
+                game_type='time_wheel',
+                bet_amount=bet_amount
+            )
+
+            return Response({
+                'success': True,
+                'result': 'increase' if is_increase else 'decrease',
+                'time_change_minutes': time_change_minutes,
+                'new_end_time': lock_task.end_time.isoformat() if lock_task.end_time else None,
+                'message': f'{"增加" if is_increase else "减少"}了 {time_change_minutes} 分钟锁时间',
+                'remaining_coins': getattr(user, 'coins', 0)
+            }, status=status.HTTP_200_OK)
+
+    except Exception as e:
+        return Response({
+            'error': f'游戏失败: {str(e)}'
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def create_drift_bottle(request):
+    """创建漂流瓶"""
+    serializer = CreateDriftBottleSerializer(data=request.data)
+    if serializer.is_valid():
+        message = serializer.validated_data['message']
+        item_ids = serializer.validated_data.get('item_ids', [])
+
+        try:
+            with transaction.atomic():
+                user = request.user
+
+                # 检查物品所有权
+                items = []
+                if item_ids:
+                    items = list(Item.objects.filter(
+                        id__in=item_ids,
+                        owner=user,
+                        status='available'
+                    ))
+
+                    if len(items) != len(item_ids):
+                        return Response({
+                            'error': '部分物品不存在或不可用'
+                        }, status=status.HTTP_400_BAD_REQUEST)
+
+                # 创建漂流瓶
+                drift_bottle = DriftBottle.objects.create(
+                    sender=user,
+                    message=message,
+                    expires_at=timezone.now() + timedelta(days=7)  # 7天后过期
+                )
+
+                # 添加物品到漂流瓶
+                for item in items:
+                    drift_bottle.items.add(item)
+                    item.status = 'in_drift_bottle'
+                    item.inventory = None  # 从背包中移除
+                    item.save()
+
+                return Response({
+                    'message': '漂流瓶创建成功',
+                    'drift_bottle_id': str(drift_bottle.id),
+                    'expires_at': drift_bottle.expires_at.isoformat()
+                }, status=status.HTTP_201_CREATED)
+
+        except Exception as e:
+            return Response({
+                'error': f'创建漂流瓶失败: {str(e)}'
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+    return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+class GameListCreateView(generics.ListCreateAPIView):
+    """游戏列表和创建"""
+    serializer_class = GameSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        return Game.objects.filter(status__in=['waiting', 'active']).order_by('-created_at')
+
+    def perform_create(self, serializer):
+        from rest_framework.exceptions import ValidationError
+        # 检查用户是否有正在进行的锁任务
+        active_lock_tasks = LockTask.objects.filter(
+            user=self.request.user,
+            status='active'
+        )
+
+        if not active_lock_tasks.exists():
+            raise ValidationError('只有正在进行锁任务时才能创建游戏')
+
+        serializer.save(creator=self.request.user)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def join_game(request, game_id):
+    """加入游戏"""
+    serializer = JoinGameSerializer(data=request.data)
+    if serializer.is_valid():
+        try:
+            with transaction.atomic():
+                game = get_object_or_404(Game, id=game_id, status='waiting')
+                user = request.user
+
+                # 检查用户是否有正在进行的锁任务
+                active_lock_tasks = LockTask.objects.filter(
+                    user=user,
+                    status='active'
+                )
+
+                if not active_lock_tasks.exists():
+                    return Response({
+                        'error': '只有正在进行锁任务时才能参与游戏'
+                    }, status=status.HTTP_400_BAD_REQUEST)
+
+                # 检查是否已经参与
+                if GameParticipant.objects.filter(game=game, user=user).exists():
+                    return Response({
+                        'error': '您已经参与了这个游戏'
+                    }, status=status.HTTP_400_BAD_REQUEST)
+
+                # 检查积分
+                if hasattr(user, 'coins') and user.coins < game.bet_amount:
+                    return Response({
+                        'error': '积分不足'
+                    }, status=status.HTTP_400_BAD_REQUEST)
+
+                # 扣除积分
+                if hasattr(user, 'coins'):
+                    user.coins -= game.bet_amount
+                    user.save()
+
+                # 获取玩家的行动选择
+                action_data = serializer.validated_data.get('action', {})
+
+                # 创建参与记录，存储玩家的选择
+                GameParticipant.objects.create(
+                    game=game,
+                    user=user,
+                    action=action_data
+                )
+
+                # 检查是否可以开始游戏
+                participant_count = game.participants.count()
+                if participant_count >= game.max_players:
+                    game.status = 'active'
+                    game.save()
+
+                    # 开始游戏逻辑（简单的猜拳游戏）
+                    if game.game_type == 'rock_paper_scissors':
+                        participants = list(GameParticipant.objects.filter(game=game))
+                        valid_choices = ['rock', 'paper', 'scissors']
+
+                        # 收集玩家选择并验证
+                        results = []
+                        valid_participants = []
+
+                        for participant in participants:
+                            player_choice = participant.action.get('choice')
+
+                            # 如果玩家没有提供有效选择，随机分配一个
+                            if not player_choice or player_choice not in valid_choices:
+                                player_choice = random.choice(valid_choices)
+                                # 更新参与者的action记录
+                                participant.action = {'choice': player_choice}
+                                participant.save()
+
+                            valid_participants.append(participant)
+                            results.append({
+                                'player': participant.user.username,
+                                'choice': player_choice
+                            })
+
+                        # 确定赢家
+                        if len(valid_participants) == 2:
+                            p1, p2 = valid_participants
+                            choice1 = p1.action['choice']
+                            choice2 = p2.action['choice']
+
+                            winner = None
+                            if choice1 == choice2:
+                                # 平局，重新开始
+                                game.status = 'waiting'
+                                game.save()
+                                return Response({
+                                    'message': '平局！游戏重新开始',
+                                    'results': results
+                                })
+                            elif (choice1 == 'rock' and choice2 == 'scissors') or \
+                                 (choice1 == 'paper' and choice2 == 'rock') or \
+                                 (choice1 == 'scissors' and choice2 == 'paper'):
+                                winner = p1.user
+                                loser = p2.user
+                            else:
+                                winner = p2.user
+                                loser = p1.user
+
+                            # 处理结果
+                            game.winner = winner
+                            game.status = 'completed'
+                            game.save()
+
+                            # 输家加时30分钟
+                            loser_lock_tasks = LockTask.objects.filter(
+                                user=loser,
+                                status='active'
+                            )
+                            for task in loser_lock_tasks:
+                                previous_end_time = task.end_time
+                                if task.end_time:
+                                    task.end_time += timedelta(minutes=30)
+                                else:
+                                    task.end_time = timezone.now() + timedelta(minutes=30)
+                                task.save()
+
+                                # 创建时间线事件记录游戏加时
+                                TaskTimelineEvent.objects.create(
+                                    task=task,
+                                    event_type='overtime_added',
+                                    user=None,  # 系统操作
+                                    time_change_minutes=30,
+                                    previous_end_time=previous_end_time,
+                                    new_end_time=task.end_time,
+                                    description=f'游戏失败加时: {loser.username} 在{game.game_type}游戏中败给 {winner.username}，增加30分钟锁时间',
+                                    metadata={
+                                        'game_id': str(game.id),
+                                        'game_type': game.game_type,
+                                        'winner': winner.username,
+                                        'loser': loser.username,
+                                        'penalty_minutes': 30
+                                    }
+                                )
+
+                            return Response({
+                                'message': f'{winner.username} 获胜！{loser.username} 增加30分钟锁时间',
+                                'winner': winner.username,
+                                'loser': loser.username,
+                                'results': results
+                            })
+
+                return Response({
+                    'message': '成功加入游戏',
+                    'participants': participant_count + 1,
+                    'max_participants': game.max_players
+                })
+
+        except Exception as e:
+            return Response({
+                'error': f'加入游戏失败: {str(e)}'
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+    return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def bury_item(request):
+    """掩埋物品"""
+    serializer = BuryItemSerializer(data=request.data)
+    if serializer.is_valid():
+        item_id = serializer.validated_data['item_id']
+        location_zone = serializer.validated_data['location_zone']
+        location_hint = serializer.validated_data['location_hint']
+        difficulty = serializer.validated_data['difficulty']
+
+        try:
+            with transaction.atomic():
+                user = request.user
+
+                # 获取要掩埋的物品
+                item = get_object_or_404(
+                    Item,
+                    id=item_id,
+                    owner=user,
+                    status='available'
+                )
+
+                # 创建掩埋宝物记录
+                buried_treasure = BuriedTreasure.objects.create(
+                    burier=user,
+                    item=item,
+                    location_zone=location_zone,
+                    location_hint=location_hint,
+                    difficulty=difficulty,
+                    expires_at=timezone.now() + timedelta(days=30)  # 30天后过期
+                )
+
+                # 更新物品状态
+                item.status = 'buried'
+                item.inventory = None  # 从背包中移除
+                item.save()
+
+                return Response({
+                    'message': '物品掩埋成功',
+                    'treasure_id': str(buried_treasure.id),
+                    'location_zone': location_zone,
+                    'difficulty': difficulty,
+                    'expires_at': buried_treasure.expires_at.isoformat()
+                }, status=status.HTTP_201_CREATED)
+
+        except Exception as e:
+            return Response({
+                'error': f'掩埋失败: {str(e)}'
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+    return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def explore_zone(request):
+    """探索区域寻找宝物"""
+    serializer = ExploreZoneSerializer(data=request.data)
+    if serializer.is_valid():
+        zone_name = serializer.validated_data['zone_name']
+
+        try:
+            user = request.user
+
+            # 查找该区域的可发现宝物
+            available_treasures = BuriedTreasure.objects.filter(
+                location_zone=zone_name,
+                status='buried',
+                expires_at__gt=timezone.now()
+            ).exclude(burier=user)  # 不能发现自己埋的宝物
+
+            if not available_treasures.exists():
+                return Response({
+                    'message': f'在 {zone_name} 区域没有发现任何宝物',
+                    'treasures_found': []
+                }, status=status.HTTP_200_OK)
+
+            # 根据难度和随机性决定是否发现宝物
+            discovered_treasures = []
+            for treasure in available_treasures:
+                # 发现概率根据难度调整
+                find_probability = {
+                    'easy': 0.8,    # 80%概率发现
+                    'normal': 0.5,  # 50%概率发现
+                    'hard': 0.2     # 20%概率发现
+                }.get(treasure.difficulty, 0.5)
+
+                if random.random() < find_probability:
+                    discovered_treasures.append({
+                        'treasure_id': str(treasure.id),
+                        'location_hint': treasure.location_hint,
+                        'difficulty': treasure.difficulty,
+                        'item_type': treasure.item.item_type.display_name,
+                        'burier': treasure.burier.username
+                    })
+
+            return Response({
+                'message': f'在 {zone_name} 区域发现了 {len(discovered_treasures)} 个宝物',
+                'treasures_found': discovered_treasures,
+                'zone': zone_name
+            }, status=status.HTTP_200_OK)
+
+        except Exception as e:
+            return Response({
+                'error': f'探索失败: {str(e)}'
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+    return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def find_treasure(request):
+    """挖掘发现的宝物"""
+    serializer = FindTreasureSerializer(data=request.data)
+    if serializer.is_valid():
+        treasure_id = serializer.validated_data['treasure_id']
+
+        try:
+            with transaction.atomic():
+                user = request.user
+
+                # 获取宝物
+                treasure = get_object_or_404(
+                    BuriedTreasure,
+                    id=treasure_id,
+                    status='buried'
+                )
+
+                # 检查是否可以挖掘（不能挖掘自己埋的）
+                if treasure.burier == user:
+                    return Response({
+                        'error': '不能挖掘自己埋藏的宝物'
+                    }, status=status.HTTP_400_BAD_REQUEST)
+
+                # 检查背包容量
+                inventory, _ = UserInventory.objects.get_or_create(user=user)
+                if inventory.available_slots < 1:
+                    return Response({
+                        'error': '背包空间不足'
+                    }, status=status.HTTP_400_BAD_REQUEST)
+
+                # 转移物品所有权
+                item = treasure.item
+                item.owner = user
+                item.inventory = inventory
+                item.status = 'available'
+                item.save()
+
+                # 更新宝物状态
+                treasure.finder = user
+                treasure.status = 'found'
+                treasure.found_at = timezone.now()
+                treasure.save()
+
+                # 给掩埋者一些积分奖励
+                if hasattr(treasure.burier, 'coins'):
+                    reward_amount = {
+                        'easy': 5,
+                        'normal': 10,
+                        'hard': 20
+                    }.get(treasure.difficulty, 10)
+
+                    treasure.burier.coins += reward_amount
+                    treasure.burier.save()
+
+                return Response({
+                    'message': '成功挖掘到宝物！',
+                    'item': {
+                        'id': str(item.id),
+                        'type': item.item_type.display_name,
+                        'properties': item.properties
+                    },
+                    'reward_to_burier': reward_amount,
+                    'remaining_slots': inventory.available_slots
+                }, status=status.HTTP_200_OK)
+
+        except Exception as e:
+            return Response({
+                'error': f'挖掘失败: {str(e)}'
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+    return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+class BuriedTreasureListView(generics.ListAPIView):
+    """掩埋宝物列表"""
+    serializer_class = BuriedTreasureSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        user = self.request.user
+        status_filter = self.request.query_params.get('status', 'buried')
+
+        queryset = BuriedTreasure.objects.filter(burier=user)
+
+        if status_filter:
+            queryset = queryset.filter(status=status_filter)
+
+        return queryset.order_by('-created_at')
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def get_available_zones(request):
+    """获取可探索的区域列表"""
+    zones = [
+        {
+            'name': 'forest',
+            'display_name': '神秘森林',
+            'description': '古老的森林，充满了未知的秘密',
+            'difficulty': 'normal'
+        },
+        {
+            'name': 'mountain',
+            'display_name': '雾山',
+            'description': '云雾缭绕的高山，隐藏着珍贵的宝物',
+            'difficulty': 'hard'
+        },
+        {
+            'name': 'beach',
+            'display_name': '月光海滩',
+            'description': '月光下的海滩，经常有意外收获',
+            'difficulty': 'easy'
+        },
+        {
+            'name': 'desert',
+            'display_name': '沙漠绿洲',
+            'description': '干燥的沙漠中的生命之源',
+            'difficulty': 'normal'
+        },
+        {
+            'name': 'cave',
+            'display_name': '深邃洞穴',
+            'description': '黑暗的洞穴深处藏着最珍贵的财宝',
+            'difficulty': 'hard'
+        }
+    ]
+
+    # 统计每个区域的宝物数量
+    for zone in zones:
+        treasure_count = BuriedTreasure.objects.filter(
+            location_zone=zone['name'],
+            status='buried',
+            expires_at__gt=timezone.now()
+        ).count()
+        zone['treasure_count'] = treasure_count
+
+    return Response({
+        'zones': zones
+    }, status=status.HTTP_200_OK)
+
+
+@api_view(['DELETE'])
+@permission_classes([IsAuthenticated])
+def cancel_game(request, game_id):
+    """取消游戏"""
+    try:
+        with transaction.atomic():
+            game = get_object_or_404(Game, id=game_id)
+            user = request.user
+
+            # 检查权限：只能取消自己创建的且状态为waiting的游戏
+            if game.creator != user:
+                return Response({
+                    'error': '只能取消自己创建的游戏'
+                }, status=status.HTTP_403_FORBIDDEN)
+
+            if game.status != 'waiting':
+                return Response({
+                    'error': '只能取消等待中的游戏'
+                }, status=status.HTTP_400_BAD_REQUEST)
+
+            # 检查是否已有其他参与者（除了创建者自己）
+            other_participants = GameParticipant.objects.filter(game=game).exclude(user=user)
+            if other_participants.exists():
+                return Response({
+                    'error': '已有其他玩家参与，无法取消游戏'
+                }, status=status.HTTP_400_BAD_REQUEST)
+
+            # 返还积分给创建者
+            if hasattr(user, 'coins'):
+                user.coins += game.bet_amount
+                user.save()
+
+            # 删除游戏
+            game.delete()
+
+            return Response({
+                'message': '游戏已取消，积分已返还',
+                'refunded_amount': game.bet_amount,
+                'remaining_coins': getattr(user, 'coins', 0)
+            }, status=status.HTTP_200_OK)
+
+    except Exception as e:
+        return Response({
+            'error': f'取消游戏失败: {str(e)}'
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def discard_item(request):
+    """丢弃物品"""
+    try:
+        item_id = request.data.get('item_id')
+        if not item_id:
+            return Response({
+                'error': '缺少物品ID'
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        with transaction.atomic():
+            user = request.user
+
+            # 获取要丢弃的物品
+            item = get_object_or_404(
+                Item,
+                id=item_id,
+                owner=user,
+                status='available'
+            )
+
+            # 删除物品（设置状态为已丢弃并从背包中移除）
+            item.status = 'discarded'
+            item.inventory = None  # 从背包中移除
+            item.save()
+
+            return Response({
+                'message': f'成功丢弃 {item.item_type.display_name}'
+            }, status=status.HTTP_200_OK)
+
+    except Exception as e:
+        return Response({
+            'error': f'丢弃物品失败: {str(e)}'
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)

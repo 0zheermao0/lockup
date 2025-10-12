@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import LockTask, TaskKey, TaskVote
+from .models import LockTask, TaskKey, TaskVote, TaskTimelineEvent
 from users.serializers import UserSerializer
 
 
@@ -67,6 +67,17 @@ class LockTaskCreateSerializer(serializers.ModelSerializer):
         task_type = data.get('task_type')
 
         if task_type == 'lock':
+            # 检查用户是否已有活跃的带锁任务
+            user = self.context['request'].user
+            existing_active_lock_tasks = LockTask.objects.filter(
+                user=user,
+                task_type='lock',
+                status='active'
+            )
+
+            if existing_active_lock_tasks.exists():
+                raise serializers.ValidationError("您已经有一个正在进行的带锁任务，一次只能进行一个带锁任务")
+
             # 带锁任务必须字段
             required_fields = ['duration_type', 'duration_value', 'difficulty', 'unlock_type']
             for field in required_fields:
@@ -125,3 +136,18 @@ class TaskVoteCreateSerializer(serializers.ModelSerializer):
         validated_data['voter'] = self.context['request'].user
         validated_data['task'] = self.context['task']
         return super().create(validated_data)
+
+
+class TaskTimelineEventSerializer(serializers.ModelSerializer):
+    """任务时间线事件序列化器"""
+    user = UserSerializer(read_only=True)
+    event_type_display = serializers.CharField(source='get_event_type_display', read_only=True)
+
+    class Meta:
+        model = TaskTimelineEvent
+        fields = [
+            'id', 'event_type', 'event_type_display', 'user',
+            'time_change_minutes', 'previous_end_time', 'new_end_time',
+            'description', 'metadata', 'created_at'
+        ]
+        read_only_fields = ['id', 'created_at']

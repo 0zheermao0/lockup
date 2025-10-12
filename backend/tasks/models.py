@@ -116,3 +116,68 @@ class TaskVote(models.Model):
 
     def __str__(self):
         return f"{self.voter.username} voted {'Yes' if self.agree else 'No'} for {self.task.title}"
+
+
+class OvertimeAction(models.Model):
+    """加时操作记录"""
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    task = models.ForeignKey(LockTask, on_delete=models.CASCADE, related_name='overtime_actions')
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='overtime_actions')
+    task_publisher = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='received_overtime_actions')
+    overtime_minutes = models.IntegerField(help_text='加时分钟数')
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f"{self.user.username} added {self.overtime_minutes} minutes to {self.task.title}"
+
+
+class TaskTimelineEvent(models.Model):
+    """任务时间线事件 - 记录所有时间变化"""
+
+    EVENT_TYPE_CHOICES = [
+        ('task_created', '任务创建'),
+        ('task_started', '任务开始'),
+        ('time_wheel_increase', '时间转盘增加时间'),
+        ('time_wheel_decrease', '时间转盘减少时间'),
+        ('overtime_added', '他人加时'),
+        ('task_voted', '任务投票'),
+        ('task_completed', '任务完成'),
+        ('task_stopped', '任务停止'),
+        ('task_failed', '任务失败'),
+        ('deadline_extended', '截止时间延长'),
+        ('manual_adjustment', '手动调整'),
+    ]
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    task = models.ForeignKey(LockTask, on_delete=models.CASCADE, related_name='timeline_events')
+    event_type = models.CharField(max_length=20, choices=EVENT_TYPE_CHOICES)
+
+    # 事件相关用户（可能为空，如系统事件）
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE,
+                           blank=True, null=True, related_name='timeline_events')
+
+    # 时间变化详情
+    time_change_minutes = models.IntegerField(blank=True, null=True, help_text='时间变化（分钟）, 正数为增加，负数为减少')
+    previous_end_time = models.DateTimeField(blank=True, null=True, help_text='变化前的结束时间')
+    new_end_time = models.DateTimeField(blank=True, null=True, help_text='变化后的结束时间')
+
+    # 事件描述和额外数据
+    description = models.TextField(blank=True, help_text='事件描述')
+    metadata = models.JSONField(default=dict, blank=True, help_text='额外的事件数据')
+
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['task', '-created_at']),
+            models.Index(fields=['event_type', '-created_at']),
+        ]
+
+    def __str__(self):
+        user_info = f" by {self.user.username}" if self.user else ""
+        return f"{self.get_event_type_display()}{user_info} for {self.task.title}"

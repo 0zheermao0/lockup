@@ -44,8 +44,7 @@ INSTALLED_APPS = [
     'users',
     'posts',
     'tasks',
-    'games',
-    'shop',
+    'store',
 ]
 
 MIDDLEWARE = [

@@ -12,6 +12,7 @@ urlpatterns = [
 
     # 用户资料
     path('profile/', views.UserProfileView.as_view(), name='profile'),
+    path('profile/avatar/', views.upload_avatar, name='upload-avatar'),
     path('users/', views.UserListView.as_view(), name='user-list'),
     path('users/<int:pk>/', views.UserDetailView.as_view(), name='user-detail'),
     path('stats/', views.user_stats, name='user-stats'),

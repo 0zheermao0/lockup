@@ -298,6 +298,46 @@ class PasswordChangeView(generics.GenericAPIView):
         return Response({'message': '密码修改成功'})
 
 
+@api_view(['POST'])
+@permission_classes([permissions.IsAuthenticated])
+def upload_avatar(request):
+    """上传用户头像"""
+    if 'avatar' not in request.FILES:
+        return Response(
+            {'error': '请选择头像文件'},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+
+    avatar_file = request.FILES['avatar']
+
+    # 验证文件类型
+    if not avatar_file.content_type.startswith('image/'):
+        return Response(
+            {'error': '请上传图片文件'},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+
+    # 验证文件大小 (5MB)
+    if avatar_file.size > 5 * 1024 * 1024:
+        return Response(
+            {'error': '图片大小不能超过5MB'},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+
+    # 保存头像
+    user = request.user
+    user.avatar = avatar_file
+    user.save()
+
+    # 更新用户活跃度
+    user.update_activity()
+
+    return Response({
+        'message': '头像上传成功',
+        'avatar_url': user.avatar.url if user.avatar else None
+    })
+
+
 @api_view(['GET'])
 @permission_classes([permissions.IsAuthenticated])
 def user_stats(request):
