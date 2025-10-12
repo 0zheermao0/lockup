@@ -1,6 +1,5 @@
 import type { LockTask, TaskCreateRequest } from '../types/index.js'
-
-const API_BASE_URL = 'http://127.0.0.1:8000/api';
+import { API_BASE_URL } from '../config/index.js';
 
 class ApiError extends Error {
   constructor(

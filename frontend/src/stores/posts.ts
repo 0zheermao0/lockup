@@ -64,7 +64,7 @@ export const usePostsStore = defineStore('posts', () => {
 
       // Update local state
       const postIndex = posts.value.findIndex(post => post.id === postId)
-      if (postIndex !== -1) {
+      if (postIndex !== -1 && posts.value[postIndex]) {
         posts.value[postIndex].likes_count = response.likes_count
         posts.value[postIndex].user_has_liked = true
       }
@@ -80,7 +80,7 @@ export const usePostsStore = defineStore('posts', () => {
 
       // Update local state
       const postIndex = posts.value.findIndex(post => post.id === postId)
-      if (postIndex !== -1) {
+      if (postIndex !== -1 && posts.value[postIndex]) {
         posts.value[postIndex].likes_count = response.likes_count
         posts.value[postIndex].user_has_liked = false
       }

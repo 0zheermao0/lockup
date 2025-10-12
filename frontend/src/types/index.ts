@@ -31,6 +31,7 @@ export interface User {
   created_at: string
   updated_at: string
   active_lock_task?: ActiveLockTask | null
+  is_superuser?: boolean
 }
 
 export interface UserProfile extends User {
@@ -47,6 +48,11 @@ export interface Post {
   latitude?: number
   longitude?: number
   location_name?: string
+  location?: {
+    latitude: number
+    longitude: number
+    name?: string
+  }
   verification_string?: string
   is_verified: boolean
   likes_count: number
@@ -73,24 +79,34 @@ export interface Comment {
   parent?: string
   likes_count: number
   replies: Comment[]
+  images?: PostImage[]
   created_at: string
   updated_at: string
   is_liked?: boolean
 }
 
 // Task Types
-export interface LockTask {
+export interface BaseLockTask {
   id: string
   user: User
-  task_type: 'lock' | 'board'
   title: string
-  description: string
+  description?: string
   status: 'pending' | 'active' | 'voting' | 'completed' | 'failed' | 'open' | 'taken' | 'submitted'
+  created_at: string
+  updated_at: string
+  // 计算字段
+  vote_count?: number
+  vote_agreement_count?: number
+  timeline_events?: any[]
+}
+
+export interface LockTask extends BaseLockTask {
+  task_type: 'lock'
   // 带锁任务字段
-  duration_type?: 'fixed' | 'random'
-  duration_value?: number
+  duration_type: 'fixed' | 'random'
+  duration_value: number
   duration_max?: number
-  difficulty?: 'easy' | 'normal' | 'hard' | 'hell'
+  difficulty: 'easy' | 'normal' | 'hard' | 'hell'
   unlock_type?: 'time' | 'vote'
   vote_threshold?: number
   vote_agreement_ratio?: number // 投票同意比例 (0.5 = 50%)
@@ -105,20 +121,22 @@ export interface LockTask {
   overtime_duration?: number // 置顶时间 (分钟)
   start_time?: string
   end_time?: string
+}
+
+export interface BoardTask extends BaseLockTask {
+  task_type: 'board'
   // 任务板字段
-  reward?: number
+  reward: number
   deadline?: string
-  max_duration?: number // 任务最大完成时间 (小时)
+  max_duration: number // 任务最大完成时间 (小时)
   taker?: User
   taken_at?: string
   completion_proof?: string
   completed_at?: string
-  // 计算字段
-  vote_count?: number
-  vote_agreement_count?: number
-  created_at: string
-  updated_at: string
+  reject_reason?: string
 }
+
+export type Task = LockTask | BoardTask
 
 export interface TaskBoard {
   id: string
@@ -192,6 +210,13 @@ export interface PaginatedResponse<T> {
   count: number
   next?: string
   previous?: string
+}
+
+export interface PaginatedData<T> {
+  results: T[]
+  count: number
+  next: string | null
+  previous: string | null
 }
 
 // Auth Types
@@ -269,6 +294,7 @@ export interface Item {
   id: string
   item_type: ItemType
   owner: User
+  original_creator?: User
   inventory?: UserInventory
   properties: Record<string, any>
   status: 'available' | 'used' | 'expired' | 'in_drift_bottle' | 'buried'
@@ -390,13 +416,13 @@ export interface PostStore {
 }
 
 export interface TaskStore {
-  tasks: LockTask[]
+  tasks: Task[]
   taskBoards: TaskBoard[]
   loading: boolean
   error: string | null
   fetchTasks: () => Promise<void>
   createTask: (data: TaskCreateRequest) => Promise<void>
-  updateTask: (id: string, data: Partial<LockTask>) => Promise<void>
+  updateTask: (id: string, data: Partial<Task>) => Promise<void>
 }
 
 // UI Types
