@@ -84,6 +84,21 @@ export const useAuthStore = defineStore('auth', () => {
     localStorage.setItem('user', JSON.stringify(newUser))
   }
 
+  const refreshUser = async () => {
+    if (!token.value) return
+
+    try {
+      const updatedUser = await authApi.getCurrentUser()
+      updateUser(updatedUser)
+      return updatedUser
+    } catch (error) {
+      console.error('Failed to refresh user data:', error)
+      // If refresh fails, token might be invalid
+      clearAuth()
+      throw error
+    }
+  }
+
   return {
     // State
     user,
@@ -97,6 +112,7 @@ export const useAuthStore = defineStore('auth', () => {
     register,
     logout,
     clearAuth,
-    updateUser
+    updateUser,
+    refreshUser
   }
 })

@@ -31,14 +31,13 @@
             <label for="content">
               {{ isCheckinMode ? '打卡内容' : '动态内容' }}
             </label>
-            <textarea
-              id="content"
+            <RichTextEditor
               v-model="form.content"
               :placeholder="isCheckinMode ? '分享你的打卡体验...' : '分享你的想法...'"
-              rows="4"
-              required
               :disabled="isLoading"
-            ></textarea>
+              :max-length="1000"
+              min-height="120px"
+            />
           </div>
 
           <!-- 图片上传 -->
@@ -151,6 +150,7 @@
 <script setup lang="ts">
 import { ref, reactive, watch } from 'vue'
 import { usePostsStore } from '../stores/posts'
+import RichTextEditor from './RichTextEditor.vue'
 
 interface Props {
   isVisible: boolean
@@ -437,26 +437,6 @@ const handleSubmit = async () => {
   color: #333;
 }
 
-textarea {
-  width: 100%;
-  padding: 0.75rem;
-  border: 2px solid #ddd;
-  border-radius: 4px;
-  font-size: 1rem;
-  font-family: inherit;
-  resize: vertical;
-  box-sizing: border-box;
-}
-
-textarea:focus {
-  outline: none;
-  border-color: #007bff;
-}
-
-textarea:disabled {
-  background-color: #f8f9fa;
-  opacity: 0.7;
-}
 
 .image-upload-area {
   position: relative;

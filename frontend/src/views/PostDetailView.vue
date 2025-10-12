@@ -26,11 +26,25 @@
           <article class="post-card">
             <div class="post-header">
               <div class="user-info">
-                <div class="avatar">
-                  {{ post.user.username.charAt(0).toUpperCase() }}
+                <div class="avatar-container">
+                  <div class="avatar">
+                    {{ post.user.username.charAt(0).toUpperCase() }}
+                  </div>
+                  <LockIndicator
+                    :user="post.user"
+                    size="small"
+                    :show-time="false"
+                    class="avatar-lock-indicator"
+                  />
                 </div>
                 <div>
-                  <div class="username">{{ post.user.username }}</div>
+                  <div
+                    class="username clickable"
+                    @click.stop="openProfileModal(post.user)"
+                    :title="`查看 ${post.user.username} 的资料`"
+                  >
+                    {{ post.user.username }}
+                  </div>
                   <div class="time">{{ formatDistanceToNow(post.created_at) }}</div>
                 </div>
               </div>
@@ -39,9 +53,7 @@
               </div>
             </div>
 
-            <div class="post-content">
-              {{ post.content }}
-            </div>
+            <div class="post-content" v-html="post.content"></div>
 
             <div v-if="post.images && post.images.length > 0" class="post-images">
               <img
@@ -86,19 +98,64 @@
 
             <!-- Comment Form -->
             <form @submit.prevent="submitComment" class="comment-form">
-              <textarea
+              <RichTextEditor
                 v-model="newComment"
                 placeholder="写评论..."
-                rows="3"
                 :disabled="submittingComment"
-              ></textarea>
-              <button
-                type="submit"
-                :disabled="!newComment.trim() || submittingComment"
-                class="submit-comment-btn"
-              >
-                {{ submittingComment ? '发布中...' : '发布评论' }}
-              </button>
+                :max-length="500"
+                min-height="100px"
+                :show-char-count="true"
+              />
+
+              <!-- Image Upload Section -->
+              <div class="comment-image-upload">
+                <input
+                  ref="commentFileInput"
+                  type="file"
+                  multiple
+                  accept="image/*"
+                  @change="handleCommentImageSelect"
+                  class="file-input"
+                  :disabled="submittingComment"
+                />
+                <div @click="triggerCommentFileInput" class="upload-zone">
+                  <div v-if="selectedCommentImages.length === 0" class="upload-placeholder">
+                    📷 添加图片 (可选)
+                    <span class="upload-hint">点击选择图片</span>
+                  </div>
+                  <div v-else class="selected-images">
+                    <div
+                      v-for="(image, index) in selectedCommentImages"
+                      :key="index"
+                      class="image-preview"
+                    >
+                      <img :src="image.preview" :alt="`评论图片 ${index + 1}`" />
+                      <button
+                        type="button"
+                        @click.stop="removeCommentImage(index)"
+                        class="remove-image"
+                        title="删除图片"
+                      >
+                        ×
+                      </button>
+                    </div>
+                    <div @click="triggerCommentFileInput" class="add-more-photos">
+                      <span>+</span>
+                      <span class="add-text">添加更多</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div class="comment-form-actions">
+                <button
+                  type="submit"
+                  :disabled="!newComment.trim() || submittingComment"
+                  class="submit-comment-btn"
+                >
+                  {{ submittingComment ? '发布中...' : '发布评论' }}
+                </button>
+              </div>
             </form>
 
             <!-- Comments List -->
@@ -110,18 +167,43 @@
               >
                 <div class="comment-header">
                   <div class="comment-user">
-                    <div class="avatar">
-                      {{ comment.user.username.charAt(0).toUpperCase() }}
+                    <div class="avatar-container">
+                      <div class="avatar">
+                        {{ comment.user.username.charAt(0).toUpperCase() }}
+                      </div>
+                      <LockIndicator
+                        :user="comment.user"
+                        size="mini"
+                        :show-time="false"
+                        class="avatar-lock-indicator"
+                      />
                     </div>
                     <div>
-                      <div class="username">{{ comment.user.username }}</div>
+                      <div
+                        class="username clickable"
+                        @click.stop="openProfileModal(comment.user)"
+                        :title="`查看 ${comment.user.username} 的资料`"
+                      >
+                        {{ comment.user.username }}
+                      </div>
                       <div class="time">{{ formatDistanceToNow(comment.created_at) }}</div>
                     </div>
                   </div>
                 </div>
-                <div class="comment-content">
-                  {{ comment.content }}
+                <div class="comment-content" v-html="comment.content"></div>
+
+                <!-- Comment Images -->
+                <div v-if="comment.images && comment.images.length > 0" class="comment-images">
+                  <img
+                    v-for="(image, index) in comment.images"
+                    :key="index"
+                    :src="image.image"
+                    :alt="`评论图片 ${index + 1}`"
+                    class="comment-image"
+                    @click="openImageModal(image.image)"
+                  />
                 </div>
+
                 <div class="comment-actions">
                   <button
                     @click="toggleCommentLike(comment)"
@@ -149,6 +231,13 @@
         <button @click="closeImageModal" class="close-modal-btn">×</button>
       </div>
     </div>
+
+    <!-- Profile Modal -->
+    <ProfileModal
+      :is-visible="showProfileModal"
+      :user="selectedUser"
+      @close="closeProfileModal"
+    />
   </div>
 </template>
 
@@ -159,6 +248,9 @@ import { useAuthStore } from '../stores/auth'
 import { usePostsStore } from '../stores/posts'
 import { postsApi } from '../lib/api'
 import { formatDistanceToNow } from '../lib/utils'
+import LockIndicator from '../components/LockIndicator.vue'
+import ProfileModal from '../components/ProfileModal.vue'
+import RichTextEditor from '../components/RichTextEditor.vue'
 import type { Post } from '../types/index.js'
 
 const route = useRoute()
@@ -173,6 +265,22 @@ const newComment = ref('')
 const submittingComment = ref(false)
 const showImageModal = ref(false)
 const selectedImage = ref('')
+const showProfileModal = ref(false)
+const selectedUser = ref<any>(null)
+
+// Comment image upload state
+const commentFileInput = ref<HTMLInputElement>()
+const selectedCommentImages = ref<Array<{ file: File; preview: string }>>([])
+
+const openProfileModal = (user: any) => {
+  selectedUser.value = user
+  showProfileModal.value = true
+}
+
+const closeProfileModal = () => {
+  showProfileModal.value = false
+  selectedUser.value = null
+}
 
 const canDeletePost = computed(() => {
   if (!post.value) return false
@@ -237,14 +345,52 @@ const deletePost = async () => {
   }
 }
 
+// Comment image handling
+const triggerCommentFileInput = () => {
+  if (!submittingComment.value) {
+    commentFileInput.value?.click()
+  }
+}
+
+const handleCommentImageSelect = (event: Event) => {
+  const files = (event.target as HTMLInputElement).files
+  if (!files) return
+
+  for (let i = 0; i < files.length; i++) {
+    const file = files[i]
+    if (file.type.startsWith('image/')) {
+      const reader = new FileReader()
+      reader.onload = (e) => {
+        selectedCommentImages.value.push({
+          file,
+          preview: e.target?.result as string
+        })
+      }
+      reader.readAsDataURL(file)
+    }
+  }
+
+  // Clear input value to allow selecting same file again
+  if (commentFileInput.value) {
+    commentFileInput.value.value = ''
+  }
+}
+
+const removeCommentImage = (index: number) => {
+  selectedCommentImages.value.splice(index, 1)
+}
+
 const submitComment = async () => {
   if (!post.value || !newComment.value.trim()) return
 
   submittingComment.value = true
   try {
-    const newCommentData = await postsApi.createComment(post.value.id, {
-      content: newComment.value.trim()
-    })
+    const commentData = {
+      content: newComment.value.trim(),
+      images: selectedCommentImages.value.map(img => img.file)
+    }
+
+    const newCommentData = await postsApi.createComment(post.value.id, commentData)
 
     // 添加新评论到本地状态
     if (post.value.comments) {
@@ -256,8 +402,9 @@ const submitComment = async () => {
     // 更新评论数量
     post.value.comments_count += 1
 
-    // 清空输入框
+    // 清空输入框和选中的图片
     newComment.value = ''
+    selectedCommentImages.value = []
 
     console.log('评论发布成功')
   } catch (error: any) {
@@ -385,6 +532,12 @@ onMounted(() => {
   align-items: center;
 }
 
+.avatar-container {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
 .avatar {
   width: 40px;
   height: 40px;
@@ -397,9 +550,32 @@ onMounted(() => {
   font-weight: bold;
 }
 
+.avatar-lock-indicator {
+  position: absolute;
+  top: -2px;
+  right: -8px;
+  z-index: 2;
+}
+
 .username {
   font-weight: bold;
   font-size: 1.1rem;
+}
+
+.username.clickable {
+  cursor: pointer;
+  color: #007bff;
+  transition: all 0.2s ease;
+  padding: 0.25rem 0.5rem;
+  border-radius: 4px;
+  margin: -0.25rem -0.5rem;
+}
+
+.username.clickable:hover {
+  background-color: #007bff;
+  color: white;
+  transform: translate(-1px, -1px);
+  box-shadow: 2px 2px 0 #000;
 }
 
 .time {
@@ -422,6 +598,31 @@ onMounted(() => {
   white-space: pre-wrap;
   line-height: 1.6;
   font-size: 1.1rem;
+}
+
+/* Rich text content styling */
+.post-content h1,
+.post-content h2,
+.post-content h3 {
+  margin: 0.5rem 0;
+  font-weight: 900;
+}
+
+.post-content ul {
+  margin: 0.5rem 0;
+  padding-left: 2rem;
+}
+
+.post-content li {
+  margin: 0.25rem 0;
+}
+
+.post-content strong {
+  font-weight: 900;
+}
+
+.post-content em {
+  font-style: italic;
 }
 
 .post-images {
@@ -524,23 +725,6 @@ onMounted(() => {
   margin-bottom: 2rem;
 }
 
-.comment-form textarea {
-  width: 100%;
-  padding: 0.75rem;
-  border: 2px solid #ddd;
-  border-radius: 4px;
-  font-size: 1rem;
-  font-family: inherit;
-  resize: vertical;
-  box-sizing: border-box;
-  margin-bottom: 1rem;
-}
-
-.comment-form textarea:focus {
-  outline: none;
-  border-color: #007bff;
-}
-
 .submit-comment-btn {
   background-color: #007bff;
   color: white;
@@ -583,16 +767,54 @@ onMounted(() => {
   align-items: center;
 }
 
+.comment-user .avatar-container {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
 .comment-user .avatar {
   width: 32px;
   height: 32px;
   font-size: 0.875rem;
 }
 
+.comment-user .avatar-lock-indicator {
+  position: absolute;
+  top: -2px;
+  right: -6px;
+  z-index: 2;
+}
+
 .comment-content {
   white-space: pre-wrap;
   line-height: 1.5;
   margin-bottom: 0.75rem;
+}
+
+/* Rich text comment styling */
+.comment-content h1,
+.comment-content h2,
+.comment-content h3 {
+  margin: 0.5rem 0;
+  font-weight: 900;
+}
+
+.comment-content ul {
+  margin: 0.5rem 0;
+  padding-left: 2rem;
+}
+
+.comment-content li {
+  margin: 0.25rem 0;
+}
+
+.comment-content strong {
+  font-weight: 900;
+}
+
+.comment-content em {
+  font-style: italic;
 }
 
 .comment-actions {
@@ -673,6 +895,153 @@ onMounted(() => {
   background: rgba(0, 0, 0, 0.9);
 }
 
+/* Comment Image Upload Styling */
+.comment-image-upload {
+  margin: 1rem 0;
+}
+
+.comment-image-upload .file-input {
+  display: none;
+}
+
+.comment-image-upload .upload-zone {
+  border: 3px dashed #000;
+  background: white;
+  padding: 1.5rem;
+  text-align: center;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  box-shadow: 4px 4px 0 #000;
+  margin-bottom: 1rem;
+}
+
+.comment-image-upload .upload-zone:hover {
+  background: #f8f9fa;
+  transform: translate(-1px, -1px);
+  box-shadow: 5px 5px 0 #000;
+}
+
+.comment-image-upload .upload-placeholder {
+  color: #666;
+  font-size: 1rem;
+  font-weight: 700;
+}
+
+.comment-image-upload .upload-hint {
+  display: block;
+  font-size: 0.875rem;
+  color: #999;
+  margin-top: 0.5rem;
+  font-weight: 400;
+}
+
+.comment-image-upload .selected-images {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
+  gap: 0.75rem;
+}
+
+.comment-image-upload .image-preview {
+  position: relative;
+  aspect-ratio: 1;
+  border: 3px solid #000;
+  overflow: hidden;
+  box-shadow: 3px 3px 0 #000;
+}
+
+.comment-image-upload .image-preview img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.comment-image-upload .remove-image {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  background: #dc3545;
+  color: white;
+  border: 2px solid #000;
+  border-radius: 50%;
+  width: 24px;
+  height: 24px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  font-weight: 900;
+  box-shadow: 2px 2px 0 #000;
+}
+
+.comment-image-upload .remove-image:hover {
+  background: #c82333;
+  transform: translate(-1px, -1px);
+  box-shadow: 3px 3px 0 #000;
+}
+
+.comment-image-upload .add-more-photos {
+  aspect-ratio: 1;
+  border: 3px dashed #000;
+  background: #f8f9fa;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  font-weight: 900;
+  color: #666;
+  transition: all 0.2s ease;
+}
+
+.comment-image-upload .add-more-photos:hover {
+  background: #e9ecef;
+  color: #000;
+}
+
+.comment-image-upload .add-more-photos span:first-child {
+  font-size: 1.5rem;
+  line-height: 1;
+}
+
+.comment-image-upload .add-text {
+  font-size: 0.75rem;
+  margin-top: 0.25rem;
+}
+
+/* Comment Images Display */
+.comment-images {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 0.75rem;
+  margin: 0.75rem 0;
+}
+
+.comment-image {
+  width: 100%;
+  max-height: 200px;
+  object-fit: cover;
+  border: 2px solid #000;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: transform 0.2s ease;
+  box-shadow: 3px 3px 0 #000;
+}
+
+.comment-image:hover {
+  transform: translate(-1px, -1px);
+  box-shadow: 4px 4px 0 #000;
+}
+
+/* Comment Form Actions */
+.comment-form-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 1rem;
+  padding-top: 1rem;
+  border-top: 2px solid #e9ecef;
+}
+
 /* Mobile responsive */
 @media (max-width: 768px) {
   .header-content {
@@ -695,6 +1064,18 @@ onMounted(() => {
   .image-modal-content {
     max-width: 95%;
     max-height: 95%;
+  }
+
+  .comment-image-upload .selected-images {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .comment-images {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .comment-image-upload .upload-zone {
+    padding: 1rem;
   }
 }
 </style>

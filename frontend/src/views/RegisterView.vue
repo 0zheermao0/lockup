@@ -50,7 +50,9 @@
         </div>
 
         <div v-if="error" class="error">
-          {{ error }}
+          <div v-for="(line, index) in error.split('\n')" :key="index">
+            {{ line }}
+          </div>
         </div>
 
         <button type="submit" :disabled="authStore.isLoading">
@@ -83,6 +85,66 @@ const form = reactive<RegisterRequest>({
 
 const error = ref('')
 
+// Helper function to parse Django REST Framework validation errors
+const parseRegistrationError = (err: any): string => {
+  console.log('Registration error:', err)
+
+  // Check if this is a DRF validation error with field-specific errors
+  if (err.response?.data && typeof err.response.data === 'object') {
+    const errorData = err.response.data
+
+    // Handle password validation errors specifically
+    if (errorData.password && Array.isArray(errorData.password)) {
+      const passwordErrors = errorData.password as string[]
+      // Join multiple password validation errors with line breaks
+      return passwordErrors.join('\n')
+    }
+
+    // Handle username validation errors
+    if (errorData.username && Array.isArray(errorData.username)) {
+      const usernameErrors = errorData.username as string[]
+      return `用户名错误：${usernameErrors.join('，')}`
+    }
+
+    // Handle email validation errors
+    if (errorData.email && Array.isArray(errorData.email)) {
+      const emailErrors = errorData.email as string[]
+      return `邮箱错误：${emailErrors.join('，')}`
+    }
+
+    // Handle non-field errors (general validation errors)
+    if (errorData.non_field_errors && Array.isArray(errorData.non_field_errors)) {
+      const nonFieldErrors = errorData.non_field_errors as string[]
+      return nonFieldErrors.join('\n')
+    }
+
+    // Handle Django's general error messages
+    if (errorData.detail) {
+      return errorData.detail
+    }
+
+    // Handle any other field errors by combining all error messages
+    const allErrors: string[] = []
+    for (const [field, fieldErrors] of Object.entries(errorData)) {
+      if (Array.isArray(fieldErrors)) {
+        allErrors.push(...(fieldErrors as string[]))
+      }
+    }
+
+    if (allErrors.length > 0) {
+      return allErrors.join('\n')
+    }
+
+    // Fall back to the old method if no structured errors found
+    if (errorData.message) {
+      return errorData.message
+    }
+  }
+
+  // Final fallback for network errors or unexpected error formats
+  return err.message || '注册失败，请检查网络连接后重试'
+}
+
 const handleRegister = async () => {
   error.value = ''
 
@@ -95,7 +157,7 @@ const handleRegister = async () => {
     await authStore.register(form)
     router.push('/')
   } catch (err: any) {
-    error.value = err.response?.data?.message || err.message || '注册失败'
+    error.value = parseRegistrationError(err)
   }
 }
 </script>

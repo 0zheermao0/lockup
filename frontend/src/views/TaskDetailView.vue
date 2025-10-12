@@ -53,7 +53,13 @@
                   {{ task.user.username.charAt(0).toUpperCase() }}
                 </div>
                 <div class="user-info">
-                  <div class="username">{{ task.user.username }}</div>
+                  <button
+                    @click="openUserProfile(task.user.id)"
+                    class="username-btn"
+                    :title="`查看 ${task.user.username} 的资料`"
+                  >
+                    {{ task.user.username }}
+                  </button>
                   <div class="create-time">创建于 {{ formatDateTime(task.created_at) }}</div>
                 </div>
               </div>
@@ -66,9 +72,19 @@
 
             <!-- Task Details Grid -->
             <div class="task-details-grid">
-              <div class="detail-item">
-                <span class="label">持续时间</span>
-                <span class="value">{{ formatDuration(task) }}</span>
+              <div v-if="task.task_type === 'lock' && task.status === 'active'" class="detail-item">
+                <span class="label">剩余时间</span>
+                <span class="value countdown-display" :class="{ 'overtime': timeRemaining <= 0 }">
+                  {{ timeRemaining > 0 ? formatTimeRemaining(timeRemaining) : '倒计时已结束' }}
+                </span>
+              </div>
+              <div v-if="task.task_type === 'lock' && task.start_time" class="detail-item">
+                <span class="label">开始时间</span>
+                <span class="value">{{ formatDateTime(task.start_time) }}</span>
+              </div>
+              <div v-if="task.task_type === 'lock' && task.end_time" class="detail-item">
+                <span class="label">预计结束时间</span>
+                <span class="value">{{ formatDateTime(task.end_time) }}</span>
               </div>
               <div class="detail-item">
                 <span class="label">难度等级</span>
@@ -85,20 +101,67 @@
             </div>
 
             <!-- Task Timeline -->
-            <div v-if="task.start_time || task.end_time" class="task-timeline">
-              <h3>任务时间线</h3>
-              <div class="timeline-item" v-if="task.start_time">
-                <div class="timeline-dot start"></div>
-                <div class="timeline-content">
-                  <div class="timeline-title">任务开始</div>
-                  <div class="timeline-time">{{ formatDateTime(task.start_time) }}</div>
-                </div>
+            <div v-if="timeline.length > 0 || task.start_time || task.end_time" class="task-timeline">
+              <div class="timeline-header">
+                <h3>任务时间线</h3>
+                <button
+                  @click="refreshTimeline"
+                  :disabled="timelineLoading"
+                  class="refresh-timeline-btn"
+                  title="刷新时间线"
+                >
+                  {{ timelineLoading ? '🔄' : '🔄' }} 刷新
+                </button>
               </div>
-              <div class="timeline-item" v-if="task.end_time">
-                <div class="timeline-dot end"></div>
-                <div class="timeline-content">
-                  <div class="timeline-title">任务结束</div>
-                  <div class="timeline-time">{{ formatDateTime(task.end_time) }}</div>
+              <div v-if="timelineLoading" class="timeline-loading">
+                加载时间线中...
+              </div>
+              <div v-else class="timeline-container">
+                <!-- Timeline events from API -->
+                <div
+                  v-for="event in timeline"
+                  :key="event.id"
+                  class="timeline-item"
+                >
+                  <div class="timeline-dot" :class="getEventTypeClass(event.event_type)"></div>
+                  <div class="timeline-content">
+                    <div class="timeline-title">{{ event.event_type_display }}</div>
+                    <div class="timeline-description">{{ event.description }}</div>
+                    <div class="timeline-time">{{ formatDateTime(event.created_at) }}</div>
+                    <div v-if="event.user" class="timeline-user">
+                      操作者:
+                      <button
+                        @click="openUserProfile(event.user.id)"
+                        class="timeline-user-btn"
+                        :title="`查看 ${event.user.username} 的资料`"
+                      >
+                        {{ event.user.username }}
+                      </button>
+                    </div>
+                    <div v-if="event.time_change_minutes" class="timeline-time-change">
+                      时间变化: {{ event.time_change_minutes > 0 ? '+' : '' }}{{ event.time_change_minutes }} 分钟
+                    </div>
+                    <div v-if="event.previous_end_time && event.new_end_time" class="timeline-times">
+                      <div class="previous-time">原定结束: {{ formatDateTime(event.previous_end_time) }}</div>
+                      <div class="new-time">新的结束: {{ formatDateTime(event.new_end_time) }}</div>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Fallback: Basic timeline if no API events -->
+                <div v-if="timeline.length === 0 && task.start_time" class="timeline-item">
+                  <div class="timeline-dot start"></div>
+                  <div class="timeline-content">
+                    <div class="timeline-title">任务开始</div>
+                    <div class="timeline-time">{{ formatDateTime(task.start_time) }}</div>
+                  </div>
+                </div>
+                <div v-if="timeline.length === 0 && task.end_time" class="timeline-item">
+                  <div class="timeline-dot end"></div>
+                  <div class="timeline-content">
+                    <div class="timeline-title">任务结束</div>
+                    <div class="timeline-time">{{ formatDateTime(task.end_time) }}</div>
+                  </div>
                 </div>
               </div>
             </div>
@@ -114,7 +177,7 @@
               </div>
               <div class="time-remaining">
                 <span v-if="timeRemaining > 0">剩余时间: {{ formatTimeRemaining(timeRemaining) }}</span>
-                <span v-else class="overtime">任务已结束</span>
+                <span v-else class="overtime">倒计时已结束</span>
               </div>
 
               <!-- 带锁任务完成提示 -->
@@ -123,7 +186,7 @@
                   ⏳ 带锁任务需要等待倒计时结束后才能完成
                 </div>
                 <div v-else class="hint-ready">
-                  ✅ 倒计时已结束，现在可以完成任务了！
+                  ✅ 倒计时已结束，满足所有条件后可以手动完成任务
                 </div>
               </div>
             </div>
@@ -174,7 +237,7 @@
               </button>
               <button
                 v-if="canSubmitProof"
-                @click="submitProof"
+                @click="openSubmissionModal"
                 class="action-btn submit-btn"
               >
                 📤 提交完成证明
@@ -197,43 +260,102 @@
           </section>
 
           <!-- Voting Section for Vote-based Tasks -->
-          <section v-if="task.unlock_type === 'vote' && task.status === 'active'" class="voting-section">
+          <section v-if="task.unlock_type === 'vote' && (task.status === 'active' || task.status === 'voting')" class="voting-section">
             <h3>投票解锁</h3>
-            <div class="vote-info">
-              <div class="vote-count">
-                当前票数: <strong>{{ currentVotes }}</strong> / {{ task.vote_threshold }}
+
+            <!-- Task in active state, waiting for countdown -->
+            <div v-if="task.status === 'active'" class="voting-waiting">
+              <div v-if="timeRemaining > 0" class="vote-countdown-notice">
+                ⏳ 投票将在倒计时结束后开放: {{ formatTimeRemaining(timeRemaining) }}
               </div>
-              <div class="vote-progress">
-                <div class="vote-bar">
-                  <div
-                    class="vote-fill"
-                    :style="{ width: (currentVotes / task.vote_threshold * 100) + '%' }"
-                  ></div>
+              <div v-else class="vote-ready-notice">
+                ✅ 倒计时已结束，现在可以投票！点击投票按钮即可开始10分钟投票期
+              </div>
+            </div>
+
+            <!-- Task in voting period -->
+            <div v-else-if="task.status === 'voting'" class="voting-active">
+              <div class="voting-period-info">
+                <h4>🗳️ 投票期进行中</h4>
+                <div class="voting-countdown">
+                  投票剩余时间: <strong>{{ formatVotingTimeRemaining() }}</strong>
+                </div>
+                <div class="voting-schedule">
+                  投票开始: {{ formatDateTime(task.voting_start_time) }}<br>
+                  投票结束: {{ formatDateTime(task.voting_end_time) }}
                 </div>
               </div>
             </div>
-            <button
-              v-if="!hasVoted && !isOwnTask"
-              @click="submitVote"
-              class="vote-btn"
-            >
-              🗳️ 投票解锁
-            </button>
+
+            <!-- Vote statistics -->
+            <div class="vote-info">
+              <div class="vote-count">
+                当前票数: <strong>{{ currentVotes }}</strong> 票
+                <span v-if="task.vote_agreement_ratio">(需要 {{ (task.vote_agreement_ratio * 100).toFixed(0) }}% 同意率)</span>
+              </div>
+              <div v-if="currentVotes > 0" class="vote-breakdown">
+                同意: {{ task.vote_agreement_count || 0 }} 票 |
+                反对: {{ currentVotes - (task.vote_agreement_count || 0) }} 票 |
+                同意率: {{ ((task.vote_agreement_count || 0) / currentVotes * 100).toFixed(1) }}%
+              </div>
+            </div>
+
+            <!-- Voting buttons -->
+            <div v-if="canVote" class="vote-actions">
+              <button
+                @click="openVoteModal"
+                class="vote-btn"
+              >
+                🗳️ 投票解锁
+              </button>
+            </div>
             <div v-else-if="hasVoted" class="voted-message">
               ✅ 你已投票
+            </div>
+            <div v-else-if="isOwnTask" class="vote-disabled-message">
+              ⚠️ 任务发布者无法投票
+            </div>
+            <div v-else-if="task.status === 'voting' && votingTimeRemaining <= 0" class="voting-ended-message">
+              ⏰ 投票期已结束，正在处理投票结果...
             </div>
           </section>
         </div>
       </div>
     </main>
+
+    <!-- Task Submission Modal -->
+    <TaskSubmissionModal
+      :is-visible="showSubmissionModal"
+      :task="task"
+      @close="closeSubmissionModal"
+      @success="handleSubmissionSuccess"
+    />
+
+    <!-- Profile Modal -->
+    <ProfileModal
+      :is-visible="showProfileModal"
+      :user-id="selectedUserId"
+      @close="closeProfileModal"
+    />
+
+    <!-- Vote Confirmation Modal -->
+    <VoteConfirmationModal
+      :is-visible="showVoteModal"
+      :task="task"
+      @close="closeVoteModal"
+      @vote="submitVote"
+    />
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, computed, onUnmounted } from 'vue'
+import { ref, onMounted, computed, onUnmounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '../stores/auth'
-import { tasksApi } from '../lib/api-tasks'
+import { tasksApi } from '../lib/api'
+import TaskSubmissionModal from '../components/TaskSubmissionModal.vue'
+import ProfileModal from '../components/ProfileModal.vue'
+import VoteConfirmationModal from '../components/VoteConfirmationModal.vue'
 import type { LockTask } from '../types/index.js'
 
 const route = useRoute()
@@ -247,6 +369,13 @@ const error = ref('')
 const currentVotes = ref(0)
 const hasVoted = ref(false)
 const progressInterval = ref<number>()
+const currentTime = ref(Date.now())
+const timeline = ref<any[]>([])
+const timelineLoading = ref(false)
+const showSubmissionModal = ref(false)
+const showProfileModal = ref(false)
+const selectedUserId = ref<number | null>(null)
+const showVoteModal = ref(false)
 
 // Computed properties
 const canDeleteTask = computed(() => {
@@ -301,7 +430,7 @@ const canCompleteTask = computed(() => {
 
   // For lock tasks, can only complete after countdown ends
   if (task.value.task_type === 'lock' && task.value.end_time) {
-    const now = new Date().getTime()
+    const now = currentTime.value
     const endTime = new Date(task.value.end_time).getTime()
     return now >= endTime
   }
@@ -317,7 +446,7 @@ const progressPercent = computed(() => {
   if (task.value.task_type === 'lock' && task.value.status === 'active' && task.value.start_time && task.value.end_time) {
     const start = new Date(task.value.start_time).getTime()
     const end = new Date(task.value.end_time).getTime()
-    const now = new Date().getTime()
+    const now = currentTime.value
 
     if (now <= start) return 0
     if (now >= end) return 100
@@ -329,7 +458,7 @@ const progressPercent = computed(() => {
   if (task.value.task_type === 'board' && task.value.status === 'taken' && task.value.taken_at && task.value.deadline) {
     const start = new Date(task.value.taken_at).getTime()
     const end = new Date(task.value.deadline).getTime()
-    const now = new Date().getTime()
+    const now = currentTime.value
 
     if (now <= start) return 0
     if (now >= end) return 100
@@ -346,23 +475,69 @@ const timeRemaining = computed(() => {
   // Lock tasks time remaining
   if (task.value.task_type === 'lock' && task.value.status === 'active' && task.value.end_time) {
     const end = new Date(task.value.end_time).getTime()
-    const now = new Date().getTime()
+    const now = currentTime.value
     return Math.max(0, end - now)
   }
 
   // Board tasks time remaining
   if (task.value.task_type === 'board' && task.value.status === 'taken' && task.value.deadline) {
     const end = new Date(task.value.deadline).getTime()
-    const now = new Date().getTime()
+    const now = currentTime.value
     return Math.max(0, end - now)
   }
 
   return 0
 })
 
+const votingTimeRemaining = computed(() => {
+  if (!task.value || task.value.status !== 'voting' || !task.value.voting_end_time) {
+    return 0
+  }
+
+  const end = new Date(task.value.voting_end_time).getTime()
+  const now = currentTime.value
+  return Math.max(0, end - now)
+})
+
+const canVote = computed(() => {
+  if (!task.value || hasVoted.value || isOwnTask.value) {
+    return false
+  }
+
+  // Can vote if task is active and countdown has ended, or if task is in voting period
+  if (task.value.status === 'active') {
+    return timeRemaining.value <= 0
+  } else if (task.value.status === 'voting') {
+    return votingTimeRemaining.value > 0
+  }
+
+  return false
+})
+
 // Methods
 const goBack = () => {
   router.back()
+}
+
+const fetchTimeline = async () => {
+  const taskId = route.params.id as string
+  if (!taskId || !task.value) return
+
+  try {
+    timelineLoading.value = true
+    const timelineData = await tasksApi.getTaskTimeline(taskId)
+    timeline.value = timelineData.timeline_events || []
+  } catch (err: any) {
+    console.error('Error fetching timeline:', err)
+    // Timeline is optional, don't show error to user
+  } finally {
+    timelineLoading.value = false
+  }
+}
+
+const refreshTimeline = async () => {
+  console.log('Manual timeline refresh triggered')
+  await fetchTimeline()
 }
 
 const fetchTask = async () => {
@@ -388,6 +563,9 @@ const fetchTask = async () => {
         (task.value.task_type === 'board' && task.value.status === 'taken')) {
       startProgressUpdate()
     }
+
+    // 获取任务时间线
+    await fetchTimeline()
 
   } catch (err: any) {
     // 使用模拟数据作为备用
@@ -444,10 +622,15 @@ const fetchTask = async () => {
 }
 
 const startProgressUpdate = () => {
+  // Clear any existing interval
+  if (progressInterval.value) {
+    clearInterval(progressInterval.value)
+  }
+
   progressInterval.value = window.setInterval(() => {
-    // Force reactivity update for time-based progress
-    if (task.value?.status === 'active') {
-      // Progress is computed, just trigger an update
+    // Update current time for reactive calculations
+    if (task.value?.status === 'active' || (task.value?.task_type === 'board' && task.value?.status === 'taken')) {
+      currentTime.value = Date.now()
     }
   }, 1000)
 }
@@ -475,6 +658,8 @@ const startTask = async () => {
     task.value = updatedTask
     console.log('任务已开始')
     startProgressUpdate()
+    // 刷新用户数据以更新lock status
+    authStore.refreshUser()
   } catch (error) {
     console.error('Error starting task:', error)
     alert('开始任务失败，请重试')
@@ -501,6 +686,8 @@ const completeTask = async () => {
     if (progressInterval.value) {
       clearInterval(progressInterval.value)
     }
+    // 刷新用户数据以更新lock status
+    authStore.refreshUser()
     alert('✅ 任务已成功完成！')
   } catch (error: any) {
     console.error('Error completing task:', error)
@@ -534,6 +721,8 @@ const stopTask = async () => {
     if (progressInterval.value) {
       clearInterval(progressInterval.value)
     }
+    // 刷新用户数据以更新lock status
+    authStore.refreshUser()
     alert('⚠️ 任务已停止并标记为失败')
   } catch (error: any) {
     console.error('Error stopping task:', error)
@@ -547,22 +736,31 @@ const stopTask = async () => {
   }
 }
 
-const submitVote = async () => {
+const submitVote = async (agree: boolean) => {
   if (!task.value || hasVoted.value) return
 
   try {
-    await tasksApi.voteTask(task.value.id, true)
-    currentVotes.value += 1
+    await tasksApi.voteTask(task.value.id, agree)
+
+    if (agree) {
+      currentVotes.value += 1
+    }
+
     hasVoted.value = true
-    console.log('投票成功')
+    closeVoteModal()
+    console.log(`投票成功: ${agree ? '同意' : '拒绝'}`)
+
+    // 刷新任务数据以获取最新投票状态
+    await fetchTask()
 
     // 检查是否达到解锁门槛
-    if (currentVotes.value >= (task.value.vote_threshold || 0)) {
+    if (agree && currentVotes.value >= (task.value.vote_threshold || 0)) {
       console.log('投票门槛已达到，任务可以解锁')
     }
   } catch (error) {
     console.error('Error voting:', error)
     alert('投票失败，请重试')
+    closeVoteModal()
   }
 }
 
@@ -584,26 +782,37 @@ const claimTask = async () => {
   }
 }
 
-const submitProof = async () => {
-  if (!task.value || !canSubmitProof.value) return
+const openSubmissionModal = () => {
+  showSubmissionModal.value = true
+}
 
-  const completionProof = prompt('请输入完成证明：')
-  if (!completionProof || !completionProof.trim()) {
-    alert('请提供完成证明')
-    return
-  }
+const closeSubmissionModal = () => {
+  showSubmissionModal.value = false
+}
 
-  try {
-    const updatedTask = await tasksApi.submitTask(task.value.id, completionProof.trim())
-    task.value = updatedTask
-    console.log('任务提交成功')
-    if (progressInterval.value) {
-      clearInterval(progressInterval.value)
-    }
-  } catch (error) {
-    console.error('Error submitting task:', error)
-    alert('提交失败，请重试')
-  }
+const openUserProfile = (userId: number) => {
+  selectedUserId.value = userId
+  showProfileModal.value = true
+}
+
+const closeProfileModal = () => {
+  showProfileModal.value = false
+  selectedUserId.value = null
+}
+
+const openVoteModal = () => {
+  showVoteModal.value = true
+}
+
+const closeVoteModal = () => {
+  showVoteModal.value = false
+}
+
+const handleSubmissionSuccess = () => {
+  // Refresh task data to get updated status
+  fetchTask()
+  // Close the modal
+  showSubmissionModal.value = false
 }
 
 const approveTask = async () => {
@@ -657,6 +866,9 @@ const addOvertime = async () => {
       task.value.end_time = result.new_end_time
     }
 
+    // 刷新用户数据以更新lock status
+    authStore.refreshUser()
+
     // 显示加时信息
     alert(`成功为任务加时 ${result.overtime_minutes} 分钟！`)
     console.log('任务加时成功:', result)
@@ -688,6 +900,7 @@ const getStatusText = (status: string) => {
   const texts = {
     pending: '待开始',
     active: '进行中',
+    voting: '投票期',
     completed: '已完成',
     failed: '已失败',
     open: '开放中',
@@ -727,6 +940,49 @@ const formatTimeRemaining = (milliseconds: number) => {
     return `${seconds}秒`
   }
 }
+
+const formatVotingTimeRemaining = () => {
+  return formatTimeRemaining(votingTimeRemaining.value)
+}
+
+const getEventTypeClass = (eventType: string) => {
+  const classMap: Record<string, string> = {
+    'task_created': 'created',
+    'task_started': 'start',
+    'task_completed': 'completed',
+    'task_stopped': 'failed',
+    'time_wheel_increase': 'time-increase',
+    'time_wheel_decrease': 'time-decrease',
+    'overtime_added': 'overtime',
+    'task_voted': 'vote',
+    'task_failed': 'failed'
+  }
+  return classMap[eventType] || 'default'
+}
+
+// Watch for task changes to refresh timeline
+watch(() => task.value?.updated_at, async (newUpdatedAt, oldUpdatedAt) => {
+  if (newUpdatedAt && oldUpdatedAt && newUpdatedAt !== oldUpdatedAt) {
+    console.log('Task updated, refreshing timeline...')
+    await fetchTimeline()
+  }
+})
+
+// Also watch for status changes
+watch(() => task.value?.status, async (newStatus, oldStatus) => {
+  if (newStatus && oldStatus && newStatus !== oldStatus) {
+    console.log('Task status changed, refreshing timeline...')
+    await fetchTimeline()
+  }
+})
+
+// Watch for end_time changes (from time wheel)
+watch(() => task.value?.end_time, async (newEndTime, oldEndTime) => {
+  if (newEndTime && oldEndTime && newEndTime !== oldEndTime) {
+    console.log('Task end time changed, refreshing timeline...')
+    await fetchTimeline()
+  }
+})
 
 onMounted(() => {
   fetchTask()
@@ -916,6 +1172,12 @@ onUnmounted(() => {
   color: white;
 }
 
+.task-status.voting {
+  background-color: #ffc107;
+  color: #212529;
+  animation: pulse 2s infinite;
+}
+
 .task-user {
   display: flex;
   align-items: center;
@@ -938,6 +1200,24 @@ onUnmounted(() => {
 .username {
   font-weight: bold;
   font-size: 1.1rem;
+}
+
+.username-btn {
+  background: none;
+  border: none;
+  color: #007bff;
+  font-weight: bold;
+  font-size: 1.1rem;
+  text-decoration: underline;
+  cursor: pointer;
+  padding: 0;
+  transition: all 0.2s ease;
+}
+
+.username-btn:hover {
+  color: #0056b3;
+  text-decoration: none;
+  text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.1);
 }
 
 .create-time {
@@ -985,6 +1265,30 @@ onUnmounted(() => {
 .value {
   font-weight: bold;
   color: #333;
+}
+
+.countdown-display {
+  font-size: 1.1rem;
+  font-weight: 900;
+  color: #007bff;
+  animation: pulse-countdown 2s infinite;
+}
+
+.countdown-display.overtime {
+  color: #dc3545;
+  animation: pulse-danger 1s infinite;
+}
+
+@keyframes pulse-countdown {
+  0% { opacity: 1; }
+  50% { opacity: 0.7; }
+  100% { opacity: 1; }
+}
+
+@keyframes pulse-danger {
+  0% { opacity: 1; }
+  50% { opacity: 0.5; }
+  100% { opacity: 1; }
 }
 
 .task-timeline {
@@ -1239,6 +1543,114 @@ onUnmounted(() => {
   font-size: 1.1rem;
 }
 
+.vote-countdown-notice {
+  padding: 1rem;
+  background: linear-gradient(135deg, #fff3cd, #ffeaa7);
+  border: 2px solid #ffc107;
+  border-radius: 8px;
+  color: #856404;
+  font-weight: 500;
+  text-align: center;
+  margin-bottom: 1rem;
+  animation: pulse-countdown-notice 2s infinite;
+}
+
+@keyframes pulse-countdown-notice {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.8; }
+}
+
+.vote-actions {
+  margin-top: 1rem;
+}
+
+.vote-disabled-message {
+  color: #6c757d;
+  font-weight: 500;
+  font-size: 1rem;
+  text-align: center;
+  padding: 0.75rem;
+  background: #f8f9fa;
+  border: 2px solid #dee2e6;
+  border-radius: 8px;
+}
+
+/* Voting period specific styles */
+.voting-waiting {
+  margin-bottom: 1rem;
+}
+
+.vote-ready-notice {
+  padding: 1rem;
+  background: linear-gradient(135deg, #d4edda, #c3e6cb);
+  border: 2px solid #28a745;
+  border-radius: 8px;
+  color: #155724;
+  font-weight: 500;
+  text-align: center;
+  animation: pulse-ready 2s infinite;
+}
+
+.voting-active {
+  margin-bottom: 1rem;
+}
+
+.voting-period-info {
+  padding: 1.5rem;
+  background: linear-gradient(135deg, #fff3cd, #ffeaa7);
+  border: 2px solid #ffc107;
+  border-radius: 8px;
+  color: #856404;
+}
+
+.voting-period-info h4 {
+  margin: 0 0 1rem 0;
+  font-size: 1.2rem;
+  font-weight: bold;
+  text-align: center;
+}
+
+.voting-countdown {
+  font-size: 1.1rem;
+  font-weight: bold;
+  text-align: center;
+  margin-bottom: 0.5rem;
+}
+
+.voting-schedule {
+  font-size: 0.875rem;
+  text-align: center;
+  opacity: 0.8;
+}
+
+.vote-breakdown {
+  font-size: 0.875rem;
+  color: #666;
+  margin-top: 0.25rem;
+  font-family: 'Courier New', monospace;
+}
+
+.voting-ended-message {
+  padding: 1rem;
+  background: linear-gradient(135deg, #f8d7da, #f5c6cb);
+  border: 2px solid #dc3545;
+  border-radius: 8px;
+  color: #721c24;
+  font-weight: 500;
+  text-align: center;
+  animation: pulse-warning 2s infinite;
+}
+
+@keyframes pulse-ready {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.8; transform: scale(1.02); }
+}
+
+@keyframes pulse-warning {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.7; }
+}
+
 /* Mobile responsive */
 @media (max-width: 768px) {
   .header-content {
@@ -1270,5 +1682,169 @@ onUnmounted(() => {
   .action-btn {
     width: 100%;
   }
+}
+
+/* Timeline styles */
+.timeline-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1rem;
+}
+
+.timeline-header h3 {
+  margin: 0;
+  font-size: 1.2rem;
+  font-weight: bold;
+}
+
+.refresh-timeline-btn {
+  background: #007bff;
+  color: white;
+  border: 2px solid #000;
+  border-radius: 4px;
+  padding: 0.5rem 1rem;
+  font-size: 0.875rem;
+  font-weight: bold;
+  cursor: pointer;
+  box-shadow: 2px 2px 0 #000;
+  transition: all 0.2s ease;
+}
+
+.refresh-timeline-btn:hover:not(:disabled) {
+  transform: translate(-1px, -1px);
+  box-shadow: 3px 3px 0 #000;
+}
+
+.refresh-timeline-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  animation: spin 1s linear infinite;
+}
+
+.timeline-loading {
+  text-align: center;
+  color: #666;
+  font-style: italic;
+  padding: 1rem;
+}
+
+.timeline-container {
+  max-height: 400px;
+  overflow-y: auto;
+  padding: 0.5rem;
+  border: 1px solid #e9ecef;
+  border-radius: 4px;
+  background-color: #fafafa;
+}
+
+.timeline-description {
+  font-size: 0.9rem;
+  color: #555;
+  margin-bottom: 0.25rem;
+}
+
+.timeline-user {
+  font-size: 0.8rem;
+  color: #666;
+  font-style: italic;
+}
+
+.timeline-user-btn {
+  background: none;
+  border: none;
+  color: #007bff;
+  font-size: 0.8rem;
+  font-style: italic;
+  text-decoration: underline;
+  cursor: pointer;
+  padding: 0;
+  margin-left: 0.25rem;
+  transition: all 0.2s ease;
+}
+
+.timeline-user-btn:hover {
+  color: #0056b3;
+  text-decoration: none;
+  font-weight: bold;
+}
+
+.timeline-time-change {
+  font-size: 0.9rem;
+  font-weight: bold;
+  padding: 0.25rem 0.5rem;
+  border-radius: 4px;
+  margin-top: 0.25rem;
+}
+
+.timeline-time-change:contains('+') {
+  background-color: #d4edda;
+  color: #155724;
+}
+
+.timeline-times {
+  margin-top: 0.5rem;
+  font-size: 0.8rem;
+  background-color: #f8f9fa;
+  padding: 0.5rem;
+  border-radius: 4px;
+  border-left: 3px solid #007bff;
+}
+
+.previous-time {
+  color: #6c757d;
+  text-decoration: line-through;
+}
+
+.new-time {
+  color: #007bff;
+  font-weight: bold;
+  margin-top: 0.25rem;
+}
+
+/* Timeline dot styles for different event types */
+.timeline-dot.created {
+  background-color: #6c757d;
+}
+
+.timeline-dot.time-increase {
+  background-color: #28a745;
+  animation: pulse-success 2s infinite;
+}
+
+.timeline-dot.time-decrease {
+  background-color: #dc3545;
+  animation: pulse-danger 2s infinite;
+}
+
+.timeline-dot.overtime {
+  background-color: #fd7e14;
+  animation: pulse-warning 2s infinite;
+}
+
+.timeline-dot.vote {
+  background-color: #ffc107;
+}
+
+.timeline-dot.completed {
+  background-color: #28a745;
+}
+
+.timeline-dot.failed {
+  background-color: #dc3545;
+}
+
+.timeline-dot.default {
+  background-color: #6c757d;
+}
+
+@keyframes pulse-success {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.7; transform: scale(1.1); }
+}
+
+@keyframes pulse-warning {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.7; transform: scale(1.1); }
 }
 </style>

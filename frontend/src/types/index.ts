@@ -1,3 +1,18 @@
+// Lock Status Types
+export interface ActiveLockTask {
+  id: string
+  title: string
+  difficulty: 'easy' | 'normal' | 'hard' | 'hell'
+  start_time?: string
+  end_time?: string
+  time_remaining_ms?: number
+  is_expired: boolean
+  can_complete: boolean
+  duration_value?: number
+  duration_type?: 'fixed' | 'random'
+  duration_max?: number
+}
+
 // User Types
 export interface User {
   id: number
@@ -15,6 +30,7 @@ export interface User {
   total_tasks_completed: number
   created_at: string
   updated_at: string
+  active_lock_task?: ActiveLockTask | null
 }
 
 export interface UserProfile extends User {
@@ -69,7 +85,7 @@ export interface LockTask {
   task_type: 'lock' | 'board'
   title: string
   description: string
-  status: 'pending' | 'active' | 'completed' | 'failed' | 'open' | 'taken' | 'submitted'
+  status: 'pending' | 'active' | 'voting' | 'completed' | 'failed' | 'open' | 'taken' | 'submitted'
   // 带锁任务字段
   duration_type?: 'fixed' | 'random'
   duration_value?: number
@@ -78,6 +94,11 @@ export interface LockTask {
   unlock_type?: 'time' | 'vote'
   vote_threshold?: number
   vote_agreement_ratio?: number // 投票同意比例 (0.5 = 50%)
+  // 投票期相关字段
+  voting_start_time?: string
+  voting_end_time?: string
+  voting_duration?: number // 投票持续时间（分钟）
+  vote_failed_penalty_minutes?: number // 投票失败加时分钟数
   key_holder?: User
   key_id?: string
   overtime_multiplier?: number // 加时惩罚倍数 (3, 5, 10)
@@ -222,7 +243,7 @@ export interface TaskCreateRequest {
   max_duration?: number
 }
 
-// Store Types
+// Store Types (Pinia stores)
 export interface UserStore {
   user: User | null
   token: string | null
@@ -231,6 +252,131 @@ export interface UserStore {
   register: (data: RegisterRequest) => Promise<void>
   logout: () => void
   updateProfile: (data: Partial<User>) => Promise<void>
+}
+
+// Game Store Types
+export interface ItemType {
+  id: string
+  name: 'photo_paper' | 'photo' | 'drift_bottle' | 'key' | 'note'
+  display_name: string
+  description: string
+  icon: string
+  is_consumable: boolean
+  created_at: string
+}
+
+export interface Item {
+  id: string
+  item_type: ItemType
+  owner: User
+  inventory?: UserInventory
+  properties: Record<string, any>
+  status: 'available' | 'used' | 'expired' | 'in_drift_bottle' | 'buried'
+  created_at: string
+  used_at?: string
+  expires_at?: string
+}
+
+export interface UserInventory {
+  user: number
+  items: Item[]
+  max_slots: number
+  used_slots: number
+  available_slots: number
+  created_at: string
+  updated_at: string
+}
+
+export interface StoreItem {
+  id: string
+  item_type: ItemType
+  name: string
+  description: string
+  price: number
+  icon: string
+  is_available: boolean
+  stock?: number
+  daily_limit?: number
+  level_requirement: number
+  created_at: string
+  updated_at: string
+}
+
+export interface Purchase {
+  id: string
+  user: User
+  store_item: StoreItem
+  item: Item
+  price_paid: number
+  created_at: string
+}
+
+export interface Game {
+  id: string
+  game_type: 'time_wheel' | 'rock_paper_scissors' | 'exploration'
+  creator: User
+  participants: GameParticipant[]
+  bet_amount: number
+  max_players: number
+  status: 'waiting' | 'active' | 'completed' | 'cancelled'
+  game_data: Record<string, any>
+  result: Record<string, any>
+  created_at: string
+  started_at?: string
+  completed_at?: string
+}
+
+export interface GameParticipant {
+  game: string
+  user: User
+  joined_at: string
+  action: Record<string, any>
+}
+
+export interface DriftBottleItem {
+  id: string
+  sender: User
+  finder?: User
+  message: string
+  items: Item[]
+  drift_duration: number
+  location_hint: string
+  status: 'floating' | 'found' | 'expired'
+  created_at: string
+  found_at?: string
+  expires_at: string
+}
+
+export interface BuriedTreasure {
+  id: string
+  burier: User
+  finder?: User
+  item: Item
+  location_zone: string
+  location_hint: string
+  difficulty: 'easy' | 'normal' | 'hard'
+  status: 'buried' | 'found' | 'expired'
+  created_at: string
+  found_at?: string
+  expires_at: string
+}
+
+export interface GameSession {
+  id: string
+  user: User
+  game_type: string
+  bet_amount: number
+  result_data: Record<string, any>
+  related_task?: string
+  created_at: string
+}
+
+export interface ExplorationZone {
+  name: string
+  display_name: string
+  description: string
+  difficulty: 'easy' | 'normal' | 'hard'
+  treasure_count: number
 }
 
 export interface PostStore {

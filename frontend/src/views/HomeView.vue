@@ -9,7 +9,10 @@
             <span class="level">等级 {{ authStore.user?.level || 1 }}</span>
             <span class="coins">🪙 {{ authStore.user?.coins || 0 }}</span>
           </div>
-          <button @click="handleLogout" class="logout-btn">退出</button>
+          <div class="user-actions">
+            <button @click="goToProfile" class="profile-btn">个人资料</button>
+            <button @click="handleLogout" class="logout-btn">退出</button>
+          </div>
         </div>
       </div>
     </header>
@@ -19,6 +22,16 @@
       <div class="container">
         <!-- Sidebar -->
         <aside class="sidebar">
+          <!-- Lock Status -->
+          <div class="lock-status-card">
+            <LockStatus
+              :lockTask="authStore.user?.active_lock_task"
+              :showActions="true"
+              :showWhenFree="false"
+              size="small"
+            />
+          </div>
+
           <div class="user-card">
             <h3>用户信息</h3>
             <div class="info-item">
@@ -43,7 +56,15 @@
             <h3>快速操作</h3>
             <button @click="openCreateModal(false)" class="action-btn blue">发布动态</button>
             <button @click="openCreateModal(true)" class="action-btn green">打卡任务</button>
-            <button class="action-btn purple">小游戏</button>
+            <button @click="goToTasks" class="action-btn orange">任务管理</button>
+            <button @click="goToGames" class="action-btn purple">小游戏</button>
+          </div>
+
+          <div class="actions-card">
+            <h3>商店系统</h3>
+            <button @click="goToStore" class="action-btn yellow">🛍️ 商店</button>
+            <button @click="goToInventory" class="action-btn teal">🎒 背包</button>
+            <button @click="goToExplore" class="action-btn brown">🗺️ 探索</button>
           </div>
         </aside>
 
@@ -51,32 +72,46 @@
         <section class="posts-feed">
           <h2>社区动态</h2>
 
-          <div v-if="postsStore.loading" class="loading">
+          <div v-if="isInitialLoading" class="loading">
             加载中...
           </div>
 
-          <div v-else-if="postsStore.error" class="error">
-            {{ postsStore.error }}
+          <div v-else-if="error" class="error">
+            {{ error }}
           </div>
 
-          <div v-else-if="postsStore.posts.length === 0" class="empty">
+          <div v-else-if="isEmpty" class="empty">
             还没有动态，快来发布第一条吧！
           </div>
 
           <div v-else class="posts-list">
             <article
-              v-for="post in postsStore.posts"
+              v-for="post in posts"
               :key="post.id"
               class="post-card"
               @click="goToPostDetail(post.id)"
             >
               <div class="post-header">
                 <div class="user-info">
-                  <div class="avatar">
-                    {{ post.user.username.charAt(0).toUpperCase() }}
+                  <div class="avatar-container">
+                    <div class="avatar">
+                      {{ post.user.username.charAt(0).toUpperCase() }}
+                    </div>
+                    <LockIndicator
+                      :user="post.user"
+                      size="mini"
+                      :show-time="false"
+                      class="avatar-lock-indicator"
+                    />
                   </div>
                   <div>
-                    <div class="username">{{ post.user.username }}</div>
+                    <div
+                      class="username clickable"
+                      @click.stop="openProfileModal(post.user)"
+                      :title="`查看 ${post.user.username} 的资料`"
+                    >
+                      {{ post.user.username }}
+                    </div>
                     <div class="time">{{ formatDistanceToNow(post.created_at) }}</div>
                   </div>
                 </div>
@@ -85,9 +120,7 @@
                 </div>
               </div>
 
-              <div class="post-content">
-                {{ post.content }}
-              </div>
+              <div class="post-content" v-html="post.content"></div>
 
               <div v-if="post.images && post.images.length > 0" class="post-images">
                 <img
@@ -121,6 +154,16 @@
                 </button>
               </div>
             </article>
+
+            <!-- 加载更多指示器 -->
+            <div v-if="isLoadingMore" class="loading-more">
+              正在加载更多...
+            </div>
+
+            <!-- 没有更多内容提示 -->
+            <div v-else-if="!hasMore && posts.length > 0" class="no-more">
+              没有更多动态了
+            </div>
           </div>
         </section>
       </div>
@@ -133,6 +176,13 @@
       @close="closeCreateModal"
       @success="handlePostCreated"
     />
+
+    <!-- 用户资料模态框 -->
+    <ProfileModal
+      :is-visible="showProfileModal"
+      :user="selectedUser"
+      @close="closeProfileModal"
+    />
   </div>
 </template>
 
@@ -141,8 +191,12 @@ import { onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '../stores/auth'
 import { usePostsStore } from '../stores/posts'
+import { useInfiniteScroll } from '../composables/useInfiniteScroll'
 import { formatDistanceToNow } from '../lib/utils'
 import CreatePostModal from '../components/CreatePostModal.vue'
+import LockStatus from '../components/LockStatus.vue'
+import LockIndicator from '../components/LockIndicator.vue'
+import ProfileModal from '../components/ProfileModal.vue'
 import type { Post } from '../types/index.js'
 
 const router = useRouter()
@@ -152,6 +206,30 @@ const postsStore = usePostsStore()
 // 创建动态模态框状态
 const showCreateModal = ref(false)
 const isCheckinMode = ref(false)
+
+// 用户资料模态框状态
+const showProfileModal = ref(false)
+const selectedUser = ref<any>(null)
+
+// 无限滚动设置
+const {
+  items: posts,
+  loading,
+  error,
+  hasMore,
+  isEmpty,
+  isLoadingMore,
+  isInitialLoading,
+  initialize,
+  refresh
+} = useInfiniteScroll(
+  postsStore.getPaginatedPosts,
+  {
+    initialPageSize: 10,
+    threshold: 200,
+    loadDelay: 300
+  }
+)
 
 const handleLogout = () => {
   authStore.logout()
@@ -169,7 +247,7 @@ const closeCreateModal = () => {
 
 const handlePostCreated = () => {
   // 刷新动态列表
-  postsStore.fetchPosts()
+  refresh()
 }
 
 const toggleLike = async (post: Post) => {
@@ -206,8 +284,42 @@ const goToPostDetail = (postId: string) => {
   router.push({ name: 'post-detail', params: { id: postId } })
 }
 
+const goToProfile = () => {
+  router.push({ name: 'profile', params: { id: 'me' } })
+}
+
+const goToTasks = () => {
+  router.push({ name: 'tasks' })
+}
+
+const goToGames = () => {
+  router.push({ name: 'games' })
+}
+
+const goToStore = () => {
+  router.push({ name: 'store' })
+}
+
+const goToInventory = () => {
+  router.push({ name: 'inventory' })
+}
+
+const goToExplore = () => {
+  router.push({ name: 'explore' })
+}
+
+const openProfileModal = (user: any) => {
+  selectedUser.value = user
+  showProfileModal.value = true
+}
+
+const closeProfileModal = () => {
+  showProfileModal.value = false
+  selectedUser.value = null
+}
+
 onMounted(() => {
-  postsStore.fetchPosts()
+  initialize()
 })
 </script>
 
@@ -265,13 +377,24 @@ onMounted(() => {
   font-weight: bold;
 }
 
-.logout-btn {
+.profile-btn, .logout-btn {
   padding: 0.5rem 1rem;
   background: none;
   border: 1px solid #666;
   border-radius: 4px;
   cursor: pointer;
   font-size: 0.875rem;
+}
+
+.profile-btn {
+  background-color: #007bff;
+  color: white;
+  border-color: #007bff;
+  margin-right: 0.5rem;
+}
+
+.profile-btn:hover {
+  background-color: #0056b3;
 }
 
 .logout-btn:hover {
@@ -296,6 +419,7 @@ onMounted(() => {
   gap: 1.5rem;
 }
 
+.lock-status-card,
 .user-card,
 .actions-card {
   background: white;
@@ -303,6 +427,11 @@ onMounted(() => {
   border-radius: 8px;
   border: 2px solid #000;
   box-shadow: 4px 4px 0 #000;
+}
+
+.lock-status-card {
+  padding: 0; /* LockStatus component handles its own padding */
+  overflow: hidden;
 }
 
 .user-card h3,
@@ -347,8 +476,25 @@ onMounted(() => {
   background-color: #28a745;
 }
 
+.action-btn.orange {
+  background-color: #fd7e14;
+}
+
 .action-btn.purple {
   background-color: #6f42c1;
+}
+
+.action-btn.yellow {
+  background-color: #ffc107;
+  color: #212529;
+}
+
+.action-btn.teal {
+  background-color: #20c997;
+}
+
+.action-btn.brown {
+  background-color: #8d6e63;
 }
 
 .action-btn:hover {
@@ -364,13 +510,32 @@ onMounted(() => {
 
 .loading,
 .error,
-.empty {
+.empty,
+.loading-more,
+.no-more {
   background: white;
   padding: 2rem;
   border-radius: 8px;
   border: 2px solid #000;
   box-shadow: 4px 4px 0 #000;
   text-align: center;
+}
+
+.loading-more {
+  margin-top: 1.5rem;
+  background-color: #f8f9fa;
+  color: #666;
+  padding: 1rem;
+  font-size: 0.875rem;
+}
+
+.no-more {
+  margin-top: 1.5rem;
+  background-color: #e9ecef;
+  color: #666;
+  padding: 1rem;
+  font-size: 0.875rem;
+  font-style: italic;
 }
 
 .error {
@@ -413,6 +578,12 @@ onMounted(() => {
   align-items: center;
 }
 
+.avatar-container {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
 .avatar {
   width: 32px;
   height: 32px;
@@ -426,8 +597,31 @@ onMounted(() => {
   font-size: 0.875rem;
 }
 
+.avatar-lock-indicator {
+  position: absolute;
+  top: -2px;
+  right: -8px;
+  z-index: 2;
+}
+
 .username {
   font-weight: bold;
+}
+
+.username.clickable {
+  cursor: pointer;
+  color: #007bff;
+  transition: all 0.2s ease;
+  padding: 0.25rem 0.5rem;
+  border-radius: 4px;
+  margin: -0.25rem -0.5rem;
+}
+
+.username.clickable:hover {
+  background-color: #007bff;
+  color: white;
+  transform: translate(-1px, -1px);
+  box-shadow: 2px 2px 0 #000;
 }
 
 .time {
@@ -448,6 +642,31 @@ onMounted(() => {
   margin-bottom: 1rem;
   white-space: pre-wrap;
   line-height: 1.5;
+}
+
+/* Rich text content styling */
+.post-content h1,
+.post-content h2,
+.post-content h3 {
+  margin: 0.5rem 0;
+  font-weight: 900;
+}
+
+.post-content ul {
+  margin: 0.5rem 0;
+  padding-left: 2rem;
+}
+
+.post-content li {
+  margin: 0.25rem 0;
+}
+
+.post-content strong {
+  font-weight: 900;
+}
+
+.post-content em {
+  font-style: italic;
 }
 
 .post-images {
