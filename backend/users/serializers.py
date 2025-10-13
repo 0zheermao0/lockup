@@ -9,6 +9,7 @@ class UserSerializer(serializers.ModelSerializer):
     """用户基础序列化器"""
 
     active_lock_task = serializers.SerializerMethodField()
+    total_lock_duration = serializers.SerializerMethodField()
 
     class Meta:
         model = User
@@ -16,13 +17,13 @@ class UserSerializer(serializers.ModelSerializer):
             'id', 'username', 'email', 'level', 'activity_score',
             'last_active', 'location_precision', 'coins', 'avatar',
             'bio', 'total_posts', 'total_likes_received',
-            'total_tasks_completed', 'created_at', 'updated_at',
-            'active_lock_task'
+            'total_tasks_completed', 'total_lock_duration',
+            'created_at', 'updated_at', 'active_lock_task'
         ]
         read_only_fields = [
             'id', 'level', 'activity_score', 'last_active', 'coins',
             'total_posts', 'total_likes_received', 'total_tasks_completed',
-            'created_at', 'updated_at', 'active_lock_task'
+            'total_lock_duration', 'created_at', 'updated_at', 'active_lock_task'
         ]
 
     def get_active_lock_task(self, obj):
@@ -61,11 +62,16 @@ class UserSerializer(serializers.ModelSerializer):
             'duration_max': active_task.duration_max
         }
 
+    def get_total_lock_duration(self, obj):
+        """获取用户总带锁时长（分钟）"""
+        return obj.get_total_lock_duration()
+
 
 class UserPublicSerializer(serializers.ModelSerializer):
     """用户公开信息序列化器（用于显示给其他用户）"""
 
     active_lock_task = serializers.SerializerMethodField()
+    total_lock_duration = serializers.SerializerMethodField()
 
     class Meta:
         model = User
@@ -73,7 +79,7 @@ class UserPublicSerializer(serializers.ModelSerializer):
             'id', 'username', 'level', 'avatar', 'bio',
             'total_posts', 'total_likes_received', 'total_tasks_completed',
             'created_at', 'coins', 'activity_score', 'last_active', 'updated_at',
-            'active_lock_task'
+            'active_lock_task', 'total_lock_duration'
         ]
 
     def get_active_lock_task(self, obj):
@@ -111,6 +117,10 @@ class UserPublicSerializer(serializers.ModelSerializer):
             'duration_type': active_task.duration_type,
             'duration_max': active_task.duration_max
         }
+
+    def get_total_lock_duration(self, obj):
+        """获取用户总带锁时长（分钟）"""
+        return obj.get_total_lock_duration()
 
 
 class UserRegistrationSerializer(serializers.ModelSerializer):

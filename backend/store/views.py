@@ -27,6 +27,16 @@ from .serializers import (
 from tasks.models import LockTask, TaskTimelineEvent
 
 
+def getDifficultyText(difficulty: str) -> str:
+    """获取难度显示文本"""
+    difficulties = {
+        'easy': '简单',
+        'normal': '普通',
+        'hard': '困难'
+    }
+    return difficulties.get(difficulty, difficulty)
+
+
 class StoreItemListView(generics.ListAPIView):
     """商店商品列表"""
     queryset = StoreItem.objects.filter(is_available=True)
@@ -672,16 +682,41 @@ def join_game(request, game_id):
     return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
+def get_zone_display_name(zone_name: str) -> str:
+    """获取区域显示名称"""
+    zone_names = {
+        'beach': '月光海滩',
+        'forest': '神秘森林',
+        'mountain': '雾山',
+        'desert': '沙漠绿洲',
+        'cave': '深邃洞穴'
+    }
+    return zone_names.get(zone_name, zone_name)
+
+
+def get_zone_difficulty(zone_name: str) -> str:
+    """根据区域获取难度"""
+    zone_difficulty = {
+        'beach': 'easy',
+        'forest': 'normal',
+        'mountain': 'hard',
+        'desert': 'normal',
+        'cave': 'hard'
+    }
+    return zone_difficulty.get(zone_name, 'normal')
+
+
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
 def bury_item(request):
-    """掩埋物品"""
+    """掩埋物品 - 新版本：根据区域自动确定难度"""
     serializer = BuryItemSerializer(data=request.data)
     if serializer.is_valid():
         item_id = serializer.validated_data['item_id']
         location_zone = serializer.validated_data['location_zone']
         location_hint = serializer.validated_data['location_hint']
-        difficulty = serializer.validated_data['difficulty']
+        # 根据区域自动确定难度
+        difficulty = get_zone_difficulty(location_zone)
 
         try:
             with transaction.atomic():
@@ -711,7 +746,7 @@ def bury_item(request):
                 item.save()
 
                 return Response({
-                    'message': '物品掩埋成功',
+                    'message': f'物品已掩埋到 {get_zone_display_name(location_zone)} ({getDifficultyText(difficulty)})',
                     'treasure_id': str(buried_treasure.id),
                     'location_zone': location_zone,
                     'difficulty': difficulty,
@@ -729,51 +764,165 @@ def bury_item(request):
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
 def explore_zone(request):
-    """探索区域寻找宝物"""
+    """探索区域寻找宝物 - 新版本：一次翻牌机会，立即处理结果"""
     serializer = ExploreZoneSerializer(data=request.data)
     if serializer.is_valid():
         zone_name = serializer.validated_data['zone_name']
+        card_position = serializer.validated_data.get('card_position', 0)  # 用户选择的卡牌位置
 
         try:
-            user = request.user
+            with transaction.atomic():
+                user = request.user
 
-            # 查找该区域的可发现宝物
-            available_treasures = BuriedTreasure.objects.filter(
-                location_zone=zone_name,
-                status='buried',
-                expires_at__gt=timezone.now()
-            ).exclude(burier=user)  # 不能发现自己埋的宝物
+                # 检查用户积分
+                if hasattr(user, 'coins') and user.coins < 1:
+                    return Response({
+                        'error': '积分不足，需要1积分进行探索'
+                    }, status=status.HTTP_400_BAD_REQUEST)
 
-            if not available_treasures.exists():
+                # 扣除探索费用
+                if hasattr(user, 'coins'):
+                    user.coins -= 1
+                    user.save()
+
+                # 查找该区域的可发现宝物
+                available_treasures = BuriedTreasure.objects.filter(
+                    location_zone=zone_name,
+                    status='buried',
+                    expires_at__gt=timezone.now()
+                ).exclude(burier=user)  # 不能发现自己埋的宝物
+
+                # 根据区域确定难度和卡牌数量
+                zone_config = {
+                    'beach': {'difficulty': 'easy', 'card_count': 3},
+                    'forest': {'difficulty': 'normal', 'card_count': 6},
+                    'mountain': {'difficulty': 'hard', 'card_count': 9},
+                    'desert': {'difficulty': 'normal', 'card_count': 6},
+                    'cave': {'difficulty': 'hard', 'card_count': 9}
+                }
+
+                config = zone_config.get(zone_name, {'difficulty': 'normal', 'card_count': 6})
+                card_count = config['card_count']
+
+                # 生成卡牌并处理翻牌结果
+                cards = []
+                treasure_positions = set()
+                selected_treasure = None
+                found_item = None
+
+                if available_treasures.exists():
+                    # 随机选择一些宝物放入卡牌中
+                    treasure_list = list(available_treasures)
+                    # 最多放置卡数量-1个宝物，确保至少有一个空卡
+                    max_treasures = min(len(treasure_list), card_count - 1)
+                    selected_treasures = random.sample(treasure_list, max_treasures)
+
+                    # 随机分配位置
+                    possible_positions = list(range(card_count))
+                    treasure_positions = set(random.sample(possible_positions, len(selected_treasures)))
+
+                    # 检查用户选择的卡牌是否有宝物
+                    if card_position in treasure_positions:
+                        # 创建位置到宝物的映射
+                        position_to_treasure = {pos: treasure for pos, treasure in zip(treasure_positions, selected_treasures)}
+                        selected_treasure = position_to_treasure[card_position]
+
+                        # 检查背包容量
+                        inventory, _ = UserInventory.objects.get_or_create(user=user)
+                        if inventory.available_slots < 1:
+                            return Response({
+                                'error': '背包空间不足，无法获得宝物'
+                            }, status=status.HTTP_400_BAD_REQUEST)
+
+                        # 转移物品所有权
+                        item = selected_treasure.item
+                        item.owner = user
+                        item.inventory = inventory
+                        item.status = 'available'
+                        item.save()
+
+                        # 更新宝物状态
+                        selected_treasure.finder = user
+                        selected_treasure.status = 'found'
+                        selected_treasure.found_at = timezone.now()
+                        selected_treasure.save()
+
+                        # 给掩埋者一些积分奖励
+                        reward_amount = 0
+                        if hasattr(selected_treasure.burier, 'coins'):
+                            reward_amount = {
+                                'easy': 5,
+                                'normal': 10,
+                                'hard': 20
+                            }.get(selected_treasure.difficulty, 10)
+                            selected_treasure.burier.coins += reward_amount
+                            selected_treasure.burier.save()
+
+                        # 创建宝物发现通知
+                        Notification.create_notification(
+                            recipient=selected_treasure.burier,
+                            notification_type='treasure_found',
+                            actor=user,
+                            related_object_type='buried_treasure',
+                            related_object_id=selected_treasure.id,
+                            extra_data={
+                                'item_type': item.item_type.display_name,
+                                'location_zone': selected_treasure.location_zone,
+                                'difficulty': selected_treasure.difficulty,
+                                'reward_amount': reward_amount,
+                                'finder': user.username,
+                                'found_at': selected_treasure.found_at.isoformat()
+                            },
+                            priority='normal'
+                        )
+
+                        found_item = {
+                            'id': str(item.id),
+                            'type': item.item_type.display_name,
+                            'properties': item.properties
+                        }
+
+                # 创建所有卡牌（展示完整结果）
+                # 创建位置到宝物的映射
+                position_to_treasure = {pos: treasure for pos, treasure in zip(treasure_positions, selected_treasures)} if treasure_positions else {}
+
+                for i in range(card_count):
+                    if i in treasure_positions:
+                        treasure = position_to_treasure[i]
+
+                        # 如果这个宝物已经被找到，标记为已找到
+                        is_found = treasure == selected_treasure
+
+                        cards.append({
+                            'position': i,
+                            'has_treasure': True,
+                            'treasure_id': str(treasure.id),
+                            'location_hint': treasure.location_hint,
+                            'difficulty': treasure.difficulty,
+                            'item_type': treasure.item.item_type.display_name,
+                            'burier': treasure.burier.username,
+                            'is_found': is_found
+                        })
+                    else:
+                        cards.append({
+                            'position': i,
+                            'has_treasure': False
+                        })
+
+                # 不打乱卡牌顺序，保持位置一致性
+
                 return Response({
-                    'message': f'在 {zone_name} 区域没有发现任何宝物',
-                    'treasures_found': []
+                    'message': f'在 {get_zone_display_name(zone_name)} 区域探索完成！花费1积分',
+                    'zone': zone_name,
+                    'difficulty': config['difficulty'],
+                    'card_count': card_count,
+                    'cards': cards,
+                    'selected_position': card_position,
+                    'found_item': found_item,
+                    'treasure_count': len([c for c in cards if c['has_treasure']]),
+                    'cost': 1,
+                    'success': found_item is not None
                 }, status=status.HTTP_200_OK)
-
-            # 根据难度和随机性决定是否发现宝物
-            discovered_treasures = []
-            for treasure in available_treasures:
-                # 发现概率根据难度调整
-                find_probability = {
-                    'easy': 0.8,    # 80%概率发现
-                    'normal': 0.5,  # 50%概率发现
-                    'hard': 0.2     # 20%概率发现
-                }.get(treasure.difficulty, 0.5)
-
-                if random.random() < find_probability:
-                    discovered_treasures.append({
-                        'treasure_id': str(treasure.id),
-                        'location_hint': treasure.location_hint,
-                        'difficulty': treasure.difficulty,
-                        'item_type': treasure.item.item_type.display_name,
-                        'burier': treasure.burier.username
-                    })
-
-            return Response({
-                'message': f'在 {zone_name} 区域发现了 {len(discovered_treasures)} 个宝物',
-                'treasures_found': discovered_treasures,
-                'zone': zone_name
-            }, status=status.HTTP_200_OK)
 
         except Exception as e:
             return Response({

@@ -100,6 +100,52 @@ class User(AbstractUser):
         """根据用户等级获取每日登录奖励积分"""
         return self.level  # 1/2/3/4级用户分别获得1/2/3/4积分
 
+    def get_total_lock_duration(self):
+        """获取用户总带锁时长（分钟），包括所有时间变化"""
+        from tasks.models import LockTask, TaskTimelineEvent
+
+        total_duration = 0
+
+        # 获取用户的所有带锁任务
+        user_lock_tasks = LockTask.objects.filter(
+            user=self,
+            task_type='lock'
+        )
+
+        for task in user_lock_tasks:
+            # 计算每个任务的原始时长
+            original_duration = task.duration_value if task.duration_type == 'fixed' else task.duration_max
+
+            # 计算任务的实际运行时长（如果已完成）或当前时长（如果进行中）
+            if task.end_time and task.start_time:
+                actual_duration = int((task.end_time - task.start_time).total_seconds() / 60)
+            elif task.start_time:
+                # 任务还在进行中，计算从开始到现在的时长
+                actual_duration = int((timezone.now() - task.start_time).total_seconds() / 60)
+            else:
+                actual_duration = 0
+
+            # 取较大值作为基础时长
+            base_duration = max(original_duration or 0, actual_duration)
+
+            # 加上时间线中的所有时间变化
+            timeline_changes = TaskTimelineEvent.objects.filter(
+                task=task,
+                time_change_minutes__isnull=False
+            ).aggregate(
+                total_change=models.Sum('time_change_minutes')
+            )
+
+            time_adjustment = timeline_changes['total_change'] or 0
+
+            # 计算最终时长（基础时长 + 时间调整）
+            final_duration = base_duration + time_adjustment
+
+            # 只计算正数时长（避免负数）
+            total_duration += max(0, final_duration)
+
+        return total_duration
+
 
 class Friendship(models.Model):
     """好友关系模型"""

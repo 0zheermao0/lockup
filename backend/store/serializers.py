@@ -141,16 +141,12 @@ class BuryItemSerializer(serializers.Serializer):
     item_id = serializers.UUIDField()
     location_zone = serializers.CharField(max_length=50)
     location_hint = serializers.CharField(max_length=200)
-    difficulty = serializers.ChoiceField(choices=[
-        ('easy', '简单'),
-        ('normal', '普通'),
-        ('hard', '困难'),
-    ], default='normal')
 
 
 class ExploreZoneSerializer(serializers.Serializer):
     """探索区域序列化器"""
     zone_name = serializers.CharField(max_length=50)
+    card_position = serializers.IntegerField(min_value=0, required=False)
 
 
 class FindTreasureSerializer(serializers.Serializer):
