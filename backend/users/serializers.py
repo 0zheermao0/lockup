@@ -2,7 +2,7 @@ from rest_framework import serializers
 from django.contrib.auth import authenticate
 from django.contrib.auth.password_validation import validate_password
 from django.utils import timezone
-from .models import User, Friendship, UserLevelUpgrade
+from .models import User, Friendship, UserLevelUpgrade, Notification
 
 
 class UserSerializer(serializers.ModelSerializer):
@@ -277,3 +277,59 @@ class PasswordChangeSerializer(serializers.Serializer):
         user.set_password(self.validated_data['new_password'])
         user.save()
         return user
+
+
+class NotificationSerializer(serializers.ModelSerializer):
+    """通知序列化器"""
+
+    actor = UserPublicSerializer(read_only=True)
+    target_url = serializers.ReadOnlyField()
+    time_ago = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Notification
+        fields = [
+            'id', 'notification_type', 'title', 'message', 'priority',
+            'is_read', 'read_at', 'created_at', 'updated_at',
+            'actor', 'target_url', 'related_object_type', 'related_object_id',
+            'extra_data', 'time_ago'
+        ]
+        read_only_fields = [
+            'id', 'created_at', 'updated_at', 'target_url', 'time_ago'
+        ]
+
+    def get_time_ago(self, obj):
+        """获取相对时间显示"""
+        from datetime import timedelta
+        now = timezone.now()
+        diff = now - obj.created_at
+
+        if diff < timedelta(minutes=1):
+            return "刚刚"
+        elif diff < timedelta(hours=1):
+            minutes = int(diff.total_seconds() // 60)
+            return f"{minutes}分钟前"
+        elif diff < timedelta(days=1):
+            hours = int(diff.total_seconds() // 3600)
+            return f"{hours}小时前"
+        elif diff < timedelta(days=7):
+            days = diff.days
+            return f"{days}天前"
+        else:
+            return obj.created_at.strftime("%Y-%m-%d")
+
+
+class NotificationCreateSerializer(serializers.Serializer):
+    """通知创建序列化器（管理员用）"""
+
+    recipient_id = serializers.IntegerField()
+    notification_type = serializers.ChoiceField(choices=Notification.TYPE_CHOICES)
+    title = serializers.CharField(max_length=200, required=False)
+    message = serializers.CharField(max_length=500, required=False)
+    priority = serializers.ChoiceField(
+        choices=Notification.PRIORITY_CHOICES,
+        default='normal'
+    )
+    related_object_type = serializers.CharField(max_length=50, required=False)
+    related_object_id = serializers.CharField(max_length=50, required=False)
+    extra_data = serializers.JSONField(default=dict)

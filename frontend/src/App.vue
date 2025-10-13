@@ -8,12 +8,24 @@
 import { RouterView } from 'vue-router'
 import { onMounted } from 'vue'
 import { useAuthStore } from './stores/auth'
+import { useNotificationStore } from './stores/notifications'
 
 const authStore = useAuthStore()
+const notificationStore = useNotificationStore()
 
-onMounted(() => {
+onMounted(async () => {
   // Initialize auth state on app startup
-  authStore.initAuth()
+  await authStore.initAuth()
+
+  // Initialize notification system if user is authenticated
+  if (authStore.isAuthenticated) {
+    try {
+      await notificationStore.initNotifications()
+      notificationStore.startAutoRefresh()
+    } catch (error) {
+      console.error('Failed to initialize notifications:', error)
+    }
+  }
 })
 </script>
 

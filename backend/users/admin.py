@@ -1,6 +1,7 @@
 from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
-from .models import User, Friendship, UserLevelUpgrade
+from django.utils.html import format_html
+from .models import User, Friendship, UserLevelUpgrade, DailyLoginReward, Notification
 
 
 @admin.register(User)
@@ -44,3 +45,143 @@ class UserLevelUpgradeAdmin(admin.ModelAdmin):
     list_filter = ['from_level', 'to_level', 'reason', 'created_at']
     search_fields = ['user__username', 'promoted_by__username']
     ordering = ['-created_at']
+
+
+@admin.register(DailyLoginReward)
+class DailyLoginRewardAdmin(admin.ModelAdmin):
+    """每日登录奖励管理"""
+
+    list_display = ['user', 'date', 'user_level', 'reward_amount', 'created_at']
+    list_filter = ['date', 'user_level', 'created_at']
+    search_fields = ['user__username']
+    ordering = ['-date', '-created_at']
+    readonly_fields = ['created_at']
+
+    def get_queryset(self, request):
+        return super().get_queryset(request).select_related('user')
+
+
+@admin.register(Notification)
+class NotificationAdmin(admin.ModelAdmin):
+    """通知管理"""
+
+    list_display = [
+        'get_notification_type_display',
+        'recipient',
+        'actor_info',
+        'title',
+        'priority_badge',
+        'is_read_badge',
+        'created_at'
+    ]
+    list_filter = [
+        'notification_type',
+        'priority',
+        'is_read',
+        'created_at',
+        'recipient'
+    ]
+    search_fields = [
+        'recipient__username',
+        'actor__username',
+        'title',
+        'message'
+    ]
+    ordering = ['-created_at']
+    readonly_fields = ['created_at', 'updated_at']
+
+    fieldsets = (
+        ('基本信息', {
+            'fields': (
+                'recipient', 'actor', 'notification_type',
+                'title', 'message', 'priority'
+            )
+        }),
+        ('关联信息', {
+            'fields': (
+                'related_object_type',
+                'related_object_id',
+                'extra_data'
+            ),
+            'classes': ('collapse',)
+        }),
+        ('状态管理', {
+            'fields': (
+                'is_read', 'read_at', 'created_at', 'updated_at'
+            )
+        }),
+    )
+
+    def get_queryset(self, request):
+        return super().get_queryset(request).select_related('recipient', 'actor')
+
+    def actor_info(self, obj):
+        """显示触发者信息，如果没有则显示系统"""
+        if obj.actor:
+            return format_html(
+                '<span style="color: #28a745;">{}</span>',
+                obj.actor.username
+            )
+        return format_html(
+            '<span style="color: #6c757d; font-style: italic;">系统</span>'
+        )
+    actor_info.short_description = '触发者'
+    actor_info.admin_order_field = 'actor__username'
+
+    def priority_badge(self, obj):
+        """显示优先级徽章"""
+        colors = {
+            'low': '#28a745',
+            'normal': '#17a2b8',
+            'high': '#ffc107',
+            'urgent': '#dc3545'
+        }
+        color = colors.get(obj.priority, '#6c757d')
+        return format_html(
+            '<span style="background-color: {}; color: white; padding: 2px 8px; '
+            'border-radius: 12px; font-size: 11px; font-weight: bold;">{}</span>',
+            color,
+            obj.get_priority_display()
+        )
+    priority_badge.short_description = '优先级'
+    priority_badge.admin_order_field = 'priority'
+
+    def is_read_badge(self, obj):
+        """显示已读状态徽章"""
+        if obj.is_read:
+            return format_html(
+                '<span style="background-color: #28a745; color: white; padding: 2px 8px; '
+                'border-radius: 12px; font-size: 11px; font-weight: bold;">已读</span>'
+            )
+        return format_html(
+            '<span style="background-color: #dc3545; color: white; padding: 2px 8px; '
+            'border-radius: 12px; font-size: 11px; font-weight: bold;">未读</span>'
+        )
+    is_read_badge.short_description = '状态'
+    is_read_badge.admin_order_field = 'is_read'
+
+    # 添加批量操作
+    actions = ['mark_as_read', 'mark_as_unread', 'delete_selected_notifications']
+
+    def mark_as_read(self, request, queryset):
+        """批量标记为已读"""
+        updated = queryset.filter(is_read=False).update(is_read=True)
+        self.message_user(request, f'成功将 {updated} 条通知标记为已读。')
+    mark_as_read.short_description = '标记选中通知为已读'
+
+    def mark_as_unread(self, request, queryset):
+        """批量标记为未读"""
+        updated = queryset.filter(is_read=True).update(is_read=False, read_at=None)
+        self.message_user(request, f'成功将 {updated} 条通知标记为未读。')
+    mark_as_unread.short_description = '标记选中通知为未读'
+
+    def delete_selected_notifications(self, request, queryset):
+        """批量删除通知"""
+        count = queryset.count()
+        queryset.delete()
+        self.message_user(request, f'成功删除 {count} 条通知。')
+    delete_selected_notifications.short_description = '删除选中通知'
+
+    # 在列表页面显示更多信息
+    list_per_page = 25
+    show_full_result_count = True

@@ -11,6 +11,7 @@ from .serializers import (
     CommentCreateSerializer, PostLikeSerializer, CommentLikeSerializer,
     PostStatsSerializer, CheckinVerificationSerializer
 )
+from users.models import Notification
 
 
 class PostListCreateView(generics.ListCreateAPIView):
@@ -103,6 +104,15 @@ def toggle_post_like(request, post_id):
             post.user.coins += 1
             post.user.total_likes_received += 1
             post.user.save(update_fields=['coins', 'total_likes_received'])
+
+            # 创建点赞通知
+            Notification.create_notification(
+                recipient=post.user,
+                notification_type='post_liked',
+                actor=request.user,
+                related_object_type='post',
+                related_object_id=post.id
+            )
 
         # 更新用户活跃度
         request.user.update_activity()
@@ -243,6 +253,29 @@ def create_comment(request, post_id):
 
     if serializer.is_valid():
         comment = serializer.save()
+
+        # 创建评论通知 - 通知动态作者
+        if comment.user != post.user:
+            Notification.create_notification(
+                recipient=post.user,
+                notification_type='post_commented',
+                actor=comment.user,
+                related_object_type='post',
+                related_object_id=post.id,
+                extra_data={'comment_id': str(comment.id)}
+            )
+
+        # 如果是回复评论，通知被回复的用户
+        if comment.parent and comment.user != comment.parent.user:
+            Notification.create_notification(
+                recipient=comment.parent.user,
+                notification_type='comment_replied',
+                actor=comment.user,
+                related_object_type='comment',
+                related_object_id=comment.parent.id,
+                extra_data={'post_id': str(post.id), 'reply_id': str(comment.id)}
+            )
+
         # 返回完整的评论数据
         response_serializer = CommentSerializer(comment, context={'request': request})
         return Response(response_serializer.data, status=status.HTTP_201_CREATED)
@@ -279,6 +312,16 @@ def toggle_comment_like(request, comment_id):
         if comment.user != request.user:
             comment.user.coins += 1
             comment.user.save(update_fields=['coins'])
+
+            # 创建评论点赞通知
+            Notification.create_notification(
+                recipient=comment.user,
+                notification_type='comment_liked',
+                actor=request.user,
+                related_object_type='comment',
+                related_object_id=comment.id,
+                extra_data={'post_id': str(comment.post.id)}
+            )
 
         # 更新用户活跃度
         request.user.update_activity()

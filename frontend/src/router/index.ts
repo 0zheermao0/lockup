@@ -28,6 +28,10 @@ const router = createRouter({
       meta: { requiresAuth: true }
     },
     {
+      path: '/posts/:id',
+      redirect: to => ({ name: 'post-detail', params: to.params })
+    },
+    {
       path: '/profile/:id?',
       name: 'profile',
       component: ProfileView,

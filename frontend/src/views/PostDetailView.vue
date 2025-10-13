@@ -246,6 +246,7 @@ import { ref, onMounted, computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '../stores/auth'
 import { usePostsStore } from '../stores/posts'
+import { useNotificationStore } from '../stores/notifications'
 import { postsApi } from '../lib/api'
 import { formatDistanceToNow } from '../lib/utils'
 import LockIndicator from '../components/LockIndicator.vue'
@@ -257,6 +258,7 @@ const route = useRoute()
 const router = useRouter()
 const authStore = useAuthStore()
 const postsStore = usePostsStore()
+const notificationStore = useNotificationStore()
 
 const post = ref<Post | null>(null)
 const loading = ref(true)
@@ -406,6 +408,13 @@ const submitComment = async () => {
     newComment.value = ''
     selectedCommentImages.value = []
 
+    // 刷新通知以获取新评论的通知
+    try {
+      await notificationStore.refreshNotifications()
+    } catch (notifError) {
+      console.error('Failed to refresh notifications after comment:', notifError)
+    }
+
     console.log('评论发布成功')
   } catch (error: any) {
     console.error('Error submitting comment:', error)
@@ -430,6 +439,13 @@ const toggleCommentLike = async (comment: any) => {
       const response = await postsApi.likeComment(comment.id)
       comment.likes_count = response.likes_count
       comment.is_liked = true
+    }
+
+    // 刷新通知以获取新的评论点赞通知
+    try {
+      await notificationStore.refreshNotifications()
+    } catch (notifError) {
+      console.error('Failed to refresh notifications after comment like:', notifError)
     }
   } catch (error) {
     console.error('Error toggling comment like:', error)

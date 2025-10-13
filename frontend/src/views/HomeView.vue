@@ -9,9 +9,28 @@
             <span class="level">等级 {{ authStore.user?.level || 1 }}</span>
             <span class="coins">🪙 {{ authStore.user?.coins || 0 }}</span>
           </div>
-          <div class="user-actions">
-            <button @click="goToProfile" class="profile-btn">个人资料</button>
-            <button @click="handleLogout" class="logout-btn">退出</button>
+          <div class="header-actions">
+            <!-- 通知铃铛 -->
+            <div class="notification-circle">
+              <NotificationBell />
+            </div>
+
+            <!-- 用户头像 -->
+            <div @click="goToProfile" class="profile-avatar" :title="`${authStore.user?.username} 的个人资料`">
+              <span class="avatar-text">{{ authStore.user?.username?.charAt(0).toUpperCase() || 'U' }}</span>
+              <LockIndicator
+                v-if="authStore.user?.active_lock_task"
+                :user="authStore.user"
+                size="mini"
+                :show-time="false"
+                class="avatar-lock-indicator"
+              />
+            </div>
+
+            <!-- 退出按钮 -->
+            <button @click="handleLogout" class="logout-circle" title="退出登录">
+              <span class="logout-icon">⏻</span>
+            </button>
           </div>
         </div>
       </div>
@@ -191,17 +210,20 @@ import { onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '../stores/auth'
 import { usePostsStore } from '../stores/posts'
+import { useNotificationStore } from '../stores/notifications'
 import { useInfiniteScroll } from '../composables/useInfiniteScroll'
 import { formatDistanceToNow } from '../lib/utils'
 import CreatePostModal from '../components/CreatePostModal.vue'
 import LockStatus from '../components/LockStatus.vue'
 import LockIndicator from '../components/LockIndicator.vue'
 import ProfileModal from '../components/ProfileModal.vue'
+import NotificationBell from '../components/NotificationBell.vue'
 import type { Post } from '../types/index.js'
 
 const router = useRouter()
 const authStore = useAuthStore()
 const postsStore = usePostsStore()
+const notificationStore = useNotificationStore()
 
 // 创建动态模态框状态
 const showCreateModal = ref(false)
@@ -254,11 +276,32 @@ const toggleLike = async (post: Post) => {
   try {
     if (post.user_has_liked) {
       await postsStore.unlikePost(post.id)
+      // 更新本地状态
+      post.user_has_liked = false
+      post.likes_count--
     } else {
       await postsStore.likePost(post.id)
+      // 更新本地状态
+      post.user_has_liked = true
+      post.likes_count++
+    }
+
+    // 刷新通知以获取新的点赞通知
+    try {
+      await notificationStore.refreshNotifications()
+    } catch (notifError) {
+      console.error('Failed to refresh notifications after like:', notifError)
     }
   } catch (error) {
     console.error('Error toggling like:', error)
+    // 如果出错，恢复原始状态
+    if (post.user_has_liked) {
+      post.user_has_liked = false
+      post.likes_count--
+    } else {
+      post.user_has_liked = true
+      post.likes_count++
+    }
   }
 }
 
@@ -333,6 +376,7 @@ onMounted(() => {
   background: white;
   border-bottom: 2px solid #000;
   padding: 1rem 0;
+  box-shadow: 0 2px 0 rgba(0, 0, 0, 0.1);
 }
 
 .header-content {
@@ -346,13 +390,20 @@ onMounted(() => {
 
 .header h1 {
   font-size: 1.8rem;
-  font-weight: 900;
+  font-weight: 800;
   text-transform: uppercase;
   letter-spacing: 1px;
   margin: 0;
+  color: #000;
 }
 
 .user-info {
+  display: flex;
+  align-items: center;
+  gap: 1.5rem;
+}
+
+.header-actions {
   display: flex;
   align-items: center;
   gap: 1rem;
@@ -362,43 +413,95 @@ onMounted(() => {
   display: flex;
   gap: 1rem;
   align-items: center;
+  padding: 0.5rem 1rem;
+  border: 1px solid #e0e0e0;
+  border-radius: 20px;
+  background: #f8f9fa;
 }
 
 .level {
-  padding: 0.25rem 0.75rem;
   background-color: #007bff;
   color: white;
-  border-radius: 20px;
-  font-size: 0.875rem;
-  font-weight: bold;
+  padding: 0.25rem 0.75rem;
+  border-radius: 12px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
 }
 
 .coins {
-  font-weight: bold;
+  font-weight: 600;
+  font-size: 0.9rem;
+  color: #333;
 }
 
-.profile-btn, .logout-btn {
-  padding: 0.5rem 1rem;
-  background: none;
-  border: 1px solid #666;
-  border-radius: 4px;
+/* 通知铃铛圆圈容器 */
+.notification-circle {
+  position: relative;
+}
+
+/* 用户头像正圆 */
+.profile-avatar {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #667eea, #764ba2);
+  border: 2px solid #000;
+  box-shadow: 2px 2px 0 rgba(0, 0, 0, 0.2);
   cursor: pointer;
-  font-size: 0.875rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  transition: all 0.2s ease;
 }
 
-.profile-btn {
-  background-color: #007bff;
+.profile-avatar:hover {
+  transform: translateY(-1px);
+  box-shadow: 3px 3px 0 rgba(0, 0, 0, 0.3);
+  background: linear-gradient(135deg, #f093fb, #f5576c);
+}
+
+.avatar-text {
   color: white;
-  border-color: #007bff;
-  margin-right: 0.5rem;
+  font-weight: 700;
+  font-size: 1rem;
+  text-transform: uppercase;
 }
 
-.profile-btn:hover {
-  background-color: #0056b3;
+.avatar-lock-indicator {
+  position: absolute;
+  top: -2px;
+  right: -2px;
+  z-index: 2;
 }
 
-.logout-btn:hover {
-  background-color: #f8f9fa;
+/* 退出按钮正圆 */
+.logout-circle {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: #dc3545;
+  border: 2px solid #000;
+  box-shadow: 2px 2px 0 rgba(0, 0, 0, 0.2);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s ease;
+  color: white;
+}
+
+.logout-circle:hover {
+  transform: translateY(-1px);
+  box-shadow: 3px 3px 0 rgba(0, 0, 0, 0.3);
+  background: #c82333;
+}
+
+.logout-icon {
+  font-size: 1rem;
+  font-weight: 700;
 }
 
 .main-content {
@@ -751,6 +854,60 @@ onMounted(() => {
 
   .posts-feed {
     order: 1;
+  }
+
+  .header {
+    padding: 0.75rem 0;
+  }
+
+  .header-content {
+    flex-direction: column;
+    gap: 0.75rem;
+  }
+
+  .header h1 {
+    font-size: 1.5rem;
+  }
+
+  .user-info {
+    width: 100%;
+    justify-content: space-between;
+  }
+
+  .user-stats {
+    padding: 0.4rem 0.8rem;
+    gap: 0.75rem;
+  }
+
+  .level {
+    padding: 0.2rem 0.6rem;
+    font-size: 0.7rem;
+  }
+
+  .coins {
+    font-size: 0.8rem;
+  }
+
+  .header-actions {
+    gap: 0.6rem;
+  }
+
+  .profile-avatar {
+    width: 32px;
+    height: 32px;
+  }
+
+  .avatar-text {
+    font-size: 0.875rem;
+  }
+
+  .logout-circle {
+    width: 30px;
+    height: 30px;
+  }
+
+  .logout-icon {
+    font-size: 0.875rem;
   }
 }
 </style>

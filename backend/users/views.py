@@ -6,12 +6,12 @@ from django.contrib.auth import login, logout
 from django.db.models import Q, Count
 from django.utils import timezone
 from datetime import timedelta
-from .models import User, Friendship, UserLevelUpgrade
+from .models import User, Friendship, UserLevelUpgrade, DailyLoginReward, Notification
 from .serializers import (
     UserSerializer, UserPublicSerializer, UserRegistrationSerializer,
     UserLoginSerializer, UserProfileUpdateSerializer, FriendshipSerializer,
     FriendRequestSerializer, UserLevelUpgradeSerializer, UserStatsSerializer,
-    PasswordChangeSerializer
+    PasswordChangeSerializer, NotificationSerializer, NotificationCreateSerializer
 )
 
 
@@ -56,10 +56,49 @@ class UserLoginView(generics.GenericAPIView):
         # 更新用户活跃度
         user.update_activity()
 
+        # 处理每日登录奖励
+        today = timezone.now().date()
+        daily_reward_exists = DailyLoginReward.objects.filter(
+            user=user,
+            date=today
+        ).exists()
+
+        daily_reward_message = ""
+        if not daily_reward_exists:
+            # 获取用户等级对应的奖励积分
+            reward_amount = user.get_daily_login_reward()
+
+            # 给用户增加积分
+            user.coins += reward_amount
+            user.save()
+
+            # 创建每日登录奖励记录
+            DailyLoginReward.objects.create(
+                user=user,
+                date=today,
+                user_level=user.level,
+                reward_amount=reward_amount
+            )
+
+            # 创建每日登录奖励通知
+            Notification.create_notification(
+                recipient=user,
+                notification_type='coins_earned_daily_login',
+                actor=None,  # 系统通知
+                extra_data={
+                    'user_level': user.level,
+                    'reward_amount': reward_amount,
+                    'daily_reward_date': today.isoformat()
+                },
+                priority='normal'
+            )
+
+            daily_reward_message = f"，获得每日登录奖励{reward_amount}积分"
+
         return Response({
             'user': UserSerializer(user).data,
             'token': token.key,
-            'message': '登录成功'
+            'message': f'登录成功{daily_reward_message}'
         })
 
 
@@ -378,3 +417,212 @@ def user_stats(request):
 
     serializer = UserStatsSerializer(stats_data)
     return Response(serializer.data)
+
+
+class NotificationListView(generics.ListAPIView):
+    """通知列表视图"""
+    serializer_class = NotificationSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        user = self.request.user
+
+        # 获取查询参数
+        is_read = self.request.query_params.get('is_read', None)
+        notification_type = self.request.query_params.get('type', None)
+        limit = self.request.query_params.get('limit', None)
+
+        queryset = Notification.objects.filter(recipient=user)
+
+        # 按已读状态过滤
+        if is_read is not None:
+            queryset = queryset.filter(is_read=is_read.lower() == 'true')
+
+        # 按通知类型过滤
+        if notification_type:
+            queryset = queryset.filter(notification_type=notification_type)
+
+        # 先排序，再限制数量（避免切片后重排序的错误）
+        queryset = queryset.order_by('-created_at')
+
+        # 限制返回数量
+        if limit:
+            try:
+                limit_int = int(limit)
+                queryset = queryset[:limit_int]
+            except ValueError:
+                pass
+
+        return queryset
+
+
+@api_view(['POST'])
+@permission_classes([permissions.IsAuthenticated])
+def mark_notification_read(request, notification_id):
+    """标记通知为已读"""
+    try:
+        notification = Notification.objects.get(
+            id=notification_id,
+            recipient=request.user
+        )
+        notification.mark_as_read()
+
+        return Response({
+            'message': '通知已标记为已读',
+            'notification': NotificationSerializer(notification).data
+        })
+    except Notification.DoesNotExist:
+        return Response(
+            {'error': '通知不存在'},
+            status=status.HTTP_404_NOT_FOUND
+        )
+
+
+@api_view(['POST'])
+@permission_classes([permissions.IsAuthenticated])
+def mark_all_notifications_read(request):
+    """标记所有通知为已读"""
+    count = Notification.objects.filter(
+        recipient=request.user,
+        is_read=False
+    ).update(
+        is_read=True,
+        read_at=timezone.now()
+    )
+
+    return Response({
+        'message': f'已标记{count}条通知为已读',
+        'marked_count': count
+    })
+
+
+@api_view(['DELETE'])
+@permission_classes([permissions.IsAuthenticated])
+def delete_notification(request, notification_id):
+    """删除通知"""
+    try:
+        notification = Notification.objects.get(
+            id=notification_id,
+            recipient=request.user
+        )
+        notification.delete()
+
+        return Response({'message': '通知已删除'})
+    except Notification.DoesNotExist:
+        return Response(
+            {'error': '通知不存在'},
+            status=status.HTTP_404_NOT_FOUND
+        )
+
+
+@api_view(['DELETE'])
+@permission_classes([permissions.IsAuthenticated])
+def clear_read_notifications(request):
+    """清理所有已读通知"""
+    count, _ = Notification.objects.filter(
+        recipient=request.user,
+        is_read=True
+    ).delete()
+
+    return Response({
+        'message': f'已清理{count}条已读通知',
+        'cleared_count': count
+    })
+
+
+@api_view(['GET'])
+@permission_classes([permissions.IsAuthenticated])
+def notification_stats(request):
+    """获取通知统计信息"""
+    user = request.user
+
+    total_notifications = Notification.objects.filter(recipient=user).count()
+    unread_notifications = Notification.objects.filter(
+        recipient=user,
+        is_read=False
+    ).count()
+
+    # 按类型统计未读通知
+    unread_by_type = {}
+    for type_choice in Notification.TYPE_CHOICES:
+        type_name = type_choice[0]
+        type_display = type_choice[1]
+
+        count = Notification.objects.filter(
+            recipient=user,
+            notification_type=type_name,
+            is_read=False
+        ).count()
+
+        if count > 0:
+            unread_by_type[type_name] = {
+                'display_name': type_display,
+                'count': count
+            }
+
+    # 按优先级统计未读通知
+    unread_by_priority = {}
+    for priority_choice in Notification.PRIORITY_CHOICES:
+        priority_name = priority_choice[0]
+        priority_display = priority_choice[1]
+
+        count = Notification.objects.filter(
+            recipient=user,
+            priority=priority_name,
+            is_read=False
+        ).count()
+
+        if count > 0:
+            unread_by_priority[priority_name] = {
+                'display_name': priority_display,
+                'count': count
+            }
+
+    return Response({
+        'total_notifications': total_notifications,
+        'unread_notifications': unread_notifications,
+        'unread_by_type': unread_by_type,
+        'unread_by_priority': unread_by_priority
+    })
+
+
+@api_view(['POST'])
+@permission_classes([permissions.IsAuthenticated])
+def create_notification(request):
+    """创建通知（管理员功能）"""
+    # 检查是否是管理员
+    if not request.user.is_superuser:
+        return Response(
+            {'error': '没有权限'},
+            status=status.HTTP_403_FORBIDDEN
+        )
+
+    serializer = NotificationCreateSerializer(data=request.data)
+    if serializer.is_valid():
+        try:
+            recipient = User.objects.get(id=serializer.validated_data['recipient_id'])
+
+            notification = Notification.create_notification(
+                recipient=recipient,
+                notification_type=serializer.validated_data['notification_type'],
+                title=serializer.validated_data.get('title'),
+                message=serializer.validated_data.get('message'),
+                actor=None,  # 管理员创建，无特定actor
+                related_object_type=serializer.validated_data.get('related_object_type'),
+                related_object_id=serializer.validated_data.get('related_object_id'),
+                extra_data=serializer.validated_data.get('extra_data', {}),
+                priority=serializer.validated_data.get('priority', 'normal')
+            )
+
+            return Response({
+                'message': '通知创建成功',
+                'notification': NotificationSerializer(notification).data
+            }, status=status.HTTP_201_CREATED)
+
+        except User.DoesNotExist:
+            return Response(
+                {'error': '接收者不存在'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+    return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)

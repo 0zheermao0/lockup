@@ -10,6 +10,7 @@ import random
 
 from .models import LockTask, TaskKey, TaskVote, OvertimeAction, TaskTimelineEvent, HourlyReward
 from store.models import ItemType, UserInventory, Item
+from users.models import Notification
 from .serializers import (
     LockTaskSerializer, LockTaskCreateSerializer,
     TaskKeySerializer, TaskVoteSerializer, TaskVoteCreateSerializer,
@@ -148,6 +149,33 @@ class LockTaskListCreateView(generics.ListCreateAPIView):
         elif task.task_type == 'board':
             # 任务板创建后设置为开放状态
             task.status = 'open'
+
+            # 如果设置了奖励，需要从发布者的积分中扣除
+            if task.reward and task.reward > 0:
+                if task.user.coins < task.reward:
+                    # 删除刚创建的任务，因为积分不足
+                    task.delete()
+                    raise ValidationError({
+                        'reward': [f'积分不足。您当前有{task.user.coins}积分，但设置的奖励需要{task.reward}积分']
+                    })
+
+                # 扣除发布者的积分
+                task.user.coins -= task.reward
+                task.user.save()
+
+                # 创建积分扣除事件
+                TaskTimelineEvent.objects.create(
+                    task=task,
+                    event_type='task_created',
+                    user=task.user,
+                    description=f'任务发布，扣除{task.reward}积分作为奖励',
+                    metadata={
+                        'task_type': task.task_type,
+                        'reward_amount': task.reward,
+                        'publisher_remaining_coins': task.user.coins
+                    }
+                )
+
             task.save()
 
 
@@ -425,6 +453,20 @@ def take_board_task(request, pk):
 
     task.save()
 
+    # 创建任务接取通知
+    Notification.create_notification(
+        recipient=task.user,
+        notification_type='task_board_taken',
+        actor=request.user,
+        related_object_type='task',
+        related_object_id=task.id,
+        extra_data={
+            'task_title': task.title,
+            'taker': request.user.username,
+            'deadline': task.deadline.isoformat() if task.deadline else None
+        }
+    )
+
     serializer = LockTaskSerializer(task)
     return Response(serializer.data)
 
@@ -462,6 +504,20 @@ def submit_board_task(request, pk):
     task.completion_proof = completion_proof
     # 注意：不设置completed_at，因为任务还未正式完成
     task.save()
+
+    # 创建任务提交通知
+    Notification.create_notification(
+        recipient=task.user,
+        notification_type='task_board_submitted',
+        actor=request.user,
+        related_object_type='task',
+        related_object_id=task.id,
+        extra_data={
+            'task_title': task.title,
+            'submitter': request.user.username,
+            'completion_proof_preview': completion_proof[:100] + '...' if len(completion_proof) > 100 else completion_proof
+        }
+    )
 
     serializer = LockTaskSerializer(task)
     return Response(serializer.data)
@@ -592,6 +648,55 @@ def approve_board_task(request, pk):
     # 审核通过，标记任务为已完成
     task.status = 'completed'
     task.completed_at = timezone.now()
+
+    # 处理奖励积分转移
+    if task.reward and task.reward > 0 and task.taker:
+        # 给接取者奖励积分
+        task.taker.coins += task.reward
+        task.taker.save()
+
+        # 创建奖励转移事件
+        TaskTimelineEvent.objects.create(
+            task=task,
+            event_type='task_completed',
+            user=request.user,
+            description=f'任务审核通过，{task.taker.username}获得{task.reward}积分奖励',
+            metadata={
+                'approved_by': request.user.username,
+                'reward_amount': task.reward,
+                'reward_recipient': task.taker.username,
+                'taker_total_coins': task.taker.coins
+            }
+        )
+
+        # 创建任务奖励积分通知
+        Notification.create_notification(
+            recipient=task.taker,
+            notification_type='coins_earned_task_reward',
+            actor=request.user,
+            related_object_type='task',
+            related_object_id=task.id,
+            extra_data={
+                'task_title': task.title,
+                'reward_amount': task.reward,
+                'approver': request.user.username
+            }
+        )
+
+    # 创建任务审核通过通知
+    Notification.create_notification(
+        recipient=task.taker,
+        notification_type='task_board_approved',
+        actor=request.user,
+        related_object_type='task',
+        related_object_id=task.id,
+        extra_data={
+            'task_title': task.title,
+            'approver': request.user.username,
+            'reward_amount': task.reward if task.reward else 0
+        }
+    )
+
     task.save()
 
     serializer = LockTaskSerializer(task)
@@ -627,6 +732,20 @@ def reject_board_task(request, pk):
     if reject_reason:
         task.completion_proof += f"\n\n审核拒绝原因: {reject_reason}"
     task.save()
+
+    # 创建任务审核拒绝通知
+    Notification.create_notification(
+        recipient=task.taker,
+        notification_type='task_board_rejected',
+        actor=request.user,
+        related_object_type='task',
+        related_object_id=task.id,
+        extra_data={
+            'task_title': task.title,
+            'rejector': request.user.username,
+            'reject_reason': reject_reason or '未提供原因'
+        }
+    )
 
     serializer = LockTaskSerializer(task)
     return Response(serializer.data)
@@ -728,6 +847,20 @@ def add_overtime(request, pk):
             'difficulty': task.difficulty,
             'overtime_range': f'{min_overtime}-{max_overtime} 分钟',
             'base_overtime': base_overtime
+        }
+    )
+
+    # 创建加时通知
+    Notification.create_notification(
+        recipient=task.user,
+        notification_type='task_overtime_added',
+        actor=request.user,
+        related_object_type='task',
+        related_object_id=task.id,
+        extra_data={
+            'overtime_minutes': overtime_minutes,
+            'difficulty': task.difficulty,
+            'new_end_time': task.end_time.isoformat() if task.end_time else None
         }
     )
 
@@ -951,8 +1084,8 @@ def process_hourly_rewards(request):
         rewards_to_give = elapsed_hours - task.total_hourly_rewards
 
         for hour_num in range(next_reward_hour, next_reward_hour + rewards_to_give):
-            # 给用户增加1点活跃度积分
-            task.user.activity_score += 1
+            # 给用户增加1积分（coins）
+            task.user.coins += 1
             task.user.save()
 
             # 创建奖励记录
@@ -972,8 +1105,24 @@ def process_hourly_rewards(request):
                 metadata={
                     'reward_amount': 1,
                     'hour_count': hour_num,
-                    'total_activity_score': task.user.activity_score
+                    'total_coins': task.user.coins
                 }
+            )
+
+            # 创建小时奖励积分通知
+            Notification.create_notification(
+                recipient=task.user,
+                notification_type='coins_earned_hourly',
+                actor=None,  # 系统通知
+                related_object_type='task',
+                related_object_id=task.id,
+                extra_data={
+                    'task_title': task.title,
+                    'hour_count': hour_num,
+                    'reward_amount': 1,
+                    'total_hourly_rewards': task.total_hourly_rewards + 1
+                },
+                priority='low'  # 小时奖励是低优先级通知
             )
 
             processed_rewards.append({

@@ -26,4 +26,13 @@ urlpatterns = [
 
     # 等级管理
     path('users/<int:user_id>/promote/', views.promote_user, name='promote-user'),
+
+    # 通知系统
+    path('notifications/', views.NotificationListView.as_view(), name='notification-list'),
+    path('notifications/stats/', views.notification_stats, name='notification-stats'),
+    path('notifications/create/', views.create_notification, name='create-notification'),
+    path('notifications/<uuid:notification_id>/read/', views.mark_notification_read, name='mark-notification-read'),
+    path('notifications/<uuid:notification_id>/delete/', views.delete_notification, name='delete-notification'),
+    path('notifications/mark-all-read/', views.mark_all_notifications_read, name='mark-all-notifications-read'),
+    path('notifications/clear-read/', views.clear_read_notifications, name='clear-read-notifications'),
 ]

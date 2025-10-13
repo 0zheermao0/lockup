@@ -15,6 +15,7 @@ from .models import (
     ItemType, UserInventory, Item, StoreItem, Purchase,
     Game, GameParticipant, DriftBottle, BuriedTreasure, GameSession
 )
+from users.models import Notification
 from .serializers import (
     ItemTypeSerializer, UserInventorySerializer, ItemSerializer,
     StoreItemSerializer, PurchaseSerializer, GameSerializer,
@@ -251,6 +252,22 @@ def view_photo(request, photo_id):
                 photo_item.used_at = timezone.now()
                 photo_item.inventory = None  # 从背包中移除
                 photo_item.save()
+
+                # 创建照片查看通知（如果不是自己的照片）
+                if photo_item.owner != request.user:
+                    Notification.create_notification(
+                        recipient=photo_item.owner,
+                        notification_type='photo_viewed',
+                        actor=request.user,
+                        related_object_type='item',
+                        related_object_id=photo_item.id,
+                        extra_data={
+                            'photo_path': photo_path,
+                            'view_time': timezone.now().isoformat(),
+                            'burn_after_reading': True
+                        },
+                        priority='low'
+                    )
 
             from django.http import HttpResponse
             return HttpResponse(photo_data, content_type='image/jpeg')
@@ -812,6 +829,7 @@ def find_treasure(request):
                 treasure.save()
 
                 # 给掩埋者一些积分奖励
+                reward_amount = 0
                 if hasattr(treasure.burier, 'coins'):
                     reward_amount = {
                         'easy': 5,
@@ -821,6 +839,24 @@ def find_treasure(request):
 
                     treasure.burier.coins += reward_amount
                     treasure.burier.save()
+
+                # 创建宝物发现通知
+                Notification.create_notification(
+                    recipient=treasure.burier,
+                    notification_type='treasure_found',
+                    actor=user,
+                    related_object_type='buried_treasure',
+                    related_object_id=treasure.id,
+                    extra_data={
+                        'item_type': item.item_type.display_name,
+                        'location_zone': treasure.location_zone,
+                        'difficulty': treasure.difficulty,
+                        'reward_amount': reward_amount,
+                        'finder': user.username,
+                        'found_at': treasure.found_at.isoformat()
+                    },
+                    priority='normal'
+                )
 
                 return Response({
                     'message': '成功挖掘到宝物！',
