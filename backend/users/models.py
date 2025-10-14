@@ -101,8 +101,8 @@ class User(AbstractUser):
         return self.level  # 1/2/3/4级用户分别获得1/2/3/4积分
 
     def get_total_lock_duration(self):
-        """获取用户总带锁时长（分钟），包括所有时间变化"""
-        from tasks.models import LockTask, TaskTimelineEvent
+        """获取用户总带锁时长（分钟），使用实际经历的时长（解锁时间-开始时间）"""
+        from tasks.models import LockTask
 
         total_duration = 0
 
@@ -113,36 +113,17 @@ class User(AbstractUser):
         )
 
         for task in user_lock_tasks:
-            # 计算每个任务的原始时长
-            original_duration = task.duration_value if task.duration_type == 'fixed' else task.duration_max
-
-            # 计算任务的实际运行时长（如果已完成）或当前时长（如果进行中）
-            if task.end_time and task.start_time:
-                actual_duration = int((task.end_time - task.start_time).total_seconds() / 60)
-            elif task.start_time:
-                # 任务还在进行中，计算从开始到现在的时长
+            # 只计算已完成任务的实际时长
+            if task.status == 'completed' and task.start_time:
+                # 使用实际完成时间作为结束时间，而不是配置的end_time
+                actual_end_time = task.completed_at or task.end_time
+                if actual_end_time:
+                    actual_duration = int((actual_end_time - task.start_time).total_seconds() / 60)
+                    total_duration += max(0, actual_duration)
+            elif task.status == 'active' and task.start_time:
+                # 进行中的任务，计算从开始到现在的实际时长
                 actual_duration = int((timezone.now() - task.start_time).total_seconds() / 60)
-            else:
-                actual_duration = 0
-
-            # 取较大值作为基础时长
-            base_duration = max(original_duration or 0, actual_duration)
-
-            # 加上时间线中的所有时间变化
-            timeline_changes = TaskTimelineEvent.objects.filter(
-                task=task,
-                time_change_minutes__isnull=False
-            ).aggregate(
-                total_change=models.Sum('time_change_minutes')
-            )
-
-            time_adjustment = timeline_changes['total_change'] or 0
-
-            # 计算最终时长（基础时长 + 时间调整）
-            final_duration = base_duration + time_adjustment
-
-            # 只计算正数时长（避免负数）
-            total_duration += max(0, final_duration)
+                total_duration += max(0, actual_duration)
 
         return total_duration
 
