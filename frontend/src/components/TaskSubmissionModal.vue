@@ -219,11 +219,11 @@ const handleImageSelect = (event: Event) => {
 
   for (let i = 0; i < files.length; i++) {
     const file = files[i]
-    if (file.type.startsWith('image/')) {
+    if (file && file.type.startsWith('image/')) {
       const reader = new FileReader()
       reader.onload = (e) => {
         selectedImages.value.push({
-          file,
+          file: file,
           preview: e.target?.result as string
         })
       }

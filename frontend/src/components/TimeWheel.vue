@@ -216,7 +216,7 @@ const spinWheel = async () => {
       isIncrease: spinResult.isIncrease,
       baseTime: spinResult.baseTime,
       totalMinutes: spinResult.totalMinutes,
-      newEndTime: apiResult.new_end_time
+      newEndTime: apiResult.new_end_time || undefined
     }
 
     // 通知父组件时间变更
@@ -253,7 +253,7 @@ const calculateSpinResult = () => {
   const isIncrease = Math.random() < increaseWeight
 
   // 2. 随机选择时间档位
-  const baseTime = timeOptions[Math.floor(Math.random() * timeOptions.length)]
+  const baseTime = timeOptions[Math.floor(Math.random() * timeOptions.length)] || 5
 
   // 3. 计算最终时间变化
   const totalMinutes = baseTime * betAmount.value

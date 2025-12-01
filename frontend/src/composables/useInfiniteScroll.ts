@@ -58,7 +58,7 @@ export function useInfiniteScroll<T>(
       totalCount.value = response.count
 
       if (append) {
-        items.value.push(...response.results)
+        items.value = [...(items.value as T[]), ...response.results]
       } else {
         items.value = response.results
       }

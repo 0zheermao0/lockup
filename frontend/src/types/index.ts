@@ -3,6 +3,7 @@ export interface ActiveLockTask {
   id: string
   title: string
   difficulty: 'easy' | 'normal' | 'hard' | 'hell'
+  status?: 'pending' | 'active' | 'voting' | 'completed' | 'failed'
   start_time?: string
   end_time?: string
   time_remaining_ms?: number
@@ -28,6 +29,7 @@ export interface User {
   total_posts: number
   total_likes_received: number
   total_tasks_completed: number
+  total_lock_duration: number // 总带锁任务时长（分钟）
   created_at: string
   updated_at: string
   active_lock_task?: ActiveLockTask | null
@@ -208,8 +210,8 @@ export interface ApiResponse<T> {
 export interface PaginatedResponse<T> {
   results: T[]
   count: number
-  next?: string
-  previous?: string
+  next: string | null
+  previous: string | null
 }
 
 export interface PaginatedData<T> {

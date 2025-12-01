@@ -516,7 +516,7 @@ const joinGameWithChoice = async (gameId: string) => {
 
     // Update user coins if bet was deducted
     if (authStore.user) {
-      authStore.user.coins = result.remaining_coins || authStore.user.coins
+      authStore.user.coins = (result as any).remaining_coins || authStore.user.coins
     }
 
     // Clear choice selection
@@ -536,7 +536,7 @@ const joinGameWithChoice = async (gameId: string) => {
 const loadActiveLockTask = async () => {
   try {
     console.log('=== LOADING ACTIVE LOCK TASK ===')
-    console.log('Auth token from localStorage:', localStorage.getItem('token') ? localStorage.getItem('token').substring(0, 10) + '...' : 'null')
+    console.log('Auth token from localStorage:', localStorage.getItem('token') ? localStorage.getItem('token')!.substring(0, 10) + '...' : 'null')
 
     // First check and complete any expired tasks
     console.log('Checking for expired tasks...')
@@ -548,12 +548,12 @@ const loadActiveLockTask = async () => {
     console.log('Task ID:', activeLockTask.value?.id)
     console.log('Task status:', activeLockTask.value?.status)
     console.log('Task type:', activeLockTask.value?.task_type)
-  } catch (err) {
+  } catch (err: any) {
     console.error('=== LOAD ACTIVE LOCK TASK ERROR ===')
     console.error('Full error:', err)
-    console.error('Error message:', err.message)
-    console.error('Error status:', err.status)
-    console.error('Error data:', err.data)
+    console.error('Error message:', err?.message)
+    console.error('Error status:', err?.status)
+    console.error('Error data:', err?.data)
     activeLockTask.value = null
   }
 }
@@ -568,12 +568,12 @@ const loadGames = async () => {
   try {
     loadingGames.value = true
     console.log('Making API call to storeApi.getGames()')
-    const result = await storeApi.getGames()
+    const result = await storeApi.getGames() as any
     console.log('API response:', result)
 
-    if (result && result.results) {
+    if (result && (result as any).results) {
       // Handle paginated response
-      games.value = Array.isArray(result.results) ? result.results : []
+      games.value = Array.isArray((result as any).results) ? (result as any).results : []
       console.log('Games loaded from paginated response:', games.value.length, 'games')
     } else if (Array.isArray(result)) {
       // Handle direct array response
@@ -585,12 +585,12 @@ const loadGames = async () => {
     }
 
     console.log('Final games array:', games.value)
-  } catch (err) {
+  } catch (err: any) {
     console.error('Load games error:', err)
     console.error('Error details:', {
-      message: err.message,
-      status: err.status,
-      data: err.data
+      message: err?.message,
+      status: err?.status,
+      data: err?.data
     })
     games.value = []
   } finally {
@@ -698,7 +698,7 @@ const stopGamePolling = () => {
 // Lifecycle
 onMounted(async () => {
   console.log('=== GAMEVIEW MOUNTED ===')
-  console.log('Auth token from localStorage:', localStorage.getItem('token') ? localStorage.getItem('token').substring(0, 10) + '...' : 'null')
+  console.log('Auth token from localStorage:', localStorage.getItem('token') ? localStorage.getItem('token')!.substring(0, 10) + '...' : 'null')
   console.log('Auth token from store:', authStore.token ? authStore.token.substring(0, 10) + '...' : 'null')
   console.log('Auth store user:', authStore.user)
   console.log('Is authenticated:', authStore.isAuthenticated)

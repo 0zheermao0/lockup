@@ -124,7 +124,7 @@
                 @change="handlePhotoUpload"
                 class="hidden"
               >
-              <button @click="$refs.photoInput?.click()" class="action-btn primary">
+              <button @click="triggerPhotoInput" class="action-btn primary">
                 📸 上传照片
               </button>
             </div>
@@ -377,6 +377,7 @@ const viewingPhoto = ref(false)
 const photoUrl = ref('')
 const photoAutoCloseTimer = ref<number | null>(null)
 const photoTimeRemaining = ref(5)
+const photoInput = ref<HTMLInputElement>()
 
 // Drift bottle
 const showDriftBottleModal = ref(false)
@@ -425,6 +426,10 @@ const getStatusText = (status: string): string => {
 
 const formatDate = (dateString: string): string => {
   return new Date(dateString).toLocaleString('zh-CN')
+}
+
+const triggerPhotoInput = () => {
+  photoInput.value?.click()
 }
 
 const handlePhotoUpload = async (event: Event) => {

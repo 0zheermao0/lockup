@@ -376,6 +376,8 @@ const userCoins = computed(() => authStore.user?.coins || 0)
 // Inventory management states
 const showInventoryFullModal = ref(false)
 const pendingTreasureResult = ref<any>(null)
+const digging = ref(false)
+const diggingTreasureId = ref('')
 
 // Methods
 const loadZones = async () => {
@@ -536,7 +538,7 @@ const exploreZone = async (zoneName: string) => {
     explorationResult.value = null
     treasureResult.value = null
 
-    const result = await storeApi.exploreZone(zoneName)
+    const result = await storeApi.exploreZone(zoneName, 0) // Default card position
     explorationResult.value = result
 
   } catch (err) {

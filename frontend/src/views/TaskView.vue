@@ -83,7 +83,7 @@
                     <span v-if="task.task_type === 'board'" class="task-type">
                       悬赏任务
                     </span>
-                    <span v-if="task.difficulty" class="task-difficulty" :class="task.difficulty">
+                    <span v-if="task.task_type === 'lock' && task.difficulty" class="task-difficulty" :class="task.difficulty">
                       {{ getDifficultyText(task.difficulty) }}
                     </span>
                     <span v-if="task.task_type === 'board' && task.reward" class="task-reward">
@@ -115,13 +115,13 @@
                   <span class="label">持续时间:</span>
                   <span class="value">{{ formatDuration(task) }}</span>
                 </div>
-                <div v-if="task.start_time" class="task-time">
+                <div v-if="task.task_type === 'lock' && (task as any).started_at" class="task-time">
                   <span class="label">开始时间:</span>
-                  <span class="value">{{ formatDateTime(task.start_time) }}</span>
+                  <span class="value">{{ formatDateTime((task as any).started_at) }}</span>
                 </div>
-                <div v-if="task.end_time" class="task-time">
+                <div v-if="task.task_type === 'lock' && (task as any).end_time" class="task-time">
                   <span class="label">结束时间:</span>
-                  <span class="value">{{ formatDateTime(task.end_time) }}</span>
+                  <span class="value">{{ formatDateTime((task as any).end_time) }}</span>
                 </div>
               </div>
 
@@ -170,7 +170,8 @@ import { useInfiniteScroll } from '../composables/useInfiniteScroll'
 import { formatDistanceToNow } from '../lib/utils'
 import CreateTaskModal from '../components/CreateTaskModal.vue'
 import NotificationBell from '../components/NotificationBell.vue'
-import type { Task } from '../stores/tasks'
+import type { Task } from '../types/index.js'
+import type { LockTask } from '../types'
 
 const router = useRouter()
 const authStore = useAuthStore()
@@ -263,7 +264,7 @@ const filteredTasks = computed(() => {
       case 'my-published':
         return tasks.filter(task => task.user.id === authStore.user?.id)
       case 'my-taken':
-        return tasks.filter(task => task.taker?.id === authStore.user?.id)
+        return tasks.filter(task => task.task_type === 'board' && task.taker?.id === authStore.user?.id)
       default:
         return tasks
     }
@@ -361,8 +362,9 @@ const formatDuration = (task: Task) => {
     const minutes = task.duration_value % 60
 
     if (task.duration_type === 'random' && 'duration_max' in task && task.duration_max) {
-      const maxHours = Math.floor(task.duration_max / 60)
-      const maxMinutes = task.duration_max % 60
+      const maxDuration = task.duration_max as number
+      const maxHours = Math.floor(maxDuration / 60)
+      const maxMinutes = maxDuration % 60
       return `${hours}小时${minutes}分钟 - ${maxHours}小时${maxMinutes}分钟`
     }
 
@@ -381,7 +383,7 @@ const getProgressPercent = (task: Task) => {
     return 0
   }
 
-  const lockTask = task as LockTask
+  const lockTask = task as any
   if (!lockTask.started_at || !lockTask.end_time) {
     return 0
   }

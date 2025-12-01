@@ -132,6 +132,13 @@ export const tasksApi = {
     })
   },
 
+  // 发起投票
+  startVoting: async (id: string): Promise<LockTask> => {
+    return apiRequest(`/tasks/${id}/start-voting/`, {
+      method: 'POST'
+    })
+  },
+
   // 投票
   voteTask: async (id: string, agree: boolean): Promise<any> => {
     return apiRequest(`/tasks/${id}/vote/`, {
@@ -200,7 +207,7 @@ export const tasksApi = {
   // 获取当前活跃的带锁任务
   getActiveLockTask: async (): Promise<LockTask | null> => {
     try {
-      const response = await apiRequest('/tasks/?task_type=lock&status=active&my_tasks=true')
+      const response = await apiRequest<any>('/tasks/?task_type=lock&status=active&my_tasks=true')
       const tasks = response.results || response
       return tasks.length > 0 ? tasks[0] : null
     } catch (error) {

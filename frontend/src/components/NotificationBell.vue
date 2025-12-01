@@ -218,7 +218,7 @@ const loadNotifications = async () => {
 
     // 检查是否有更多通知
     if (notifications.value.length >= limit.value) {
-      const totalNotifications = await notificationStore.getNotificationStats()
+      const totalNotifications = await notificationStore.fetchNotificationStats()
       hasMoreNotifications.value = totalNotifications.total_notifications > notifications.value.length
     }
   } catch (error) {
@@ -291,7 +291,7 @@ const clearReadNotifications = async () => {
 
 // 点击外部关闭下拉
 const handleClickOutside = (event: MouseEvent) => {
-  if (!event.target || !event.target.closest('.notification-bell')) {
+  if (!event.target || !(event.target as Element).closest('.notification-bell')) {
     showDropdown.value = false
   }
 }

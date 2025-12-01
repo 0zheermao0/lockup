@@ -52,9 +52,9 @@ const shouldShowIndicator = computed(() => {
   // Check both status field (from task API) and is_expired field (from user profile API)
   if (!userLockTask.value) return false
 
-  // If it has a status field, check if it's active
+  // If it has a status field, check if it's active or voting (both count as locked)
   if (userLockTask.value.status) {
-    return userLockTask.value.status === 'active'
+    return userLockTask.value.status === 'active' || userLockTask.value.status === 'voting'
   }
 
   // If no status field, check if it's not expired (from user profile API)
@@ -69,11 +69,12 @@ const shouldShowIndicator = computed(() => {
 const indicatorType = computed(() => {
   if (!userLockTask.value) return 'unlocked'
 
-  // Check if task is active (either by status field or not expired)
-  const isActive = userLockTask.value.status === 'active' ||
-                  (userLockTask.value.hasOwnProperty('is_expired') && !userLockTask.value.is_expired)
+  // Check if task is active or voting (either by status field or not expired)
+  const isLocked = userLockTask.value.status === 'active' ||
+                   userLockTask.value.status === 'voting' ||
+                   (userLockTask.value.hasOwnProperty('is_expired') && !userLockTask.value.is_expired)
 
-  if (isActive) {
+  if (isLocked) {
     // Check if time is running out (less than 30 minutes)
     if (timeRemaining.value > 0 && timeRemaining.value < 30 * 60 * 1000) {
       return 'locked-urgent'
@@ -106,15 +107,20 @@ const lockIcon = computed(() => {
 const tooltipText = computed(() => {
   if (!userLockTask.value) return ''
 
-  // Check if task is active (either by status field or not expired)
-  const isActive = userLockTask.value.status === 'active' ||
-                  (userLockTask.value.hasOwnProperty('is_expired') && !userLockTask.value.is_expired)
+  // Check if task is locked (active, voting, or not expired)
+  const isLocked = userLockTask.value.status === 'active' ||
+                   userLockTask.value.status === 'voting' ||
+                   (userLockTask.value.hasOwnProperty('is_expired') && !userLockTask.value.is_expired)
 
-  if (isActive) {
+  if (isLocked) {
     const timeText = timeRemaining.value > 0
       ? `剩余 ${formatTimeShort(timeRemaining.value)}`
       : '时间已到'
-    return `${userLockTask.value.title} - ${timeText}`
+
+    // Add status indicator for voting tasks
+    const statusText = userLockTask.value.status === 'voting' ? ' (投票中)' : ''
+
+    return `${userLockTask.value.title}${statusText} - ${timeText}`
   }
 
   return ''

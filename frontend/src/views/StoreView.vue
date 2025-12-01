@@ -55,7 +55,7 @@
               </div>
             </div>
             <div class="item-price">
-              <div class="price-tag">{{ item.price }}🪙</div>
+              <div class="price-tag">{{ item.price || 0 }}🪙</div>
               <p v-if="item.stock !== null" class="stock-info">
                 库存: {{ item.stock }}
               </p>
@@ -103,13 +103,13 @@
             <p v-if="userLevel < item.level_requirement" class="warning-text">
               ⚠️ 等级不足 (需要等级{{ item.level_requirement }})
             </p>
-            <p v-else-if="userCoins < item.price * purchaseQuantities[item.id]" class="warning-text">
+            <p v-else-if="userCoins < (item.price || 0) * (purchaseQuantities[item.id] || 1)" class="warning-text">
               ⚠️ 积分不足
             </p>
-            <p v-else-if="inventoryUsed + purchaseQuantities[item.id] > inventoryMax" class="warning-text">
+            <p v-else-if="inventoryUsed + (purchaseQuantities[item.id] || 1) > inventoryMax" class="warning-text">
               ⚠️ 背包空间不足
             </p>
-            <p v-else-if="item.stock !== null && item.stock < purchaseQuantities[item.id]" class="warning-text">
+            <p v-else-if="item.stock !== null && item.stock !== undefined && item.stock < (purchaseQuantities[item.id] || 1)" class="warning-text">
               ⚠️ 库存不足
             </p>
           </div>
@@ -185,14 +185,14 @@ const canPurchase = (item: StoreItem): boolean => {
 
   return (
     userLevel.value >= item.level_requirement &&
-    userCoins.value >= item.price * quantity &&
+    userCoins.value >= (item.price || 0) * quantity &&
     inventoryUsed.value + quantity <= inventoryMax.value &&
-    (item.stock === null || item.stock >= quantity)
+    (item.stock === null || item.stock === undefined || item.stock >= quantity)
   )
 }
 
 const getMaxQuantity = (item: StoreItem): number => {
-  const maxByCoins = Math.floor(userCoins.value / item.price)
+  const maxByCoins = Math.floor(userCoins.value / (item.price || 1))
   const maxByInventory = inventoryMax.value - inventoryUsed.value
   const maxByStock = item.stock || 999
   const maxByDaily = item.daily_limit || 999

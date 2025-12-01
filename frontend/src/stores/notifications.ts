@@ -122,7 +122,7 @@ export const useNotificationStore = defineStore('notifications', () => {
         notifications.value.splice(index, 1)
 
         // Update unread count
-        if (!deletedNotification.is_read && unreadCount.value > 0) {
+        if (deletedNotification && !deletedNotification.is_read && unreadCount.value > 0) {
           unreadCount.value--
         }
       }

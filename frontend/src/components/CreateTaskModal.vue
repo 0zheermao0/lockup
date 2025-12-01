@@ -264,7 +264,7 @@ const handleSubmit = async () => {
 
   // 带锁任务验证
   if (form.task_type === 'lock') {
-    if (form.duration_type === 'random' && (!form.duration_max || form.duration_max <= form.duration_value)) {
+    if (form.duration_type === 'random' && (!form.duration_max || !form.duration_value || form.duration_max <= form.duration_value)) {
       alert('最长时间必须大于最短时间')
       return
     }

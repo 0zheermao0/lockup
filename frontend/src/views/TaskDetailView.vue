@@ -39,9 +39,9 @@
               <div class="task-basic-info">
                 <h2 class="task-title">{{ task.title }}</h2>
                 <div class="task-meta">
-                  <span class="task-type">{{ getTaskTypeText(task.unlock_type) }}</span>
-                  <span class="task-difficulty" :class="task.difficulty">
-                    {{ getDifficultyText(task.difficulty) }}
+                  <span class="task-type">{{ getTaskTypeText(taskUnlockType) }}</span>
+                  <span class="task-difficulty" :class="taskDifficulty">
+                    {{ getDifficultyText(taskDifficulty) }}
                   </span>
                   <span class="task-status" :class="task.status">
                     {{ getStatusText(task.status) }}
@@ -78,30 +78,30 @@
                   {{ timeRemaining > 0 ? formatTimeRemaining(timeRemaining) : '倒计时已结束' }}
                 </span>
               </div>
-              <div v-if="task.task_type === 'lock' && task.start_time" class="detail-item">
+              <div v-if="task.task_type === 'lock' && taskStartTime" class="detail-item">
                 <span class="label">开始时间</span>
-                <span class="value">{{ formatDateTime(task.start_time) }}</span>
+                <span class="value">{{ formatDateTime(taskStartTime) }}</span>
               </div>
-              <div v-if="task.task_type === 'lock' && task.end_time" class="detail-item">
+              <div v-if="task.task_type === 'lock' && taskEndTime" class="detail-item">
                 <span class="label">预计结束时间</span>
-                <span class="value">{{ formatDateTime(task.end_time) }}</span>
+                <span class="value">{{ formatDateTime(taskEndTime) }}</span>
               </div>
               <div class="detail-item">
                 <span class="label">难度等级</span>
-                <span class="value">{{ getDifficultyText(task.difficulty) }}</span>
+                <span class="value">{{ getDifficultyText(taskDifficulty) }}</span>
               </div>
               <div class="detail-item">
                 <span class="label">解锁方式</span>
-                <span class="value">{{ getTaskTypeText(task.unlock_type) }}</span>
+                <span class="value">{{ getTaskTypeText(taskUnlockType) }}</span>
               </div>
-              <div v-if="task.vote_threshold" class="detail-item">
+              <div v-if="taskVoteThreshold" class="detail-item">
                 <span class="label">投票门槛</span>
-                <span class="value">{{ task.vote_threshold }} 票</span>
+                <span class="value">{{ taskVoteThreshold }} 票</span>
               </div>
             </div>
 
             <!-- Task Timeline -->
-            <div v-if="timeline.length > 0 || task.start_time || task.end_time" class="task-timeline">
+            <div v-if="timeline.length > 0 || taskStartTime || taskEndTime" class="task-timeline">
               <div class="timeline-header">
                 <h3>任务时间线</h3>
                 <button
@@ -149,18 +149,18 @@
                 </div>
 
                 <!-- Fallback: Basic timeline if no API events -->
-                <div v-if="timeline.length === 0 && task.start_time" class="timeline-item">
+                <div v-if="timeline.length === 0 && taskStartTime" class="timeline-item">
                   <div class="timeline-dot start"></div>
                   <div class="timeline-content">
                     <div class="timeline-title">任务开始</div>
-                    <div class="timeline-time">{{ formatDateTime(task.start_time) }}</div>
+                    <div class="timeline-time">{{ formatDateTime(taskStartTime) }}</div>
                   </div>
                 </div>
-                <div v-if="timeline.length === 0 && task.end_time" class="timeline-item">
+                <div v-if="timeline.length === 0 && taskEndTime" class="timeline-item">
                   <div class="timeline-dot end"></div>
                   <div class="timeline-content">
                     <div class="timeline-title">任务结束</div>
-                    <div class="timeline-time">{{ formatDateTime(task.end_time) }}</div>
+                    <div class="timeline-time">{{ formatDateTime(taskEndTime) }}</div>
                   </div>
                 </div>
               </div>
@@ -260,7 +260,7 @@
           </section>
 
           <!-- Voting Section for Vote-based Tasks -->
-          <section v-if="task.unlock_type === 'vote' && (task.status === 'active' || task.status === 'voting')" class="voting-section">
+          <section v-if="taskUnlockType === 'vote' && (task.status === 'active' || task.status === 'voting')" class="voting-section">
             <h3>投票解锁</h3>
 
             <!-- Task in active state, waiting for countdown -->
@@ -268,8 +268,11 @@
               <div v-if="timeRemaining > 0" class="vote-countdown-notice">
                 ⏳ 投票将在倒计时结束后开放: {{ formatTimeRemaining(timeRemaining) }}
               </div>
-              <div v-else class="vote-ready-notice">
-                ✅ 倒计时已结束，现在可以投票！点击投票按钮即可开始10分钟投票期
+              <div v-else-if="isOwnTask" class="vote-ready-notice">
+                ✅ 倒计时已结束，你可以发起投票！点击按钮开始10分钟投票期
+              </div>
+              <div v-else class="vote-waiting-notice">
+                ⏳ 倒计时已结束，等待任务创建者发起投票...
               </div>
             </div>
 
@@ -281,8 +284,8 @@
                   投票剩余时间: <strong>{{ formatVotingTimeRemaining() }}</strong>
                 </div>
                 <div class="voting-schedule">
-                  投票开始: {{ formatDateTime(task.voting_start_time) }}<br>
-                  投票结束: {{ formatDateTime(task.voting_end_time) }}
+                  投票开始: {{ formatDateTime(taskVotingStartTime || '') }}<br>
+                  投票结束: {{ formatDateTime(taskVotingEndTime || '') }}
                 </div>
               </div>
             </div>
@@ -291,32 +294,82 @@
             <div class="vote-info">
               <div class="vote-count">
                 当前票数: <strong>{{ currentVotes }}</strong> 票
-                <span v-if="task.vote_agreement_ratio">(需要 {{ (task.vote_agreement_ratio * 100).toFixed(0) }}% 同意率)</span>
+                <span v-if="taskVoteAgreementRatio">(需要 {{ (taskVoteAgreementRatio * 100).toFixed(0) }}% 同意率)</span>
               </div>
               <div v-if="currentVotes > 0" class="vote-breakdown">
-                同意: {{ task.vote_agreement_count || 0 }} 票 |
-                反对: {{ currentVotes - (task.vote_agreement_count || 0) }} 票 |
-                同意率: {{ ((task.vote_agreement_count || 0) / currentVotes * 100).toFixed(1) }}%
+                同意: {{ taskVoteAgreementCount }} 票 |
+                反对: {{ currentVotes - taskVoteAgreementCount }} 票 |
+                同意率: {{ (taskVoteAgreementCount / currentVotes * 100).toFixed(1) }}%
               </div>
             </div>
 
             <!-- Voting buttons -->
-            <div v-if="canVote" class="vote-actions">
+            <div class="vote-actions">
+              <!-- Start voting button (only for task owner when countdown ends) -->
               <button
+                v-if="canStartVoting"
+                @click="startVoting"
+                class="start-vote-btn"
+              >
+                🗳️ 发起投票
+              </button>
+
+              <!-- Vote button (for everyone during voting period) -->
+              <button
+                v-else-if="canVote"
                 @click="openVoteModal"
                 class="vote-btn"
               >
-                🗳️ 投票解锁
+                🗳️ 参与投票
               </button>
             </div>
-            <div v-else-if="hasVoted" class="voted-message">
+
+            <!-- Status messages -->
+            <div v-if="hasVoted" class="voted-message">
               ✅ 你已投票
-            </div>
-            <div v-else-if="isOwnTask" class="vote-disabled-message">
-              ⚠️ 任务发布者无法投票
             </div>
             <div v-else-if="task.status === 'voting' && votingTimeRemaining <= 0" class="voting-ended-message">
               ⏰ 投票期已结束，正在处理投票结果...
+            </div>
+
+            <!-- Voting results after voting period ends -->
+            <div v-if="task.status === 'active' && taskVotingEndTime && taskUnlockType === 'vote'" class="voting-results">
+              <h4>🗳️ 投票结果</h4>
+              <div class="voting-result-summary">
+                <div class="result-item">
+                  <span class="result-label">总票数:</span>
+                  <span class="result-value">{{ currentVotes }} 票</span>
+                </div>
+                <div class="result-item">
+                  <span class="result-label">同意票:</span>
+                  <span class="result-value">{{ taskVoteAgreementCount }} 票</span>
+                </div>
+                <div class="result-item">
+                  <span class="result-label">反对票:</span>
+                  <span class="result-value">{{ currentVotes - taskVoteAgreementCount }} 票</span>
+                </div>
+                <div class="result-item">
+                  <span class="result-label">同意率:</span>
+                  <span class="result-value">{{ currentVotes > 0 ? (taskVoteAgreementCount / currentVotes * 100).toFixed(1) : 0 }}%</span>
+                </div>
+              </div>
+
+              <div class="voting-conclusion">
+                <div v-if="isVotingPassed" class="voting-passed">
+                  ✅ 投票通过！满足解锁条件，可以完成任务。
+                </div>
+                <div v-else class="voting-failed">
+                  ❌ 投票未通过。
+                  <div class="failure-reasons">
+                    <div v-if="currentVotes < taskVoteThresholdValue">
+                      • 票数不足（需要 {{ taskVoteThresholdValue }} 票，当前 {{ currentVotes }} 票）
+                    </div>
+                    <div v-if="taskVoteAgreementRatio && currentVotes > 0 && (taskVoteAgreementCount / currentVotes) < taskVoteAgreementRatio">
+                      • 同意率不足（需要 {{ (taskVoteAgreementRatio * 100).toFixed(0) }}%，当前 {{ (taskVoteAgreementCount / currentVotes * 100).toFixed(1) }}%）
+                    </div>
+                  </div>
+                </div>
+              </div>
             </div>
           </section>
         </div>
@@ -326,7 +379,7 @@
     <!-- Task Submission Modal -->
     <TaskSubmissionModal
       :is-visible="showSubmissionModal"
-      :task="task"
+      :task="task as any"
       @close="closeSubmissionModal"
       @success="handleSubmissionSuccess"
     />
@@ -341,7 +394,7 @@
     <!-- Vote Confirmation Modal -->
     <VoteConfirmationModal
       :is-visible="showVoteModal"
-      :task="task"
+      :task="task as any"
       @close="closeVoteModal"
       @vote="submitVote"
     />
@@ -352,18 +405,20 @@
 import { ref, onMounted, computed, onUnmounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '../stores/auth'
-import { tasksApi } from '../lib/api'
+import { useTasksStore } from '../stores/tasks'
+import { tasksApi } from '../lib/api-tasks'
 import TaskSubmissionModal from '../components/TaskSubmissionModal.vue'
 import ProfileModal from '../components/ProfileModal.vue'
 import VoteConfirmationModal from '../components/VoteConfirmationModal.vue'
-import type { LockTask } from '../types/index.js'
+import type { Task } from '../types/index.js'
 
 const route = useRoute()
 const router = useRouter()
 const authStore = useAuthStore()
+const tasksStore = useTasksStore()
 
 // State
-const task = ref<LockTask | null>(null)
+const task = ref<Task | null>(null)
 const loading = ref(true)
 const error = ref('')
 const currentVotes = ref(0)
@@ -374,10 +429,83 @@ const timeline = ref<any[]>([])
 const timelineLoading = ref(false)
 const showSubmissionModal = ref(false)
 const showProfileModal = ref(false)
-const selectedUserId = ref<number | null>(null)
+const selectedUserId = ref<number | undefined>(undefined)
 const showVoteModal = ref(false)
 
-// Computed properties
+// Computed properties for template access
+const taskUnlockType = computed(() => {
+  if (!task.value) return 'time'
+  return task.value.task_type === 'lock' ? (task.value as any).unlock_type || 'time' : 'time'
+})
+
+const taskDifficulty = computed(() => {
+  if (!task.value) return 'normal'
+  return task.value.task_type === 'lock' ? (task.value as any).difficulty || 'normal' : 'normal'
+})
+
+const taskVoteThreshold = computed(() => {
+  if (!task.value || task.value.task_type !== 'lock') return 0
+  return (task.value as any).vote_threshold || 0
+})
+
+const taskStartTime = computed(() => {
+  if (!task.value) return null
+  return task.value.task_type === 'lock' ? (task.value as any).start_time : null
+})
+
+const taskVotingStartTime = computed(() => {
+  if (!task.value || task.value.task_type !== 'lock') return null
+  return (task.value as any).voting_start_time || null
+})
+
+const taskVotingEndTime = computed(() => {
+  if (!task.value || task.value.task_type !== 'lock') return null
+  return (task.value as any).voting_end_time || null
+})
+
+const taskVoteAgreementRatio = computed(() => {
+  if (!task.value || task.value.task_type !== 'lock') return null
+  return (task.value as any).vote_agreement_ratio || null
+})
+
+const taskVoteAgreementCount = computed(() => {
+  if (!task.value || task.value.task_type !== 'lock') return 0
+  return (task.value as any).vote_agreement_count || 0
+})
+
+const taskVoteThresholdValue = computed(() => {
+  if (!task.value || task.value.task_type !== 'lock') return 0
+  return (task.value as any).vote_threshold || 0
+})
+
+const isVotingPassed = computed(() => {
+  if (!task.value || task.value.task_type !== 'lock' || taskUnlockType.value !== 'vote') {
+    return false
+  }
+
+  // Check if we have the required number of votes
+  if (currentVotes.value < taskVoteThresholdValue.value) {
+    return false
+  }
+
+  // Check if the agreement ratio meets the requirement
+  if (taskVoteAgreementRatio.value && currentVotes.value > 0) {
+    const currentAgreementRatio = taskVoteAgreementCount.value / currentVotes.value
+    return currentAgreementRatio >= taskVoteAgreementRatio.value
+  }
+
+  // Default: if no agreement ratio specified, just check vote count
+  return true
+})
+
+const taskEndTime = computed(() => {
+  if (!task.value) return null
+  if (task.value.task_type === 'lock') {
+    return (task.value as any).end_time || null
+  }
+  return null
+})
+
 const canDeleteTask = computed(() => {
   if (!task.value) return false
   return authStore.user?.id === task.value.user.id || authStore.user?.is_superuser
@@ -404,9 +532,11 @@ const canClaimTask = computed(() => {
 const canSubmitProof = computed(() => {
   if (!task.value) return false
   // Can submit proof if it's a board task taken by current user
-  return task.value.task_type === 'board' &&
-         task.value.status === 'taken' &&
-         task.value.taker?.id === authStore.user?.id
+  if (task.value.task_type === 'board' && task.value.status === 'taken') {
+    const boardTask = task.value as any // Type assertion for board task properties
+    return boardTask.taker?.id === authStore.user?.id
+  }
+  return false
 })
 
 const canReviewTask = computed(() => {
@@ -429,24 +559,33 @@ const canCompleteTask = computed(() => {
   if (!task.value) return false
 
   // For lock tasks with vote unlock type
-  if (task.value.task_type === 'lock' && task.value.unlock_type === 'vote') {
+  if (task.value.task_type === 'lock' && taskUnlockType.value === 'vote') {
     // Cannot complete during voting period
     if (task.value.status === 'voting') {
       return false
     }
 
     // Can only complete after countdown ends AND voting has passed
-    if (task.value.end_time) {
+    if (taskEndTime.value) {
       const now = currentTime.value
-      const endTime = new Date(task.value.end_time).getTime()
-      return now >= endTime && task.value.status === 'active'
+      const endTime = new Date(taskEndTime.value).getTime()
+
+      // Check if countdown has ended
+      if (now >= endTime && task.value.status === 'active') {
+        // If there was a voting period, check if voting passed
+        if (taskVotingEndTime.value) {
+          return isVotingPassed.value
+        }
+        // If no voting period yet, can complete (will trigger voting)
+        return true
+      }
     }
   }
 
   // For lock tasks with time unlock type, can only complete after countdown ends
-  if (task.value.task_type === 'lock' && task.value.end_time) {
+  if (task.value.task_type === 'lock' && taskEndTime.value) {
     const now = currentTime.value
-    const endTime = new Date(task.value.end_time).getTime()
+    const endTime = new Date(taskEndTime.value).getTime()
     return now >= endTime
   }
 
@@ -470,15 +609,18 @@ const progressPercent = computed(() => {
   }
 
   // Board tasks progress
-  if (task.value.task_type === 'board' && task.value.status === 'taken' && task.value.taken_at && task.value.deadline) {
-    const start = new Date(task.value.taken_at).getTime()
-    const end = new Date(task.value.deadline).getTime()
-    const now = currentTime.value
+  if (task.value.task_type === 'board' && task.value.status === 'taken') {
+    const boardTask = task.value as any // Type assertion for board task properties
+    if (boardTask.taken_at && boardTask.deadline) {
+      const start = new Date(boardTask.taken_at).getTime()
+      const end = new Date(boardTask.deadline).getTime()
+      const now = currentTime.value
 
-    if (now <= start) return 0
-    if (now >= end) return 100
+      if (now <= start) return 0
+      if (now >= end) return 100
 
-    return ((now - start) / (end - start)) * 100
+      return ((now - start) / (end - start)) * 100
+    }
   }
 
   return 0
@@ -495,35 +637,54 @@ const timeRemaining = computed(() => {
   }
 
   // Board tasks time remaining
-  if (task.value.task_type === 'board' && task.value.status === 'taken' && task.value.deadline) {
-    const end = new Date(task.value.deadline).getTime()
-    const now = currentTime.value
-    return Math.max(0, end - now)
+  if (task.value.task_type === 'board' && task.value.status === 'taken') {
+    const boardTask = task.value as any // Type assertion for board task properties
+    if (boardTask.deadline) {
+      const end = new Date(boardTask.deadline).getTime()
+      const now = currentTime.value
+      return Math.max(0, end - now)
+    }
   }
 
   return 0
 })
 
 const votingTimeRemaining = computed(() => {
-  if (!task.value || task.value.status !== 'voting' || !task.value.voting_end_time) {
+  if (!task.value || task.value.status !== 'voting' || !taskVotingEndTime.value) {
     return 0
   }
 
-  const end = new Date(task.value.voting_end_time).getTime()
+  const end = new Date(taskVotingEndTime.value).getTime()
   const now = currentTime.value
   return Math.max(0, end - now)
 })
 
 const canVote = computed(() => {
-  if (!task.value || hasVoted.value || isOwnTask.value) {
+  if (!task.value || hasVoted.value) {
     return false
   }
 
-  // Can vote if task is active and countdown has ended, or if task is in voting period
-  if (task.value.status === 'active') {
-    return timeRemaining.value <= 0
-  } else if (task.value.status === 'voting') {
+  // Can vote if task is in voting period
+  if (task.value.status === 'voting') {
     return votingTimeRemaining.value > 0
+  }
+
+  return false
+})
+
+const canStartVoting = computed(() => {
+  if (!task.value || taskUnlockType.value !== 'vote') {
+    return false
+  }
+
+  // Only task owner can start voting
+  if (!isOwnTask.value) {
+    return false
+  }
+
+  // Can start voting if task is active and countdown has ended, but voting hasn't started yet
+  if (task.value.status === 'active' && timeRemaining.value <= 0) {
+    return !taskVotingEndTime.value // No voting period has started yet
   }
 
   return false
@@ -568,14 +729,15 @@ const fetchTask = async () => {
     task.value = fetchedTask
 
     // 模拟投票数据
-    currentVotes.value = fetchedTask.vote_count || 1
+    currentVotes.value = (fetchedTask as any).vote_count || 1
 
     // 检查是否已投票（简单模拟）
     hasVoted.value = false
 
     // 如果是活跃任务或已接取的任务板，启动进度更新
-    if ((task.value.task_type === 'lock' && task.value.status === 'active') ||
-        (task.value.task_type === 'board' && task.value.status === 'taken')) {
+    const taskValue = task.value as any
+    if ((taskValue.task_type === 'lock' && taskValue.status === 'active') ||
+        (taskValue.task_type === 'board' && taskValue.status === 'taken')) {
       startProgressUpdate()
     }
 
@@ -584,7 +746,7 @@ const fetchTask = async () => {
 
   } catch (err: any) {
     // 使用模拟数据作为备用
-    const mockTask: LockTask = {
+    const mockTask: Task = {
       id: taskId,
       user: {
         id: 1,
@@ -599,11 +761,13 @@ const fetchTask = async () => {
         total_posts: 8,
         total_likes_received: 25,
         total_tasks_completed: 5,
+        total_lock_duration: 0,
         created_at: '2023-12-01',
         updated_at: '2024-01-01'
       },
       title: '专注学习挑战',
       description: '在学习期间保持专注，不使用社交媒体和娱乐应用。这是一个测试意志力和自律能力的挑战任务。完成后将获得成就感和积分奖励。',
+      task_type: 'lock' as const,
       duration_type: 'fixed' as const,
       duration_value: 240, // 4小时
       difficulty: 'normal' as const,
@@ -620,8 +784,9 @@ const fetchTask = async () => {
     currentVotes.value = 1 // 模拟当前投票数
 
     // 如果是活跃任务或已接取的任务板，启动进度更新
-    if ((task.value.task_type === 'lock' && task.value.status === 'active') ||
-        (task.value.task_type === 'board' && task.value.status === 'taken')) {
+    const taskValue = task.value as any
+    if ((taskValue.task_type === 'lock' && taskValue.status === 'active') ||
+        (taskValue.task_type === 'board' && taskValue.status === 'taken')) {
       startProgressUpdate()
     }
 
@@ -649,17 +814,17 @@ const startProgressUpdate = () => {
     }
 
     // Check if voting period has ended and needs processing
-    if (task.value?.status === 'voting' && task.value?.voting_end_time) {
+    if (task.value?.status === 'voting' && taskVotingEndTime.value) {
       const now = Date.now()
-      const votingEndTime = new Date(task.value.voting_end_time).getTime()
+      const votingEndTime = new Date(taskVotingEndTime.value).getTime()
 
       if (now >= votingEndTime) {
         try {
           // Process voting results
-          await tasksApi.processVotingResults()
+          await tasksStore.processVotingResults()
 
           // Refresh task data to get updated status
-          await loadTask()
+          await fetchTask()
 
           console.log('Voting period ended, task status updated')
         } catch (error) {
@@ -776,6 +941,27 @@ const stopTask = async () => {
   }
 }
 
+const startVoting = async () => {
+  if (!task.value || !canStartVoting.value) return
+
+  if (!confirm('确定要发起投票吗？投票期将持续10分钟。')) {
+    return
+  }
+
+  try {
+    // Call API to start voting period
+    const updatedTask = await tasksApi.startVoting(task.value.id)
+    task.value = updatedTask
+    console.log('投票期已开始')
+
+    // Refresh task data to get updated voting information
+    await fetchTask()
+  } catch (error) {
+    console.error('Error starting voting:', error)
+    alert('发起投票失败，请重试')
+  }
+}
+
 const submitVote = async (agree: boolean) => {
   if (!task.value || hasVoted.value) return
 
@@ -794,7 +980,7 @@ const submitVote = async (agree: boolean) => {
     await fetchTask()
 
     // 检查是否达到解锁门槛
-    if (agree && currentVotes.value >= (task.value.vote_threshold || 0)) {
+    if (agree && currentVotes.value >= taskVoteThresholdValue.value) {
       console.log('投票门槛已达到，任务可以解锁')
     }
   } catch (error) {
@@ -837,7 +1023,7 @@ const openUserProfile = (userId: number) => {
 
 const closeProfileModal = () => {
   showProfileModal.value = false
-  selectedUserId.value = null
+  selectedUserId.value = undefined
 }
 
 const openVoteModal = () => {
@@ -902,8 +1088,8 @@ const addOvertime = async () => {
     const result = await tasksApi.addOvertime(task.value.id)
 
     // 更新任务结束时间
-    if (result.new_end_time) {
-      task.value.end_time = result.new_end_time
+    if (result.new_end_time && task.value && task.value.task_type === 'lock') {
+      (task.value as any).end_time = result.new_end_time
     }
 
     // 刷新用户数据以更新lock status
@@ -950,13 +1136,15 @@ const getStatusText = (status: string) => {
   return texts[status as keyof typeof texts] || status
 }
 
-const formatDuration = (task: LockTask) => {
-  const hours = Math.floor(task.duration_value / 60)
-  const minutes = task.duration_value % 60
+const formatDuration = (task: Task) => {
+  if (task.task_type !== 'lock') return ''
+  const lockTask = task as any
+  const hours = Math.floor(lockTask.duration_value / 60)
+  const minutes = lockTask.duration_value % 60
 
-  if (task.duration_type === 'random' && task.duration_max) {
-    const maxHours = Math.floor(task.duration_max / 60)
-    const maxMinutes = task.duration_max % 60
+  if (lockTask.duration_type === 'random' && lockTask.duration_max) {
+    const maxHours = Math.floor(lockTask.duration_max / 60)
+    const maxMinutes = lockTask.duration_max % 60
     return `${hours}小时${minutes}分钟 - ${maxHours}小时${maxMinutes}分钟`
   }
 
@@ -1017,7 +1205,7 @@ watch(() => task.value?.status, async (newStatus, oldStatus) => {
 })
 
 // Watch for end_time changes (from time wheel)
-watch(() => task.value?.end_time, async (newEndTime, oldEndTime) => {
+watch(() => taskEndTime.value, async (newEndTime, oldEndTime) => {
   if (newEndTime && oldEndTime && newEndTime !== oldEndTime) {
     console.log('Task end time changed, refreshing timeline...')
     await fetchTimeline()
@@ -1686,9 +1874,121 @@ onUnmounted(() => {
   50% { opacity: 0.8; transform: scale(1.02); }
 }
 
+.vote-waiting-notice {
+  padding: 1rem;
+  background: linear-gradient(135deg, #fff3cd, #ffeaa7);
+  border: 2px solid #ffc107;
+  border-radius: 8px;
+  color: #856404;
+  font-weight: 500;
+  text-align: center;
+  margin-bottom: 1rem;
+}
+
+.start-vote-btn {
+  background: linear-gradient(135deg, #28a745, #20c997);
+  color: white;
+  border: 2px solid #000;
+  border-radius: 8px;
+  padding: 0.75rem 1.5rem;
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 1rem;
+  box-shadow: 4px 4px 0 #000;
+  transition: all 0.2s ease;
+  animation: pulse-ready 2s infinite;
+}
+
+.start-vote-btn:hover {
+  transform: translate(-2px, -2px);
+  box-shadow: 6px 6px 0 #000;
+}
+
 @keyframes pulse-warning {
   0%, 100% { opacity: 1; }
   50% { opacity: 0.7; }
+}
+
+/* Voting Results */
+.voting-results {
+  margin-top: 1.5rem;
+  padding: 1.5rem;
+  background: linear-gradient(135deg, #f8f9fa, #e9ecef);
+  border: 2px solid #6c757d;
+  border-radius: 8px;
+}
+
+.voting-results h4 {
+  margin: 0 0 1rem 0;
+  font-size: 1.2rem;
+  font-weight: bold;
+  text-align: center;
+  color: #333;
+}
+
+.voting-result-summary {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+  padding: 1rem;
+  background: white;
+  border: 1px solid #dee2e6;
+  border-radius: 6px;
+}
+
+.result-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.5rem;
+  background: #f8f9fa;
+  border-radius: 4px;
+}
+
+.result-label {
+  font-weight: 500;
+  color: #666;
+  font-size: 0.875rem;
+}
+
+.result-value {
+  font-weight: bold;
+  color: #333;
+  font-size: 0.875rem;
+}
+
+.voting-conclusion {
+  padding: 1rem;
+  border-radius: 6px;
+  text-align: center;
+  font-weight: 500;
+}
+
+.voting-passed {
+  background: linear-gradient(135deg, #d4edda, #c3e6cb);
+  border: 2px solid #28a745;
+  color: #155724;
+  animation: pulse-success 2s infinite;
+}
+
+.voting-failed {
+  background: linear-gradient(135deg, #f8d7da, #f5c6cb);
+  border: 2px solid #dc3545;
+  color: #721c24;
+}
+
+.failure-reasons {
+  margin-top: 0.75rem;
+  font-size: 0.875rem;
+  text-align: left;
+  padding: 0.5rem;
+  background: rgba(255, 255, 255, 0.5);
+  border-radius: 4px;
+}
+
+.failure-reasons div {
+  margin: 0.25rem 0;
 }
 
 /* Mobile responsive */

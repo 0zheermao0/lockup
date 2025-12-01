@@ -1,52 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
-import { tasksApi } from '../lib/api'
-import type { PaginatedResponse } from '../types/index.js'
-
-// Task type interfaces
-export interface LockTask {
-  id: string
-  title: string
-  description?: string
-  task_type: 'lock'
-  difficulty: 'easy' | 'normal' | 'hard' | 'hell'
-  duration_type: 'fixed' | 'random'
-  duration_value: number
-  unlock_type: 'time' | 'vote' | 'hybrid'
-  status: 'pending' | 'active' | 'completed' | 'failed'
-  user: any
-  created_at: string
-  started_at?: string
-  end_time?: string
-  completed_at?: string
-  overtime_minutes?: number
-  key_holder?: any
-  votes_for?: number
-  votes_against?: number
-  total_votes?: number
-  is_ready_for_completion?: boolean
-  timeline_events?: any[]
-}
-
-export interface BoardTask {
-  id: string
-  title: string
-  description?: string
-  task_type: 'board'
-  reward: number
-  max_duration: number
-  status: 'open' | 'taken' | 'submitted' | 'completed'
-  user: any
-  taker?: any
-  created_at: string
-  taken_at?: string
-  submitted_at?: string
-  completed_at?: string
-  completion_proof?: string
-  reject_reason?: string
-}
-
-export type Task = LockTask | BoardTask
+import { tasksApi } from '../lib/api-tasks'
+import type { PaginatedResponse, LockTask, BoardTask, Task } from '../types/index.js'
 
 export const useTasksStore = defineStore('tasks', () => {
   // State
@@ -76,22 +31,26 @@ export const useTasksStore = defineStore('tasks', () => {
     error.value = null
 
     try {
-      const response = await tasksApi.getTasks({
-        ...params,
-        page: params?.page || 1
-      })
+      // Filter out page and page_size since the API doesn't support them yet
+      const { page, page_size, ...apiParams } = params || {}
 
-      if (params?.page === 1 || !params?.page) {
+      const response = await tasksApi.getTasks({
+        task_type: apiParams.task_type as 'lock' | 'board' | undefined,
+        status: apiParams.status,
+        my_tasks: apiParams.my_tasks
+      }) as any
+
+      if (page === 1 || !page) {
         // First page or reset - replace all tasks
-        tasks.value = response.results || []
+        tasks.value = (response.results || response || []) as Task[]
         currentPage.value = 1
       } else {
         // Subsequent pages - append to existing tasks
-        tasks.value.push(...(response.results || []))
-        currentPage.value = params.page
+        tasks.value.push(...((response.results || response || []) as Task[]))
+        currentPage.value = page
       }
 
-      totalCount.value = response.count || 0
+      totalCount.value = response.count || (response.results?.length || response?.length || 0)
       hasMore.value = !!response.next
     } catch (err: any) {
       error.value = '加载任务失败'
@@ -104,11 +63,11 @@ export const useTasksStore = defineStore('tasks', () => {
   // Get paginated tasks for infinite scroll
   const getPaginatedTasks = async (page: number, pageSize: number = 10): Promise<PaginatedResponse<Task>> => {
     const response = await tasksApi.getTasks({
-      ...filters.value,
-      page,
-      page_size: pageSize
-    })
-    return response
+      task_type: filters.value.task_type as 'lock' | 'board' | undefined,
+      status: filters.value.status,
+      my_tasks: filters.value.my_tasks
+    }) as any
+    return response as PaginatedResponse<Task>
   }
 
   // Task actions
@@ -119,10 +78,10 @@ export const useTasksStore = defineStore('tasks', () => {
       // Update local state
       const taskIndex = tasks.value.findIndex(task => task.id === taskId)
       if (taskIndex !== -1) {
-        tasks.value[taskIndex] = { ...tasks.value[taskIndex], ...result }
+        tasks.value[taskIndex] = { ...tasks.value[taskIndex], ...result } as Task
       }
 
-      return result
+      return result as Task
     } catch (err) {
       console.error('Error starting task:', err)
       throw err
@@ -136,10 +95,10 @@ export const useTasksStore = defineStore('tasks', () => {
       // Update local state
       const taskIndex = tasks.value.findIndex(task => task.id === taskId)
       if (taskIndex !== -1) {
-        tasks.value[taskIndex] = { ...tasks.value[taskIndex], ...result }
+        tasks.value[taskIndex] = { ...tasks.value[taskIndex], ...result } as Task
       }
 
-      return result
+      return result as Task
     } catch (err) {
       console.error('Error completing task:', err)
       throw err
@@ -153,10 +112,10 @@ export const useTasksStore = defineStore('tasks', () => {
       // Update local state
       const taskIndex = tasks.value.findIndex(task => task.id === taskId)
       if (taskIndex !== -1) {
-        tasks.value[taskIndex] = { ...tasks.value[taskIndex], ...result }
+        tasks.value[taskIndex] = { ...tasks.value[taskIndex], ...result } as Task
       }
 
-      return result
+      return result as Task
     } catch (err) {
       console.error('Error stopping task:', err)
       throw err
@@ -170,10 +129,10 @@ export const useTasksStore = defineStore('tasks', () => {
       // Update local state
       const taskIndex = tasks.value.findIndex(task => task.id === taskId)
       if (taskIndex !== -1) {
-        tasks.value[taskIndex] = { ...tasks.value[taskIndex], ...result }
+        tasks.value[taskIndex] = { ...tasks.value[taskIndex], ...result } as Task
       }
 
-      return result
+      return result as Task
     } catch (err) {
       console.error('Error taking task:', err)
       throw err
@@ -187,10 +146,10 @@ export const useTasksStore = defineStore('tasks', () => {
       // Update local state
       const taskIndex = tasks.value.findIndex(task => task.id === taskId)
       if (taskIndex !== -1) {
-        tasks.value[taskIndex] = { ...tasks.value[taskIndex], ...result }
+        tasks.value[taskIndex] = { ...tasks.value[taskIndex], ...result } as Task
       }
 
-      return result
+      return result as Task
     } catch (err) {
       console.error('Error submitting task:', err)
       throw err
@@ -204,10 +163,10 @@ export const useTasksStore = defineStore('tasks', () => {
       // Update local state
       const taskIndex = tasks.value.findIndex(task => task.id === taskId)
       if (taskIndex !== -1) {
-        tasks.value[taskIndex] = { ...tasks.value[taskIndex], ...result }
+        tasks.value[taskIndex] = { ...tasks.value[taskIndex], ...result } as Task
       }
 
-      return result
+      return result as Task
     } catch (err) {
       console.error('Error approving task:', err)
       throw err
@@ -221,10 +180,10 @@ export const useTasksStore = defineStore('tasks', () => {
       // Update local state
       const taskIndex = tasks.value.findIndex(task => task.id === taskId)
       if (taskIndex !== -1) {
-        tasks.value[taskIndex] = { ...tasks.value[taskIndex], ...result }
+        tasks.value[taskIndex] = { ...tasks.value[taskIndex], ...result } as Task
       }
 
-      return result
+      return result as Task
     } catch (err) {
       console.error('Error rejecting task:', err)
       throw err
@@ -235,10 +194,10 @@ export const useTasksStore = defineStore('tasks', () => {
     try {
       const result = await tasksApi.voteTask(taskId, agree)
 
-      // Update local state
+      // Update local state - voteTask returns different format, handle carefully
       const taskIndex = tasks.value.findIndex(task => task.id === taskId)
-      if (taskIndex !== -1) {
-        tasks.value[taskIndex] = { ...tasks.value[taskIndex], ...result }
+      if (taskIndex !== -1 && result && typeof result === 'object') {
+        tasks.value[taskIndex] = { ...tasks.value[taskIndex], ...result } as Task
       }
 
       return result
@@ -265,7 +224,7 @@ export const useTasksStore = defineStore('tasks', () => {
   }
 
   // Utility functions
-  const getActiveLockTask = async () => {
+  const getActiveLockTask = async (): Promise<LockTask | null> => {
     try {
       return await tasksApi.getActiveLockTask()
     } catch (err) {
@@ -340,6 +299,14 @@ export const useTasksStore = defineStore('tasks', () => {
     deleteTask,
     getActiveLockTask,
     checkAndCompleteExpiredTasks,
+    processVotingResults: async () => {
+      try {
+        return await tasksApi.processVotingResults()
+      } catch (err) {
+        console.error('Error processing voting results:', err)
+        throw err
+      }
+    },
     getTaskTimeline,
 
     // Utilities
