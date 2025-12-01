@@ -214,8 +214,8 @@ const currentTasks = computed(() => {
 // Filter tabs based on task type
 const lockFilterTabs = computed(() => [
   { key: 'all', label: '全部', count: lockTasks.value.length },
-  { key: 'pending', label: '待开始', count: lockTasks.value.filter(t => t.status === 'pending').length },
   { key: 'active', label: '进行中', count: lockTasks.value.filter(t => t.status === 'active').length },
+  { key: 'voting', label: '投票中', count: lockTasks.value.filter(t => t.status === 'voting').length },
   { key: 'completed', label: '已完成', count: lockTasks.value.filter(t => t.status === 'completed').length },
   { key: 'my-tasks', label: '我的任务', count: lockTasks.value.filter(t => t.user.id === authStore.user?.id).length }
 ])
@@ -240,10 +240,10 @@ const filteredTasks = computed(() => {
 
   if (activeTaskType.value === 'lock') {
     switch (activeFilter.value) {
-      case 'pending':
-        return tasks.filter(task => task.status === 'pending')
       case 'active':
         return tasks.filter(task => task.status === 'active')
+      case 'voting':
+        return tasks.filter(task => task.status === 'voting')
       case 'completed':
         return tasks.filter(task => task.status === 'completed')
       case 'my-tasks':
@@ -339,6 +339,7 @@ const getStatusText = (status: string) => {
   const texts = {
     pending: '待开始',
     active: '进行中',
+    voting: '投票中',
     completed: '已完成',
     failed: '已失败',
     open: '开放中',
@@ -688,14 +689,15 @@ onMounted(() => {
   color: white;
 }
 
-.task-status.pending {
-  background-color: #6c757d;
-  color: white;
-}
-
 .task-status.active {
   background-color: #007bff;
   color: white;
+}
+
+.task-status.voting {
+  background-color: #ffc107;
+  color: #212529;
+  animation: pulse 2s infinite;
 }
 
 .task-status.completed {
