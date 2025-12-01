@@ -287,20 +287,43 @@ def complete_task(request, pk):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-        # 条件2: 如果是投票解锁类型，必须有投票且达到同意比例
+        # 条件2: 如果是投票解锁类型，必须满足所有投票要求
         if task.unlock_type == 'vote':
             total_votes = task.votes.count()
             agree_votes = task.votes.filter(agree=True).count()
+            required_threshold = task.vote_threshold or 0
+            required_ratio = task.vote_agreement_ratio or 0.5
 
-            if total_votes == 0:
+            # 检查是否经历了完整的投票流程
+            if not task.voting_start_time or not task.voting_end_time:
                 return Response(
                     {'error': '投票解锁任务需要经历完整的投票流程才能完成'},
                     status=status.HTTP_400_BAD_REQUEST
                 )
 
-            if agree_votes / total_votes < (task.vote_agreement_ratio or 0.5):
+            # 检查投票期是否已结束
+            if timezone.now() < task.voting_end_time:
                 return Response(
-                    {'error': f'投票同意比例不足：当前{agree_votes}/{total_votes}({agree_votes/total_votes*100:.1f}%)，需要{(task.vote_agreement_ratio or 0.5)*100:.0f}%以上同意'},
+                    {'error': '投票期尚未结束，无法完成任务'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+            # 检查投票数量是否达到门槛
+            if total_votes < required_threshold:
+                return Response(
+                    {'error': f'投票数量不足：当前{total_votes}票，需要至少{required_threshold}票'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+            # 检查同意比例是否达到要求
+            if total_votes == 0:
+                agreement_ratio = 0
+            else:
+                agreement_ratio = agree_votes / total_votes
+
+            if agreement_ratio < required_ratio:
+                return Response(
+                    {'error': f'投票同意比例不足：当前{agree_votes}/{total_votes}({agreement_ratio*100:.1f}%)，需要{required_ratio*100:.0f}%以上同意'},
                     status=status.HTTP_400_BAD_REQUEST
                 )
 
@@ -936,22 +959,21 @@ def process_voting_results(request):
         total_votes = task.votes.count()
         agree_votes = task.votes.filter(agree=True).count()
 
-        if total_votes > 0:
-            agreement_ratio = agree_votes / total_votes
-            required_ratio = task.vote_agreement_ratio or 0.5
-            required_threshold = task.vote_threshold or 0
+        # 统一的投票验证逻辑，与complete_task保持一致
+        required_threshold = task.vote_threshold or 0
+        required_ratio = task.vote_agreement_ratio or 0.5
 
-            # 投票通过需要满足两个条件：
-            # 1. 投票数量达到阈值
-            # 2. 同意比例达到要求
-            vote_passed = (total_votes >= required_threshold and
-                          agreement_ratio >= required_ratio)
-        else:
-            # 没有投票，视为投票失败
+        # 计算同意比例
+        if total_votes == 0:
             agreement_ratio = 0
-            required_ratio = task.vote_agreement_ratio or 0.5
-            required_threshold = task.vote_threshold or 0
-            vote_passed = False
+        else:
+            agreement_ratio = agree_votes / total_votes
+
+        # 投票通过需要满足两个条件：
+        # 1. 投票数量达到阈值
+        # 2. 同意比例达到要求
+        vote_passed = (total_votes >= required_threshold and
+                      agreement_ratio >= required_ratio)
 
         if vote_passed:
             # 投票通过 - 任务回到active状态，可以手动完成
@@ -963,13 +985,14 @@ def process_voting_results(request):
                 task=task,
                 event_type='vote_passed',
                 user=None,  # 系统事件
-                description=f'投票通过：{agree_votes}/{total_votes}票同意（{agreement_ratio*100:.1f}%），达到要求（需要{required_threshold}票，{required_ratio*100:.0f}%同意），任务可以完成',
+                description=f'投票通过：{agree_votes}/{total_votes}票同意（{agreement_ratio*100:.1f}%），满足要求（需要≥{required_threshold}票且≥{required_ratio*100:.0f}%同意），任务可以完成',
                 metadata={
                     'total_votes': total_votes,
                     'agree_votes': agree_votes,
                     'agreement_ratio': agreement_ratio,
                     'required_ratio': required_ratio,
                     'required_threshold': required_threshold,
+                    'vote_passed': True,
                     'can_complete': True
                 }
             )
@@ -1019,12 +1042,14 @@ def process_voting_results(request):
                 user=None,  # 系统事件
                 time_change_minutes=penalty_minutes,
                 new_end_time=task.end_time,
-                description=f'投票失败：{agree_votes}/{total_votes}票同意（{agreement_ratio*100:.1f}%），按{task.difficulty}难度加时{penalty_minutes}分钟',
+                description=f'投票失败：{agree_votes}/{total_votes}票同意（{agreement_ratio*100:.1f}%），未满足要求（需要≥{required_threshold}票且≥{required_ratio*100:.0f}%同意），按{task.difficulty}难度加时{penalty_minutes}分钟',
                 metadata={
                     'total_votes': total_votes,
                     'agree_votes': agree_votes,
                     'agreement_ratio': agreement_ratio,
                     'required_ratio': required_ratio,
+                    'required_threshold': required_threshold,
+                    'vote_passed': False,
                     'penalty_minutes': penalty_minutes,
                     'difficulty': task.difficulty
                 }

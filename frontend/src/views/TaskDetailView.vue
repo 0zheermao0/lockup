@@ -477,31 +477,43 @@ const taskVoteThresholdValue = computed(() => {
 
 const isVotingPassed = computed(() => {
   if (!task.value || task.value.task_type !== 'lock' || taskUnlockType.value !== 'vote') {
+    console.log('🗳️ isVotingPassed: false - not a vote unlock task')
     return false
   }
 
-  // Check if we have the required number of votes
-  if (currentVotes.value < taskVoteThresholdValue.value) {
-    console.log('isVotingPassed: false - not enough votes:', currentVotes.value, '<', taskVoteThresholdValue.value)
+  const totalVotes = currentVotes.value
+  const agreeVotes = taskVoteAgreementCount.value
+  const requiredThreshold = taskVoteThresholdValue.value || 0
+  const requiredRatio = taskVoteAgreementRatio.value || 0.5
+
+  console.log('🗳️ isVotingPassed check:', {
+    totalVotes,
+    agreeVotes,
+    requiredThreshold,
+    requiredRatio,
+    hasVotingTimes: !!(taskVotingStartTime.value && taskVotingEndTime.value)
+  })
+
+  // 检查是否经历了完整的投票流程
+  if (!taskVotingStartTime.value || !taskVotingEndTime.value) {
+    console.log('🗳️ isVotingPassed: false - no complete voting process')
     return false
   }
 
-  // Check if the agreement ratio meets the requirement
-  if (taskVoteAgreementRatio.value && currentVotes.value > 0) {
-    const currentAgreementRatio = taskVoteAgreementCount.value / currentVotes.value
-    const passed = currentAgreementRatio >= taskVoteAgreementRatio.value
-    console.log('isVotingPassed agreement check:', {
-      agreementCount: taskVoteAgreementCount.value,
-      totalVotes: currentVotes.value,
-      currentRatio: currentAgreementRatio,
-      requiredRatio: taskVoteAgreementRatio.value,
-      passed: passed
-    })
-    return passed
+  // 检查投票数量是否达到门槛
+  if (totalVotes < requiredThreshold) {
+    console.log('🗳️ isVotingPassed: false - not enough votes:', totalVotes, '<', requiredThreshold)
+    return false
   }
 
-  // Default: if no agreement ratio specified, just check vote count
-  console.log('isVotingPassed: true - no agreement ratio specified')
+  // 检查同意比例是否达到要求
+  const agreementRatio = totalVotes === 0 ? 0 : agreeVotes / totalVotes
+  if (agreementRatio < requiredRatio) {
+    console.log('🗳️ isVotingPassed: false - agreement ratio not met:', agreementRatio, '<', requiredRatio)
+    return false
+  }
+
+  console.log('🗳️ isVotingPassed: true - all conditions met')
   return true
 })
 
@@ -567,50 +579,63 @@ const canAddOvertime = computed(() => {
 const canCompleteTask = computed(() => {
   if (!task.value) return false
 
+  console.log('🎯 canCompleteTask check for task:', task.value.id, {
+    taskType: task.value.task_type,
+    status: task.value.status,
+    unlockType: taskUnlockType.value
+  })
+
   // For lock tasks with vote unlock type
   if (task.value.task_type === 'lock' && taskUnlockType.value === 'vote') {
     // Cannot complete during voting period
     if (task.value.status === 'voting') {
-      console.log('canCompleteTask: false - task is in voting period')
+      console.log('🎯 canCompleteTask: false - task is in voting period')
       return false
     }
 
-    // Can only complete after voting period has ended AND voting has passed
-    if (task.value.status === 'active' && taskVotingEndTime.value) {
-      const now = currentTime.value
-      const votingEndTime = new Date(taskVotingEndTime.value).getTime()
-      const votingPassed = isVotingPassed.value
-
-      console.log('canCompleteTask check:', {
-        status: task.value.status,
-        now: now,
-        votingEndTime: votingEndTime,
-        votingTimeOver: now >= votingEndTime,
-        votingPassed: votingPassed,
-        currentVotes: currentVotes.value,
-        agreementCount: taskVoteAgreementCount.value,
-        thresholdValue: taskVoteThresholdValue.value,
-        agreementRatio: taskVoteAgreementRatio.value
-      })
-
-      // Voting period must be over and voting must have passed
-      return now >= votingEndTime && votingPassed
+    // Must be in active status to complete
+    if (task.value.status !== 'active') {
+      console.log('🎯 canCompleteTask: false - task status is not active:', task.value.status)
+      return false
     }
 
-    // If no voting has started yet, cannot complete (need to start voting first)
-    console.log('canCompleteTask: false - no voting started yet')
-    return false
+    // Check if voting period has ended
+    if (taskVotingEndTime.value) {
+      const now = currentTime.value
+      const votingEndTime = new Date(taskVotingEndTime.value).getTime()
+
+      if (now < votingEndTime) {
+        console.log('🎯 canCompleteTask: false - voting period not ended yet')
+        return false
+      }
+    }
+
+    // Check if voting requirements are met
+    const votingPassed = isVotingPassed.value
+
+    console.log('🎯 canCompleteTask final check:', {
+      status: task.value.status,
+      votingEndTime: taskVotingEndTime.value,
+      votingPassed: votingPassed,
+      currentTime: currentTime.value
+    })
+
+    return votingPassed
   }
 
   // For lock tasks with time unlock type, can only complete after countdown ends
   if (task.value.task_type === 'lock' && taskEndTime.value) {
     const now = currentTime.value
     const endTime = new Date(taskEndTime.value).getTime()
-    return now >= endTime
+    const canComplete = now >= endTime
+    console.log('🎯 canCompleteTask (time unlock):', canComplete, 'now:', now, 'endTime:', endTime)
+    return canComplete
   }
 
   // For board tasks, can complete anytime when active
-  return true
+  const canComplete = task.value.status === 'active'
+  console.log('🎯 canCompleteTask (board task):', canComplete)
+  return canComplete
 })
 
 const progressPercent = computed(() => {
