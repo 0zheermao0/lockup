@@ -565,21 +565,17 @@ const canCompleteTask = computed(() => {
       return false
     }
 
-    // Can only complete after countdown ends AND voting has passed
-    if (taskEndTime.value) {
+    // Can only complete after voting period has ended AND voting has passed
+    if (task.value.status === 'active' && taskVotingEndTime.value) {
       const now = currentTime.value
-      const endTime = new Date(taskEndTime.value).getTime()
+      const votingEndTime = new Date(taskVotingEndTime.value).getTime()
 
-      // Check if countdown has ended
-      if (now >= endTime && task.value.status === 'active') {
-        // If there was a voting period, check if voting passed
-        if (taskVotingEndTime.value) {
-          return isVotingPassed.value
-        }
-        // If no voting period yet, can complete (will trigger voting)
-        return true
-      }
+      // Voting period must be over and voting must have passed
+      return now >= votingEndTime && isVotingPassed.value
     }
+
+    // If no voting has started yet, cannot complete (need to start voting first)
+    return false
   }
 
   // For lock tasks with time unlock type, can only complete after countdown ends
@@ -949,13 +945,15 @@ const startVoting = async () => {
   }
 
   try {
-    // For vote-unlock tasks, attempting to complete should trigger voting period
-    const updatedTask = await tasksApi.completeTask(task.value.id)
+    const updatedTask = await tasksApi.startVoting(task.value.id)
     task.value = updatedTask
     console.log('投票期已开始')
 
     // Refresh task data to get updated voting information
     await fetchTask()
+
+    // Refresh user data to update lock status
+    await authStore.refreshUser()
   } catch (error) {
     console.error('Error starting voting:', error)
     alert('发起投票失败，请重试')

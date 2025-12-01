@@ -21,6 +21,7 @@ urlpatterns = [
     path('<uuid:pk>/reject/', views.reject_board_task, name='board-task-reject'),
 
     # 投票
+    path('<uuid:pk>/start-voting/', views.start_voting, name='task-start-voting'),
     path('<uuid:pk>/vote/', views.vote_task, name='task-vote'),
 
     # 钥匙管理

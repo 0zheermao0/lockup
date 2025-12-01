@@ -525,6 +525,69 @@ def submit_board_task(request, pk):
 
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
+def start_voting(request, pk):
+    """任务所属人发起投票"""
+    task = get_object_or_404(LockTask, pk=pk)
+
+    # 检查是否是投票解锁任务
+    if task.unlock_type != 'vote':
+        return Response(
+            {'error': '该任务不是投票解锁类型'},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+
+    # 检查权限 - 只有任务所属人可以发起投票
+    if task.user != request.user:
+        return Response(
+            {'error': '只有任务所属人可以发起投票'},
+            status=status.HTTP_403_FORBIDDEN
+        )
+
+    # 检查任务状态 - 必须是活跃状态且倒计时已结束
+    if task.status != 'active':
+        return Response(
+            {'error': '任务不在可发起投票状态'},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+
+    # 检查倒计时是否结束
+    if task.end_time and timezone.now() < task.end_time:
+        return Response(
+            {'error': '请等待倒计时结束后再发起投票'},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+
+    # 检查是否已经在投票期
+    if task.status == 'voting':
+        return Response(
+            {'error': '投票期已开始'},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+
+    # 开始投票期
+    task.status = 'voting'
+    task.voting_start_time = timezone.now()
+    task.voting_end_time = task.voting_start_time + timezone.timedelta(minutes=task.voting_duration)
+    task.save()
+
+    # 创建进入投票期事件
+    TaskTimelineEvent.objects.create(
+        task=task,
+        event_type='voting_started',
+        user=request.user,
+        description=f'任务所属人发起投票，进入{task.voting_duration}分钟投票期',
+        metadata={
+            'voting_duration_minutes': task.voting_duration,
+            'voting_start_time': task.voting_start_time.isoformat(),
+            'voting_end_time': task.voting_end_time.isoformat()
+        }
+    )
+
+    return Response(LockTaskSerializer(task).data)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
 def vote_task(request, pk):
     """为任务投票"""
     task = get_object_or_404(LockTask, pk=pk)
@@ -536,50 +599,17 @@ def vote_task(request, pk):
             status=status.HTTP_400_BAD_REQUEST
         )
 
-    # 检查任务状态 - 必须是活跃状态且倒计时已结束，或者是投票期状态
-    if task.status == 'active':
-        # 如果是活跃状态，检查倒计时是否结束
-        if task.end_time and timezone.now() < task.end_time:
-            return Response(
-                {'error': '请等待倒计时结束后再投票'},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-
-        # 倒计时已结束，自动进入投票期
-        task.status = 'voting'
-        task.voting_start_time = timezone.now()
-        task.voting_end_time = task.voting_start_time + timezone.timedelta(minutes=task.voting_duration)
-        task.save()
-
-        # 创建进入投票期事件
-        TaskTimelineEvent.objects.create(
-            task=task,
-            event_type='voting_started',
-            user=None,  # 系统事件
-            description=f'倒计时结束，进入{task.voting_duration}分钟投票期',
-            metadata={
-                'voting_duration_minutes': task.voting_duration,
-                'voting_start_time': task.voting_start_time.isoformat(),
-                'voting_end_time': task.voting_end_time.isoformat()
-            }
-        )
-    elif task.status == 'voting':
-        # 检查投票期是否已结束
-        if task.voting_end_time and timezone.now() >= task.voting_end_time:
-            return Response(
-                {'error': '投票期已结束'},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-    else:
+    # 检查任务状态 - 只允许在投票期投票
+    if task.status != 'voting':
         return Response(
-            {'error': '任务不在可投票状态'},
+            {'error': '任务不在投票期，请等待任务所属人发起投票'},
             status=status.HTTP_400_BAD_REQUEST
         )
 
-    # 检查是否是自己的任务
-    if task.user == request.user:
+    # 检查投票期是否已结束
+    if task.voting_end_time and timezone.now() >= task.voting_end_time:
         return Response(
-            {'error': '不能为自己的任务投票'},
+            {'error': '投票期已结束'},
             status=status.HTTP_400_BAD_REQUEST
         )
 

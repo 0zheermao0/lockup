@@ -133,6 +133,13 @@ export const tasksApi = {
   },
 
 
+  // 发起投票
+  startVoting: async (id: string): Promise<LockTask> => {
+    return apiRequest(`/tasks/${id}/start-voting/`, {
+      method: 'POST'
+    })
+  },
+
   // 投票
   voteTask: async (id: string, agree: boolean): Promise<any> => {
     return apiRequest(`/tasks/${id}/vote/`, {
