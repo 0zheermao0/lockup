@@ -949,8 +949,8 @@ const startVoting = async () => {
   }
 
   try {
-    // Call API to start voting period
-    const updatedTask = await tasksApi.startVoting(task.value.id)
+    // For vote-unlock tasks, attempting to complete should trigger voting period
+    const updatedTask = await tasksApi.completeTask(task.value.id)
     task.value = updatedTask
     console.log('投票期已开始')
 
