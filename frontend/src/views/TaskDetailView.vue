@@ -328,9 +328,6 @@
             <div v-if="hasVoted" class="voted-message">
               ✅ 你已投票
             </div>
-            <div v-else-if="task.status === 'voting' && votingTimeRemaining <= 0" class="voting-ended-message">
-              ⏰ 投票期已结束，正在处理投票结果...
-            </div>
 
             <!-- Voting results after voting period ends -->
             <div v-if="task.status === 'active' && taskVotingEndTime && taskUnlockType === 'vote'" class="voting-results">
@@ -678,9 +675,9 @@ const canStartVoting = computed(() => {
     return false
   }
 
-  // Can start voting if task is active and countdown has ended, but voting hasn't started yet
+  // Can start voting if task is active and countdown has ended
   if (task.value.status === 'active' && timeRemaining.value <= 0) {
-    return !taskVotingEndTime.value // No voting period has started yet
+    return true // Can always start voting when countdown is over
   }
 
   return false

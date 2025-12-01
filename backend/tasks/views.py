@@ -564,6 +564,9 @@ def start_voting(request, pk):
             status=status.HTTP_400_BAD_REQUEST
         )
 
+    # 清除之前的投票记录（如果有的话）
+    task.votes.all().delete()
+
     # 开始投票期
     task.status = 'voting'
     task.voting_start_time = timezone.now()
@@ -988,8 +991,8 @@ def process_voting_results(request):
                 'ratio': f'{agreement_ratio*100:.1f}%'
             })
         else:
-            # 投票失败 - 根据难度等级加时，回到active状态
-            penalty_minutes = task.get_vote_penalty_minutes()
+            # 投票失败 - 固定加时15分钟，回到active状态
+            penalty_minutes = 15
 
             # 计算新的结束时间
             if task.end_time:
