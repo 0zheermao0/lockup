@@ -8,6 +8,7 @@
         </button>
         <h1 class="game-title">🎮 游戏中心</h1>
         <div class="header-stats">
+          <NotificationBell />
           <div class="coins-display">
             <span class="coins-icon">🪙</span>
             <span class="coins-amount">{{ userCoins }}</span>
@@ -261,15 +262,20 @@
           </div>
 
           <!-- Time Wheel Component -->
-          <div v-else>
+          <div v-else-if="getActiveLockTaskId()">
             <TimeWheel
-              :task-id="activeLockTask.id"
+              :task-id="getActiveLockTaskId()"
               :user-coins="userCoins"
               @time-changed="handleTimeChanged"
               @coins-changed="handleCoinsChanged"
               @error="handleTimeWheelError"
               @close="handleTimeWheelClose"
             />
+          </div>
+          <div v-else class="warning-box">
+            <p class="warning-text">
+              ⚠️ 正在加载锁任务信息...
+            </p>
           </div>
         </div>
       </div>
@@ -282,6 +288,7 @@ import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { storeApi, tasksApi } from '../lib/api'
 import { useAuthStore } from '../stores/auth'
 import TimeWheel from '../components/TimeWheel.vue'
+import NotificationBell from '../components/NotificationBell.vue'
 import type { Game } from '../types'
 
 const authStore = useAuthStore()
@@ -308,7 +315,21 @@ const cancelingGame = ref(false)
 
 // Computed
 const userCoins = computed(() => authStore.user?.coins || 0)
-const hasActiveLockTask = computed(() => activeLockTask.value !== null)
+const hasActiveLockTask = computed(() => {
+  // Check both local activeLockTask and auth store data for more reliable detection
+  const localTask = activeLockTask.value !== null
+  const authStoreTask = authStore.user?.active_lock_task !== null && authStore.user?.active_lock_task !== undefined
+
+  console.log('hasActiveLockTask check:', {
+    localTask: localTask,
+    authStoreTask: authStoreTask,
+    localTaskData: activeLockTask.value,
+    authStoreTaskData: authStore.user?.active_lock_task
+  })
+
+  // Return true if either source indicates there's an active lock task
+  return localTask || authStoreTask
+})
 
 // TimeWheel computed removed - handled by component
 
@@ -349,6 +370,18 @@ const choices = [
   { value: 'paper', name: '布', icon: '📄' },
   { value: 'scissors', name: '剪刀', icon: '✂️' }
 ]
+
+// Helper methods
+const getActiveLockTaskId = () => {
+  // Try to get ID from local state first, then from auth store
+  if (activeLockTask.value?.id) {
+    return activeLockTask.value.id
+  }
+  if (authStore.user?.active_lock_task?.id) {
+    return authStore.user.active_lock_task.id
+  }
+  return null
+}
 
 // TimeWheel event handlers
 const handleTimeChanged = async (change: { isIncrease: boolean, minutes: number, taskId: string, newEndTime?: string }) => {
@@ -635,6 +668,12 @@ const startGamePolling = () => {
     // Also check for expired tasks periodically
     try {
       await tasksApi.checkAndCompleteExpiredTasks()
+
+      // Check and process hourly rewards for active lock tasks
+      if (hasActiveLockTask.value) {
+        await tasksApi.processHourlyRewards()
+      }
+
       // Reload active lock task to get updated status
       const previousTask = activeLockTask.value
       await loadActiveLockTask()
@@ -694,9 +733,24 @@ const handleTabChange = () => {
 // Setup watcher for activeTab
 const stopTabWatcher = watch(activeTab, handleTabChange)
 
+// Watch auth store user changes to sync local activeLockTask
+const stopAuthWatcher = watch(
+  () => authStore.user?.active_lock_task,
+  (newTask) => {
+    console.log('Auth store active_lock_task changed:', newTask)
+    // If local task is null but auth store has a task, update local task
+    if (!activeLockTask.value && newTask) {
+      console.log('Syncing local activeLockTask with auth store data')
+      activeLockTask.value = newTask
+    }
+  },
+  { deep: true }
+)
+
 onUnmounted(() => {
   stopGamePolling()
   stopTabWatcher()
+  stopAuthWatcher()
 })
 </script>
 

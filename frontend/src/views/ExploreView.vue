@@ -44,8 +44,8 @@
                 <h3>{{ zone.display_name }}</h3>
                 <p class="zone-description">{{ zone.description }}</p>
               </div>
-              <div :class="['difficulty-badge', zone.difficulty]">
-                {{ getDifficultyText(zone.difficulty) }}
+              <div :class="['difficulty-badge', getZoneDifficulty(zone.name)]">
+                {{ getDifficultyText(getZoneDifficulty(zone.name)) }}
               </div>
             </div>
 
@@ -53,87 +53,173 @@
               <p>
                 💎 宝物数量: {{ zone.treasure_count }}
               </p>
+              <p>
+                🃏 卡牌数量: {{ getZoneCardCount(zone.name) }}张
+              </p>
+              <p>
+                💰 探索费用: 1积分
+              </p>
             </div>
 
             <button
-              @click="exploreZone(zone.name)"
-              :disabled="exploring"
+              @click="startCardExploration(zone.name)"
+              :disabled="exploring || userCoins < 1"
               class="explore-btn"
-              :class="{ disabled: exploring }"
+              :class="{ disabled: exploring || userCoins < 1 }"
             >
               <span v-if="exploring && exploringZone === zone.name">探索中...</span>
-              <span v-else>🔍 探索</span>
+              <span v-else>🃏 开始探索</span>
             </button>
           </div>
         </div>
       </div>
 
-      <!-- Exploration results -->
-      <div v-if="explorationResult" class="results-section">
-        <h3 class="results-title">🔍 探索结果</h3>
-        <p class="results-message">{{ explorationResult.message }}</p>
+      <!-- Card Exploration Modal -->
+      <div v-if="cardExploration" class="modal-overlay" @click="closeCardExploration">
+        <div class="card-exploration-modal" @click.stop>
+          <div class="modal-header">
+            <h3 class="modal-title">🃏 {{ getZoneDisplayName(cardExploration.zone) }} 探索</h3>
+            <div class="exploration-info">
+              <span class="difficulty-badge" :class="cardExploration.difficulty">
+                {{ getDifficultyText(cardExploration.difficulty) }}
+              </span>
+              <span class="cost-info">💰 花费1积分</span>
+            </div>
+            <button @click="closeCardExploration" class="modal-close">×</button>
+          </div>
 
-        <!-- Found treasures -->
-        <div v-if="explorationResult.treasures_found.length > 0" class="treasures-section">
-          <h4 class="treasures-title">💎 发现的宝物</h4>
-          <div class="treasures-grid">
+          <div class="modal-body">
             <div
-              v-for="treasure in explorationResult.treasures_found"
-              :key="treasure.treasure_id"
-              class="treasure-card"
+              class="cards-grid"
+              :data-count="cardExploration?.cards?.length || 6"
             >
-              <div class="treasure-header">
-                <div class="treasure-info">
-                  <h4>{{ treasure.item_type }}</h4>
-                  <div class="treasure-meta">
-                    <p>掩埋者: {{ treasure.burier }}</p>
-                    <p>难度: {{ getDifficultyText(treasure.difficulty) }}</p>
+              <div
+                v-for="card in cardExploration.cards"
+                :key="card.position"
+                :class="['card-slot', {
+                  'revealed': card.revealed,
+                  'treasure': card.has_treasure && card.revealed,
+                  'selected': card.revealed && explorationResult?.selected_position === card.position
+                }]"
+                @click="selectCard(card)"
+              >
+                <div v-if="card.revealed" class="card-content revealed">
+                  <div v-if="card.has_treasure" class="treasure-content">
+                    <div class="treasure-icon" :class="{ 'found': card.is_found }">
+                      {{ card.is_found ? '✅' : '💎' }}
+                    </div>
+                    <div class="treasure-info">
+                      <h4>{{ card.item_type }}</h4>
+                      <p class="treasure-hint">💭 {{ card.location_hint }}</p>
+                      <div class="treasure-meta">
+                        <span class="difficulty-mini" :class="card.difficulty">
+                          {{ getDifficultyText(card.difficulty) }}
+                        </span>
+                        <span>掩埋者: {{ card.burier }}</span>
+                        <span v-if="card.is_found" class="found-status">已找到</span>
+                      </div>
+                    </div>
+                  </div>
+                  <div v-else class="empty-content">
+                    <div class="empty-icon">{{ card.position === explorationResult?.selected_position ? '😞' : '😔' }}</div>
+                    <p>{{ card.position === explorationResult?.selected_position ? '你选择的位置' : '这里什么都没有' }}</p>
                   </div>
                 </div>
-                <button
-                  @click="findTreasure(treasure.treasure_id)"
-                  :disabled="digging"
-                  class="dig-btn"
-                  :class="{ disabled: digging }"
-                >
-                  <span v-if="digging && diggingTreasureId === treasure.treasure_id">挖掘中...</span>
-                  <span v-else>⛏️ 挖掘</span>
-                </button>
+                <div v-else class="card-content hidden">
+                  <div class="card-back">🃏</div>
+                  <p class="card-hint">点击翻开</p>
+                </div>
               </div>
-              <p class="treasure-hint">💭 提示: {{ treasure.location_hint }}</p>
             </div>
           </div>
-        </div>
 
-        <!-- No treasures found -->
-        <div v-else class="no-treasures">
-          <div class="no-treasures-icon">😔</div>
-          <p class="no-treasures-text">这次没有发现任何宝物</p>
-          <p class="no-treasures-hint">再试试其他区域吧！</p>
+          <div class="modal-footer">
+            <button @click="resetExploration" class="modal-btn secondary">
+              🔄 重新探索
+            </button>
+          </div>
         </div>
       </div>
 
-      <!-- Treasure discovery result -->
-      <div v-if="treasureResult" class="discovery-result">
-        <h3 class="discovery-title">🎉 挖掘成功！</h3>
-        <p class="discovery-message">{{ treasureResult.message }}</p>
+      <!-- Exploration result modal -->
+      <div v-if="explorationResult" class="modal-overlay" @click="closeExplorationResult">
+        <div class="exploration-result-modal" @click.stop>
+          <div class="modal-header">
+            <h3 class="modal-title">
+              {{ explorationResult.success ? '🎉 探索成功！' : '😔 探索结束' }}
+            </h3>
+            <button @click="closeExplorationResult" class="modal-close">×</button>
+          </div>
 
-        <div class="item-display">
-          <h4>📦 获得物品</h4>
-          <div class="item-info">
-            <span class="item-icon">{{ getItemIcon(treasureResult.item.type) }}</span>
-            <div class="item-details">
-              <h5>{{ treasureResult.item.type }}</h5>
-              <div v-if="Object.keys(treasureResult.item.properties).length > 0" class="item-properties">
-{{ JSON.stringify(treasureResult.item.properties, null, 2) }}
+          <div class="modal-body">
+            <div class="result-summary">
+              <p class="result-message">{{ explorationResult.message }}</p>
+              <div class="result-stats">
+                <div class="stat-item">
+                  <span class="stat-label">探索区域:</span>
+                  <span class="stat-value">{{ getZoneDisplayName(explorationResult.zone) }}</span>
+                </div>
+                <div class="stat-item">
+                  <span class="stat-label">难度:</span>
+                  <span class="stat-value">{{ getDifficultyText(explorationResult.difficulty) }}</span>
+                </div>
+                <div class="stat-item">
+                  <span class="stat-label">花费:</span>
+                  <span class="stat-value">💰 1积分</span>
+                </div>
+                <div class="stat-item">
+                  <span class="stat-label">宝物数量:</span>
+                  <span class="stat-value">{{ explorationResult.treasure_count }}个</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- Found item display -->
+            <div v-if="explorationResult.found_item" class="found-item-display">
+              <h4 class="found-title">📦 获得的物品</h4>
+              <div class="item-info">
+                <span class="item-icon">{{ getItemIcon(explorationResult.found_item.type) }}</span>
+                <div class="item-details">
+                  <h5>{{ explorationResult.found_item.type }}</h5>
+                  <div v-if="Object.keys(explorationResult.found_item.properties).length > 0" class="item-properties">
+                    <pre>{{ JSON.stringify(explorationResult.found_item.properties, null, 2) }}</pre>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- All cards reveal -->
+            <div class="cards-reveal-section">
+              <h4 class="reveal-title">🃏 所有卡牌结果</h4>
+              <div
+                class="mini-cards-grid"
+                :data-count="explorationResult.card_count"
+              >
+                <div
+                  v-for="card in explorationResult.cards"
+                  :key="card.position"
+                  :class="['mini-card', {
+                    'has-treasure': card.has_treasure,
+                    'is-selected': card.position === explorationResult.selected_position,
+                    'is-found': card.is_found
+                  }]"
+                >
+                  <div class="mini-card-content">
+                    <div v-if="card.has_treasure" class="mini-treasure-icon">
+                      {{ card.is_found ? '✅' : '💎' }}
+                    </div>
+                    <div v-else class="mini-empty-icon">❌</div>
+                  </div>
+                </div>
               </div>
             </div>
           </div>
-        </div>
 
-        <div class="reward-info">
-          <p>💰 掩埋者获得奖励: {{ treasureResult.reward_to_burier }}积分</p>
-          <p>🎒 背包剩余空间: {{ treasureResult.remaining_slots }}格</p>
+          <div class="modal-footer">
+            <button @click="closeExplorationResult" class="modal-btn primary">
+              确定
+            </button>
+          </div>
         </div>
       </div>
 
@@ -264,8 +350,9 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { storeApi } from '../lib/api'
+import { useAuthStore } from '../stores/auth'
 import type { ExplorationZone, BuriedTreasure, UserInventory } from '../types'
 
 // Reactive data
@@ -273,6 +360,7 @@ const zones = ref<ExplorationZone[]>([])
 const myTreasures = ref<BuriedTreasure[]>([])
 const explorationResult = ref<any>(null)
 const treasureResult = ref<any>(null)
+const cardExploration = ref<any>(null)
 const inventory = ref<UserInventory | null>(null)
 
 // Loading states
@@ -280,8 +368,10 @@ const loadingZones = ref(false)
 const loadingTreasures = ref(false)
 const exploring = ref(false)
 const exploringZone = ref('')
-const digging = ref(false)
-const diggingTreasureId = ref('')
+
+// User coins
+const authStore = useAuthStore()
+const userCoins = computed(() => authStore.user?.coins || 0)
 
 // Inventory management states
 const showInventoryFullModal = ref(false)
@@ -319,6 +409,124 @@ const loadInventory = async () => {
   }
 }
 
+// New card exploration methods
+const getZoneDifficulty = (zoneName: string): string => {
+  const zoneDifficulties = {
+    'beach': 'easy',
+    'forest': 'normal',
+    'mountain': 'hard',
+    'desert': 'normal',
+    'cave': 'hard'
+  }
+  return zoneDifficulties[zoneName as keyof typeof zoneDifficulties] || 'normal'
+}
+
+const getZoneCardCount = (zoneName: string): number => {
+  const zoneCardCounts = {
+    'beach': 3,
+    'forest': 6,
+    'mountain': 9,
+    'desert': 6,
+    'cave': 9
+  }
+  return zoneCardCounts[zoneName as keyof typeof zoneCardCounts] || 6
+}
+
+const startCardExploration = async (zoneName: string) => {
+  if (exploring.value) return
+
+  try {
+    exploring.value = true
+    exploringZone.value = zoneName
+    cardExploration.value = null
+    treasureResult.value = null
+    explorationResult.value = null
+
+    // Generate preview cards (all hidden)
+    const cardCount = getZoneCardCount(zoneName)
+    const previewCards = Array.from({ length: cardCount }, (_, i) => ({
+      position: i,
+      has_treasure: false,
+      revealed: false
+    }))
+
+    cardExploration.value = {
+      zone: zoneName,
+      difficulty: getZoneDifficulty(zoneName),
+      card_count: cardCount,
+      cards: previewCards,
+      treasure_count: 0,
+      cost: 1
+    }
+
+  } catch (err) {
+    console.error('Card exploration error:', err)
+  } finally {
+    exploring.value = false
+    exploringZone.value = ''
+  }
+}
+
+const selectCard = async (card: any) => {
+  if (exploring.value || card.revealed) return
+
+  try {
+    exploring.value = true
+    card.revealed = true
+
+    const result = await storeApi.exploreZone(cardExploration.value.zone, card.position)
+
+    // Update with actual results
+    explorationResult.value = result
+    treasureResult.value = result.found_item ? {
+      message: result.success ? '🎉 恭喜！你找到了宝物！' : '很遗憾，这里什么都没有',
+      item: result.found_item,
+      reward_to_burier: result.success ? getRewardAmount(result.difficulty) : 0,
+      remaining_slots: 0 // Will be updated after refresh
+    } : {
+      message: '很遗憾，这里什么都没有'
+    }
+
+    // Update cards with real data
+    cardExploration.value.cards = result.cards.map(c => ({ ...c, revealed: true }))
+
+    // Refresh user coins and inventory
+    await authStore.refreshUser()
+    await loadInventory()
+
+  } catch (err) {
+    console.error('Card selection error:', err)
+  } finally {
+    exploring.value = false
+  }
+}
+
+const resetExploration = () => {
+  cardExploration.value = null
+  treasureResult.value = null
+  explorationResult.value = null
+}
+
+const closeExplorationResult = () => {
+  explorationResult.value = null
+  cardExploration.value = null
+}
+
+const closeCardExploration = () => {
+  cardExploration.value = null
+  treasureResult.value = null
+  explorationResult.value = null
+}
+
+const getRewardAmount = (difficulty: string): number => {
+  const rewards = {
+    'easy': 5,
+    'normal': 10,
+    'hard': 20
+  }
+  return rewards[difficulty as keyof typeof rewards] || 10
+}
+
 const exploreZone = async (zoneName: string) => {
   if (exploring.value) return
 
@@ -339,46 +547,6 @@ const exploreZone = async (zoneName: string) => {
   }
 }
 
-const findTreasure = async (treasureId: string) => {
-  if (digging.value) return
-
-  try {
-    digging.value = true
-    diggingTreasureId.value = treasureId
-    treasureResult.value = null
-
-    // Check if inventory has space before digging
-    await loadInventory()
-    if (inventory.value && inventory.value.available_slots < 1) {
-      // Inventory is full, show modal
-      pendingTreasureResult.value = { treasureId }
-      showInventoryFullModal.value = true
-      return
-    }
-
-    const result = await storeApi.findTreasure(treasureId)
-    treasureResult.value = result
-
-    // Update inventory display
-    await loadInventory()
-
-    // Remove found treasure from exploration results
-    if (explorationResult.value) {
-      explorationResult.value.treasures_found = explorationResult.value.treasures_found.filter(
-        (t: any) => t.treasure_id !== treasureId
-      )
-    }
-
-    // Refresh zones to update treasure counts
-    loadZones()
-
-  } catch (err) {
-    console.error('Find treasure error:', err)
-  } finally {
-    digging.value = false
-    diggingTreasureId.value = ''
-  }
-}
 
 // Helper methods
 const getDifficultyText = (difficulty: string): string => {
@@ -1324,6 +1492,441 @@ onMounted(() => {
   gap: 0.75rem;
 }
 
+/* Card Exploration Modal */
+.card-exploration-modal {
+  background: white;
+  border: 4px solid #000;
+  max-width: 900px;
+  width: 95vw;
+  max-height: 90vh;
+  overflow-y: auto;
+  box-shadow: 12px 12px 0 #000;
+}
+
+.card-exploration-modal .modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 2rem;
+  border-bottom: 3px solid #000;
+  background: #f8f9fa;
+}
+
+.card-exploration-modal .modal-title {
+  font-size: 1.5rem;
+  font-weight: 900;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  margin: 0;
+  color: #000;
+}
+
+.exploration-info {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.cost-info {
+  background: #ffc107;
+  color: #000;
+  padding: 0.5rem 1rem;
+  border: 3px solid #000;
+  font-weight: 900;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  box-shadow: 3px 3px 0 #000;
+}
+
+.card-exploration-modal .modal-body {
+  padding: 2rem;
+}
+
+.card-exploration-modal .modal-footer {
+  padding: 1.5rem 2rem;
+  border-top: 3px solid #000;
+  background: #f8f9fa;
+  display: flex;
+  justify-content: center;
+}
+
+/* Cards Grid */
+.cards-grid {
+  display: grid;
+  gap: 1rem;
+  margin-bottom: 2rem;
+}
+
+/* Adjust grid size based on card count */
+.cards-grid[data-count="3"] {
+  grid-template-columns: repeat(3, 1fr);
+  max-width: 400px;
+  margin: 0 auto 2rem;
+}
+
+.cards-grid[data-count="6"] {
+  grid-template-columns: repeat(3, 1fr);
+  max-width: 600px;
+  margin: 0 auto 2rem;
+}
+
+.cards-grid[data-count="9"] {
+  grid-template-columns: repeat(3, 1fr);
+  max-width: 600px;
+  margin: 0 auto 2rem;
+}
+
+/* Card Slots */
+.card-slot {
+  aspect-ratio: 3/4;
+  border: 4px solid #000;
+  background: #f8f9fa;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  box-shadow: 4px 4px 0 #000;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  min-height: 120px;
+}
+
+.card-slot:hover:not(.revealed) {
+  transform: translate(-2px, -2px);
+  box-shadow: 6px 6px 0 #000;
+  background: #e9ecef;
+}
+
+.card-slot.revealed {
+  cursor: default;
+  background: white;
+  border-color: #007bff;
+  box-shadow: 4px 4px 0 #007bff;
+}
+
+.card-slot.treasure {
+  background: #fff3cd;
+  border-color: #ffc107;
+  box-shadow: 4px 4px 0 #ffc107;
+}
+
+/* Card Content */
+.card-content {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+  text-align: center;
+}
+
+.card-content.hidden {
+  justify-content: center;
+  gap: 0.5rem;
+}
+
+.card-back {
+  font-size: 2.5rem;
+  margin-bottom: 0.5rem;
+}
+
+.card-hint {
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: #666;
+  margin: 0;
+}
+
+/* Revealed Card Content */
+.card-content.revealed {
+  gap: 0.5rem;
+}
+
+.empty-content,
+.treasure-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.empty-icon {
+  font-size: 2rem;
+  margin-bottom: 0.5rem;
+}
+
+.treasure-icon {
+  font-size: 2.5rem;
+  margin-bottom: 0.5rem;
+}
+
+.treasure-info h4 {
+  font-size: 0.875rem;
+  font-weight: 900;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin: 0 0 0.25rem 0;
+  color: #000;
+}
+
+.treasure-hint {
+  font-size: 0.75rem;
+  color: #666;
+  font-style: italic;
+  margin: 0 0 0.5rem 0;
+  font-weight: 500;
+}
+
+.treasure-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  font-size: 0.625rem;
+  color: #666;
+  font-weight: 600;
+}
+
+.difficulty-mini {
+  display: inline-block;
+  padding: 0.125rem 0.375rem;
+  border: 1px solid #000;
+  font-size: 0.625rem;
+  font-weight: 900;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 0.25rem;
+}
+
+.difficulty-mini.easy {
+  background: #28a745;
+  color: white;
+}
+
+.difficulty-mini.normal {
+  background: #ffc107;
+  color: #000;
+}
+
+.difficulty-mini.hard {
+  background: #dc3545;
+  color: white;
+}
+
+/* Dig Button */
+.dig-btn.mini {
+  background: #fd7e14;
+  color: white;
+  border: 2px solid #000;
+  padding: 0.375rem 0.75rem;
+  font-weight: 900;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  cursor: pointer;
+  box-shadow: 2px 2px 0 #000;
+  transition: all 0.2s ease;
+  font-size: 0.75rem;
+  margin-top: 0.5rem;
+}
+
+.dig-btn.mini:hover:not(:disabled) {
+  transform: translate(1px, 1px);
+  box-shadow: 1px 1px 0 #000;
+}
+
+.dig-btn.mini:disabled {
+  background: #6c757d;
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+/* Exploration Actions */
+.exploration-actions {
+  text-align: center;
+  padding-top: 1rem;
+  border-top: 2px solid #dee2e6;
+}
+
+/* Exploration Result Modal */
+.exploration-result-modal {
+  background: white;
+  border: 4px solid #000;
+  max-width: 600px;
+  width: 100%;
+  max-height: 90vh;
+  overflow-y: auto;
+  box-shadow: 12px 12px 0 #000;
+}
+
+.result-summary {
+  text-align: center;
+  margin-bottom: 2rem;
+}
+
+.result-message {
+  font-size: 1.125rem;
+  font-weight: 700;
+  color: #333;
+  margin-bottom: 1.5rem;
+}
+
+.result-stats {
+  display: grid;
+  gap: 1rem;
+  margin-bottom: 2rem;
+}
+
+.stat-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.75rem;
+  border: 2px solid #000;
+  background: #f8f9fa;
+  box-shadow: 3px 3px 0 #000;
+}
+
+.stat-label {
+  font-weight: 900;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: #000;
+}
+
+.stat-value {
+  font-weight: 700;
+  color: #333;
+}
+
+/* Found Item Display */
+.found-item-display {
+  background: #d4edda;
+  border: 3px solid #28a745;
+  padding: 1.5rem;
+  margin-bottom: 2rem;
+  box-shadow: 4px 4px 0 #28a745;
+}
+
+.found-title {
+  font-size: 1rem;
+  font-weight: 900;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  margin: 0 0 1rem 0;
+  color: #155724;
+}
+
+/* Cards Reveal Section */
+.cards-reveal-section {
+  margin-top: 2rem;
+}
+
+.reveal-title {
+  font-size: 1rem;
+  font-weight: 900;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  margin: 0 0 1rem 0;
+  color: #000;
+}
+
+.mini-cards-grid {
+  display: grid;
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+}
+
+.mini-cards-grid[data-count="3"] {
+  grid-template-columns: repeat(3, 1fr);
+}
+
+.mini-cards-grid[data-count="6"] {
+  grid-template-columns: repeat(3, 1fr);
+}
+
+.mini-cards-grid[data-count="9"] {
+  grid-template-columns: repeat(3, 1fr);
+}
+
+.mini-card {
+  aspect-ratio: 1;
+  border: 3px solid #000;
+  background: white;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  box-shadow: 3px 3px 0 #000;
+}
+
+.mini-card.has-treasure {
+  background: #fff3cd;
+  border-color: #ffc107;
+  box-shadow: 3px 3px 0 #ffc107;
+}
+
+.mini-card.is-selected {
+  border-color: #007bff;
+  border-width: 4px;
+  box-shadow: 4px 4px 0 #007bff;
+}
+
+.mini-card.is-found {
+  background: #d4edda;
+  border-color: #28a745;
+  box-shadow: 3px 3px 0 #28a745;
+}
+
+.mini-card-content {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.25rem;
+}
+
+.mini-treasure-icon {
+  color: #ffc107;
+}
+
+.mini-card.is-found .mini-treasure-icon {
+  color: #28a745;
+}
+
+.mini-empty-icon {
+  color: #dc3545;
+}
+
+/* Additional card styles for new gameplay */
+.card-slot.selected {
+  border-color: #007bff;
+  border-width: 4px;
+  box-shadow: 6px 6px 0 #007bff;
+  transform: translate(-2px, -2px);
+}
+
+.treasure-icon.found {
+  color: #28a745;
+}
+
+.found-status {
+  background: #28a745;
+  color: white;
+  padding: 0.125rem 0.375rem;
+  border: 1px solid #000;
+  font-size: 0.625rem;
+  font-weight: 900;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-top: 0.25rem;
+  box-shadow: 2px 2px 0 rgba(0,0,0,0.3);
+}
+
 /* Mobile Responsive */
 @media (max-width: 768px) {
   .explore-header {
@@ -1371,6 +1974,61 @@ onMounted(() => {
 
   .my-treasure-details {
     grid-template-columns: 1fr;
+  }
+
+  /* Card exploration mobile */
+  .card-exploration-modal {
+    width: 98vw;
+    max-width: none;
+    margin: 1rem;
+  }
+
+  .card-exploration-modal .modal-header {
+    flex-direction: column;
+    gap: 1rem;
+    align-items: stretch;
+    padding: 1.5rem;
+  }
+
+  .card-exploration-modal .modal-body {
+    padding: 1.5rem;
+  }
+
+  .cards-grid[data-count="3"],
+  .cards-grid[data-count="6"],
+  .cards-grid[data-count="9"] {
+    grid-template-columns: repeat(2, 1fr);
+    max-width: none;
+    gap: 0.75rem;
+  }
+
+  .card-slot {
+    min-height: 100px;
+  }
+
+  .card-back {
+    font-size: 2rem;
+  }
+
+  .treasure-icon {
+    font-size: 2rem;
+  }
+
+  .empty-icon {
+    font-size: 1.5rem;
+  }
+
+  .treasure-info h4 {
+    font-size: 0.75rem;
+  }
+
+  .treasure-hint {
+    font-size: 0.625rem;
+  }
+
+  .dig-btn.mini {
+    font-size: 0.625rem;
+    padding: 0.25rem 0.5rem;
   }
 }
 </style>

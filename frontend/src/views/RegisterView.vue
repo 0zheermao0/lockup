@@ -112,6 +112,12 @@ const parseRegistrationError = (err: any): string => {
       return `邮箱错误：${emailErrors.join('，')}`
     }
 
+    // Handle password confirmation errors
+    if (errorData.password_confirm && Array.isArray(errorData.password_confirm)) {
+      const passwordConfirmErrors = errorData.password_confirm as string[]
+      return `确认密码错误：${passwordConfirmErrors.join('，')}`
+    }
+
     // Handle non-field errors (general validation errors)
     if (errorData.non_field_errors && Array.isArray(errorData.non_field_errors)) {
       const nonFieldErrors = errorData.non_field_errors as string[]
@@ -123,22 +129,53 @@ const parseRegistrationError = (err: any): string => {
       return errorData.detail
     }
 
-    // Handle any other field errors by combining all error messages
+    // Handle specific error field
+    if (errorData.error) {
+      return errorData.error
+    }
+
+    // Handle message field
+    if (errorData.message) {
+      return errorData.message
+    }
+
+    // Handle any other field errors by combining all error messages with field labels
     const allErrors: string[] = []
     for (const [field, fieldErrors] of Object.entries(errorData)) {
       if (Array.isArray(fieldErrors)) {
-        allErrors.push(...(fieldErrors as string[]))
+        const fieldErrorMessages = fieldErrors as string[]
+        if (field === 'username') {
+          allErrors.push(`用户名：${fieldErrorMessages.join('，')}`)
+        } else if (field === 'email') {
+          allErrors.push(`邮箱：${fieldErrorMessages.join('，')}`)
+        } else if (field === 'password') {
+          allErrors.push(`密码：${fieldErrorMessages.join('，')}`)
+        } else if (field === 'password_confirm') {
+          allErrors.push(`确认密码：${fieldErrorMessages.join('，')}`)
+        } else {
+          allErrors.push(...fieldErrorMessages)
+        }
+      } else if (typeof fieldErrors === 'string') {
+        allErrors.push(fieldErrors)
       }
     }
 
     if (allErrors.length > 0) {
       return allErrors.join('\n')
     }
+  }
 
-    // Fall back to the old method if no structured errors found
-    if (errorData.message) {
-      return errorData.message
-    }
+  // Handle HTTP status codes with meaningful messages
+  if (err.response?.status === 400) {
+    return '提交的信息有误，请检查后重试'
+  } else if (err.response?.status === 409) {
+    return '用户名或邮箱已被注册，请使用其他信息'
+  } else if (err.response?.status === 429) {
+    return '注册尝试过于频繁，请稍后再试'
+  } else if (err.response?.status >= 500) {
+    return '服务器内部错误，请稍后重试'
+  } else if (!navigator.onLine) {
+    return '网络连接已断开，请检查网络设置'
   }
 
   // Final fallback for network errors or unexpected error formats
@@ -246,12 +283,22 @@ button:disabled {
 }
 
 .error {
-  color: #dc3545;
+  color: #721c24;
   margin: 1rem 0;
-  padding: 0.5rem;
+  padding: 0.75rem;
   background-color: #f8d7da;
   border: 1px solid #f5c6cb;
-  border-radius: 4px;
+  border-radius: 6px;
+  font-size: 0.9rem;
+  line-height: 1.4;
+}
+
+.error div {
+  margin-bottom: 0.25rem;
+}
+
+.error div:last-child {
+  margin-bottom: 0;
 }
 
 .auth-links {

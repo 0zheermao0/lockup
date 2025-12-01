@@ -28,7 +28,9 @@
         </div>
 
         <div v-if="error" class="error">
-          {{ error }}
+          <div v-for="(line, index) in error.split('\n')" :key="index">
+            {{ line }}
+          </div>
         </div>
 
         <button type="submit" :disabled="authStore.isLoading">
@@ -59,6 +61,86 @@ const form = reactive<LoginRequest>({
 
 const error = ref('')
 
+// Helper function to parse Django REST Framework validation errors for login
+const parseLoginError = (err: any): string => {
+  console.log('Login error:', err)
+
+  // Check if this is a DRF validation error with field-specific errors
+  if (err.response?.data && typeof err.response.data === 'object') {
+    const errorData = err.response.data
+
+    // Handle username validation errors
+    if (errorData.username && Array.isArray(errorData.username)) {
+      const usernameErrors = errorData.username as string[]
+      return `用户名错误：${usernameErrors.join('，')}`
+    }
+
+    // Handle password validation errors
+    if (errorData.password && Array.isArray(errorData.password)) {
+      const passwordErrors = errorData.password as string[]
+      return `密码错误：${passwordErrors.join('，')}`
+    }
+
+    // Handle non-field errors (authentication errors)
+    if (errorData.non_field_errors && Array.isArray(errorData.non_field_errors)) {
+      const nonFieldErrors = errorData.non_field_errors as string[]
+      return nonFieldErrors.join('\n')
+    }
+
+    // Handle Django's general error messages
+    if (errorData.detail) {
+      return errorData.detail
+    }
+
+    // Handle specific authentication errors
+    if (errorData.error) {
+      return errorData.error
+    }
+
+    // Handle message field
+    if (errorData.message) {
+      return errorData.message
+    }
+
+    // Handle any other field errors by combining all error messages
+    const allErrors: string[] = []
+    for (const [field, fieldErrors] of Object.entries(errorData)) {
+      if (Array.isArray(fieldErrors)) {
+        const fieldErrorMessages = fieldErrors as string[]
+        if (field === 'username') {
+          allErrors.push(`用户名：${fieldErrorMessages.join('，')}`)
+        } else if (field === 'password') {
+          allErrors.push(`密码：${fieldErrorMessages.join('，')}`)
+        } else {
+          allErrors.push(...fieldErrorMessages)
+        }
+      } else if (typeof fieldErrors === 'string') {
+        allErrors.push(fieldErrors)
+      }
+    }
+
+    if (allErrors.length > 0) {
+      return allErrors.join('\n')
+    }
+  }
+
+  // Handle HTTP status codes with meaningful messages
+  if (err.response?.status === 401) {
+    return '用户名或密码错误，请检查后重试'
+  } else if (err.response?.status === 403) {
+    return '账户已被禁用或暂停，请联系管理员'
+  } else if (err.response?.status === 429) {
+    return '登录尝试过于频繁，请稍后再试'
+  } else if (err.response?.status >= 500) {
+    return '服务器内部错误，请稍后重试'
+  } else if (!navigator.onLine) {
+    return '网络连接已断开，请检查网络设置'
+  }
+
+  // Final fallback for network errors or unexpected error formats
+  return err.message || '登录失败，请检查网络连接后重试'
+}
+
 const handleLogin = async () => {
   error.value = ''
 
@@ -66,7 +148,7 @@ const handleLogin = async () => {
     await authStore.login(form)
     router.push('/')
   } catch (err: any) {
-    error.value = err.response?.data?.message || err.message || '登录失败'
+    error.value = parseLoginError(err)
   }
 }
 </script>
@@ -155,12 +237,22 @@ button:disabled {
 }
 
 .error {
-  color: #dc3545;
+  color: #721c24;
   margin: 1rem 0;
-  padding: 0.5rem;
+  padding: 0.75rem;
   background-color: #f8d7da;
   border: 1px solid #f5c6cb;
-  border-radius: 4px;
+  border-radius: 6px;
+  font-size: 0.9rem;
+  line-height: 1.4;
+}
+
+.error div {
+  margin-bottom: 0.25rem;
+}
+
+.error div:last-child {
+  margin-bottom: 0;
 }
 
 .auth-links {

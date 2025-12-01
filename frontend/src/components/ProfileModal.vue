@@ -91,6 +91,10 @@
                 <span class="stat-label">最后活跃</span>
                 <span class="stat-value">{{ formatLastActive(userProfile.last_active) }}</span>
               </div>
+              <div class="stat-item">
+                <span class="stat-label">总带锁时长</span>
+                <span class="stat-value">{{ formatTotalLockDuration(userProfile.total_lock_duration || 0) }}</span>
+              </div>
             </div>
           </div>
 
@@ -248,6 +252,30 @@ const formatDateTime = (dateString: string): string => {
 
 const formatLastActive = (dateString: string): string => {
   return formatDistanceToNow(dateString)
+}
+
+const formatTotalLockDuration = (minutes: number) => {
+  if (minutes < 60) {
+    return `${minutes}分钟`
+  } else if (minutes < 1440) {
+    const hours = Math.floor(minutes / 60)
+    const remainingMinutes = minutes % 60
+    return remainingMinutes > 0 ? `${hours}小时${remainingMinutes}分钟` : `${hours}小时`
+  } else {
+    const days = Math.floor(minutes / 1440)
+    const remainingMinutes = minutes % 1440
+    if (remainingMinutes < 60) {
+      return remainingMinutes > 0 ? `${days}天${remainingMinutes}分钟` : `${days}天`
+    } else {
+      const hours = Math.floor(remainingMinutes / 60)
+      const remainingMinutesAfterHours = remainingMinutes % 60
+      if (remainingMinutesAfterHours > 0) {
+        return `${days}天${hours}小时${remainingMinutesAfterHours}分钟`
+      } else {
+        return `${days}天${hours}小时`
+      }
+    }
+  }
 }
 
 // Handle Escape key

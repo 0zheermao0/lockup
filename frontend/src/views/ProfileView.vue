@@ -132,6 +132,10 @@
                 <div class="stat-number">{{ userProfile.total_tasks_completed || 0 }}</div>
                 <div class="stat-label">完成任务</div>
               </div>
+              <div class="stat-item">
+                <div class="stat-number">{{ formatTotalLockDuration(userProfile.total_lock_duration || 0) }}</div>
+                <div class="stat-label">总带锁时长</div>
+              </div>
             </div>
           </section>
 
@@ -209,26 +213,25 @@ const goBack = () => {
 const fetchUserProfile = async () => {
   const userId = route.params.id as string
 
-  // 如果是访问自己的资料，直接使用当前用户数据
-  if (!userId || userId === 'me' || (authStore.user && userId === authStore.user.id.toString())) {
-    if (authStore.user) {
-      userProfile.value = authStore.user
-      initEditForm()
-    } else {
-      error.value = '用户未登录'
-    }
-    loading.value = false
-    return
-  }
-
   try {
-    // TODO: 实现获取其他用户资料的API
-    // const response = await authApi.getUserProfile(userId)
-    // userProfile.value = response
-    error.value = '暂不支持查看其他用户资料'
+    // Always fetch fresh data from API for accurate profile information
+    if (!userId || userId === 'me' || (authStore.user && userId === authStore.user.id.toString())) {
+      // For own profile, fetch from profile API to get updated data
+      const response = await authApi.getCurrentUser()
+      userProfile.value = response
+      // Update auth store with fresh data
+      authStore.user = response
+    } else {
+      // For other users, fetch by user ID
+      const response = await authApi.getUserById(parseInt(userId))
+      userProfile.value = response
+    }
+    initEditForm()
   } catch (err: any) {
     if (err.status === 404) {
       error.value = '用户不存在'
+    } else if (err.status === 401) {
+      error.value = '用户未登录'
     } else {
       error.value = '加载失败'
     }
@@ -331,6 +334,30 @@ const getLocationPrecisionText = (precision: number) => {
     4: '仅显示城市'
   }
   return texts[precision as keyof typeof texts] || '未知'
+}
+
+const formatTotalLockDuration = (minutes: number) => {
+  if (minutes < 60) {
+    return `${minutes}分钟`
+  } else if (minutes < 1440) {
+    const hours = Math.floor(minutes / 60)
+    const remainingMinutes = minutes % 60
+    return remainingMinutes > 0 ? `${hours}小时${remainingMinutes}分钟` : `${hours}小时`
+  } else {
+    const days = Math.floor(minutes / 1440)
+    const remainingMinutes = minutes % 1440
+    if (remainingMinutes < 60) {
+      return remainingMinutes > 0 ? `${days}天${remainingMinutes}分钟` : `${days}天`
+    } else {
+      const hours = Math.floor(remainingMinutes / 60)
+      const remainingMinutesAfterHours = remainingMinutes % 60
+      if (remainingMinutesAfterHours > 0) {
+        return `${days}天${hours}小时${remainingMinutesAfterHours}分钟`
+      } else {
+        return `${days}天${hours}小时`
+      }
+    }
+  }
 }
 
 onMounted(() => {
@@ -667,6 +694,12 @@ onMounted(() => {
 
   .stats-grid {
     grid-template-columns: repeat(2, 1fr);
+  }
+
+  @media (max-width: 480px) {
+    .stats-grid {
+      grid-template-columns: 1fr;
+    }
   }
 
   .setting-item {

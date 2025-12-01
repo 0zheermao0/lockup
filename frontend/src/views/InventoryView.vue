@@ -91,11 +91,12 @@
                   <span class="meta-label">创建时间:</span>
                   <span class="meta-value">{{ formatDate(selectedItem.created_at) }}</span>
                 </p>
-                <p v-if="selectedItem.original_creator" class="meta-item">
+                <p v-if="selectedItem.original_creator || selectedItem.item_type.name === 'key'" class="meta-item">
                   <span class="meta-label">原始所有者:</span>
-                  <button @click="viewOwnerProfile(selectedItem.original_creator)" class="owner-link">
+                  <button @click="viewOwnerProfile(selectedItem.original_creator)" class="owner-link" v-if="selectedItem.original_creator">
                     {{ selectedItem.original_creator.username }}
                   </button>
+                  <span v-else class="no-owner">未知</span>
                 </p>
               </div>
             </div>
@@ -104,8 +105,8 @@
             </button>
           </div>
 
-          <!-- Item properties -->
-          <div v-if="Object.keys(selectedItem.properties).length > 0" class="properties-section">
+          <!-- Item properties (only show for items other than keys and photos) -->
+          <div v-if="Object.keys(selectedItem.properties).length > 0 && !['key', 'photo'].includes(selectedItem.item_type.name)" class="properties-section">
             <h4 class="properties-title">物品属性</h4>
             <div class="properties-content">
               <pre class="properties-json">{{ JSON.stringify(selectedItem.properties, null, 2) }}</pre>
@@ -285,14 +286,6 @@
               <div class="char-counter">{{ buryData.location_hint.length }}/200</div>
             </div>
 
-            <div class="form-group">
-              <label class="form-label">掩埋难度</label>
-              <select v-model="buryData.difficulty" class="form-select">
-                <option value="easy">🟢 简单 (80%发现概率)</option>
-                <option value="normal">🟡 普通 (50%发现概率)</option>
-                <option value="hard">🔴 困难 (20%发现概率)</option>
-              </select>
-            </div>
 
             <div v-if="selectedItem" class="item-info-section">
               <h4 class="info-title">📦 掩埋物品</h4>
@@ -365,8 +358,12 @@
 
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
+import { useRouter } from 'vue-router'
 import { storeApi } from '../lib/api'
 import type { UserInventory, Item } from '../types'
+
+// Router
+const router = useRouter()
 
 // Reactive data
 const inventory = ref<UserInventory | null>(null)
@@ -391,8 +388,7 @@ const showBuryModal = ref(false)
 const buryingItem = ref(false)
 const buryData = ref({
   location_zone: '',
-  location_hint: '',
-  difficulty: 'normal' as 'easy' | 'normal' | 'hard'
+  location_hint: ''
 })
 
 // Discard item
@@ -542,8 +538,7 @@ const buryItem = async () => {
     await storeApi.buryItem({
       item_id: selectedItem.value.id,
       location_zone: buryData.value.location_zone,
-      location_hint: buryData.value.location_hint,
-      difficulty: buryData.value.difficulty
+      location_hint: buryData.value.location_hint
     })
     await loadInventory()
     closeBuryModal()
@@ -558,8 +553,7 @@ const closeBuryModal = () => {
   showBuryModal.value = false
   buryData.value = {
     location_zone: '',
-    location_hint: '',
-    difficulty: 'normal'
+    location_hint: ''
   }
   selectedItem.value = null
 }
@@ -585,8 +579,10 @@ const closeDiscardModal = () => {
 }
 
 const viewOwnerProfile = (owner: any) => {
-  // TODO: Implement profile view - for now just show an alert
-  alert(`查看用户资料：${owner.username}\n用户ID：${owner.id}\n等级：${owner.level}\n积分：${owner.coins}\n注册时间：${new Date(owner.created_at).toLocaleString('zh-CN')}`)
+  // Navigate to user profile page
+  if (owner && owner.id) {
+    router.push(`/profile/${owner.id}`)
+  }
 }
 
 // Lifecycle
@@ -985,6 +981,12 @@ onMounted(() => {
   transform: translate(1px, 1px);
   box-shadow: 1px 1px 0 #000;
   background: #138496;
+}
+
+.no-owner {
+  color: #999;
+  font-style: italic;
+  font-weight: 600;
 }
 
 .close-btn {

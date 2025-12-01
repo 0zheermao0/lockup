@@ -5,7 +5,10 @@
       <div class="header-content">
         <button @click="goBack" class="back-btn">← 返回</button>
         <h1>任务管理</h1>
-        <button @click="openCreateModal" class="create-btn">创建任务</button>
+        <div class="header-actions">
+          <NotificationBell />
+          <button @click="openCreateModal" class="create-btn">创建任务</button>
+        </div>
       </div>
     </header>
 
@@ -166,6 +169,7 @@ import { useTasksStore } from '../stores/tasks'
 import { useInfiniteScroll } from '../composables/useInfiniteScroll'
 import { formatDistanceToNow } from '../lib/utils'
 import CreateTaskModal from '../components/CreateTaskModal.vue'
+import NotificationBell from '../components/NotificationBell.vue'
 import type { Task } from '../stores/tasks'
 
 const router = useRouter()
@@ -416,6 +420,12 @@ onMounted(() => {
   display: flex;
   align-items: center;
   justify-content: space-between;
+}
+
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
 }
 
 .back-btn, .create-btn {

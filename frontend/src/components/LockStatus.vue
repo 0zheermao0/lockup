@@ -40,7 +40,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref } from 'vue'
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import type { ActiveLockTask } from '../types/index.js'
 
 interface Props {
@@ -135,6 +135,38 @@ onUnmounted(() => {
     clearInterval(updateInterval.value)
   }
 })
+
+// Watch for changes to lockTask prop and restart countdown if needed
+watch(
+  () => props.lockTask,
+  (newTask, oldTask) => {
+    // If task changed or end_time changed, restart countdown
+    if (newTask && !newTask.is_expired) {
+      // Check if this is a new task or if the end_time has changed
+      const hasChanged = !oldTask ||
+                        newTask.id !== oldTask.id ||
+                        newTask.end_time !== oldTask.end_time
+
+      if (hasChanged) {
+        console.log('LockStatus: Task data changed, restarting countdown', {
+          oldEndTime: oldTask?.end_time,
+          newEndTime: newTask.end_time,
+          taskId: newTask.id
+        })
+        // Update current time immediately to reflect new countdown
+        currentTime.value = Date.now()
+        startCountdown()
+      }
+    } else if (!newTask || newTask.is_expired) {
+      // Stop countdown if no task or task expired
+      if (updateInterval.value) {
+        clearInterval(updateInterval.value)
+        updateInterval.value = undefined
+      }
+    }
+  },
+  { deep: true }
+)
 </script>
 
 <style scoped>
