@@ -939,11 +939,18 @@ def process_voting_results(request):
         if total_votes > 0:
             agreement_ratio = agree_votes / total_votes
             required_ratio = task.vote_agreement_ratio or 0.5
-            vote_passed = agreement_ratio >= required_ratio
+            required_threshold = task.vote_threshold or 0
+
+            # 投票通过需要满足两个条件：
+            # 1. 投票数量达到阈值
+            # 2. 同意比例达到要求
+            vote_passed = (total_votes >= required_threshold and
+                          agreement_ratio >= required_ratio)
         else:
             # 没有投票，视为投票失败
             agreement_ratio = 0
             required_ratio = task.vote_agreement_ratio or 0.5
+            required_threshold = task.vote_threshold or 0
             vote_passed = False
 
         if vote_passed:
@@ -956,12 +963,13 @@ def process_voting_results(request):
                 task=task,
                 event_type='vote_passed',
                 user=None,  # 系统事件
-                description=f'投票通过：{agree_votes}/{total_votes}票同意（{agreement_ratio*100:.1f}%），任务可以完成',
+                description=f'投票通过：{agree_votes}/{total_votes}票同意（{agreement_ratio*100:.1f}%），达到要求（需要{required_threshold}票，{required_ratio*100:.0f}%同意），任务可以完成',
                 metadata={
                     'total_votes': total_votes,
                     'agree_votes': agree_votes,
                     'agreement_ratio': agreement_ratio,
                     'required_ratio': required_ratio,
+                    'required_threshold': required_threshold,
                     'can_complete': True
                 }
             )

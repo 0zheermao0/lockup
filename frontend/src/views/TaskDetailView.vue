@@ -482,16 +482,26 @@ const isVotingPassed = computed(() => {
 
   // Check if we have the required number of votes
   if (currentVotes.value < taskVoteThresholdValue.value) {
+    console.log('isVotingPassed: false - not enough votes:', currentVotes.value, '<', taskVoteThresholdValue.value)
     return false
   }
 
   // Check if the agreement ratio meets the requirement
   if (taskVoteAgreementRatio.value && currentVotes.value > 0) {
     const currentAgreementRatio = taskVoteAgreementCount.value / currentVotes.value
-    return currentAgreementRatio >= taskVoteAgreementRatio.value
+    const passed = currentAgreementRatio >= taskVoteAgreementRatio.value
+    console.log('isVotingPassed agreement check:', {
+      agreementCount: taskVoteAgreementCount.value,
+      totalVotes: currentVotes.value,
+      currentRatio: currentAgreementRatio,
+      requiredRatio: taskVoteAgreementRatio.value,
+      passed: passed
+    })
+    return passed
   }
 
   // Default: if no agreement ratio specified, just check vote count
+  console.log('isVotingPassed: true - no agreement ratio specified')
   return true
 })
 
@@ -559,6 +569,7 @@ const canCompleteTask = computed(() => {
   if (task.value.task_type === 'lock' && taskUnlockType.value === 'vote') {
     // Cannot complete during voting period
     if (task.value.status === 'voting') {
+      console.log('canCompleteTask: false - task is in voting period')
       return false
     }
 
@@ -566,12 +577,26 @@ const canCompleteTask = computed(() => {
     if (task.value.status === 'active' && taskVotingEndTime.value) {
       const now = currentTime.value
       const votingEndTime = new Date(taskVotingEndTime.value).getTime()
+      const votingPassed = isVotingPassed.value
+
+      console.log('canCompleteTask check:', {
+        status: task.value.status,
+        now: now,
+        votingEndTime: votingEndTime,
+        votingTimeOver: now >= votingEndTime,
+        votingPassed: votingPassed,
+        currentVotes: currentVotes.value,
+        agreementCount: taskVoteAgreementCount.value,
+        thresholdValue: taskVoteThresholdValue.value,
+        agreementRatio: taskVoteAgreementRatio.value
+      })
 
       // Voting period must be over and voting must have passed
-      return now >= votingEndTime && isVotingPassed.value
+      return now >= votingEndTime && votingPassed
     }
 
     // If no voting has started yet, cannot complete (need to start voting first)
+    console.log('canCompleteTask: false - no voting started yet')
     return false
   }
 
@@ -721,8 +746,8 @@ const fetchTask = async () => {
     const fetchedTask = await tasksApi.getTask(taskId)
     task.value = fetchedTask
 
-    // 模拟投票数据
-    currentVotes.value = (fetchedTask as any).vote_count || 1
+    // 获取实际投票数据
+    currentVotes.value = (fetchedTask as any).vote_count || 0
 
     // 检查是否已投票（简单模拟）
     hasVoted.value = false
