@@ -211,7 +211,7 @@
                 ✅ 完成任务
               </button>
               <button
-                v-if="task.status === 'active' && canManageTask"
+                v-if="(task.status === 'active' || task.status === 'voting') && canManageTask"
                 @click="stopTask"
                 class="action-btn stop-btn"
               >
@@ -520,7 +520,9 @@ const canDeleteTask = computed(() => {
 
 const canManageTask = computed(() => {
   if (!task.value) return false
-  return authStore.user?.id === task.value.user.id
+  const canManage = authStore.user?.id === task.value.user.id
+  console.log('🔧 canManageTask:', canManage, 'for user:', authStore.user?.id, 'task owner:', task.value.user.id)
+  return canManage
 })
 
 const isOwnTask = computed(() => {
@@ -838,15 +840,34 @@ const startProgressUpdate = () => {
 
       if (now >= votingEndTime) {
         try {
+          console.log('🗳️ Voting period ended, processing results...')
+
           // Process voting results
           await tasksStore.processVotingResults()
 
           // Refresh task data to get updated status
           await fetchTask()
 
-          console.log('Voting period ended, task status updated')
+          console.log('✅ Voting results processed, new task status:', task.value?.status)
+          console.log('🔄 Task data refreshed, buttons should now be visible')
+
+          // Force a reactive update
+          currentTime.value = Date.now()
+
+          // Double check button states
+          setTimeout(() => {
+            console.log('🔘 Final button check after voting ended:', {
+              taskStatus: task.value?.status,
+              canManageTask: canManageTask.value,
+              canCompleteTask: canCompleteTask.value,
+              stopButtonVisible: (task.value?.status === 'active' || task.value?.status === 'voting') && canManageTask.value,
+              completeButtonVisible: task.value?.status === 'active' && canManageTask.value && canCompleteTask.value,
+              votingEndTime: taskVotingEndTime.value,
+              currentTime: currentTime.value
+            })
+          }, 500)
         } catch (error) {
-          console.error('Error processing voting results:', error)
+          console.error('❌ Error processing voting results:', error)
         }
       }
     }
@@ -1219,8 +1240,20 @@ watch(() => task.value?.updated_at, async (newUpdatedAt, oldUpdatedAt) => {
 // Also watch for status changes
 watch(() => task.value?.status, async (newStatus, oldStatus) => {
   if (newStatus && oldStatus && newStatus !== oldStatus) {
-    console.log('Task status changed, refreshing timeline...')
+    console.log('📊 Task status changed from', oldStatus, 'to', newStatus)
+    console.log('🔄 Refreshing timeline and checking button visibility...')
     await fetchTimeline()
+
+    // Log button states after status change
+    setTimeout(() => {
+      console.log('🔘 Button visibility after status change:', {
+        taskStatus: task.value?.status,
+        canManageTask: canManageTask.value,
+        canCompleteTask: canCompleteTask.value,
+        stopButtonVisible: (task.value?.status === 'active' || task.value?.status === 'voting') && canManageTask.value,
+        completeButtonVisible: task.value?.status === 'active' && canManageTask.value && canCompleteTask.value
+      })
+    }, 100)
   }
 })
 

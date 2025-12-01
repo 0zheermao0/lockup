@@ -388,9 +388,9 @@ def stop_task(request, pk):
         )
 
     # 检查任务状态
-    if task.status != 'active':
+    if task.status not in ['active', 'voting']:
         return Response(
-            {'error': '任务不是进行中状态'},
+            {'error': '任务不在可停止状态'},
             status=status.HTTP_400_BAD_REQUEST
         )
 
