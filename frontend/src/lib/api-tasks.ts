@@ -167,5 +167,45 @@ export const tasksApi = {
     return apiRequest(`/tasks/${id}/overtime/`, {
       method: 'POST'
     })
+  },
+
+  // 检查并完成过期任务
+  checkAndCompleteExpiredTasks: async (): Promise<any> => {
+    return apiRequest('/tasks/check-expired/', {
+      method: 'GET'
+    })
+  },
+
+  // 处理小时奖励
+  processHourlyRewards: async (): Promise<any> => {
+    return apiRequest('/tasks/process-hourly-rewards/', {
+      method: 'POST'
+    })
+  },
+
+  // 处理投票结果
+  processVotingResults: async (): Promise<any> => {
+    return apiRequest('/tasks/process-voting/', {
+      method: 'POST'
+    })
+  },
+
+  // 获取任务时间线
+  getTaskTimeline: async (id: string): Promise<any> => {
+    return apiRequest(`/tasks/${id}/timeline/`, {
+      method: 'GET'
+    })
+  },
+
+  // 获取当前活跃的带锁任务
+  getActiveLockTask: async (): Promise<LockTask | null> => {
+    try {
+      const response = await apiRequest('/tasks/?task_type=lock&status=active&my_tasks=true')
+      const tasks = response.results || response
+      return tasks.length > 0 ? tasks[0] : null
+    } catch (error) {
+      console.error('Error getting active lock task:', error)
+      return null
+    }
   }
 }

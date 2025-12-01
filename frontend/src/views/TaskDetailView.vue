@@ -428,7 +428,22 @@ const canAddOvertime = computed(() => {
 const canCompleteTask = computed(() => {
   if (!task.value) return false
 
-  // For lock tasks, can only complete after countdown ends
+  // For lock tasks with vote unlock type
+  if (task.value.task_type === 'lock' && task.value.unlock_type === 'vote') {
+    // Cannot complete during voting period
+    if (task.value.status === 'voting') {
+      return false
+    }
+
+    // Can only complete after countdown ends AND voting has passed
+    if (task.value.end_time) {
+      const now = currentTime.value
+      const endTime = new Date(task.value.end_time).getTime()
+      return now >= endTime && task.value.status === 'active'
+    }
+  }
+
+  // For lock tasks with time unlock type, can only complete after countdown ends
   if (task.value.task_type === 'lock' && task.value.end_time) {
     const now = currentTime.value
     const endTime = new Date(task.value.end_time).getTime()
@@ -627,9 +642,34 @@ const startProgressUpdate = () => {
     clearInterval(progressInterval.value)
   }
 
-  progressInterval.value = window.setInterval(() => {
+  progressInterval.value = window.setInterval(async () => {
     // Update current time for reactive calculations
     if (task.value?.status === 'active' || (task.value?.task_type === 'board' && task.value?.status === 'taken')) {
+      currentTime.value = Date.now()
+    }
+
+    // Check if voting period has ended and needs processing
+    if (task.value?.status === 'voting' && task.value?.voting_end_time) {
+      const now = Date.now()
+      const votingEndTime = new Date(task.value.voting_end_time).getTime()
+
+      if (now >= votingEndTime) {
+        try {
+          // Process voting results
+          await tasksApi.processVotingResults()
+
+          // Refresh task data to get updated status
+          await loadTask()
+
+          console.log('Voting period ended, task status updated')
+        } catch (error) {
+          console.error('Error processing voting results:', error)
+        }
+      }
+    }
+
+    // Update current time for voting countdown
+    if (task.value?.status === 'voting') {
       currentTime.value = Date.now()
     }
   }, 1000)

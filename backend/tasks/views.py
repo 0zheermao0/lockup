@@ -933,6 +933,23 @@ def process_voting_results(request):
                 }
             )
 
+            # 发送投票通过通知给任务创建者
+            Notification.create_notification(
+                recipient=task.user,
+                notification_type='task_vote_passed',
+                title='投票通过 - 任务可以完成',
+                message=f'您的任务《{task.title}》投票通过（{agree_votes}/{total_votes}票同意），现在可以完成任务了！',
+                related_object_type='task',
+                related_object_id=task.id,
+                extra_data={
+                    'task_title': task.title,
+                    'agree_votes': agree_votes,
+                    'total_votes': total_votes,
+                    'agreement_ratio': agreement_ratio
+                },
+                priority='high'
+            )
+
             processed_tasks.append({
                 'id': str(task.id),
                 'title': task.title,
@@ -970,6 +987,26 @@ def process_voting_results(request):
                     'penalty_minutes': penalty_minutes,
                     'difficulty': task.difficulty
                 }
+            )
+
+            # 发送投票失败通知给任务创建者
+            Notification.create_notification(
+                recipient=task.user,
+                notification_type='task_vote_failed',
+                title='投票未通过 - 任务已加时',
+                message=f'您的任务《{task.title}》投票未通过（{agree_votes}/{total_votes}票同意），已按{task.difficulty}难度加时{penalty_minutes}分钟',
+                related_object_type='task',
+                related_object_id=task.id,
+                extra_data={
+                    'task_title': task.title,
+                    'agree_votes': agree_votes,
+                    'total_votes': total_votes,
+                    'agreement_ratio': agreement_ratio,
+                    'penalty_minutes': penalty_minutes,
+                    'difficulty': task.difficulty,
+                    'new_end_time': task.end_time.isoformat()
+                },
+                priority='high'
             )
 
             processed_tasks.append({
