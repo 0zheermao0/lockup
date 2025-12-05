@@ -867,17 +867,34 @@ const startProgressUpdate = () => {
         try {
           console.log('🗳️ Voting period ended, processing results...')
 
-          // Process voting results
-          const result = await tasksStore.processVotingResults()
-          console.log('🗳️ Process voting results API response:', result)
+          let result = null
+          let retryCount = 0
+          const maxRetries = 3
 
-          // 等待一小段时间确保后端状态更新完成
+          // 重试机制处理API调用
+          while (retryCount < maxRetries && !result) {
+            try {
+              result = await tasksStore.processVotingResults()
+              console.log('🗳️ Process voting results API response:', result)
+              break
+            } catch (apiError: any) {
+              retryCount++
+              console.warn(`⚠️ API call failed (attempt ${retryCount}/${maxRetries}):`, apiError)
+
+              if (retryCount < maxRetries) {
+                // 等待后重试
+                await new Promise(resolve => setTimeout(resolve, 1000 * retryCount))
+              } else {
+                console.error('❌ All API retry attempts failed, will refresh task to check status')
+              }
+            }
+          }
+
+          // 无论API调用是否成功，都刷新任务状态
           await new Promise(resolve => setTimeout(resolve, 1000))
-
-          // Refresh task data to get updated status
           await fetchTask()
 
-          console.log('✅ Voting results processed, new task status:', task.value?.status)
+          console.log('✅ Task status after voting period ended:', task.value?.status)
 
           const taskStatus = task.value?.status as string
           if (taskStatus === 'completed') {
@@ -902,6 +919,12 @@ const startProgressUpdate = () => {
 
             // 刷新时间线以显示失败事件
             await fetchTimeline()
+          } else if (taskStatus === 'voting') {
+            console.warn('⚠️ Task still in voting status, may need manual intervention')
+
+            // 如果任务仍在投票状态，继续检查（可能是网络问题或其他临时问题）
+            // 不重置 votingProcessing 标志，让下次定时器继续检查
+            return
           }
 
           // Force a reactive update
@@ -923,6 +946,17 @@ const startProgressUpdate = () => {
           }, 500)
         } catch (error) {
           console.error('❌ Error processing voting results:', error)
+
+          // 即使出错也要刷新任务状态，以防后端已经处理了
+          try {
+            await fetchTask()
+            if (task.value?.status !== 'voting') {
+              console.log('✅ Task status updated despite API error:', task.value?.status)
+            }
+          } catch (fetchError) {
+            console.error('❌ Failed to refresh task after API error:', fetchError)
+          }
+
           // 重置处理标志
           votingProcessing.value = false
         }

@@ -22,7 +22,20 @@ async function handleResponse<T>(response: Response): Promise<T> {
     );
   }
 
-  return response.json();
+  // Handle responses with no content (like DELETE requests)
+  if (response.status === 204 || response.headers.get('content-length') === '0') {
+    return null as T;
+  }
+
+  // Check if response has content to parse
+  const contentType = response.headers.get('content-type');
+  if (contentType && contentType.includes('application/json')) {
+    return response.json();
+  }
+
+  // For non-JSON responses, return text
+  const text = await response.text();
+  return (text ? text : null) as T;
 }
 
 async function apiRequest<T>(

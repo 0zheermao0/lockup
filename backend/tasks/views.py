@@ -28,6 +28,13 @@ class LockTaskListCreateView(generics.ListCreateAPIView):
         return LockTaskSerializer
 
     def get_queryset(self):
+        # 在获取任务列表时，自动处理过期的投票
+        try:
+            _process_voting_results_internal()
+        except Exception as e:
+            # 不让投票处理错误影响任务列表获取
+            print(f"Warning: Failed to process voting results: {e}")
+
         queryset = LockTask.objects.all()
 
         # 按任务类型筛选
@@ -184,6 +191,17 @@ class LockTaskDetailView(generics.RetrieveUpdateDestroyAPIView):
     queryset = LockTask.objects.all()
     serializer_class = LockTaskSerializer
     permission_classes = [IsAuthenticated]
+
+    def get_object(self):
+        """获取任务对象前，先处理投票结果"""
+        # 在获取任务详情时，自动处理过期的投票
+        try:
+            _process_voting_results_internal()
+        except Exception as e:
+            # 不让投票处理错误影响任务详情获取
+            print(f"Warning: Failed to process voting results: {e}")
+
+        return super().get_object()
 
     def get_permissions(self):
         """设置不同操作的权限"""
@@ -911,6 +929,11 @@ def my_keys(request):
 @permission_classes([IsAuthenticated])
 def process_voting_results(request):
     """处理投票期结束的任务"""
+    return _process_voting_results_internal()
+
+
+def _process_voting_results_internal():
+    """内部函数：处理投票期结束的任务（可被定时任务调用）"""
     now = timezone.now()
 
     # 找到投票期已结束的任务
