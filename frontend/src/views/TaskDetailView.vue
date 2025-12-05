@@ -333,7 +333,7 @@
             </div>
 
             <!-- Voting results display for completed or active tasks -->
-            <div v-if="(task.status === 'active' || task.status === 'completed') && taskVotingEndTime && taskUnlockType === 'vote'" class="voting-results">
+            <div v-if="showVotingResults" class="voting-results">
               <h4>🗳️ 投票结果</h4>
               <div class="voting-result-summary">
                 <div class="result-item">
@@ -355,7 +355,7 @@
               </div>
 
               <div class="voting-conclusion">
-                <div v-if="task.status === 'completed'" class="voting-passed">
+                <div v-if="isTaskCompleted" class="voting-passed">
                   ✅ 投票通过！任务已自动完成。
                 </div>
                 <div v-else-if="isVotingPassed" class="voting-passed">
@@ -710,6 +710,22 @@ const canStartVoting = computed(() => {
   return false
 })
 
+// Helper computed for template type checking
+const isTaskCompleted = computed(() => {
+  return task.value?.status === 'completed'
+})
+
+const isTaskActive = computed(() => {
+  return task.value?.status === 'active'
+})
+
+const showVotingResults = computed(() => {
+  if (!task.value || taskUnlockType.value !== 'vote' || !taskVotingEndTime.value) {
+    return false
+  }
+  return ['active', 'completed'].includes(task.value.status)
+})
+
 // Methods
 const goBack = () => {
   router.back()
@@ -863,7 +879,8 @@ const startProgressUpdate = () => {
 
           console.log('✅ Voting results processed, new task status:', task.value?.status)
 
-          if (task.value?.status === 'completed') {
+          const taskStatus = task.value?.status as string
+          if (taskStatus === 'completed') {
             console.log('🎉 Task was auto-completed after voting passed!')
 
             // 停止进度更新定时器，因为任务已完成
@@ -880,7 +897,7 @@ const startProgressUpdate = () => {
 
             // 显示完成提示
             alert('🎉 投票通过！任务已自动完成！')
-          } else if (task.value?.status === 'active') {
+          } else if (taskStatus === 'active') {
             console.log('⏰ Voting failed, task continues with penalty time')
 
             // 刷新时间线以显示失败事件
