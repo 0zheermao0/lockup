@@ -287,45 +287,12 @@ def complete_task(request, pk):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-        # 条件2: 如果是投票解锁类型，必须满足所有投票要求
+        # 条件2: 投票解锁类型的任务现在会自动完成，不允许手动完成
         if task.unlock_type == 'vote':
-            total_votes = task.votes.count()
-            agree_votes = task.votes.filter(agree=True).count()
-            required_threshold = task.vote_threshold or 0
-            required_ratio = task.vote_agreement_ratio or 0.5
-
-            # 检查是否经历了完整的投票流程
-            if not task.voting_start_time or not task.voting_end_time:
-                return Response(
-                    {'error': '投票解锁任务需要经历完整的投票流程才能完成'},
-                    status=status.HTTP_400_BAD_REQUEST
-                )
-
-            # 检查投票期是否已结束
-            if timezone.now() < task.voting_end_time:
-                return Response(
-                    {'error': '投票期尚未结束，无法完成任务'},
-                    status=status.HTTP_400_BAD_REQUEST
-                )
-
-            # 检查投票数量是否达到门槛
-            if total_votes < required_threshold:
-                return Response(
-                    {'error': f'投票数量不足：当前{total_votes}票，需要至少{required_threshold}票'},
-                    status=status.HTTP_400_BAD_REQUEST
-                )
-
-            # 检查同意比例是否达到要求
-            if total_votes == 0:
-                agreement_ratio = 0
-            else:
-                agreement_ratio = agree_votes / total_votes
-
-            if agreement_ratio < required_ratio:
-                return Response(
-                    {'error': f'投票同意比例不足：当前{agree_votes}/{total_votes}({agreement_ratio*100:.1f}%)，需要{required_ratio*100:.0f}%以上同意'},
-                    status=status.HTTP_400_BAD_REQUEST
-                )
+            return Response(
+                {'error': '投票解锁任务会在投票通过后自动完成，无需手动操作'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
 
         # 条件3: 必须是任务创建者（钥匙持有者）
         if task.user != request.user:
@@ -976,16 +943,34 @@ def process_voting_results(request):
                       agreement_ratio >= required_ratio)
 
         if vote_passed:
-            # 投票通过 - 任务回到active状态，可以手动完成
-            task.status = 'active'
+            # 投票通过 - 自动完成任务
+            task.status = 'completed'
+            task.completed_at = timezone.now()
+
+            # 检查并销毁钥匙道具（如果存在）
+            from store.models import Item
+            task_key_item = Item.objects.filter(
+                item_type__name='key',
+                owner=task.user,
+                status='available',
+                properties__task_id=str(task.id)
+            ).first()
+
+            if task_key_item:
+                # 销毁钥匙道具
+                task_key_item.status = 'used'
+                task_key_item.used_at = timezone.now()
+                task_key_item.inventory = None  # 从背包中移除
+                task_key_item.save()
+
             task.save()
 
-            # 创建投票通过事件
+            # 创建投票通过并自动完成事件
             TaskTimelineEvent.objects.create(
                 task=task,
-                event_type='vote_passed',
+                event_type='task_completed',
                 user=None,  # 系统事件
-                description=f'投票通过：{agree_votes}/{total_votes}票同意（{agreement_ratio*100:.1f}%），满足要求（需要≥{required_threshold}票且≥{required_ratio*100:.0f}%同意），任务可以完成',
+                description=f'投票通过并自动完成：{agree_votes}/{total_votes}票同意（{agreement_ratio*100:.1f}%），满足要求（需要≥{required_threshold}票且≥{required_ratio*100:.0f}%同意），任务已自动完成',
                 metadata={
                     'total_votes': total_votes,
                     'agree_votes': agree_votes,
@@ -993,23 +978,26 @@ def process_voting_results(request):
                     'required_ratio': required_ratio,
                     'required_threshold': required_threshold,
                     'vote_passed': True,
-                    'can_complete': True
+                    'auto_completed': True,
+                    'completion_type': 'voting_auto',
+                    'key_destroyed': task_key_item is not None
                 }
             )
 
-            # 发送投票通过通知给任务创建者
+            # 发送任务自动完成通知给任务创建者
             Notification.create_notification(
                 recipient=task.user,
                 notification_type='task_vote_passed',
-                title='投票通过 - 任务可以完成',
-                message=f'您的任务《{task.title}》投票通过（{agree_votes}/{total_votes}票同意），现在可以完成任务了！',
+                title='投票通过 - 任务已自动完成',
+                message=f'您的任务《{task.title}》投票通过（{agree_votes}/{total_votes}票同意），任务已自动完成！',
                 related_object_type='task',
                 related_object_id=task.id,
                 extra_data={
                     'task_title': task.title,
                     'agree_votes': agree_votes,
                     'total_votes': total_votes,
-                    'agreement_ratio': agreement_ratio
+                    'agreement_ratio': agreement_ratio,
+                    'auto_completed': True
                 },
                 priority='high'
             )
@@ -1060,7 +1048,7 @@ def process_voting_results(request):
                 recipient=task.user,
                 notification_type='task_vote_failed',
                 title='投票未通过 - 任务已加时',
-                message=f'您的任务《{task.title}》投票未通过（{agree_votes}/{total_votes}票同意），已按{task.difficulty}难度加时{penalty_minutes}分钟',
+                message=f'您的任务《{task.title}》投票未通过（{agree_votes}/{total_votes}票同意），需要≥{required_threshold}票且≥{required_ratio*100:.0f}%同意，已按{task.difficulty}难度加时{penalty_minutes}分钟',
                 related_object_type='task',
                 related_object_id=task.id,
                 extra_data={

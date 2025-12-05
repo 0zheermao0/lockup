@@ -182,8 +182,11 @@
 
               <!-- 带锁任务完成提示 -->
               <div v-if="task.task_type === 'lock' && task.status === 'active' && canManageTask" class="completion-hint">
-                <div v-if="timeRemaining > 0" class="hint-waiting">
-                  ⏳ 带锁任务需要等待倒计时结束后才能完成
+                <div v-if="taskUnlockType === 'vote'" class="hint-vote">
+                  🗳️ 投票解锁任务：倒计时结束后可发起投票，投票通过后任务将自动完成
+                </div>
+                <div v-else-if="timeRemaining > 0" class="hint-waiting">
+                  ⏳ 定时解锁任务：需要等待倒计时结束后才能手动完成
                 </div>
                 <div v-else class="hint-ready">
                   ✅ 倒计时已结束，满足所有条件后可以手动完成任务
@@ -329,8 +332,8 @@
               ✅ 你已投票
             </div>
 
-            <!-- Voting results after voting period ends -->
-            <div v-if="task.status === 'active' && taskVotingEndTime && taskUnlockType === 'vote'" class="voting-results">
+            <!-- Voting results display for completed or active tasks -->
+            <div v-if="(task.status === 'active' || task.status === 'completed') && taskVotingEndTime && taskUnlockType === 'vote'" class="voting-results">
               <h4>🗳️ 投票结果</h4>
               <div class="voting-result-summary">
                 <div class="result-item">
@@ -352,11 +355,14 @@
               </div>
 
               <div class="voting-conclusion">
-                <div v-if="isVotingPassed" class="voting-passed">
-                  ✅ 投票通过！满足解锁条件，可以完成任务。
+                <div v-if="task.status === 'completed'" class="voting-passed">
+                  ✅ 投票通过！任务已自动完成。
+                </div>
+                <div v-else-if="isVotingPassed" class="voting-passed">
+                  ✅ 投票通过！任务将自动完成。
                 </div>
                 <div v-else class="voting-failed">
-                  ❌ 投票未通过。
+                  ❌ 投票未通过，任务继续进行并已加时。
                   <div class="failure-reasons">
                     <div v-if="currentVotes < taskVoteThresholdValue">
                       • 票数不足（需要 {{ taskVoteThresholdValue }} 票，当前 {{ currentVotes }} 票）
@@ -586,42 +592,10 @@ const canCompleteTask = computed(() => {
     unlockType: taskUnlockType.value
   })
 
-  // For lock tasks with vote unlock type
+  // For lock tasks with vote unlock type - they auto-complete, no manual completion
   if (task.value.task_type === 'lock' && taskUnlockType.value === 'vote') {
-    // Cannot complete during voting period
-    if (task.value.status === 'voting') {
-      console.log('🎯 canCompleteTask: false - task is in voting period')
-      return false
-    }
-
-    // Must be in active status to complete
-    if (task.value.status !== 'active') {
-      console.log('🎯 canCompleteTask: false - task status is not active:', task.value.status)
-      return false
-    }
-
-    // Check if voting period has ended
-    if (taskVotingEndTime.value) {
-      const now = currentTime.value
-      const votingEndTime = new Date(taskVotingEndTime.value).getTime()
-
-      if (now < votingEndTime) {
-        console.log('🎯 canCompleteTask: false - voting period not ended yet')
-        return false
-      }
-    }
-
-    // Check if voting requirements are met
-    const votingPassed = isVotingPassed.value
-
-    console.log('🎯 canCompleteTask final check:', {
-      status: task.value.status,
-      votingEndTime: taskVotingEndTime.value,
-      votingPassed: votingPassed,
-      currentTime: currentTime.value
-    })
-
-    return votingPassed
+    console.log('🎯 canCompleteTask: false - vote unlock tasks auto-complete when voting passes')
+    return false
   }
 
   // For lock tasks with time unlock type, can only complete after countdown ends
@@ -888,19 +862,41 @@ const startProgressUpdate = () => {
           await fetchTask()
 
           console.log('✅ Voting results processed, new task status:', task.value?.status)
-          console.log('🔄 Task data refreshed, buttons should now be visible')
+
+          if (task.value?.status === 'completed') {
+            console.log('🎉 Task was auto-completed after voting passed!')
+
+            // 停止进度更新定时器，因为任务已完成
+            if (progressInterval.value) {
+              clearInterval(progressInterval.value)
+              progressInterval.value = undefined
+            }
+
+            // 刷新用户数据以更新lock status
+            await authStore.refreshUser()
+
+            // 刷新时间线以显示完成事件
+            await fetchTimeline()
+
+            // 显示完成提示
+            alert('🎉 投票通过！任务已自动完成！')
+          } else if (task.value?.status === 'active') {
+            console.log('⏰ Voting failed, task continues with penalty time')
+
+            // 刷新时间线以显示失败事件
+            await fetchTimeline()
+          }
 
           // Force a reactive update
           currentTime.value = Date.now()
 
-          // Double check button states
+          // Double check final state
           setTimeout(() => {
-            console.log('🔘 Final button check after voting ended:', {
+            console.log('🔘 Final state after voting ended:', {
               taskStatus: task.value?.status,
               canManageTask: canManageTask.value,
               canCompleteTask: canCompleteTask.value,
-              stopButtonVisible: (task.value?.status === 'active' || task.value?.status === 'voting') && canManageTask.value,
-              completeButtonVisible: task.value?.status === 'active' && canManageTask.value && canCompleteTask.value,
+              isCompleted: task.value?.status === 'completed',
               votingEndTime: taskVotingEndTime.value,
               currentTime: currentTime.value
             })
@@ -1701,6 +1697,12 @@ onUnmounted(() => {
   border-radius: 4px;
   font-weight: 500;
   text-align: center;
+}
+
+.hint-vote {
+  background-color: #e7f3ff;
+  border: 1px solid #b3d9ff;
+  color: #0066cc;
 }
 
 .hint-waiting {
