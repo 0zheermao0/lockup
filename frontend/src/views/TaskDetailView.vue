@@ -428,6 +428,7 @@ const showSubmissionModal = ref(false)
 const showProfileModal = ref(false)
 const selectedUserId = ref<number | undefined>(undefined)
 const showVoteModal = ref(false)
+const votingProcessing = ref(false) // 防止重复处理投票结果
 
 // Computed properties for template access
 const taskUnlockType = computed(() => {
@@ -853,22 +854,35 @@ const startProgressUpdate = () => {
   }
 
   progressInterval.value = window.setInterval(async () => {
-    // Update current time for reactive calculations
-    if (task.value?.status === 'active' || (task.value?.task_type === 'board' && task.value?.status === 'taken')) {
-      currentTime.value = Date.now()
-    }
+    // Always update current time for reactive calculations
+    currentTime.value = Date.now()
 
     // Check if voting period has ended and needs processing
-    if (task.value?.status === 'voting' && taskVotingEndTime.value) {
-      const now = Date.now()
+    if (task.value?.status === 'voting' && taskVotingEndTime.value && !votingProcessing.value) {
+      const now = currentTime.value
       const votingEndTime = new Date(taskVotingEndTime.value).getTime()
 
+      console.log('⏰ Voting timer check:', {
+        now: now,
+        votingEndTime: votingEndTime,
+        timeRemaining: votingEndTime - now,
+        shouldProcess: now >= votingEndTime,
+        alreadyProcessing: votingProcessing.value
+      })
+
       if (now >= votingEndTime) {
+        // 防止重复处理
+        votingProcessing.value = true
+
         try {
           console.log('🗳️ Voting period ended, processing results...')
 
           // Process voting results
-          await tasksStore.processVotingResults()
+          const result = await tasksStore.processVotingResults()
+          console.log('🗳️ Process voting results API response:', result)
+
+          // 等待一小段时间确保后端状态更新完成
+          await new Promise(resolve => setTimeout(resolve, 1000))
 
           // Refresh task data to get updated status
           await fetchTask()
@@ -890,16 +904,16 @@ const startProgressUpdate = () => {
               votingEndTime: taskVotingEndTime.value,
               currentTime: currentTime.value
             })
+
+            // 重置处理标志
+            votingProcessing.value = false
           }, 500)
         } catch (error) {
           console.error('❌ Error processing voting results:', error)
+          // 重置处理标志
+          votingProcessing.value = false
         }
       }
-    }
-
-    // Update current time for voting countdown
-    if (task.value?.status === 'voting') {
-      currentTime.value = Date.now()
     }
   }, 1000)
 }
