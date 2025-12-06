@@ -58,27 +58,23 @@ class UserLoginView(generics.GenericAPIView):
 
         # 处理每日登录奖励
         today = timezone.now().date()
-        daily_reward_exists = DailyLoginReward.objects.filter(
+
+        # 使用get_or_create避免竞争条件
+        reward_amount = user.get_daily_login_reward()
+        daily_reward, created = DailyLoginReward.objects.get_or_create(
             user=user,
-            date=today
-        ).exists()
+            date=today,
+            defaults={
+                'user_level': user.level,
+                'reward_amount': reward_amount
+            }
+        )
 
         daily_reward_message = ""
-        if not daily_reward_exists:
-            # 获取用户等级对应的奖励积分
-            reward_amount = user.get_daily_login_reward()
-
-            # 给用户增加积分
+        if created:
+            # 只有在新创建奖励记录时才给用户增加积分
             user.coins += reward_amount
             user.save()
-
-            # 创建每日登录奖励记录
-            DailyLoginReward.objects.create(
-                user=user,
-                date=today,
-                user_level=user.level,
-                reward_amount=reward_amount
-            )
 
             # 创建每日登录奖励通知
             Notification.create_notification(
@@ -94,6 +90,9 @@ class UserLoginView(generics.GenericAPIView):
             )
 
             daily_reward_message = f"，获得每日登录奖励{reward_amount}积分"
+            print(f"Daily login reward created for user {user.username} on {today}: {reward_amount} coins")
+        else:
+            print(f"Daily login reward already exists for user {user.username} on {today}")
 
         return Response({
             'user': UserSerializer(user).data,

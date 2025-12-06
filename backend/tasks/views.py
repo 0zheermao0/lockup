@@ -342,6 +342,31 @@ def complete_task(request, pk):
     # 更新任务状态
     task.status = 'completed'
     task.completed_at = timezone.now()
+
+    # 给用户发放完成奖励（带锁任务）
+    if task.task_type == 'lock':
+        # 根据任务难度和时长计算奖励
+        completion_reward = _calculate_lock_task_completion_reward(task)
+        if completion_reward > 0:
+            task.user.coins += completion_reward
+            task.user.save()
+
+            # 创建任务完成奖励通知
+            Notification.create_notification(
+                recipient=task.user,
+                notification_type='coins_earned_task_reward',
+                actor=None,  # 系统奖励
+                related_object_type='task',
+                related_object_id=task.id,
+                extra_data={
+                    'task_title': task.title,
+                    'task_difficulty': task.difficulty,
+                    'reward_amount': completion_reward,
+                    'completion_type': 'manual'
+                },
+                priority='normal'
+            )
+
     task.save()
 
     # 创建任务完成事件
@@ -350,6 +375,11 @@ def complete_task(request, pk):
         'completion_time': task.completed_at.isoformat(),
         'key_destroyed': task.task_type == 'lock'
     }
+
+    # 添加奖励信息到元数据
+    if task.task_type == 'lock':
+        completion_reward = _calculate_lock_task_completion_reward(task)
+        completion_metadata['completion_reward'] = completion_reward
 
     if task.task_type == 'lock':
         # 记录完成时的所有条件状态
@@ -986,6 +1016,28 @@ def _process_voting_results_internal():
                 task_key_item.inventory = None  # 从背包中移除
                 task_key_item.save()
 
+            # 给用户发放完成奖励（带锁任务）
+            completion_reward = _calculate_lock_task_completion_reward(task)
+            if completion_reward > 0:
+                task.user.coins += completion_reward
+                task.user.save()
+
+                # 创建任务完成奖励通知
+                Notification.create_notification(
+                    recipient=task.user,
+                    notification_type='coins_earned_task_reward',
+                    actor=None,  # 系统奖励
+                    related_object_type='task',
+                    related_object_id=task.id,
+                    extra_data={
+                        'task_title': task.title,
+                        'task_difficulty': task.difficulty,
+                        'reward_amount': completion_reward,
+                        'completion_type': 'voting_auto'
+                    },
+                    priority='normal'
+                )
+
             task.save()
 
             # 创建投票通过并自动完成事件
@@ -1003,7 +1055,8 @@ def _process_voting_results_internal():
                     'vote_passed': True,
                     'auto_completed': True,
                     'completion_type': 'voting_auto',
-                    'key_destroyed': task_key_item is not None
+                    'key_destroyed': task_key_item is not None,
+                    'completion_reward': completion_reward
                 }
             )
 
@@ -1257,3 +1310,34 @@ def process_hourly_rewards(request):
         'message': f'Processed {len(processed_rewards)} hourly rewards',
         'rewards': processed_rewards
     })
+
+
+def _calculate_lock_task_completion_reward(task):
+    """计算带锁任务完成奖励"""
+    if task.task_type != 'lock' or not task.start_time or not task.completed_at:
+        return 0
+
+    # 计算实际任务时长（分钟）
+    actual_duration_minutes = int((task.completed_at - task.start_time).total_seconds() / 60)
+
+    # 基础奖励：根据难度等级
+    difficulty_base_rewards = {
+        'easy': 2,     # 简单：2积分
+        'normal': 5,   # 普通：5积分
+        'hard': 10,    # 困难：10积分
+        'hell': 20     # 地狱：20积分
+    }
+
+    base_reward = difficulty_base_rewards.get(task.difficulty, 5)  # 默认5积分
+
+    # 时长奖励：每30分钟额外1积分
+    duration_bonus = max(0, actual_duration_minutes // 30)
+
+    # 总奖励
+    total_reward = base_reward + duration_bonus
+
+    # 最大奖励限制（防止过度奖励）
+    max_reward = difficulty_base_rewards.get(task.difficulty, 5) * 3
+    total_reward = min(total_reward, max_reward)
+
+    return total_reward
