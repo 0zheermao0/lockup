@@ -835,10 +835,10 @@ def add_overtime(request, pk):
             status=status.HTTP_400_BAD_REQUEST
         )
 
-    # 检查任务状态
-    if task.status != 'active':
+    # 检查任务状态 - 允许对活跃状态和投票状态的任务加时
+    if task.status not in ['active', 'voting']:
         return Response(
-            {'error': '只能为进行中的任务加时'},
+            {'error': '只能为进行中的任务（包括投票期）加时'},
             status=status.HTTP_400_BAD_REQUEST
         )
 
@@ -849,26 +849,35 @@ def add_overtime(request, pk):
             status=status.HTTP_400_BAD_REQUEST
         )
 
-    # 检查一小时内是否已经为同一个发布者的任务加过时
-    one_hour_ago = timezone.now() - timedelta(hours=1)
+    # 检查两小时内是否已经为同一个发布者的任务加过时
+    two_hours_ago = timezone.now() - timedelta(hours=2)
     recent_overtime = OvertimeAction.objects.filter(
         user=request.user,
         task_publisher=task.user,
-        created_at__gte=one_hour_ago
+        created_at__gte=two_hours_ago
     ).exists()
 
     if recent_overtime:
         return Response(
-            {'error': '一小时内只能对同一个发布者的带锁任务随机加时一次'},
+            {'error': '两小时内只能对同一个发布者的带锁任务随机加时一次'},
             status=status.HTTP_400_BAD_REQUEST
         )
 
     # 检查任务是否已经结束
-    if task.end_time and timezone.now() >= task.end_time:
-        return Response(
-            {'error': '任务已经结束，无法加时'},
-            status=status.HTTP_400_BAD_REQUEST
-        )
+    # 对于投票状态的任务，只要投票期未结束就可以加时
+    if task.status == 'voting':
+        if task.voting_end_time and timezone.now() >= task.voting_end_time:
+            return Response(
+                {'error': '投票期已结束，无法加时'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+    else:
+        # 对于非投票状态的任务，检查原始结束时间
+        if task.end_time and timezone.now() >= task.end_time:
+            return Response(
+                {'error': '任务已经结束，无法加时'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
 
     # 根据难度等级确定加时范围（分钟）
     difficulty_overtime_map = {
@@ -996,56 +1005,20 @@ def _process_voting_results_internal():
                       agreement_ratio >= required_ratio)
 
         if vote_passed:
-            # 投票通过 - 自动完成任务
-            task.status = 'completed'
-            task.completed_at = timezone.now()
-
-            # 检查并销毁钥匙道具（如果存在）
-            from store.models import Item
-            task_key_item = Item.objects.filter(
-                item_type__name='key',
-                owner=task.user,
-                status='available',
-                properties__task_id=str(task.id)
-            ).first()
-
-            if task_key_item:
-                # 销毁钥匙道具
-                task_key_item.status = 'used'
-                task_key_item.used_at = timezone.now()
-                task_key_item.inventory = None  # 从背包中移除
-                task_key_item.save()
-
-            # 给用户发放完成奖励（带锁任务）
-            completion_reward = _calculate_lock_task_completion_reward(task)
-            if completion_reward > 0:
-                task.user.coins += completion_reward
-                task.user.save()
-
-                # 创建任务完成奖励通知
-                Notification.create_notification(
-                    recipient=task.user,
-                    notification_type='coins_earned_task_reward',
-                    actor=None,  # 系统奖励
-                    related_object_type='task',
-                    related_object_id=task.id,
-                    extra_data={
-                        'task_title': task.title,
-                        'task_difficulty': task.difficulty,
-                        'reward_amount': completion_reward,
-                        'completion_type': 'voting_auto'
-                    },
-                    priority='normal'
-                )
+            # 投票通过 - 回到活跃状态，等待实际时间结束后才能完成
+            task.status = 'active'
+            # 不设置 completed_at，因为任务还未完成
+            # 不销毁钥匙道具，因为任务还未完成
+            # 不发放完成奖励，因为任务还未完成
 
             task.save()
 
-            # 创建投票通过并自动完成事件
+            # 创建投票通过事件（但任务未完成）
             TaskTimelineEvent.objects.create(
                 task=task,
-                event_type='task_completed',
+                event_type='vote_passed',
                 user=None,  # 系统事件
-                description=f'投票通过并自动完成：{agree_votes}/{total_votes}票同意（{agreement_ratio*100:.1f}%），满足要求（需要≥{required_threshold}票且≥{required_ratio*100:.0f}%同意），任务已自动完成',
+                description=f'投票通过：{agree_votes}/{total_votes}票同意（{agreement_ratio*100:.1f}%），满足要求（需要≥{required_threshold}票且≥{required_ratio*100:.0f}%同意），任务回到活跃状态，等待实际时间结束后才能完成',
                 metadata={
                     'total_votes': total_votes,
                     'agree_votes': agree_votes,
@@ -1053,19 +1026,18 @@ def _process_voting_results_internal():
                     'required_ratio': required_ratio,
                     'required_threshold': required_threshold,
                     'vote_passed': True,
-                    'auto_completed': True,
-                    'completion_type': 'voting_auto',
-                    'key_destroyed': task_key_item is not None,
-                    'completion_reward': completion_reward
+                    'auto_completed': False,
+                    'completion_type': 'voting_passed_waiting_time',
+                    'waiting_for_time_end': True
                 }
             )
 
-            # 发送任务自动完成通知给任务创建者
+            # 发送投票通过通知给任务创建者
             Notification.create_notification(
                 recipient=task.user,
                 notification_type='task_vote_passed',
-                title='投票通过 - 任务已自动完成',
-                message=f'您的任务《{task.title}》投票通过（{agree_votes}/{total_votes}票同意），任务已自动完成！',
+                title='投票通过 - 等待时间结束',
+                message=f'您的任务《{task.title}》投票通过（{agree_votes}/{total_votes}票同意），现在需要等待实际时间结束后才能完成任务！',
                 related_object_type='task',
                 related_object_id=task.id,
                 extra_data={
@@ -1073,7 +1045,9 @@ def _process_voting_results_internal():
                     'agree_votes': agree_votes,
                     'total_votes': total_votes,
                     'agreement_ratio': agreement_ratio,
-                    'auto_completed': True
+                    'auto_completed': False,
+                    'waiting_for_time_end': True,
+                    'end_time': task.end_time.isoformat() if task.end_time else None
                 },
                 priority='high'
             )
@@ -1083,11 +1057,13 @@ def _process_voting_results_internal():
                 'title': task.title,
                 'result': 'passed',
                 'votes': f'{agree_votes}/{total_votes}',
-                'ratio': f'{agreement_ratio*100:.1f}%'
+                'ratio': f'{agreement_ratio*100:.1f}%',
+                'status': 'waiting_for_time_end',
+                'end_time': task.end_time.isoformat() if task.end_time else None
             })
         else:
-            # 投票失败 - 固定加时15分钟，回到active状态
-            penalty_minutes = 15
+            # 投票失败 - 根据难度等级加时，回到active状态
+            penalty_minutes = task.get_vote_penalty_minutes()
 
             # 计算新的结束时间
             if task.end_time:
@@ -1313,31 +1289,34 @@ def process_hourly_rewards(request):
 
 
 def _calculate_lock_task_completion_reward(task):
-    """计算带锁任务完成奖励"""
+    """计算带锁任务完成奖励
+    新规则：
+    - 每实际一小时奖励1coins（基础时长奖励）
+    - 满1小时后，根据难度额外奖励：easy(1), normal(2), hard(3), hell(4) coins
+    - 不满1小时不给难度奖励
+    """
     if task.task_type != 'lock' or not task.start_time or not task.completed_at:
         return 0
 
-    # 计算实际任务时长（分钟）
-    actual_duration_minutes = int((task.completed_at - task.start_time).total_seconds() / 60)
+    # 计算实际任务时长（小时，向下取整）
+    actual_duration_seconds = (task.completed_at - task.start_time).total_seconds()
+    actual_duration_hours = int(actual_duration_seconds // 3600)
 
-    # 基础奖励：根据难度等级
-    difficulty_base_rewards = {
-        'easy': 2,     # 简单：2积分
-        'normal': 5,   # 普通：5积分
-        'hard': 10,    # 困难：10积分
-        'hell': 20     # 地狱：20积分
-    }
+    # 基础时长奖励：每实际一小时1积分
+    time_reward = max(0, actual_duration_hours)
 
-    base_reward = difficulty_base_rewards.get(task.difficulty, 5)  # 默认5积分
+    # 难度奖励：只有满1小时才给难度奖励
+    difficulty_bonus = 0
+    if actual_duration_hours >= 1:
+        difficulty_bonus_rewards = {
+            'easy': 1,     # 简单：额外1积分
+            'normal': 2,   # 普通：额外2积分
+            'hard': 3,     # 困难：额外3积分
+            'hell': 4      # 地狱：额外4积分
+        }
+        difficulty_bonus = difficulty_bonus_rewards.get(task.difficulty, 2)  # 默认2积分
 
-    # 时长奖励：每30分钟额外1积分
-    duration_bonus = max(0, actual_duration_minutes // 30)
-
-    # 总奖励
-    total_reward = base_reward + duration_bonus
-
-    # 最大奖励限制（防止过度奖励）
-    max_reward = difficulty_base_rewards.get(task.difficulty, 5) * 3
-    total_reward = min(total_reward, max_reward)
+    # 总奖励 = 时长奖励 + 难度奖励
+    total_reward = time_reward + difficulty_bonus
 
     return total_reward

@@ -51,14 +51,15 @@ class LockTaskCreateSerializer(serializers.ModelSerializer):
     class Meta:
         model = LockTask
         fields = [
-            'task_type', 'title', 'description',
+            'id', 'task_type', 'title', 'description', 'status',
             # 带锁任务字段
             'duration_type', 'duration_value', 'duration_max', 'difficulty',
             'unlock_type', 'vote_threshold', 'vote_agreement_ratio',
-            'overtime_multiplier', 'overtime_duration',
+            'overtime_multiplier', 'overtime_duration', 'voting_duration',
             # 任务板字段
             'reward', 'deadline', 'max_duration'
         ]
+        read_only_fields = ['id', 'status']
 
     def create(self, validated_data):
         validated_data['user'] = self.context['request'].user
@@ -94,6 +95,8 @@ class LockTaskCreateSerializer(serializers.ModelSerializer):
             if data.get('unlock_type') == 'vote':
                 if not data.get('vote_agreement_ratio'):
                     raise serializers.ValidationError("投票解锁必须设置同意比例")
+                if not data.get('voting_duration'):
+                    raise serializers.ValidationError("投票解锁必须设置投票持续时间")
 
         elif task_type == 'board':
             # 任务板必须字段

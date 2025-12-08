@@ -1,8 +1,37 @@
 from rest_framework import serializers
 from django.contrib.auth import authenticate
-from django.contrib.auth.password_validation import validate_password
+from django.contrib.auth.password_validation import validate_password, ValidationError as DjangoValidationError
 from django.utils import timezone
 from .models import User, Friendship, UserLevelUpgrade, Notification
+
+
+def validate_password_with_detailed_messages(password, user=None):
+    """
+    自定义密码验证函数，提供详细的错误信息
+    """
+    errors = []
+
+    try:
+        validate_password(password, user=user)
+    except DjangoValidationError as e:
+        # 分析每个验证器的错误信息并提供更详细的中文说明
+        for error in e.messages:
+            if 'too short' in error.lower() or '至少' in error or 'minimum' in error.lower():
+                errors.append("密码太短：密码至少需要8个字符")
+            elif 'too common' in error.lower() or '常见' in error or 'common' in error.lower():
+                errors.append("密码太常见：请避免使用常见密码（如123456、password等）")
+            elif 'numeric' in error.lower() or '数字' in error or 'entirely numeric' in error.lower():
+                errors.append("密码过于简单：密码不能只包含数字，请添加字母或特殊字符")
+            elif 'similar' in error.lower() or '相似' in error or 'similarity' in error.lower():
+                errors.append("密码与用户信息相似：密码不能与用户名、邮箱等个人信息过于相似")
+            else:
+                # 保留原始错误信息作为备用
+                errors.append(f"密码不符合要求：{error}")
+
+    if errors:
+        raise serializers.ValidationError(errors)
+
+    return password
 
 
 class UserSerializer(serializers.ModelSerializer):
@@ -126,16 +155,25 @@ class UserPublicSerializer(serializers.ModelSerializer):
 class UserRegistrationSerializer(serializers.ModelSerializer):
     """用户注册序列化器"""
 
-    password = serializers.CharField(write_only=True, validators=[validate_password])
+    password = serializers.CharField(write_only=True)
     password_confirm = serializers.CharField(write_only=True)
 
     class Meta:
         model = User
         fields = ['username', 'email', 'password', 'password_confirm']
 
+    def validate_password(self, value):
+        """验证密码强度，提供详细的错误信息"""
+        # 创建一个临时用户对象用于验证
+        temp_user = User(
+            username=self.initial_data.get('username', ''),
+            email=self.initial_data.get('email', '')
+        )
+        return validate_password_with_detailed_messages(value, user=temp_user)
+
     def validate(self, attrs):
         if attrs['password'] != attrs['password_confirm']:
-            raise serializers.ValidationError("密码不匹配")
+            raise serializers.ValidationError({"password_confirm": "密码不匹配"})
         return attrs
 
     def create(self, validated_data):
@@ -265,10 +303,7 @@ class PasswordChangeSerializer(serializers.Serializer):
     """密码修改序列化器"""
 
     old_password = serializers.CharField(write_only=True)
-    new_password = serializers.CharField(
-        write_only=True,
-        validators=[validate_password]
-    )
+    new_password = serializers.CharField(write_only=True)
     new_password_confirm = serializers.CharField(write_only=True)
 
     def validate_old_password(self, value):
@@ -277,9 +312,14 @@ class PasswordChangeSerializer(serializers.Serializer):
             raise serializers.ValidationError("原密码错误")
         return value
 
+    def validate_new_password(self, value):
+        """验证新密码强度，提供详细的错误信息"""
+        user = self.context['request'].user
+        return validate_password_with_detailed_messages(value, user=user)
+
     def validate(self, attrs):
         if attrs['new_password'] != attrs['new_password_confirm']:
-            raise serializers.ValidationError("新密码不匹配")
+            raise serializers.ValidationError({"new_password_confirm": "新密码不匹配"})
         return attrs
 
     def save(self):
