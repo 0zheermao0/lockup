@@ -181,15 +181,25 @@
               </div>
 
               <!-- 带锁任务完成提示 -->
-              <div v-if="task.task_type === 'lock' && task.status === 'active' && canManageTask" class="completion-hint">
-                <div v-if="taskUnlockType === 'vote'" class="hint-vote">
-                  🗳️ 投票解锁任务：倒计时结束后可发起投票，投票通过后任务将自动完成
+              <div v-if="task.task_type === 'lock' && task.status === 'active'" class="completion-hint">
+                <!-- Key ownership requirement -->
+                <div v-if="keyCheckLoading" class="hint-loading">
+                  🔍 正在检查钥匙持有情况...
                 </div>
-                <div v-else-if="timeRemaining > 0" class="hint-waiting">
-                  ⏳ 定时解锁任务：需要等待倒计时结束后才能手动完成
+                <div v-else-if="!hasTaskKey && authStore.isAuthenticated" class="hint-no-key">
+                  🔑 您没有持有此任务的钥匙，无法完成任务。只有钥匙的当前持有者才能完成此任务。
                 </div>
-                <div v-else class="hint-ready">
-                  ✅ 倒计时已结束，满足所有条件后可以手动完成任务
+                <div v-else-if="hasTaskKey">
+                  <!-- Unlock type specific hints for key holders -->
+                  <div v-if="taskUnlockType === 'vote'" class="hint-vote">
+                    🗳️ 投票解锁任务：倒计时结束后可发起投票，投票通过后任务将自动完成
+                  </div>
+                  <div v-else-if="timeRemaining > 0" class="hint-waiting">
+                    ⏳ 定时解锁任务：需要等待倒计时结束后才能手动完成
+                  </div>
+                  <div v-else class="hint-ready">
+                    ✅ 倒计时已结束，您持有钥匙，可以手动完成任务
+                  </div>
                 </div>
               </div>
             </div>
@@ -410,6 +420,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '../stores/auth'
 import { useTasksStore } from '../stores/tasks'
 import { tasksApi } from '../lib/api-tasks'
+import { storeApi } from '../lib/api'
 import TaskSubmissionModal from '../components/TaskSubmissionModal.vue'
 import ProfileModal from '../components/ProfileModal.vue'
 import VoteConfirmationModal from '../components/VoteConfirmationModal.vue'
@@ -435,6 +446,9 @@ const showProfileModal = ref(false)
 const selectedUserId = ref<number | undefined>(undefined)
 const showVoteModal = ref(false)
 const votingProcessing = ref(false) // 防止重复处理投票结果
+const userInventory = ref<any>(null)
+const hasTaskKey = ref(false)
+const keyCheckLoading = ref(false)
 
 // Computed properties for template access
 const taskUnlockType = computed(() => {
@@ -589,22 +603,39 @@ const canCompleteTask = computed(() => {
   console.log('🎯 canCompleteTask check for task:', task.value.id, {
     taskType: task.value.task_type,
     status: task.value.status,
-    unlockType: taskUnlockType.value
+    unlockType: taskUnlockType.value,
+    hasTaskKey: hasTaskKey.value,
+    keyCheckLoading: keyCheckLoading.value
   })
 
-  // For lock tasks with vote unlock type - they auto-complete, no manual completion
-  if (task.value.task_type === 'lock' && taskUnlockType.value === 'vote') {
-    console.log('🎯 canCompleteTask: false - vote unlock tasks auto-complete when voting passes')
-    return false
-  }
+  // For lock tasks, must have the task key to complete
+  if (task.value.task_type === 'lock') {
+    // If still checking key ownership, don't allow completion yet
+    if (keyCheckLoading.value) {
+      console.log('🎯 canCompleteTask: false - still checking key ownership')
+      return false
+    }
 
-  // For lock tasks with time unlock type, can only complete after countdown ends
-  if (task.value.task_type === 'lock' && taskEndTime.value) {
-    const now = currentTime.value
-    const endTime = new Date(taskEndTime.value).getTime()
-    const canComplete = now >= endTime
-    console.log('🎯 canCompleteTask (time unlock):', canComplete, 'now:', now, 'endTime:', endTime)
-    return canComplete
+    // Must have the task key
+    if (!hasTaskKey.value) {
+      console.log('🎯 canCompleteTask: false - user does not have task key')
+      return false
+    }
+
+    // For lock tasks with vote unlock type - they auto-complete, no manual completion
+    if (taskUnlockType.value === 'vote') {
+      console.log('🎯 canCompleteTask: false - vote unlock tasks auto-complete when voting passes')
+      return false
+    }
+
+    // For lock tasks with time unlock type, can only complete after countdown ends
+    if (taskEndTime.value) {
+      const now = currentTime.value
+      const endTime = new Date(taskEndTime.value).getTime()
+      const canComplete = now >= endTime
+      console.log('🎯 canCompleteTask (time unlock with key):', canComplete, 'now:', now, 'endTime:', endTime)
+      return canComplete
+    }
   }
 
   // For board tasks, can complete anytime when active
@@ -731,6 +762,41 @@ const goBack = () => {
   router.back()
 }
 
+const checkUserHasTaskKey = async () => {
+  if (!task.value || !authStore.isAuthenticated) {
+    hasTaskKey.value = false
+    return
+  }
+
+  try {
+    keyCheckLoading.value = true
+    userInventory.value = await storeApi.getUserInventory()
+
+    // Check if user has a key for this specific task
+    const taskKey = userInventory.value.items.find((item: any) =>
+      item.item_type.name === 'key' &&
+      item.status === 'available' &&
+      item.properties?.task_id === task.value?.id
+    )
+
+    hasTaskKey.value = !!taskKey
+
+    console.log('🔑 Key ownership check:', {
+      taskId: task.value.id,
+      hasKey: hasTaskKey.value,
+      keyItem: taskKey?.id,
+      totalItems: userInventory.value.items.length,
+      keyItems: userInventory.value.items.filter((item: any) => item.item_type.name === 'key').length
+    })
+
+  } catch (error) {
+    console.error('Error checking task key ownership:', error)
+    hasTaskKey.value = false
+  } finally {
+    keyCheckLoading.value = false
+  }
+}
+
 const fetchTimeline = async () => {
   const taskId = route.params.id as string
   if (!taskId || !task.value) return
@@ -780,6 +846,11 @@ const fetchTask = async () => {
     // 获取任务时间线
     await fetchTimeline()
 
+    // 检查钥匙持有情况（仅对带锁任务）
+    if (fetchedTask.task_type === 'lock') {
+      await checkUserHasTaskKey()
+    }
+
   } catch (err: any) {
     // 使用模拟数据作为备用
     const mockTask: Task = {
@@ -824,6 +895,11 @@ const fetchTask = async () => {
     if ((taskValue.task_type === 'lock' && taskValue.status === 'active') ||
         (taskValue.task_type === 'board' && taskValue.status === 'taken')) {
       startProgressUpdate()
+    }
+
+    // 检查钥匙持有情况（仅对带锁任务）
+    if (mockTask.task_type === 'lock') {
+      await checkUserHasTaskKey()
     }
 
     // Log the error for debugging
@@ -1016,9 +1092,15 @@ const completeTask = async () => {
     if (progressInterval.value) {
       clearInterval(progressInterval.value)
     }
+
+    // 刷新钥匙持有状态（钥匙应该已被销毁）
+    if (updatedTask.task_type === 'lock') {
+      await checkUserHasTaskKey()
+    }
+
     // 刷新用户数据以更新lock status
     authStore.refreshUser()
-    alert('✅ 任务已成功完成！')
+    alert('✅ 任务已成功完成！钥匙已被销毁。')
   } catch (error: any) {
     console.error('Error completing task:', error)
 
@@ -1767,6 +1849,19 @@ onUnmounted(() => {
   border: 1px solid #c3e6cb;
   color: #155724;
   animation: pulse 2s infinite;
+}
+
+.hint-loading {
+  background-color: #e2e3e5;
+  border: 1px solid #ced4da;
+  color: #495057;
+}
+
+.hint-no-key {
+  background-color: #f8d7da;
+  border: 1px solid #f5c6cb;
+  color: #721c24;
+  font-weight: 600;
 }
 
 @keyframes pulse {
