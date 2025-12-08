@@ -29,4 +29,5 @@ urlpatterns = [
 
     # 物品管理相关
     path('discard-item/', views.discard_item, name='discard-item'),
+    path('return-item/', views.return_item_to_original_owner, name='return-item'),
 ]

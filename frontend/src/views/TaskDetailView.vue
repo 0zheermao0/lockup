@@ -192,13 +192,35 @@
                 <div v-else-if="hasTaskKey">
                   <!-- Unlock type specific hints for key holders -->
                   <div v-if="taskUnlockType === 'vote'" class="hint-vote">
-                    🗳️ 投票解锁任务：倒计时结束后可发起投票，投票通过后任务将自动完成
+                    <div v-if="!isVotingPassed">
+                      🗳️ 投票解锁任务：倒计时结束后可发起投票，投票通过后等待实际时间结束才能完成
+                    </div>
+                    <div v-else-if="timeRemaining > 0" class="hint-waiting">
+                      ✅ 投票已通过！等待倒计时结束后可手动完成任务：{{ formatTimeRemaining(timeRemaining) }}
+                    </div>
+                    <div v-else class="hint-ready">
+                      🎉 投票已通过且倒计时已结束，您可以手动完成任务！
+                    </div>
                   </div>
                   <div v-else-if="timeRemaining > 0" class="hint-waiting">
                     ⏳ 定时解锁任务：需要等待倒计时结束后才能手动完成
                   </div>
                   <div v-else class="hint-ready">
                     ✅ 倒计时已结束，您持有钥匙，可以手动完成任务
+                  </div>
+
+                  <!-- Key management section for key holders -->
+                  <div v-if="taskKey && taskKey.original_owner && taskKey.original_owner.id !== authStore.user?.id" class="key-management">
+                    <div class="key-return-info">
+                      🔄 此钥匙原本属于 <strong>{{ taskKey.original_owner.username }}</strong>，您可以选择归还
+                    </div>
+                    <button
+                      @click="returnKeyToOriginalOwner"
+                      :disabled="returningKey"
+                      class="return-key-btn"
+                    >
+                      {{ returningKey ? '归还中...' : '🔄 归还钥匙' }}
+                    </button>
                   </div>
                 </div>
               </div>
@@ -449,6 +471,8 @@ const votingProcessing = ref(false) // 防止重复处理投票结果
 const userInventory = ref<any>(null)
 const hasTaskKey = ref(false)
 const keyCheckLoading = ref(false)
+const taskKey = ref<any>(null)
+const returningKey = ref(false)
 
 // Computed properties for template access
 const taskUnlockType = computed(() => {
@@ -644,10 +668,26 @@ const canCompleteTask = computed(() => {
       return false
     }
 
-    // For lock tasks with vote unlock type - they auto-complete, no manual completion
+    // For lock tasks with vote unlock type - can complete after voting passes AND countdown ends
     if (taskUnlockType.value === 'vote') {
-      console.log('🎯 canCompleteTask: false - vote unlock tasks auto-complete when voting passes')
-      return false
+      // Check if voting has passed
+      if (!isVotingPassed.value) {
+        console.log('🎯 canCompleteTask: false - voting has not passed yet')
+        return false
+      }
+
+      // If voting passed, check if countdown has ended
+      if (taskEndTime.value) {
+        const now = currentTime.value
+        const endTime = new Date(taskEndTime.value).getTime()
+        const canComplete = now >= endTime
+        console.log('🎯 canCompleteTask (vote unlock, voting passed, checking time):', canComplete, 'now:', now, 'endTime:', endTime)
+        return canComplete
+      }
+
+      // If no end time, can complete immediately after voting passes
+      console.log('🎯 canCompleteTask: true - voting passed and no countdown')
+      return true
     }
 
     // For lock tasks with time unlock type, can only complete after countdown ends
@@ -798,18 +838,19 @@ const checkUserHasTaskKey = async () => {
     userInventory.value = await storeApi.getUserInventory()
 
     // Check if user has a key for this specific task
-    const taskKey = userInventory.value.items.find((item: any) =>
+    const foundTaskKey = userInventory.value.items.find((item: any) =>
       item.item_type.name === 'key' &&
       item.status === 'available' &&
       item.properties?.task_id === task.value?.id
     )
 
-    hasTaskKey.value = !!taskKey
+    hasTaskKey.value = !!foundTaskKey
+    taskKey.value = foundTaskKey || null
 
     console.log('🔑 Key ownership check:', {
       taskId: task.value.id,
       hasKey: hasTaskKey.value,
-      keyItem: taskKey?.id,
+      keyItem: taskKey.value?.id,
       totalItems: userInventory.value.items.length,
       keyItems: userInventory.value.items.filter((item: any) => item.item_type.name === 'key').length
     })
@@ -1335,6 +1376,43 @@ const addOvertime = async () => {
   } catch (error) {
     console.error('Error adding overtime:', error)
     alert('加时失败，请重试')
+  }
+}
+
+const returnKeyToOriginalOwner = async () => {
+  if (!taskKey.value || !taskKey.value.original_owner) {
+    alert('无法归还：钥匙信息不完整')
+    return
+  }
+
+  const originalOwnerName = taskKey.value.original_owner.username
+
+  if (!confirm(`确定要将钥匙归还给 ${originalOwnerName} 吗？\n\n归还后您将失去对此任务的控制权。`)) {
+    return
+  }
+
+  try {
+    returningKey.value = true
+
+    const result = await storeApi.returnItem(taskKey.value.id)
+
+    // 重新检查钥匙状态
+    await checkUserHasTaskKey()
+
+    alert(`✅ 成功将钥匙归还给 ${originalOwnerName}`)
+    console.log('钥匙归还成功:', result)
+
+  } catch (error: any) {
+    console.error('Error returning key:', error)
+
+    // 处理特定错误消息
+    if (error.response?.data?.error) {
+      alert(`归还失败：${error.response.data.error}`)
+    } else {
+      alert('归还钥匙失败，请重试')
+    }
+  } finally {
+    returningKey.value = false
   }
 }
 
@@ -1887,6 +1965,49 @@ onUnmounted(() => {
   border: 1px solid #f5c6cb;
   color: #721c24;
   font-weight: 600;
+}
+
+.key-management {
+  margin-top: 1rem;
+  padding: 1rem;
+  background-color: #f8f9fa;
+  border: 1px solid #dee2e6;
+  border-radius: 6px;
+}
+
+.key-return-info {
+  margin-bottom: 0.75rem;
+  font-size: 0.875rem;
+  color: #495057;
+  text-align: center;
+}
+
+.return-key-btn {
+  display: block;
+  width: 100%;
+  padding: 0.75rem 1rem;
+  background: linear-gradient(135deg, #17a2b8, #20c997);
+  color: white;
+  border: 2px solid #000;
+  border-radius: 6px;
+  font-weight: 600;
+  font-size: 0.875rem;
+  cursor: pointer;
+  box-shadow: 2px 2px 0 #000;
+  transition: all 0.2s ease;
+}
+
+.return-key-btn:hover:not(:disabled) {
+  transform: translate(-1px, -1px);
+  box-shadow: 3px 3px 0 #000;
+  background: linear-gradient(135deg, #138496, #1e9b85);
+}
+
+.return-key-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: 2px 2px 0 #000;
 }
 
 @keyframes pulse {

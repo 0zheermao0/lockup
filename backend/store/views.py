@@ -1177,3 +1177,84 @@ def discard_item(request):
         return Response({
             'error': f'丢弃物品失败: {str(e)}'
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def return_item_to_original_owner(request):
+    """归还物品给原始拥有者"""
+    try:
+        item_id = request.data.get('item_id')
+        if not item_id:
+            return Response({
+                'error': '缺少物品ID'
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        with transaction.atomic():
+            user = request.user
+
+            # 获取物品
+            item = get_object_or_404(
+                Item,
+                id=item_id,
+                owner=user,  # 当前拥有者必须是请求用户
+                status='available'
+            )
+
+            # 检查是否有原始拥有者
+            if not item.original_owner:
+                return Response({
+                    'error': '此物品没有原始拥有者，无法归还'
+                }, status=status.HTTP_400_BAD_REQUEST)
+
+            # 检查原始拥有者不是当前拥有者
+            if item.original_owner == user:
+                return Response({
+                    'error': '您已经是此物品的原始拥有者'
+                }, status=status.HTTP_400_BAD_REQUEST)
+
+            # 获取原始拥有者的背包
+            original_inventory, _ = UserInventory.objects.get_or_create(user=item.original_owner)
+
+            # 检查原始拥有者背包容量
+            if original_inventory.available_slots < 1:
+                return Response({
+                    'error': f'归还失败：{item.original_owner.username} 的背包已满（{original_inventory.used_slots}/{original_inventory.max_slots}）'
+                }, status=status.HTTP_400_BAD_REQUEST)
+
+            # 从当前用户背包中移除
+            current_inventory = item.inventory
+            if current_inventory:
+                item.inventory = None
+
+            # 归还给原始拥有者
+            item.owner = item.original_owner
+            item.inventory = original_inventory
+            item.save()
+
+            # 创建通知给原始拥有者
+            Notification.create_notification(
+                recipient=item.original_owner,
+                notification_type='item_received',
+                actor=user,
+                title='物品归还',
+                message=f'{user.username} 将 {item.item_type.display_name} 归还给您',
+                related_object_type='item',
+                related_object_id=item.id,
+                extra_data={
+                    'item_type': item.item_type.name,
+                    'item_display_name': item.item_type.display_name,
+                    'returned_by': user.username
+                }
+            )
+
+            return Response({
+                'message': f'成功将 {item.item_type.display_name} 归还给 {item.original_owner.username}',
+                'item_id': str(item.id),
+                'original_owner': item.original_owner.username
+            }, status=status.HTTP_200_OK)
+
+    except Exception as e:
+        return Response({
+            'error': f'归还物品失败: {str(e)}'
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)

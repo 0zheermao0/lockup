@@ -95,8 +95,7 @@ class LockTaskCreateSerializer(serializers.ModelSerializer):
             if data.get('unlock_type') == 'vote':
                 if not data.get('vote_agreement_ratio'):
                     raise serializers.ValidationError("投票解锁必须设置同意比例")
-                if not data.get('voting_duration'):
-                    raise serializers.ValidationError("投票解锁必须设置投票持续时间")
+                # voting_duration 有默认值10分钟，不需要强制设置
 
         elif task_type == 'board':
             # 任务板必须字段
