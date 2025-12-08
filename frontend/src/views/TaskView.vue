@@ -47,6 +47,56 @@
               {{ tab.label }}
               <span v-if="tab.count" class="count-badge">{{ tab.count }}</span>
             </button>
+
+            <!-- Sorting Dropdown -->
+            <div class="sort-dropdown" @click.stop>
+              <button
+                @click="showSortDropdown = !showSortDropdown"
+                class="sort-btn"
+                :class="{ active: showSortDropdown }"
+              >
+                <span class="sort-icon">⚡</span>
+                <span class="sort-text">{{ getSortLabel() }}</span>
+                <span class="dropdown-arrow" :class="{ rotated: showSortDropdown }">▼</span>
+              </button>
+
+              <div v-if="showSortDropdown" class="sort-options">
+                <div class="sort-section">
+                  <div class="sort-section-title">排序方式</div>
+                  <button
+                    @click="setSortBy('remaining_time')"
+                    :class="['sort-option', { active: sortBy === 'remaining_time' }]"
+                  >
+                    ⏰ 剩余时间
+                  </button>
+                  <button
+                    @click="setSortBy('created_time')"
+                    :class="['sort-option', { active: sortBy === 'created_time' }]"
+                  >
+                    📅 创建时间
+                  </button>
+                  <button
+                    @click="setSortBy('end_time')"
+                    :class="['sort-option', { active: sortBy === 'end_time' }]"
+                  >
+                    🏁 结束时间
+                  </button>
+                </div>
+
+                <div class="sort-divider"></div>
+
+                <div class="sort-section">
+                  <div class="sort-section-title">排序顺序</div>
+                  <button
+                    @click="toggleSortOrder()"
+                    class="sort-order-btn"
+                  >
+                    <span v-if="sortOrder === 'desc'">📉 降序 (大到小)</span>
+                    <span v-else>📈 升序 (小到大)</span>
+                  </button>
+                </div>
+              </div>
+            </div>
           </div>
         </section>
 
@@ -204,6 +254,11 @@ const activeTaskType = ref<'lock' | 'board'>('lock')
 const currentTime = ref(Date.now())
 const progressInterval = ref<number>()
 
+// Sorting state
+const sortBy = ref<'remaining_time' | 'created_time' | 'end_time'>('created_time')
+const sortOrder = ref<'asc' | 'desc'>('desc')
+const showSortDropdown = ref(false)
+
 // 无限滚动设置
 const {
   items: tasks,
@@ -256,42 +311,129 @@ const currentFilterTabs = computed(() => {
   return activeTaskType.value === 'lock' ? lockFilterTabs.value : boardFilterTabs.value
 })
 
-// Filtered tasks
+// Filtered and sorted tasks
 const filteredTasks = computed(() => {
   const tasks = currentTasks.value
 
+  // First apply filters
+  let filtered: Task[] = []
   if (activeTaskType.value === 'lock') {
     switch (activeFilter.value) {
       case 'active':
-        return tasks.filter(task => task.status === 'active')
+        filtered = tasks.filter(task => task.status === 'active')
+        break
       case 'voting':
-        return tasks.filter(task => task.status === 'voting')
+        filtered = tasks.filter(task => task.status === 'voting')
+        break
       case 'completed':
-        return tasks.filter(task => task.status === 'completed')
+        filtered = tasks.filter(task => task.status === 'completed')
+        break
       case 'my-tasks':
-        return tasks.filter(task => task.user.id === authStore.user?.id)
+        filtered = tasks.filter(task => task.user.id === authStore.user?.id)
+        break
       default:
-        return tasks
+        filtered = tasks
     }
   } else {
     switch (activeFilter.value) {
       case 'open':
-        return tasks.filter(task => task.status === 'open')
+        filtered = tasks.filter(task => task.status === 'open')
+        break
       case 'taken':
-        return tasks.filter(task => task.status === 'taken')
+        filtered = tasks.filter(task => task.status === 'taken')
+        break
       case 'submitted':
-        return tasks.filter(task => task.status === 'submitted')
+        filtered = tasks.filter(task => task.status === 'submitted')
+        break
       case 'completed':
-        return tasks.filter(task => task.status === 'completed')
+        filtered = tasks.filter(task => task.status === 'completed')
+        break
       case 'my-published':
-        return tasks.filter(task => task.user.id === authStore.user?.id)
+        filtered = tasks.filter(task => task.user.id === authStore.user?.id)
+        break
       case 'my-taken':
-        return tasks.filter(task => task.task_type === 'board' && task.taker?.id === authStore.user?.id)
+        filtered = tasks.filter(task => task.task_type === 'board' && task.taker?.id === authStore.user?.id)
+        break
       default:
-        return tasks
+        filtered = tasks
     }
   }
+
+  // Then apply sorting
+  return sortTasks(filtered)
 })
+
+// Sorting functions
+const sortTasks = (tasks: Task[]) => {
+  const sorted = [...tasks].sort((a, b) => {
+    let aValue: number
+    let bValue: number
+
+    switch (sortBy.value) {
+      case 'remaining_time':
+        aValue = getTimeRemaining(a)
+        bValue = getTimeRemaining(b)
+        // For tasks with no remaining time (completed/ended), put them at the end
+        if (aValue === 0 && bValue === 0) return 0
+        if (aValue === 0) return 1
+        if (bValue === 0) return -1
+        break
+
+      case 'created_time':
+        aValue = new Date(a.created_at).getTime()
+        bValue = new Date(b.created_at).getTime()
+        break
+
+      case 'end_time':
+        // Handle tasks without end_time
+        const aEndTime = getTaskEndTime(a)
+        const bEndTime = getTaskEndTime(b)
+        if (!aEndTime && !bEndTime) return 0
+        if (!aEndTime) return 1
+        if (!bEndTime) return -1
+        aValue = aEndTime
+        bValue = bEndTime
+        break
+
+      default:
+        return 0
+    }
+
+    return sortOrder.value === 'asc' ? aValue - bValue : bValue - aValue
+  })
+
+  return sorted
+}
+
+const getTaskEndTime = (task: Task) => {
+  if (task.task_type === 'lock') {
+    const lockTask = task as any
+    return lockTask.end_time ? new Date(lockTask.end_time).getTime() : null
+  } else if (task.task_type === 'board') {
+    const boardTask = task as any
+    return boardTask.deadline ? new Date(boardTask.deadline).getTime() : null
+  }
+  return null
+}
+
+const toggleSortOrder = () => {
+  sortOrder.value = sortOrder.value === 'asc' ? 'desc' : 'asc'
+}
+
+const setSortBy = (criteria: 'remaining_time' | 'created_time' | 'end_time') => {
+  sortBy.value = criteria
+  showSortDropdown.value = false
+}
+
+const getSortLabel = () => {
+  const labels = {
+    remaining_time: '剩余时间',
+    created_time: '创建时间',
+    end_time: '结束时间'
+  }
+  const orderLabel = sortOrder.value === 'asc' ? '升序' : '降序'
+  return `${labels[sortBy.value]} (${orderLabel})`
+}
 
 const goBack = () => {
   router.back()
@@ -531,15 +673,25 @@ const startProgressUpdate = () => {
   }, 1000)
 }
 
+// Close dropdown when clicking outside
+const handleClickOutside = (event: Event) => {
+  const target = event.target as HTMLElement
+  if (!target.closest('.sort-dropdown')) {
+    showSortDropdown.value = false
+  }
+}
+
 onMounted(() => {
   initialize()
   startProgressUpdate()
+  document.addEventListener('click', handleClickOutside)
 })
 
 onUnmounted(() => {
   if (progressInterval.value) {
     clearInterval(progressInterval.value)
   }
+  document.removeEventListener('click', handleClickOutside)
 })
 </script>
 
@@ -995,6 +1147,119 @@ onUnmounted(() => {
   color: #666;
 }
 
+/* Sorting dropdown styles */
+.sort-dropdown {
+  position: relative;
+  margin-left: auto;
+}
+
+.sort-btn {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  background: white;
+  border: 2px solid #007bff;
+  border-radius: 20px;
+  padding: 0.5rem 1rem;
+  cursor: pointer;
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: #007bff;
+  transition: all 0.2s;
+}
+
+.sort-btn:hover,
+.sort-btn.active {
+  background-color: #007bff;
+  color: white;
+}
+
+.sort-icon {
+  font-size: 1rem;
+}
+
+.sort-text {
+  font-weight: 600;
+}
+
+.dropdown-arrow {
+  font-size: 0.75rem;
+  transition: transform 0.2s;
+}
+
+.dropdown-arrow.rotated {
+  transform: rotate(180deg);
+}
+
+.sort-options {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  background: white;
+  border: 2px solid #000;
+  border-radius: 8px;
+  box-shadow: 4px 4px 0 #000;
+  min-width: 200px;
+  z-index: 1000;
+  overflow: hidden;
+}
+
+.sort-section {
+  padding: 0.75rem;
+}
+
+.sort-section-title {
+  font-size: 0.75rem;
+  font-weight: bold;
+  text-transform: uppercase;
+  color: #666;
+  margin-bottom: 0.5rem;
+  letter-spacing: 0.5px;
+}
+
+.sort-option,
+.sort-order-btn {
+  display: block;
+  width: 100%;
+  background: none;
+  border: none;
+  padding: 0.5rem 0.75rem;
+  text-align: left;
+  cursor: pointer;
+  border-radius: 4px;
+  margin-bottom: 0.25rem;
+  font-size: 0.875rem;
+  transition: all 0.2s;
+}
+
+.sort-option:hover,
+.sort-order-btn:hover {
+  background-color: #f8f9fa;
+}
+
+.sort-option.active {
+  background-color: #007bff;
+  color: white;
+  font-weight: 600;
+}
+
+.sort-order-btn {
+  background-color: #28a745;
+  color: white;
+  font-weight: 600;
+  text-align: center;
+}
+
+.sort-order-btn:hover {
+  background-color: #218838;
+}
+
+.sort-divider {
+  height: 1px;
+  background-color: #e9ecef;
+  margin: 0 0.75rem;
+}
+
 /* Mobile responsive */
 @media (max-width: 768px) {
   .header-content {
@@ -1022,6 +1287,28 @@ onUnmounted(() => {
 
   .progress-bar {
     margin-right: 0;
+  }
+
+  .filter-tabs {
+    flex-wrap: wrap;
+    gap: 0.5rem;
+  }
+
+  .sort-dropdown {
+    margin-left: 0;
+    margin-top: 0.5rem;
+    width: 100%;
+  }
+
+  .sort-btn {
+    width: 100%;
+    justify-content: center;
+  }
+
+  .sort-options {
+    right: auto;
+    left: 0;
+    width: 100%;
   }
 }
 </style>
