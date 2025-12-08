@@ -296,6 +296,7 @@ export interface Item {
   id: string
   item_type: ItemType
   owner: User
+  original_owner?: User
   original_creator?: User
   inventory?: UserInventory
   properties: Record<string, any>

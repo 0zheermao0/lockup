@@ -95,7 +95,7 @@
                 <p v-if="selectedItem.original_creator || selectedItem.original_owner || selectedItem.item_type.name === 'key'" class="meta-item">
                   <span class="meta-label">原始所有者:</span>
                   <button @click="viewOwnerProfile(selectedItem.original_owner || selectedItem.original_creator)" class="owner-link" v-if="selectedItem.original_owner || selectedItem.original_creator">
-                    {{ (selectedItem.original_owner || selectedItem.original_creator).username }}
+                    {{ (selectedItem.original_owner || selectedItem.original_creator)?.username }}
                   </button>
                   <span v-else class="no-owner">未知</span>
                 </p>
