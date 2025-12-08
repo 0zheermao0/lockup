@@ -1127,14 +1127,14 @@ const deleteTask = async () => {
     // 处理特定错误消息
     let errorMessage = '删除任务失败，请重试'
 
-    if (error.response?.data?.error) {
+    if (error.data?.error) {
       // 直接显示后端返回的具体错误信息
-      errorMessage = error.response.data.error
-    } else if (error.response?.status === 404) {
+      errorMessage = error.data.error
+    } else if (error.status === 404) {
       errorMessage = '任务不存在或已被删除'
-    } else if (error.response?.status === 403) {
+    } else if (error.status === 403) {
       errorMessage = '您没有权限删除此任务'
-    } else if (error.response?.status === 500) {
+    } else if (error.status === 500) {
       errorMessage = '服务器内部错误，请稍后重试'
     } else if (error.message) {
       errorMessage = `网络错误：${error.message}`
@@ -1160,14 +1160,14 @@ const startTask = async () => {
     // 处理特定错误消息
     let errorMessage = '开始任务失败，请重试'
 
-    if (error.response?.data?.error) {
+    if (error.data?.error) {
       // 直接显示后端返回的具体错误信息
-      errorMessage = error.response.data.error
-    } else if (error.response?.status === 404) {
+      errorMessage = error.data.error
+    } else if (error.status === 404) {
       errorMessage = '任务不存在或已被删除'
-    } else if (error.response?.status === 403) {
+    } else if (error.status === 403) {
       errorMessage = '您没有权限开始此任务'
-    } else if (error.response?.status === 500) {
+    } else if (error.status === 500) {
       errorMessage = '服务器内部错误，请稍后重试'
     } else if (error.message) {
       errorMessage = `网络错误：${error.message}`
@@ -1212,14 +1212,14 @@ const completeTask = async () => {
     // 处理特定错误消息
     let errorMessage = '完成任务失败，请重试'
 
-    if (error.response?.data?.error) {
+    if (error.data?.error) {
       // 直接显示后端返回的具体错误信息
-      errorMessage = error.response.data.error
-    } else if (error.response?.status === 404) {
+      errorMessage = error.data.error
+    } else if (error.status === 404) {
       errorMessage = '任务不存在或已被删除'
-    } else if (error.response?.status === 403) {
+    } else if (error.status === 403) {
       errorMessage = '您没有权限完成此任务'
-    } else if (error.response?.status === 500) {
+    } else if (error.status === 500) {
       errorMessage = '服务器内部错误，请稍后重试'
     } else if (error.message) {
       // 网络错误或其他客户端错误
@@ -1259,14 +1259,14 @@ const stopTask = async () => {
     // 处理特定错误消息
     let errorMessage = '停止任务失败，请重试'
 
-    if (error.response?.data?.error) {
+    if (error.data?.error) {
       // 直接显示后端返回的具体错误信息
-      errorMessage = error.response.data.error
-    } else if (error.response?.status === 404) {
+      errorMessage = error.data.error
+    } else if (error.status === 404) {
       errorMessage = '任务不存在或已被删除'
-    } else if (error.response?.status === 403) {
+    } else if (error.status === 403) {
       errorMessage = '您没有权限停止此任务'
-    } else if (error.response?.status === 500) {
+    } else if (error.status === 500) {
       errorMessage = '服务器内部错误，请稍后重试'
     } else if (error.message) {
       // 网络错误或其他客户端错误
@@ -1442,14 +1442,14 @@ const addOvertime = async () => {
     // 处理特定错误消息
     let errorMessage = '加时失败，请重试'
 
-    if (error.response?.data?.error) {
+    if (error.data?.error) {
       // 直接显示后端返回的具体错误信息
-      errorMessage = error.response.data.error
-    } else if (error.response?.status === 404) {
+      errorMessage = error.data.error
+    } else if (error.status === 404) {
       errorMessage = '任务不存在或已被删除'
-    } else if (error.response?.status === 403) {
+    } else if (error.status === 403) {
       errorMessage = '您没有权限为此任务加时'
-    } else if (error.response?.status === 500) {
+    } else if (error.status === 500) {
       errorMessage = '服务器内部错误，请稍后重试'
     } else if (error.message) {
       errorMessage = `网络错误：${error.message}`
@@ -1488,14 +1488,14 @@ const returnKeyToOriginalOwner = async () => {
     // 处理特定错误消息
     let errorMessage = '归还钥匙失败，请重试'
 
-    if (error.response?.data?.error) {
+    if (error.data?.error) {
       // 直接显示后端返回的具体错误信息
-      errorMessage = error.response.data.error
-    } else if (error.response?.status === 404) {
+      errorMessage = error.data.error
+    } else if (error.status === 404) {
       errorMessage = '钥匙不存在或您没有权限归还此钥匙'
-    } else if (error.response?.status === 403) {
+    } else if (error.status === 403) {
       errorMessage = '您没有权限归还此钥匙'
-    } else if (error.response?.status === 500) {
+    } else if (error.status === 500) {
       errorMessage = '服务器内部错误，请稍后重试'
     } else if (error.message) {
       // 网络错误或其他客户端错误

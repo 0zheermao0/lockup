@@ -645,14 +645,17 @@ const addOvertime = async (task: Task, event: Event) => {
     // Handle specific error messages
     let errorMessage = '加时失败，请重试'
 
-    if (error.response?.data?.error) {
-      errorMessage = error.response.data.error
-    } else if (error.response?.status === 404) {
+    // Check for specific error messages in the response data
+    if (error.data?.error) {
+      errorMessage = error.data.error
+    } else if (error.status === 404) {
       errorMessage = '任务不存在或已被删除'
-    } else if (error.response?.status === 403) {
+    } else if (error.status === 403) {
       errorMessage = '您没有权限为此任务加时'
-    } else if (error.response?.status === 500) {
+    } else if (error.status === 500) {
       errorMessage = '服务器内部错误，请稍后重试'
+    } else if (error.message && !error.message.includes('HTTP')) {
+      errorMessage = error.message
     } else if (error.message) {
       errorMessage = `网络错误：${error.message}`
     }
