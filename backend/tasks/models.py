@@ -47,7 +47,7 @@ class LockTask(models.Model):
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='created_tasks')
     task_type = models.CharField(max_length=10, choices=TASK_TYPE_CHOICES)
     title = models.CharField(max_length=200)
-    description = models.TextField()
+    description = models.TextField(blank=True, default='')
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='pending')
 
     # 带锁任务字段

@@ -48,6 +48,8 @@ class LockTaskSerializer(serializers.ModelSerializer):
 class LockTaskCreateSerializer(serializers.ModelSerializer):
     """创建任务的序列化器"""
 
+    description = serializers.CharField(required=False, allow_blank=True, default='')
+
     class Meta:
         model = LockTask
         fields = [
