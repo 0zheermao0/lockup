@@ -73,10 +73,10 @@
 
           <div class="actions-card">
             <h3>快速操作</h3>
-            <button @click="openCreateModal(false)" class="action-btn blue">发布动态</button>
-            <button @click="openCreateModal(true)" class="action-btn green">打卡任务</button>
-            <button @click="goToTasks" class="action-btn orange">任务管理</button>
-            <button @click="goToGames" class="action-btn purple">小游戏</button>
+            <button @click="openCreateModal(false)" class="action-btn blue">📝 发布动态</button>
+            <button @click="openCreateModal(true)" class="action-btn green">✅ 打卡任务</button>
+            <button @click="goToTasks" class="action-btn orange">📋 任务管理</button>
+            <button @click="goToGames" class="action-btn purple">🎮 小游戏</button>
           </div>
 
           <div class="actions-card">
@@ -86,6 +86,46 @@
             <button @click="goToExplore" class="action-btn brown">🗺️ 探索</button>
           </div>
         </aside>
+
+        <!-- Mobile Quick Access Bar -->
+        <div class="mobile-quick-access">
+          <!-- Lock Status Mobile -->
+          <div class="mobile-lock-status">
+            <LockStatus
+              :lockTask="authStore.user?.active_lock_task"
+              :showActions="false"
+              :showWhenFree="false"
+              size="mini"
+            />
+          </div>
+
+          <!-- User Stats Mobile -->
+          <div class="mobile-user-stats">
+            <div class="stat-item">
+              <span class="stat-emoji">⚡</span>
+              <span class="stat-value">{{ authStore.user?.activity_score || 0 }}</span>
+            </div>
+            <div class="stat-item">
+              <span class="stat-emoji">📝</span>
+              <span class="stat-value">{{ authStore.user?.total_posts || 0 }}</span>
+            </div>
+            <div class="stat-item">
+              <span class="stat-emoji">❤️</span>
+              <span class="stat-value">{{ authStore.user?.total_likes_received || 0 }}</span>
+            </div>
+          </div>
+
+          <!-- Quick Actions Mobile -->
+          <div class="mobile-actions">
+            <button @click="openCreateModal(false)" class="mobile-action-btn" title="发布动态">📝</button>
+            <button @click="openCreateModal(true)" class="mobile-action-btn" title="打卡任务">✅</button>
+            <button @click="goToTasks" class="mobile-action-btn" title="任务管理">📋</button>
+            <button @click="goToGames" class="mobile-action-btn" title="小游戏">🎮</button>
+            <button @click="goToStore" class="mobile-action-btn" title="商店">🛍️</button>
+            <button @click="goToInventory" class="mobile-action-btn" title="背包">🎒</button>
+            <button @click="goToExplore" class="mobile-action-btn" title="探索">🗺️</button>
+          </div>
+        </div>
 
         <!-- Posts Feed -->
         <section class="posts-feed">
@@ -861,6 +901,89 @@ onMounted(() => {
   font-size: 0.875rem;
 }
 
+/* Mobile Quick Access Bar */
+.mobile-quick-access {
+  display: none;
+  background: white;
+  border: 2px solid #000;
+  border-radius: 8px;
+  box-shadow: 4px 4px 0 #000;
+  margin-bottom: 1.5rem;
+  padding: 1rem;
+  gap: 1rem;
+  align-items: center;
+  overflow-x: auto;
+  white-space: nowrap;
+}
+
+.mobile-lock-status {
+  flex-shrink: 0;
+  margin-right: 1rem;
+}
+
+.mobile-user-stats {
+  display: flex;
+  gap: 1rem;
+  flex-shrink: 0;
+  padding: 0 1rem;
+  border-left: 2px solid #e9ecef;
+  border-right: 2px solid #e9ecef;
+}
+
+.stat-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.25rem;
+  min-width: 40px;
+}
+
+.stat-emoji {
+  font-size: 1.2rem;
+  line-height: 1;
+}
+
+.stat-value {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: #333;
+}
+
+.mobile-actions {
+  display: flex;
+  gap: 0.75rem;
+  flex-shrink: 0;
+  padding-left: 1rem;
+}
+
+.mobile-action-btn {
+  width: 44px;
+  height: 44px;
+  border: 2px solid #000;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #667eea, #764ba2);
+  color: white;
+  font-size: 1.2rem;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 2px 2px 0 rgba(0, 0, 0, 0.2);
+  flex-shrink: 0;
+}
+
+.mobile-action-btn:hover {
+  transform: translateY(-1px);
+  box-shadow: 3px 3px 0 rgba(0, 0, 0, 0.3);
+  background: linear-gradient(135deg, #f093fb, #f5576c);
+}
+
+.mobile-action-btn:active {
+  transform: translateY(0);
+  box-shadow: 1px 1px 0 rgba(0, 0, 0, 0.2);
+}
+
 /* Mobile responsive */
 @media (max-width: 768px) {
   .container {
@@ -868,11 +991,16 @@ onMounted(() => {
   }
 
   .sidebar {
-    order: 2;
+    display: none;
+  }
+
+  .mobile-quick-access {
+    display: flex;
+    order: 1;
   }
 
   .posts-feed {
-    order: 1;
+    order: 2;
   }
 
   .posts-feed-header {
