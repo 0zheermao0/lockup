@@ -1116,9 +1116,26 @@ const deleteTask = async () => {
     await tasksApi.deleteTask(task.value.id)
     console.log('任务删除成功')
     router.push({ name: 'tasks' })
-  } catch (error) {
+  } catch (error: any) {
     console.error('Error deleting task:', error)
-    alert('删除失败，请重试')
+
+    // 处理特定错误消息
+    let errorMessage = '删除任务失败，请重试'
+
+    if (error.response?.data?.error) {
+      // 直接显示后端返回的具体错误信息
+      errorMessage = error.response.data.error
+    } else if (error.response?.status === 404) {
+      errorMessage = '任务不存在或已被删除'
+    } else if (error.response?.status === 403) {
+      errorMessage = '您没有权限删除此任务'
+    } else if (error.response?.status === 500) {
+      errorMessage = '服务器内部错误，请稍后重试'
+    } else if (error.message) {
+      errorMessage = `网络错误：${error.message}`
+    }
+
+    alert(`❌ ${errorMessage}`)
   }
 }
 
@@ -1132,9 +1149,26 @@ const startTask = async () => {
     startProgressUpdate()
     // 刷新用户数据以更新lock status
     authStore.refreshUser()
-  } catch (error) {
+  } catch (error: any) {
     console.error('Error starting task:', error)
-    alert('开始任务失败，请重试')
+
+    // 处理特定错误消息
+    let errorMessage = '开始任务失败，请重试'
+
+    if (error.response?.data?.error) {
+      // 直接显示后端返回的具体错误信息
+      errorMessage = error.response.data.error
+    } else if (error.response?.status === 404) {
+      errorMessage = '任务不存在或已被删除'
+    } else if (error.response?.status === 403) {
+      errorMessage = '您没有权限开始此任务'
+    } else if (error.response?.status === 500) {
+      errorMessage = '服务器内部错误，请稍后重试'
+    } else if (error.message) {
+      errorMessage = `网络错误：${error.message}`
+    }
+
+    alert(`❌ ${errorMessage}`)
   }
 }
 
@@ -1171,11 +1205,23 @@ const completeTask = async () => {
     console.error('Error completing task:', error)
 
     // 处理特定错误消息
+    let errorMessage = '完成任务失败，请重试'
+
     if (error.response?.data?.error) {
-      alert(`完成失败：${error.response.data.error}`)
-    } else {
-      alert('完成任务失败，请重试')
+      // 直接显示后端返回的具体错误信息
+      errorMessage = error.response.data.error
+    } else if (error.response?.status === 404) {
+      errorMessage = '任务不存在或已被删除'
+    } else if (error.response?.status === 403) {
+      errorMessage = '您没有权限完成此任务'
+    } else if (error.response?.status === 500) {
+      errorMessage = '服务器内部错误，请稍后重试'
+    } else if (error.message) {
+      // 网络错误或其他客户端错误
+      errorMessage = `网络错误：${error.message}`
     }
+
+    alert(`❌ 完成失败：${errorMessage}`)
   }
 }
 
@@ -1206,11 +1252,23 @@ const stopTask = async () => {
     console.error('Error stopping task:', error)
 
     // 处理特定错误消息
+    let errorMessage = '停止任务失败，请重试'
+
     if (error.response?.data?.error) {
-      alert(`停止失败：${error.response.data.error}`)
-    } else {
-      alert('停止任务失败，请重试')
+      // 直接显示后端返回的具体错误信息
+      errorMessage = error.response.data.error
+    } else if (error.response?.status === 404) {
+      errorMessage = '任务不存在或已被删除'
+    } else if (error.response?.status === 403) {
+      errorMessage = '您没有权限停止此任务'
+    } else if (error.response?.status === 500) {
+      errorMessage = '服务器内部错误，请稍后重试'
+    } else if (error.message) {
+      // 网络错误或其他客户端错误
+      errorMessage = `网络错误：${error.message}`
     }
+
+    alert(`❌ 停止失败：${errorMessage}`)
   }
 }
 
@@ -1373,9 +1431,26 @@ const addOvertime = async () => {
     // 显示加时信息
     alert(`成功为任务加时 ${result.overtime_minutes} 分钟！`)
     console.log('任务加时成功:', result)
-  } catch (error) {
+  } catch (error: any) {
     console.error('Error adding overtime:', error)
-    alert('加时失败，请重试')
+
+    // 处理特定错误消息
+    let errorMessage = '加时失败，请重试'
+
+    if (error.response?.data?.error) {
+      // 直接显示后端返回的具体错误信息
+      errorMessage = error.response.data.error
+    } else if (error.response?.status === 404) {
+      errorMessage = '任务不存在或已被删除'
+    } else if (error.response?.status === 403) {
+      errorMessage = '您没有权限为此任务加时'
+    } else if (error.response?.status === 500) {
+      errorMessage = '服务器内部错误，请稍后重试'
+    } else if (error.message) {
+      errorMessage = `网络错误：${error.message}`
+    }
+
+    alert(`❌ ${errorMessage}`)
   }
 }
 
@@ -1406,11 +1481,23 @@ const returnKeyToOriginalOwner = async () => {
     console.error('Error returning key:', error)
 
     // 处理特定错误消息
+    let errorMessage = '归还钥匙失败，请重试'
+
     if (error.response?.data?.error) {
-      alert(`归还失败：${error.response.data.error}`)
-    } else {
-      alert('归还钥匙失败，请重试')
+      // 直接显示后端返回的具体错误信息
+      errorMessage = error.response.data.error
+    } else if (error.response?.status === 404) {
+      errorMessage = '钥匙不存在或您没有权限归还此钥匙'
+    } else if (error.response?.status === 403) {
+      errorMessage = '您没有权限归还此钥匙'
+    } else if (error.response?.status === 500) {
+      errorMessage = '服务器内部错误，请稍后重试'
+    } else if (error.message) {
+      // 网络错误或其他客户端错误
+      errorMessage = `网络错误：${error.message}`
     }
+
+    alert(`❌ ${errorMessage}`)
   } finally {
     returningKey.value = false
   }
