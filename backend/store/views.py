@@ -134,6 +134,7 @@ def purchase_item(request):
                     item = Item.objects.create(
                         item_type=store_item.item_type,
                         owner=user,
+                        original_owner=user,  # 设置原始拥有者为购买者
                         inventory=inventory
                     )
 

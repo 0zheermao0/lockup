@@ -15,6 +15,7 @@ class ItemTypeSerializer(serializers.ModelSerializer):
 class ItemSerializer(serializers.ModelSerializer):
     item_type = ItemTypeSerializer(read_only=True)
     owner = UserSerializer(read_only=True)
+    original_owner = UserSerializer(read_only=True)
     original_creator = serializers.SerializerMethodField()
 
     class Meta:
@@ -22,9 +23,13 @@ class ItemSerializer(serializers.ModelSerializer):
         fields = '__all__'
 
     def get_original_creator(self, obj):
-        """获取物品的原始创建者（通过购买记录追溯）"""
+        """获取物品的原始创建者（优先使用新的original_owner字段，兼容旧的purchase记录）"""
+        # 首先尝试使用新的 original_owner 字段
+        if obj.original_owner:
+            return UserSerializer(obj.original_owner).data
+
+        # 兼容性：如果没有 original_owner，尝试通过购买记录追溯
         try:
-            # 通过Purchase记录找到原始购买者
             purchase = obj.purchase.first()
             if purchase and purchase.user:
                 return UserSerializer(purchase.user).data

@@ -91,12 +91,21 @@
                   <span class="meta-label">创建时间:</span>
                   <span class="meta-value">{{ formatDate(selectedItem.created_at) }}</span>
                 </p>
-                <p v-if="selectedItem.original_creator || selectedItem.item_type.name === 'key'" class="meta-item">
+                <!-- 显示原始所有者（对于钥匙物品始终显示） -->
+                <p v-if="selectedItem.original_creator || selectedItem.original_owner || selectedItem.item_type.name === 'key'" class="meta-item">
                   <span class="meta-label">原始所有者:</span>
-                  <button @click="viewOwnerProfile(selectedItem.original_creator)" class="owner-link" v-if="selectedItem.original_creator">
-                    {{ selectedItem.original_creator.username }}
+                  <button @click="viewOwnerProfile(selectedItem.original_owner || selectedItem.original_creator)" class="owner-link" v-if="selectedItem.original_owner || selectedItem.original_creator">
+                    {{ (selectedItem.original_owner || selectedItem.original_creator).username }}
                   </button>
                   <span v-else class="no-owner">未知</span>
+                </p>
+
+                <!-- 显示当前持有者（如果不同于原始所有者） -->
+                <p v-if="selectedItem.owner && (selectedItem.original_owner || selectedItem.original_creator) && selectedItem.owner.id !== (selectedItem.original_owner || selectedItem.original_creator)?.id" class="meta-item">
+                  <span class="meta-label">当前持有者:</span>
+                  <button @click="viewOwnerProfile(selectedItem.owner)" class="owner-link">
+                    {{ selectedItem.owner.username }}
+                  </button>
                 </p>
               </div>
             </div>

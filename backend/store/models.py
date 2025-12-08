@@ -74,6 +74,7 @@ class Item(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     item_type = models.ForeignKey(ItemType, on_delete=models.CASCADE)
     owner = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='items')
+    original_owner = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='originally_owned_items', null=True, blank=True, help_text='原始拥有者（如任务创建者）')
     inventory = models.ForeignKey(UserInventory, on_delete=models.CASCADE, related_name='items', null=True, blank=True)
 
     # 道具属性（JSON存储）

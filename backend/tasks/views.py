@@ -104,6 +104,7 @@ class LockTaskListCreateView(generics.ListCreateAPIView):
             key_item = Item.objects.create(
                 item_type=key_item_type,
                 owner=task.user,
+                original_owner=task.user,  # 设置原始拥有者为任务创建者
                 inventory=inventory,
                 properties={
                     'task_id': str(task.id),
@@ -312,14 +313,8 @@ def complete_task(request, pk):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-        # 条件3: 必须是任务创建者（钥匙持有者）
-        if task.user != request.user:
-            return Response(
-                {'error': '只有任务创建者（钥匙持有者）可以完成带锁任务'},
-                status=status.HTTP_403_FORBIDDEN
-            )
-
-        # 条件4: 检查用户是否持有对应的钥匙道具
+        # 条件3: 检查用户是否持有对应的钥匙道具
+        # 只有钥匙的当前持有者（无论是原始创建者还是其他人）可以完成任务
         task_key_item = Item.objects.filter(
             item_type__name='key',
             owner=request.user,
@@ -328,8 +323,23 @@ def complete_task(request, pk):
         ).first()
 
         if not task_key_item:
+            # 检查任务的原始创建者，提供更详细的错误信息
+            original_key = Item.objects.filter(
+                item_type__name='key',
+                status='available',
+                properties__task_id=str(task.id)
+            ).first()
+
+            if original_key and original_key.original_owner:
+                if original_key.original_owner == request.user:
+                    error_msg = '您已将此任务的钥匙转让给他人，无法完成任务。只有钥匙的当前持有者可以完成任务。'
+                else:
+                    error_msg = f'只有钥匙的当前持有者（{original_key.owner.username}）可以完成此任务。'
+            else:
+                error_msg = '您没有持有该任务的钥匙道具，无法完成任务'
+
             return Response(
-                {'error': '您没有持有该任务的钥匙道具，无法完成任务'},
+                {'error': error_msg},
                 status=status.HTTP_403_FORBIDDEN
             )
 
