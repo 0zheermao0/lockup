@@ -98,32 +98,23 @@
             </div>
           </div>
 
-          <div class="form-row">
-            <div class="form-group">
-              <label for="duration_value">
-                {{ form.duration_type === 'fixed' ? '持续时间' : '最短时间' }} (分钟)
-              </label>
-              <input
-                id="duration_value"
-                v-model.number="form.duration_value"
-                type="number"
-                min="1"
-                max="10080"
-                required
-              />
-            </div>
+          <div class="duration-section">
+            <DurationSelector
+              v-model="form.duration_value!"
+              :label="form.duration_type === 'fixed' ? '持续时间' : '最短时间'"
+              :min-minutes="1"
+              :max-minutes="10080"
+              :required="true"
+            />
 
-            <div v-if="form.duration_type === 'random'" class="form-group">
-              <label for="duration_max">最长时间 (分钟)</label>
-              <input
-                id="duration_max"
-                v-model.number="form.duration_max"
-                type="number"
-                :min="form.duration_value || 1"
-                max="10080"
-                required
-              />
-            </div>
+            <DurationSelector
+              v-if="form.duration_type === 'random'"
+              v-model="form.duration_max!"
+              label="最长时间"
+              :min-minutes="form.duration_value || 1"
+              :max-minutes="10080"
+              :required="true"
+            />
           </div>
 
           <div v-if="form.unlock_type === 'vote'" class="form-group">
@@ -192,6 +183,7 @@
 import { ref, reactive, watch } from 'vue'
 import { tasksApi } from '../lib/api-tasks'
 import type { TaskCreateRequest } from '../types/index.js'
+import DurationSelector from './DurationSelector.vue'
 
 interface Props {
   isVisible: boolean
@@ -215,6 +207,7 @@ const form = reactive<TaskCreateRequest>({
   // Lock task fields
   duration_type: 'fixed',
   duration_value: 60, // 默认1小时
+  duration_max: undefined,
   difficulty: 'normal',
   unlock_type: 'time',
   // Board task fields
@@ -238,7 +231,7 @@ const resetForm = () => {
   form.duration_value = 60
   form.difficulty = 'normal'
   form.unlock_type = 'time'
-  form.duration_max = undefined
+  form.duration_max = 120 // 默认2小时作为随机时间的最大值
   form.vote_agreement_ratio = undefined
   // Board task fields
   form.reward = undefined
@@ -343,6 +336,10 @@ watch(() => form.task_type, (newValue) => {
     // Reset board fields
     form.reward = undefined
     form.max_duration = 24
+    // Initialize lock fields
+    form.duration_type = 'fixed'
+    form.duration_value = 60
+    form.duration_max = 120
   } else if (newValue === 'board') {
     // Reset lock fields
     form.duration_type = 'fixed'
@@ -363,7 +360,13 @@ watch(() => form.unlock_type, (newValue) => {
 
 // Watch for duration_type changes to reset duration_max
 watch(() => form.duration_type, (newValue) => {
-  if (newValue !== 'random') {
+  if (newValue === 'random') {
+    // 如果切换到随机时间，设置默认的最大时间
+    const minValue = form.duration_value || 60
+    if (!form.duration_max || form.duration_max <= minValue) {
+      form.duration_max = Math.max(minValue * 2, 120) // 至少是最短时间的2倍，或2小时
+    }
+  } else {
     form.duration_max = undefined
   }
 })
@@ -593,6 +596,13 @@ watch(() => form.duration_type, (newValue) => {
   font-size: 0.75rem;
   color: #666;
   font-style: italic;
+}
+
+.duration-section {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+  margin-bottom: 1.5rem;
 }
 
 /* Mobile responsive */
