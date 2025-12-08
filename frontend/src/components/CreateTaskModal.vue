@@ -231,6 +231,7 @@
 <script setup lang="ts">
 import { ref, reactive, watch } from 'vue'
 import { tasksApi } from '../lib/api-tasks'
+import { postsApi } from '../lib/api'
 import type { TaskCreateRequest } from '../types/index.js'
 import DurationSelector from './DurationSelector.vue'
 
@@ -347,6 +348,73 @@ const removeImage = () => {
   }
 }
 
+const createAutoPost = async (task: any) => {
+  // Create post content
+  const taskTypeText = form.task_type === 'lock' ? '带锁任务' : '任务板'
+  let postContent = `🎯 我刚刚创建了一个${taskTypeText}：《${task.title}》`
+
+  if (task.description && task.description.trim()) {
+    postContent += `\n\n${task.description}`
+  }
+
+  if (form.task_type === 'lock') {
+    const difficultyText = {
+      easy: '简单',
+      normal: '普通',
+      hard: '困难',
+      hell: '地狱'
+    }[task.difficulty] || task.difficulty
+
+    const unlockText = task.unlock_type === 'vote' ? '投票解锁' : '定时解锁'
+
+    postContent += `\n\n🔒 解锁方式：${unlockText}`
+    postContent += `\n⚡ 难度等级：${difficultyText}`
+
+    if (task.duration_value) {
+      const hours = Math.floor(task.duration_value / 60)
+      const minutes = task.duration_value % 60
+      const durationText = hours > 0
+        ? (minutes > 0 ? `${hours}小时${minutes}分钟` : `${hours}小时`)
+        : `${minutes}分钟`
+
+      if (task.duration_type === 'random' && task.duration_max) {
+        const maxHours = Math.floor(task.duration_max / 60)
+        const maxMinutes = task.duration_max % 60
+        const maxDurationText = maxHours > 0
+          ? (maxMinutes > 0 ? `${maxHours}小时${maxMinutes}分钟` : `${maxHours}小时`)
+          : `${maxMinutes}分钟`
+        postContent += `\n⏰ 持续时间：${durationText} - ${maxDurationText}`
+      } else {
+        postContent += `\n⏰ 持续时间：${durationText}`
+      }
+    }
+  } else if (form.task_type === 'board') {
+    if (task.reward) {
+      postContent += `\n💰 奖励：${task.reward}积分`
+    }
+    if (task.max_duration) {
+      postContent += `\n⏱️ 最长完成时间：${task.max_duration}小时`
+    }
+  }
+
+  postContent += '\n\n#任务创建 #自律挑战'
+
+  // Prepare images for post
+  const images: File[] = []
+  if (imageFile.value) {
+    images.push(imageFile.value)
+  }
+
+  // Create the post
+  const postData = {
+    content: postContent,
+    post_type: 'normal' as const,
+    images: images.length > 0 ? images : undefined
+  }
+
+  await postsApi.createPost(postData)
+}
+
 const handleSubmit = async () => {
   if (submitting.value) return
 
@@ -391,6 +459,9 @@ const handleSubmit = async () => {
     // Clean up form data based on task type
     const cleanedForm = { ...form }
 
+    // Remove auto-post field as it's not part of the task API
+    delete cleanedForm.autoPost
+
     if (form.task_type === 'lock') {
       // Remove board-specific fields for lock tasks
       delete cleanedForm.reward
@@ -409,8 +480,22 @@ const handleSubmit = async () => {
     const newTask = await tasksApi.createTask(cleanedForm)
     console.log('Task created successfully:', newTask)
 
+    // Auto-post functionality
+    if (form.autoPost) {
+      try {
+        await createAutoPost(newTask)
+        console.log('Auto-post created successfully')
+      } catch (postError) {
+        console.error('Failed to create auto-post:', postError)
+        // Don't fail the entire task creation if auto-post fails
+      }
+    }
+
     // 显示成功消息
-    successMessage.value = `${form.task_type === 'lock' ? '带锁任务' : '任务板'}创建成功！`
+    const successMsg = form.autoPost
+      ? `${form.task_type === 'lock' ? '带锁任务' : '任务板'}创建成功，并已自动发布动态！`
+      : `${form.task_type === 'lock' ? '带锁任务' : '任务板'}创建成功！`
+    successMessage.value = successMsg
     emit('success')
 
     // 延迟1.5秒后关闭窗口
