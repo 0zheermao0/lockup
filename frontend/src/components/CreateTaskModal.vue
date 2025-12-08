@@ -9,24 +9,24 @@
       <form @submit.prevent="handleSubmit" class="modal-body">
         <!-- Task Type Selection -->
         <div class="form-group">
-          <label>任务类型</label>
-          <div class="task-type-selector">
-            <button
-              type="button"
-              @click="form.task_type = 'lock'"
-              :class="['task-type-btn', { active: form.task_type === 'lock' }]"
-            >
-              🔒 带锁任务
-              <span class="task-type-desc">自律挑战任务</span>
-            </button>
-            <button
-              type="button"
-              @click="form.task_type = 'board'"
-              :class="['task-type-btn', { active: form.task_type === 'board' }]"
-            >
-              📋 任务板
-              <span class="task-type-desc">悬赏任务发布</span>
-            </button>
+          <div class="form-row-inline">
+            <label class="inline-label">任务类型</label>
+            <div class="task-type-selector-compact">
+              <button
+                type="button"
+                @click="form.task_type = 'lock'"
+                :class="['task-type-btn-compact', { active: form.task_type === 'lock' }]"
+              >
+                🔒 带锁任务
+              </button>
+              <button
+                type="button"
+                @click="form.task_type = 'board'"
+                :class="['task-type-btn-compact', { active: form.task_type === 'board' }]"
+              >
+                📋 任务板
+              </button>
+            </div>
           </div>
         </div>
 
@@ -53,10 +53,28 @@
           ></textarea>
         </div>
 
-        <!-- Image Upload -->
+        <!-- Auto-post Option -->
         <div class="form-group">
+          <div class="form-row-inline">
+            <label class="inline-label">发布选项</label>
+            <label class="checkbox-label-compact">
+              <input
+                type="checkbox"
+                v-model="form.autoPost"
+                class="checkbox-input-compact"
+              />
+              <span class="checkbox-text-compact">
+                自动发布动态
+                <small class="checkbox-desc-compact">创建任务后自动分享到动态</small>
+              </span>
+            </label>
+          </div>
+        </div>
+
+        <!-- Image Upload (conditional) -->
+        <div v-if="form.autoPost" class="form-group">
           <label for="image">任务图片 <span class="optional">(可选)</span></label>
-          <div class="image-upload-container">
+          <div class="image-upload-container-compact">
             <input
               id="image"
               type="file"
@@ -67,40 +85,25 @@
             />
             <div
               v-if="!imagePreview"
-              class="upload-placeholder"
+              class="upload-placeholder-compact"
               @click="triggerImageUpload"
             >
-              <div class="upload-icon">📷</div>
-              <div class="upload-text">点击上传图片</div>
-              <div class="upload-hint">支持 JPG、PNG 格式，最大 5MB</div>
+              <div class="upload-icon-compact">📷</div>
+              <div class="upload-text-compact">点击上传图片</div>
+              <div class="upload-hint-compact">JPG、PNG，最大5MB</div>
             </div>
-            <div v-else class="image-preview">
+            <div v-else class="image-preview-compact">
               <img :src="imagePreview" alt="预览图片" />
               <button
                 type="button"
                 @click="removeImage"
-                class="remove-image-btn"
+                class="remove-image-btn-compact"
                 title="移除图片"
               >
                 ×
               </button>
             </div>
           </div>
-        </div>
-
-        <!-- Auto-post Option -->
-        <div class="form-group">
-          <label class="checkbox-label">
-            <input
-              type="checkbox"
-              v-model="form.autoPost"
-              class="checkbox-input"
-            />
-            <span class="checkbox-text">
-              自动发布动态
-              <small class="checkbox-desc">创建任务后自动分享标题和图片到动态</small>
-            </span>
-          </label>
         </div>
 
         <!-- Lock Task Fields -->
@@ -935,6 +938,173 @@ watch(() => form.duration_type, (newValue) => {
   font-style: italic;
 }
 
+/* Compact Layout Styles */
+.form-row-inline {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.inline-label {
+  font-weight: 600;
+  color: #333;
+  font-size: 1rem;
+  min-width: 80px;
+  flex-shrink: 0;
+}
+
+/* Compact Task Type Selector */
+.task-type-selector-compact {
+  display: flex;
+  gap: 0.75rem;
+  flex: 1;
+}
+
+.task-type-btn-compact {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.5rem 1rem;
+  border: 2px solid #ddd;
+  border-radius: 6px;
+  background: white;
+  cursor: pointer;
+  transition: all 0.2s;
+  font-size: 0.875rem;
+  font-weight: 600;
+  flex: 1;
+  min-height: 40px;
+}
+
+.task-type-btn-compact:hover {
+  border-color: #007bff;
+  background-color: #f8f9fa;
+}
+
+.task-type-btn-compact.active {
+  border-color: #007bff;
+  background-color: #007bff;
+  color: white;
+}
+
+/* Compact Checkbox */
+.checkbox-label-compact {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  cursor: pointer;
+  flex: 1;
+}
+
+.checkbox-input-compact {
+  width: auto !important;
+  margin: 0;
+  transform: scale(1.1);
+}
+
+.checkbox-text-compact {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  font-weight: 500;
+  font-size: 0.9rem;
+}
+
+.checkbox-desc-compact {
+  font-size: 0.7rem;
+  color: #666;
+  font-weight: normal;
+  font-style: italic;
+}
+
+/* Compact Image Upload */
+.image-upload-container-compact {
+  position: relative;
+  border: 2px dashed #ddd;
+  border-radius: 6px;
+  overflow: hidden;
+  transition: all 0.2s;
+}
+
+.image-upload-container-compact:hover {
+  border-color: #007bff;
+  background-color: #f8f9fa;
+}
+
+.upload-placeholder-compact {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+  cursor: pointer;
+  text-align: center;
+  min-height: 80px;
+  background-color: #fafafa;
+  transition: all 0.2s;
+}
+
+.upload-placeholder-compact:hover {
+  background-color: #f0f0f0;
+}
+
+.upload-icon-compact {
+  font-size: 1.5rem;
+  margin-bottom: 0.25rem;
+  opacity: 0.6;
+}
+
+.upload-text-compact {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: #333;
+  margin-bottom: 0.1rem;
+}
+
+.upload-hint-compact {
+  font-size: 0.7rem;
+  color: #666;
+}
+
+.image-preview-compact {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: #f8f9fa;
+  min-height: 80px;
+}
+
+.image-preview-compact img {
+  max-width: 100%;
+  max-height: 120px;
+  object-fit: contain;
+  border-radius: 4px;
+}
+
+.remove-image-btn-compact {
+  position: absolute;
+  top: 0.25rem;
+  right: 0.25rem;
+  background: rgba(220, 53, 69, 0.9);
+  color: white;
+  border: none;
+  border-radius: 50%;
+  width: 20px;
+  height: 20px;
+  cursor: pointer;
+  font-size: 0.8rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s;
+}
+
+.remove-image-btn-compact:hover {
+  background: rgba(220, 53, 69, 1);
+  transform: scale(1.1);
+}
+
 /* Mobile responsive */
 @media (max-width: 768px) {
   .modal-overlay {
@@ -960,6 +1130,39 @@ watch(() => form.duration_type, (newValue) => {
 
   .modal-footer {
     flex-direction: column;
+  }
+
+  /* Mobile compact layout */
+  .form-row-inline {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.5rem;
+  }
+
+  .inline-label {
+    min-width: auto;
+    margin-bottom: 0.25rem;
+  }
+
+  .task-type-selector-compact {
+    width: 100%;
+  }
+
+  .task-type-btn-compact {
+    font-size: 0.8rem;
+    padding: 0.4rem 0.8rem;
+  }
+
+  .checkbox-label-compact {
+    width: 100%;
+  }
+
+  .checkbox-text-compact {
+    font-size: 0.85rem;
+  }
+
+  .checkbox-desc-compact {
+    font-size: 0.65rem;
   }
 }
 </style>
