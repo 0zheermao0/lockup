@@ -144,13 +144,13 @@ class LockTaskAdmin(admin.ModelAdmin):
         """显示是否活跃"""
         if obj.status in ['active', 'voting', 'taken', 'submitted', 'open']:
             return format_html(
-                '<span style="color: #28a775; font-weight: bold;">✓</span>'
+                '<span style="color: #28a745; font-weight: bold;">✓</span>'
             )
         return format_html(
             '<span style="color: #dc3545; font-weight: bold;">✗</span>'
         )
     is_active.short_description = '活跃'
-    is_active.boolean = True
+    # Removed: is_active.boolean = True  # This was causing the error
 
     list_per_page = 20
 
