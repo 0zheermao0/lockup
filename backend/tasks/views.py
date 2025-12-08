@@ -306,12 +306,38 @@ def complete_task(request, pk):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-        # 条件2: 投票解锁类型的任务现在会自动完成，不允许手动完成
+        # 条件2: 投票解锁类型的任务需要检查投票是否通过
         if task.unlock_type == 'vote':
-            return Response(
-                {'error': '投票解锁任务会在投票通过后自动完成，无需手动操作'},
-                status=status.HTTP_400_BAD_REQUEST
-            )
+            # 检查是否有投票记录且投票通过
+            if not task.voting_end_time:
+                return Response(
+                    {'error': '投票解锁任务必须先发起投票'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+            # 检查投票是否通过
+            total_votes = task.votes.count()
+            agree_votes = task.votes.filter(agree=True).count()
+
+            # 检查投票数量是否达到门槛
+            required_votes = task.vote_threshold or 1  # 如果没有设置门槛，默认需要1票
+            if total_votes < required_votes:
+                return Response(
+                    {'error': f'投票数量不足，需要至少 {required_votes} 票，当前 {total_votes} 票'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+            # 检查同意比例是否达到要求
+            agreement_ratio = agree_votes / total_votes if total_votes > 0 else 0
+            required_ratio = task.vote_agreement_ratio or 0.5
+
+            if agreement_ratio < required_ratio:
+                return Response(
+                    {'error': f'投票同意率不足，需要 {required_ratio*100:.0f}%，当前 {agreement_ratio*100:.1f}%'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+            # 投票通过，可以继续完成任务
 
         # 条件3: 检查用户是否持有对应的钥匙道具
         # 只有钥匙的当前持有者（无论是原始创建者还是其他人）可以完成任务
@@ -999,7 +1025,7 @@ def _process_voting_results_internal():
         agree_votes = task.votes.filter(agree=True).count()
 
         # 统一的投票验证逻辑，与complete_task保持一致
-        required_threshold = task.vote_threshold or 0
+        required_threshold = task.vote_threshold or 1  # 如果没有设置门槛，默认需要1票
         required_ratio = task.vote_agreement_ratio or 0.5
 
         # 计算同意比例
