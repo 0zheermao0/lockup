@@ -388,10 +388,10 @@
 
               <div class="voting-conclusion">
                 <div v-if="isTaskCompleted" class="voting-passed">
-                  ✅ 投票通过！任务已自动完成。
+                  ✅ 投票通过！任务已完成。
                 </div>
                 <div v-else-if="isVotingPassed" class="voting-passed">
-                  ✅ 投票通过！任务将自动完成。
+                  ✅ 投票通过！任务可完成。
                 </div>
                 <div v-else class="voting-failed">
                   ❌ 投票未通过，任务继续进行并已加时。
@@ -790,6 +790,11 @@ const canStartVoting = computed(() => {
     return false
   }
 
+  // 如果投票已经通过，不显示发起投票按钮
+  if (isVotingPassed.value) {
+    return false
+  }
+
   // Either task owner or key holder can start voting
   const isTaskOwner = isOwnTask.value
   const isKeyHolder = hasTaskKey.value && !keyCheckLoading.value
@@ -1055,7 +1060,7 @@ const startProgressUpdate = () => {
             await fetchTimeline()
 
             // 显示完成提示
-            alert('🎉 投票通过！任务已自动完成！')
+            alert('🎉 投票通过！任务已完成！')
           } else if (taskStatus === 'active') {
             console.log('⏰ Voting failed, task continues with penalty time')
 

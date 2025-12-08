@@ -89,7 +89,12 @@
 
         <!-- Posts Feed -->
         <section class="posts-feed">
-          <h2>社区动态</h2>
+          <!-- Header with title and broadcast -->
+          <div class="posts-feed-header">
+            <h2>社区动态</h2>
+            <!-- Task Broadcast Component -->
+            <TaskBroadcast />
+          </div>
 
           <div v-if="isInitialLoading" class="loading">
             加载中...
@@ -218,6 +223,7 @@ import LockStatus from '../components/LockStatus.vue'
 import LockIndicator from '../components/LockIndicator.vue'
 import ProfileModal from '../components/ProfileModal.vue'
 import NotificationBell from '../components/NotificationBell.vue'
+import TaskBroadcast from '../components/TaskBroadcast.vue'
 import type { Post } from '../types/index.js'
 
 const router = useRouter()
@@ -604,11 +610,24 @@ onMounted(() => {
   opacity: 0.9;
 }
 
+.posts-feed-header {
+  display: flex;
+  align-items: center;
+  margin-bottom: 1.5rem;
+  gap: 1.5rem;
+}
+
 .posts-feed h2 {
   font-weight: 900;
   text-transform: uppercase;
   letter-spacing: 1px;
-  margin-bottom: 1.5rem;
+  margin: 0;
+  flex-shrink: 0;
+}
+
+.posts-feed-header .task-broadcast {
+  flex: 1;
+  max-width: calc(100% - 120px); /* 减去标题宽度和间距 */
 }
 
 .loading,
@@ -854,6 +873,18 @@ onMounted(() => {
 
   .posts-feed {
     order: 1;
+  }
+
+  .posts-feed-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.75rem;
+    margin-bottom: 1rem;
+  }
+
+  .posts-feed-header .task-broadcast {
+    max-width: 100%;
+    width: 100%;
   }
 
   .header {

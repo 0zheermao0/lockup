@@ -79,6 +79,29 @@ export const tasksApi = {
     return apiRequest(url)
   },
 
+  // 获取任务列表（返回数组）
+  getTasksList: async (params: {
+    task_type?: 'lock' | 'board'
+    status?: string
+    my_tasks?: boolean
+    my_taken?: boolean
+    page_size?: number
+  } = {}) => {
+    const searchParams = new URLSearchParams()
+
+    if (params.task_type) searchParams.append('task_type', params.task_type)
+    if (params.status) searchParams.append('status', params.status)
+    if (params.my_tasks) searchParams.append('my_tasks', 'true')
+    if (params.my_taken) searchParams.append('my_taken', 'true')
+    if (params.page_size) searchParams.append('page_size', params.page_size.toString())
+
+    const queryString = searchParams.toString()
+    const url = queryString ? `/tasks/?${queryString}` : '/tasks/'
+
+    const response = await apiRequest<any>(url)
+    return response.results || response
+  },
+
   // 获取单个任务详情
   getTask: async (id: string): Promise<LockTask> => {
     return apiRequest(`/tasks/${id}/`)
