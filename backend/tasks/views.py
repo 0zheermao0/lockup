@@ -899,7 +899,7 @@ def add_overtime(request, pk):
             status=status.HTTP_400_BAD_REQUEST
         )
 
-    # 检查任务是否已经结束
+    # 检查任务是否可以加时
     # 对于投票状态的任务，只要投票期未结束就可以加时
     if task.status == 'voting':
         if task.voting_end_time and timezone.now() >= task.voting_end_time:
@@ -907,13 +907,8 @@ def add_overtime(request, pk):
                 {'error': '投票期已结束，无法加时'},
                 status=status.HTTP_400_BAD_REQUEST
             )
-    else:
-        # 对于非投票状态的任务，检查原始结束时间
-        if task.end_time and timezone.now() >= task.end_time:
-            return Response(
-                {'error': '任务已经结束，无法加时'},
-                status=status.HTTP_400_BAD_REQUEST
-            )
+    # 对于活跃状态的任务，无论倒计时是否结束都可以加时
+    # 这允许为倒计时已结束但仍在进行中的任务延长时间
 
     # 根据难度等级确定加时范围（分钟）
     difficulty_overtime_map = {
@@ -934,11 +929,18 @@ def add_overtime(request, pk):
     previous_end_time = task.end_time
 
     # 更新任务结束时间
+    now = timezone.now()
     if task.end_time:
-        task.end_time = task.end_time + timezone.timedelta(minutes=overtime_minutes)
+        # 如果倒计时已经结束，从现在开始加时；否则从原结束时间加时
+        if now >= task.end_time:
+            # 倒计时已结束，从现在开始延长
+            task.end_time = now + timezone.timedelta(minutes=overtime_minutes)
+        else:
+            # 倒计时未结束，从原结束时间延长
+            task.end_time = task.end_time + timezone.timedelta(minutes=overtime_minutes)
     else:
         # 如果没有结束时间，从现在开始加时
-        task.end_time = timezone.now() + timezone.timedelta(minutes=overtime_minutes)
+        task.end_time = now + timezone.timedelta(minutes=overtime_minutes)
 
     task.save()
 
