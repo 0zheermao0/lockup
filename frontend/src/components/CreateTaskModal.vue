@@ -256,7 +256,7 @@ const imageInput = ref<HTMLInputElement>()
 const imagePreview = ref<string>('')
 const imageFile = ref<File | null>(null)
 
-const form = reactive<TaskCreateRequest & { autoPost: boolean }>({
+const form = reactive<TaskCreateRequest & { autoPost?: boolean }>({
   task_type: 'lock',
   title: '',
   description: '',
@@ -361,12 +361,13 @@ const createAutoPost = async (task: any) => {
   }
 
   if (form.task_type === 'lock') {
-    const difficultyText = {
+    const difficultyMap: Record<string, string> = {
       easy: '简单',
       normal: '普通',
       hard: '困难',
       hell: '地狱'
-    }[task.difficulty] || task.difficulty
+    }
+    const difficultyText = difficultyMap[task.difficulty] || task.difficulty
 
     const unlockText = task.unlock_type === 'vote' ? '投票解锁' : '定时解锁'
 
