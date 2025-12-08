@@ -217,14 +217,14 @@
                 🚀 开始任务
               </button>
               <button
-                v-if="task.status === 'active' && canManageTask && canCompleteTask"
+                v-if="task.status === 'active' && canCompleteTask"
                 @click="completeTask"
                 class="action-btn complete-btn"
               >
                 ✅ 完成任务
               </button>
               <button
-                v-if="(task.status === 'active' || task.status === 'voting') && canManageTask"
+                v-if="(task.status === 'active' || task.status === 'voting') && canManageLockTask"
                 @click="stopTask"
                 class="action-btn stop-btn"
               >
@@ -597,6 +597,28 @@ const canAddOvertime = computed(() => {
          !isOwnTask.value
 })
 
+const canManageLockTask = computed(() => {
+  if (!task.value) return false
+
+  // For lock tasks, either the task owner OR the key holder can manage certain actions
+  if (task.value.task_type === 'lock') {
+    const isTaskOwner = authStore.user?.id === task.value.user.id
+    const isKeyHolder = hasTaskKey.value && !keyCheckLoading.value
+
+    console.log('🔐 canManageLockTask check:', {
+      isTaskOwner,
+      isKeyHolder,
+      hasTaskKey: hasTaskKey.value,
+      keyCheckLoading: keyCheckLoading.value
+    })
+
+    return isTaskOwner || isKeyHolder
+  }
+
+  // For non-lock tasks, use original logic
+  return canManageTask.value
+})
+
 const canCompleteTask = computed(() => {
   if (!task.value) return false
 
@@ -728,8 +750,11 @@ const canStartVoting = computed(() => {
     return false
   }
 
-  // Only task owner can start voting
-  if (!isOwnTask.value) {
+  // Either task owner or key holder can start voting
+  const isTaskOwner = isOwnTask.value
+  const isKeyHolder = hasTaskKey.value && !keyCheckLoading.value
+
+  if (!isTaskOwner && !isKeyHolder) {
     return false
   }
 
