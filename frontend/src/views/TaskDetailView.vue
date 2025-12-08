@@ -7,6 +7,13 @@
         <h1>任务详情</h1>
         <div class="header-actions">
           <button
+            @click="openShareModal"
+            class="share-btn"
+            title="分享任务"
+          >
+            🔗 分享
+          </button>
+          <button
             v-if="canDeleteTask"
             @click="deleteTask"
             class="delete-btn"
@@ -433,6 +440,16 @@
       @close="closeVoteModal"
       @vote="submitVote"
     />
+
+    <!-- Share Modal -->
+    <ShareModal
+      :is-visible="showShareModal"
+      :share-url="shareUrl"
+      :task-title="task?.title || ''"
+      :task-type="task?.task_type || ''"
+      :task-description="task?.description"
+      @close="closeShareModal"
+    />
   </div>
 </template>
 
@@ -446,6 +463,7 @@ import { storeApi } from '../lib/api'
 import TaskSubmissionModal from '../components/TaskSubmissionModal.vue'
 import ProfileModal from '../components/ProfileModal.vue'
 import VoteConfirmationModal from '../components/VoteConfirmationModal.vue'
+import ShareModal from '../components/ShareModal.vue'
 import type { Task } from '../types/index.js'
 
 const route = useRoute()
@@ -473,6 +491,7 @@ const hasTaskKey = ref(false)
 const keyCheckLoading = ref(false)
 const taskKey = ref<any>(null)
 const returningKey = ref(false)
+const showShareModal = ref(false)
 
 // Computed properties for template access
 const taskUnlockType = computed(() => {
@@ -827,9 +846,24 @@ const showVotingResults = computed(() => {
   return ['active', 'completed'].includes(task.value.status)
 })
 
+// Share URL computed property
+const shareUrl = computed(() => {
+  if (!task.value) return ''
+  const baseUrl = window.location.origin
+  return `${baseUrl}/tasks/${task.value.id}`
+})
+
 // Methods
 const goBack = () => {
   router.back()
+}
+
+const openShareModal = () => {
+  showShareModal.value = true
+}
+
+const closeShareModal = () => {
+  showShareModal.value = false
 }
 
 const checkUserHasTaskKey = async () => {
@@ -1660,7 +1694,7 @@ onUnmounted(() => {
   justify-content: space-between;
 }
 
-.back-btn, .delete-btn {
+.back-btn, .delete-btn, .share-btn {
   background: none;
   border: 1px solid #666;
   border-radius: 4px;
@@ -1671,6 +1705,17 @@ onUnmounted(() => {
 
 .back-btn:hover {
   background-color: #f8f9fa;
+}
+
+.share-btn {
+  background-color: #007bff;
+  color: white;
+  border-color: #007bff;
+  margin-right: 0.5rem;
+}
+
+.share-btn:hover {
+  background-color: #0056b3;
 }
 
 .delete-btn {
