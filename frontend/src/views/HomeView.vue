@@ -95,7 +95,7 @@
               :lockTask="authStore.user?.active_lock_task"
               :showActions="false"
               :showWhenFree="false"
-              size="mini"
+              size="small"
             />
           </div>
 
