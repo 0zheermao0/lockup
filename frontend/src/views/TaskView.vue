@@ -96,6 +96,14 @@
                 </div>
                 <div class="task-actions">
                   <button
+                    v-if="canAddOvertime(task)"
+                    @click="addOvertime(task, $event)"
+                    class="overtime-btn"
+                    title="随机加时"
+                  >
+                    ⏰
+                  </button>
+                  <button
                     v-if="canDeleteTask(task)"
                     @click.stop="deleteTask(task)"
                     class="delete-btn"
@@ -122,6 +130,17 @@
                 <div v-if="task.task_type === 'lock' && (task as any).end_time" class="task-time">
                   <span class="label">结束时间:</span>
                   <span class="value">{{ formatDateTime((task as any).end_time) }}</span>
+                </div>
+                <!-- 剩余时间显示 -->
+                <div v-if="getTimeRemaining(task) > 0" class="task-time-remaining">
+                  <span class="label">剩余时间:</span>
+                  <span class="value countdown" :class="{ 'overtime': getTimeRemaining(task) <= 0 }">
+                    {{ formatTimeRemaining(getTimeRemaining(task)) }}
+                  </span>
+                </div>
+                <div v-else-if="(task.status === 'active' && task.task_type === 'lock') || (task.status === 'taken' && task.task_type === 'board')" class="task-time-remaining">
+                  <span class="label">状态:</span>
+                  <span class="value overtime">倒计时已结束</span>
                 </div>
               </div>
 
@@ -162,12 +181,13 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, computed } from 'vue'
+import { ref, onMounted, computed, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '../stores/auth'
 import { useTasksStore } from '../stores/tasks'
 import { useInfiniteScroll } from '../composables/useInfiniteScroll'
 import { formatDistanceToNow } from '../lib/utils'
+import { tasksApi } from '../lib/api-tasks'
 import CreateTaskModal from '../components/CreateTaskModal.vue'
 import NotificationBell from '../components/NotificationBell.vue'
 import type { Task } from '../types/index.js'
@@ -181,6 +201,8 @@ const tasksStore = useTasksStore()
 const showCreateModal = ref(false)
 const activeFilter = ref('all')
 const activeTaskType = ref<'lock' | 'board'>('lock')
+const currentTime = ref(Date.now())
+const progressInterval = ref<number>()
 
 // 无限滚动设置
 const {
@@ -391,7 +413,7 @@ const getProgressPercent = (task: Task) => {
 
   const start = new Date(lockTask.started_at).getTime()
   const end = new Date(lockTask.end_time).getTime()
-  const now = new Date().getTime()
+  const now = currentTime.value
 
   if (now <= start) return 0
   if (now >= end) return 100
@@ -399,8 +421,125 @@ const getProgressPercent = (task: Task) => {
   return ((now - start) / (end - start)) * 100
 }
 
+// Time remaining calculation
+const getTimeRemaining = (task: Task) => {
+  if (!task) return 0
+
+  // Lock tasks time remaining
+  if (task.task_type === 'lock' && task.status === 'active') {
+    const lockTask = task as any
+    if (lockTask.end_time) {
+      const end = new Date(lockTask.end_time).getTime()
+      const now = currentTime.value
+      return Math.max(0, end - now)
+    }
+  }
+
+  // Board tasks time remaining
+  if (task.task_type === 'board' && task.status === 'taken') {
+    const boardTask = task as any
+    if (boardTask.deadline) {
+      const end = new Date(boardTask.deadline).getTime()
+      const now = currentTime.value
+      return Math.max(0, end - now)
+    }
+  }
+
+  return 0
+}
+
+// Format time remaining
+const formatTimeRemaining = (milliseconds: number) => {
+  const hours = Math.floor(milliseconds / (1000 * 60 * 60))
+  const minutes = Math.floor((milliseconds % (1000 * 60 * 60)) / (1000 * 60))
+  const seconds = Math.floor((milliseconds % (1000 * 60)) / 1000)
+
+  if (hours > 0) {
+    return `${hours}小时${minutes}分钟`
+  } else if (minutes > 0) {
+    return `${minutes}分钟${seconds}秒`
+  } else {
+    return `${seconds}秒`
+  }
+}
+
+// Check if task can have overtime added
+const canAddOvertime = (task: Task) => {
+  if (!task) return false
+  // Can add overtime if it's a lock task, status is active, and not own task
+  return task.task_type === 'lock' &&
+         task.status === 'active' &&
+         task.user.id !== authStore.user?.id
+}
+
+// Add overtime function
+const addOvertime = async (task: Task, event: Event) => {
+  event.stopPropagation() // Prevent card click
+
+  if (!task || !canAddOvertime(task)) return
+
+  if (!confirm('确定要为这个任务随机加时吗？加时力度基于任务难度等级。')) {
+    return
+  }
+
+  try {
+    const result = await tasksApi.addOvertime(task.id)
+
+    // Update the task's end time in the local list
+    const lockTask = task as any
+    if (result.new_end_time && lockTask) {
+      lockTask.end_time = result.new_end_time
+    }
+
+    // Refresh user data to update lock status
+    authStore.refreshUser()
+
+    // Show success message
+    alert(`成功为任务加时 ${result.overtime_minutes} 分钟！`)
+    console.log('任务加时成功:', result)
+  } catch (error: any) {
+    console.error('Error adding overtime:', error)
+
+    // Handle specific error messages
+    let errorMessage = '加时失败，请重试'
+
+    if (error.response?.data?.error) {
+      errorMessage = error.response.data.error
+    } else if (error.response?.status === 404) {
+      errorMessage = '任务不存在或已被删除'
+    } else if (error.response?.status === 403) {
+      errorMessage = '您没有权限为此任务加时'
+    } else if (error.response?.status === 500) {
+      errorMessage = '服务器内部错误，请稍后重试'
+    } else if (error.message) {
+      errorMessage = `网络错误：${error.message}`
+    }
+
+    alert(`❌ ${errorMessage}`)
+  }
+}
+
+// Start progress update timer
+const startProgressUpdate = () => {
+  // Clear any existing interval
+  if (progressInterval.value) {
+    clearInterval(progressInterval.value)
+  }
+
+  progressInterval.value = window.setInterval(() => {
+    currentTime.value = Date.now()
+  }, 1000)
+}
+
 onMounted(() => {
   initialize()
+  startProgressUpdate()
+})
+
+onUnmounted(() => {
+  if (progressInterval.value) {
+    clearInterval(progressInterval.value)
+  }
 })
 </script>
 
@@ -725,18 +864,63 @@ onMounted(() => {
   color: white;
 }
 
-.delete-btn {
+.delete-btn, .overtime-btn {
   background: none;
   border: none;
   cursor: pointer;
   padding: 0.5rem;
   border-radius: 4px;
   background-color: #f8f9fa;
+  margin-left: 0.5rem;
 }
 
 .delete-btn:hover {
   background-color: #dc3545;
   color: white;
+}
+
+.overtime-btn {
+  background-color: #fd7e14;
+  color: white;
+  font-size: 1rem;
+}
+
+.overtime-btn:hover {
+  background-color: #e76500;
+  transform: scale(1.1);
+}
+
+.task-actions {
+  display: flex;
+  align-items: center;
+}
+
+.countdown {
+  font-weight: bold;
+  color: #007bff;
+  animation: pulse-countdown 2s infinite;
+}
+
+.countdown.overtime {
+  color: #dc3545;
+  animation: pulse-danger 1s infinite;
+}
+
+.overtime {
+  color: #dc3545;
+  font-weight: bold;
+}
+
+@keyframes pulse-countdown {
+  0% { opacity: 1; }
+  50% { opacity: 0.7; }
+  100% { opacity: 1; }
+}
+
+@keyframes pulse-danger {
+  0% { opacity: 1; }
+  50% { opacity: 0.5; }
+  100% { opacity: 1; }
 }
 
 .task-description {
@@ -750,7 +934,7 @@ onMounted(() => {
   font-size: 0.875rem;
 }
 
-.task-duration, .task-time {
+.task-duration, .task-time, .task-time-remaining {
   margin-bottom: 0.5rem;
 }
 
