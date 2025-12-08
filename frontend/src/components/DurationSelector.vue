@@ -125,7 +125,6 @@ const totalMinutes = computed(() => {
 
 // 预设选项
 const presets: Preset[] = [
-  { label: '30分', minutes: 30 },
   { label: '1小时', minutes: 60 },
   { label: '2小时', minutes: 120 },
   { label: '3小时', minutes: 180 },

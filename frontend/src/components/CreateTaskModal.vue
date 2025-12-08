@@ -43,15 +43,64 @@
         </div>
 
         <div class="form-group">
-          <label for="description">任务描述</label>
+          <label for="description">任务描述 <span class="optional">(可选)</span></label>
           <textarea
             id="description"
             v-model="form.description"
             :placeholder="form.task_type === 'lock' ? '描述一下你的自律挑战...' : '详细描述任务需求和要求...'"
             rows="3"
             maxlength="500"
-            required
           ></textarea>
+        </div>
+
+        <!-- Image Upload -->
+        <div class="form-group">
+          <label for="image">任务图片 <span class="optional">(可选)</span></label>
+          <div class="image-upload-container">
+            <input
+              id="image"
+              type="file"
+              accept="image/*"
+              @change="handleImageUpload"
+              class="image-input"
+              ref="imageInput"
+            />
+            <div
+              v-if="!imagePreview"
+              class="upload-placeholder"
+              @click="triggerImageUpload"
+            >
+              <div class="upload-icon">📷</div>
+              <div class="upload-text">点击上传图片</div>
+              <div class="upload-hint">支持 JPG、PNG 格式，最大 5MB</div>
+            </div>
+            <div v-else class="image-preview">
+              <img :src="imagePreview" alt="预览图片" />
+              <button
+                type="button"
+                @click="removeImage"
+                class="remove-image-btn"
+                title="移除图片"
+              >
+                ×
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Auto-post Option -->
+        <div class="form-group">
+          <label class="checkbox-label">
+            <input
+              type="checkbox"
+              v-model="form.autoPost"
+              class="checkbox-input"
+            />
+            <span class="checkbox-text">
+              自动发布动态
+              <small class="checkbox-desc">创建任务后自动分享标题和图片到动态</small>
+            </span>
+          </label>
         </div>
 
         <!-- Lock Task Fields -->
@@ -199,11 +248,15 @@ const emit = defineEmits<Emits>()
 
 const submitting = ref(false)
 const successMessage = ref('')
+const imageInput = ref<HTMLInputElement>()
+const imagePreview = ref<string>('')
+const imageFile = ref<File | null>(null)
 
-const form = reactive<TaskCreateRequest>({
+const form = reactive<TaskCreateRequest & { autoPost: boolean }>({
   task_type: 'lock',
   title: '',
   description: '',
+  autoPost: true, // 默认勾选自动发布动态
   // Lock task fields
   duration_type: 'fixed',
   duration_value: 60, // 默认1小时
@@ -226,6 +279,7 @@ const resetForm = () => {
   form.task_type = 'lock'
   form.title = ''
   form.description = ''
+  form.autoPost = true
   // Lock task fields
   form.duration_type = 'fixed'
   form.duration_value = 60
@@ -236,6 +290,12 @@ const resetForm = () => {
   // Board task fields
   form.reward = undefined
   form.max_duration = 24
+  // Reset image
+  imagePreview.value = ''
+  imageFile.value = null
+  if (imageInput.value) {
+    imageInput.value.value = ''
+  }
   successMessage.value = ''
   submitting.value = false
 }
@@ -246,12 +306,53 @@ const closeModal = () => {
   }
 }
 
+// Image handling methods
+const triggerImageUpload = () => {
+  imageInput.value?.click()
+}
+
+const handleImageUpload = (event: Event) => {
+  const target = event.target as HTMLInputElement
+  const file = target.files?.[0]
+
+  if (!file) return
+
+  // Validate file type
+  if (!file.type.match(/^image\/(jpeg|jpg|png)$/)) {
+    alert('请选择 JPG 或 PNG 格式的图片')
+    return
+  }
+
+  // Validate file size (5MB max)
+  if (file.size > 5 * 1024 * 1024) {
+    alert('图片大小不能超过 5MB')
+    return
+  }
+
+  imageFile.value = file
+
+  // Create preview
+  const reader = new FileReader()
+  reader.onload = (e) => {
+    imagePreview.value = e.target?.result as string
+  }
+  reader.readAsDataURL(file)
+}
+
+const removeImage = () => {
+  imagePreview.value = ''
+  imageFile.value = null
+  if (imageInput.value) {
+    imageInput.value.value = ''
+  }
+}
+
 const handleSubmit = async () => {
   if (submitting.value) return
 
   // 基础验证
-  if (!form.title.trim() || !form.description.trim()) {
-    alert('请填写完整的任务信息')
+  if (!form.title.trim()) {
+    alert('请填写任务标题')
     return
   }
 
@@ -603,6 +704,150 @@ watch(() => form.duration_type, (newValue) => {
   flex-direction: column;
   gap: 1.5rem;
   margin-bottom: 1.5rem;
+}
+
+.optional {
+  font-size: 0.75rem;
+  color: #666;
+  font-weight: normal;
+  font-style: italic;
+}
+
+/* Image Upload Styles */
+.image-upload-container {
+  position: relative;
+  border: 2px dashed #ddd;
+  border-radius: 8px;
+  overflow: hidden;
+  transition: all 0.2s;
+}
+
+.image-upload-container:hover {
+  border-color: #007bff;
+  background-color: #f8f9fa;
+}
+
+.image-input {
+  position: absolute;
+  left: -9999px;
+  opacity: 0;
+}
+
+.upload-placeholder {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 2rem;
+  cursor: pointer;
+  text-align: center;
+  min-height: 120px;
+  background-color: #fafafa;
+  transition: all 0.2s;
+}
+
+.upload-placeholder:hover {
+  background-color: #f0f0f0;
+}
+
+.upload-icon {
+  font-size: 2rem;
+  margin-bottom: 0.5rem;
+  opacity: 0.6;
+}
+
+.upload-text {
+  font-size: 1rem;
+  font-weight: 600;
+  color: #333;
+  margin-bottom: 0.25rem;
+}
+
+.upload-hint {
+  font-size: 0.75rem;
+  color: #666;
+}
+
+.image-preview {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: #f8f9fa;
+  min-height: 120px;
+}
+
+.image-preview img {
+  max-width: 100%;
+  max-height: 200px;
+  object-fit: contain;
+  border-radius: 4px;
+}
+
+.remove-image-btn {
+  position: absolute;
+  top: 0.5rem;
+  right: 0.5rem;
+  background: rgba(220, 53, 69, 0.9);
+  color: white;
+  border: none;
+  border-radius: 50%;
+  width: 24px;
+  height: 24px;
+  cursor: pointer;
+  font-size: 1rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s;
+}
+
+.remove-image-btn:hover {
+  background: rgba(220, 53, 69, 1);
+  transform: scale(1.1);
+}
+
+/* Checkbox Styles */
+.checkbox-label {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+  cursor: pointer;
+  padding: 1rem;
+  border: 2px solid #e9ecef;
+  border-radius: 8px;
+  transition: all 0.2s;
+  background-color: #fafafa;
+}
+
+.checkbox-label:hover {
+  border-color: #007bff;
+  background-color: #f8f9fa;
+}
+
+.checkbox-input {
+  width: auto !important;
+  margin: 0;
+  transform: scale(1.2);
+}
+
+.checkbox-input:checked + .checkbox-text {
+  color: #007bff;
+  font-weight: 600;
+}
+
+.checkbox-text {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  font-weight: 500;
+}
+
+.checkbox-desc {
+  font-size: 0.75rem;
+  color: #666;
+  font-weight: normal;
+  font-style: italic;
 }
 
 /* Mobile responsive */
