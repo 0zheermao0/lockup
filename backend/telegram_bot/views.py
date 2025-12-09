@@ -5,6 +5,7 @@ from django.http import JsonResponse, HttpResponse
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_http_methods
 from django.contrib.auth import get_user_model
+from django.conf import settings
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
@@ -64,8 +65,45 @@ def telegram_webhook(request):
         # 在生产环境中，建议使用 Celery 等任务队列
         logger.info(f"Processing Telegram webhook update: {update_data.get('update_id')}")
 
-        # TODO: 实际的更新处理逻辑
-        # 这里应该调用 telegram_service 处理更新
+        # 调用 telegram_service 处理更新
+        try:
+            from telegram import Update
+            import asyncio
+            import threading
+
+            # 创建 Update 对象
+            update = Update.de_json(update_data, telegram_service.bot)
+
+            if update:
+                # 在后台线程中处理更新，避免阻塞webhook响应
+                def process_update_in_thread():
+                    try:
+                        # 创建新的事件循环用于后台处理
+                        loop = asyncio.new_event_loop()
+                        asyncio.set_event_loop(loop)
+
+                        async def process_update_safely():
+                            try:
+                                await telegram_service.application.process_update(update)
+                                logger.info(f"Successfully processed update {update_data.get('update_id')}")
+                            except Exception as e:
+                                logger.error(f"Error in update processing: {e}")
+
+                        # 运行处理任务
+                        loop.run_until_complete(process_update_safely())
+                        loop.close()
+                    except Exception as e:
+                        logger.error(f"Error in background thread: {e}")
+
+                # 在后台线程中处理，不阻塞webhook响应
+                thread = threading.Thread(target=process_update_in_thread, daemon=True)
+                thread.start()
+            else:
+                logger.warning(f"Failed to create Update object from data: {update_data}")
+
+        except Exception as e:
+            logger.error(f"Error processing Telegram update: {e}")
+            # 仍然返回 OK 以免 Telegram 重复发送
 
         return HttpResponse("OK")
 

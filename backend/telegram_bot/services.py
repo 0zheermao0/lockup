@@ -45,6 +45,18 @@ class TelegramBotService:
         self.bot = Bot(token=settings.TELEGRAM_BOT_TOKEN)
         self.application = Application.builder().token(settings.TELEGRAM_BOT_TOKEN).build()
 
+        # 初始化应用程序和Bot
+        try:
+            import asyncio
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            loop.run_until_complete(self.bot.initialize())
+            loop.run_until_complete(self.application.initialize())
+            loop.close()
+        except Exception as e:
+            logger.error(f"Failed to initialize Telegram application: {e}")
+            return
+
         # 注册处理器
         self._register_handlers()
 
@@ -138,7 +150,12 @@ class TelegramBotService:
 使用 /bind 开始绑定您的账户
         """
 
-        await update.message.reply_text(welcome_text)
+        try:
+            await update.message.reply_text(welcome_text)
+            logger.info(f"Sent welcome message to user {user_id}")
+        except Exception as e:
+            logger.error(f"Failed to send welcome message to user {user_id}: {e}")
+            # In case of failure, we still continue processing
 
     async def _handle_bind(self, update, context):
         """处理 /bind 命令"""
