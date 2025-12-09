@@ -231,7 +231,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, computed, onUnmounted } from 'vue'
+import { ref, onMounted, computed, onUnmounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '../stores/auth'
 import { useTasksStore } from '../stores/tasks'
@@ -249,7 +249,7 @@ const tasksStore = useTasksStore()
 
 // State
 const showCreateModal = ref(false)
-const activeFilter = ref('all')
+const activeFilter = ref('active')
 const activeTaskType = ref<'lock' | 'board'>('lock')
 const currentTime = ref(Date.now())
 const progressInterval = ref<number>()
@@ -683,6 +683,15 @@ const handleClickOutside = (event: Event) => {
     showSortDropdown.value = false
   }
 }
+
+// Watch for task type changes and reset filter accordingly
+watch(activeTaskType, (newType) => {
+  if (newType === 'lock') {
+    activeFilter.value = 'active'  // 带锁任务默认显示"进行中"
+  } else {
+    activeFilter.value = 'all'     // 任务板默认显示"全部"
+  }
+})
 
 onMounted(() => {
   initialize()
