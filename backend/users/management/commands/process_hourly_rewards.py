@@ -62,21 +62,31 @@ class Command(BaseCommand):
                     hour_count=hour_num
                 )
 
-                # 创建小时奖励积分通知
-                Notification.create_notification(
-                    recipient=task.user,
-                    notification_type='coins_earned_hourly',
-                    actor=None,  # 系统通知
-                    related_object_type='task',
-                    related_object_id=task.id,
-                    extra_data={
-                        'task_title': task.title,
-                        'hour_count': hour_num,
-                        'reward_amount': 1,
-                        'total_hourly_rewards': task.total_hourly_rewards + 1
-                    },
-                    priority='low'  # 小时奖励是低优先级通知
+                # 减少通知频率：只在特定小时数时发送批量通知，减轻视觉负担
+                should_notify = (
+                    hour_num == 1 or  # 第一小时
+                    hour_num % 3 == 0  # 每3小时
                 )
+
+                if should_notify:
+                    # 计算当前批次的奖励总数
+                    batch_rewards = min(3, hour_num) if hour_num % 3 == 0 else 1
+
+                    Notification.create_notification(
+                        recipient=task.user,
+                        notification_type='coins_earned_hourly_batch',
+                        actor=None,  # 系统通知
+                        related_object_type='task',
+                        related_object_id=task.id,
+                        extra_data={
+                            'task_title': task.title,
+                            'current_hour': hour_num,
+                            'batch_rewards': batch_rewards,
+                            'total_hourly_rewards': task.total_hourly_rewards + 1,
+                            'notification_type': 'batched'  # 标记为批量通知
+                        },
+                        priority='very_low'  # 更低优先级，减少视觉干扰
+                    )
 
                 processed_rewards.append({
                     'task_id': str(task.id),

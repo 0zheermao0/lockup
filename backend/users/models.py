@@ -251,6 +251,7 @@ class Notification(models.Model):
 
         # 积分系统类
         ('coins_earned_hourly', '小时奖励积分'),
+        ('coins_earned_hourly_batch', '批量小时奖励积分'),
         ('coins_earned_daily_login', '每日登录奖励积分'),
         ('coins_earned_task_reward', '任务奖励积分'),
         ('coins_spent_task_creation', '创建任务消耗积分'),
@@ -438,6 +439,7 @@ class Notification(models.Model):
             'task_board_approved': "任务审核通过",
             'task_board_rejected': "任务被拒绝",
             'coins_earned_hourly': "获得小时奖励积分",
+            'coins_earned_hourly_batch': "获得批量小时奖励积分",
             'coins_earned_daily_login': "获得每日登录奖励",
             'coins_earned_task_reward': "获得任务奖励积分",
             'treasure_found': f"{actor_name}发现了你的宝物",
@@ -466,6 +468,7 @@ class Notification(models.Model):
             'task_board_approved': "你的任务已通过审核，奖励已到账",
             'task_board_rejected': "很遗憾，你的任务未通过审核",
             'coins_earned_hourly': "你的任务已运行满一小时，获得1积分奖励",
+            'coins_earned_hourly_batch': "你的任务持续进行中，累计获得积分奖励",
             'coins_earned_daily_login': "欢迎回来！获得每日登录奖励积分",
             'coins_earned_task_reward': "任务完成，获得奖励积分",
             'treasure_found': f"{actor_name}在探索中发现了你埋藏的宝物",
