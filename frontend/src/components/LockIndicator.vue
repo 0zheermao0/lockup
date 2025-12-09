@@ -155,17 +155,38 @@ const formatTimeShort = (milliseconds: number): string => {
   }
 }
 
+const emit = defineEmits<{
+  navigate: [taskId: string]
+}>()
+
 const handleClick = (event: Event) => {
   if (!isClickable.value) return
 
   // Prevent event bubbling
   event.stopPropagation()
 
-  // Navigate to task detail page
+  // Get task ID
   const taskId = userLockTask.value.id
   if (taskId) {
-    console.log(`LockIndicator: Navigating to task detail page for task ${taskId}`)
-    router.push({ name: 'task-detail', params: { id: taskId } })
+    console.log(`LockIndicator: Requesting navigation to task detail page for task ${taskId}`)
+
+    // Emit navigation event first (allows parent components like modals to close)
+    emit('navigate', taskId)
+
+    // Use longer delay and force navigation with replace
+    setTimeout(() => {
+      console.log(`LockIndicator: Navigating to task detail page for task ${taskId}`)
+      // Use replace to force a fresh navigation
+      router.replace({ name: 'task-detail', params: { id: taskId } })
+        .then(() => {
+          console.log(`LockIndicator: Navigation completed to task ${taskId}`)
+        })
+        .catch((error) => {
+          console.error('LockIndicator: Navigation failed:', error)
+          // Fallback: try push if replace fails
+          router.push({ name: 'task-detail', params: { id: taskId } })
+        })
+    }, 200)
   }
 }
 

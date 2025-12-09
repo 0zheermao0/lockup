@@ -1626,6 +1626,21 @@ const getEventTypeClass = (eventType: string) => {
   return classMap[eventType] || 'default'
 }
 
+// Watch for route parameter changes (when navigating between different tasks)
+watch(() => route.params.id, async (newId, oldId) => {
+  if (newId && newId !== oldId) {
+    console.log(`Route parameter changed from ${oldId} to ${newId}, refetching task...`)
+    // Reset state
+    task.value = null
+    loading.value = true
+    error.value = ''
+    timeline.value = []
+
+    // Fetch new task data
+    await fetchTask()
+  }
+}, { immediate: false })
+
 // Watch for task changes to refresh timeline
 watch(() => task.value?.updated_at, async (newUpdatedAt, oldUpdatedAt) => {
   if (newUpdatedAt && oldUpdatedAt && newUpdatedAt !== oldUpdatedAt) {

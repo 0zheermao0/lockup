@@ -1,8 +1,8 @@
 <template>
-  <router-link
+  <div
     v-if="lockTask"
-    :to="{ name: 'task-detail', params: { id: lockTask.id } }"
     class="lock-status-link"
+    @click="handleClick"
   >
     <div class="lock-status" :class="{ 'is-expired': lockTask.is_expired }">
       <div class="lock-icon">
@@ -32,7 +32,7 @@
         </div>
       </div>
     </div>
-  </router-link>
+  </div>
   <div v-else-if="showWhenFree" class="no-lock-status">
     <div class="free-icon">🔓</div>
     <div class="free-text">当前未处于带锁状态</div>
@@ -41,6 +41,7 @@
 
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
+import { useRouter } from 'vue-router'
 import type { ActiveLockTask } from '../types/index.js'
 
 interface Props {
@@ -55,6 +56,12 @@ const props = withDefaults(defineProps<Props>(), {
   showWhenFree: false,
   size: 'normal'
 })
+
+const emit = defineEmits<{
+  navigate: [taskId: string]
+}>()
+
+const router = useRouter()
 
 // Reactive countdown
 const currentTime = ref(Date.now())
@@ -74,6 +81,34 @@ const timeRemaining = computed(() => {
 
   return props.lockTask.time_remaining_ms
 })
+
+const handleClick = (event: Event) => {
+  if (!props.lockTask?.id) return
+
+  // Prevent event bubbling
+  event.stopPropagation()
+
+  const taskId = props.lockTask.id
+  console.log(`LockStatus: Requesting navigation to task detail page for task ${taskId}`)
+
+  // Emit navigation event first (allows parent components like modals to close)
+  emit('navigate', taskId)
+
+  // Use longer delay and force navigation with replace
+  setTimeout(() => {
+    console.log(`LockStatus: Navigating to task detail page for task ${taskId}`)
+    // Use replace to force a fresh navigation
+    router.replace({ name: 'task-detail', params: { id: taskId } })
+      .then(() => {
+        console.log(`LockStatus: Navigation completed to task ${taskId}`)
+      })
+      .catch((error) => {
+        console.error('LockStatus: Navigation failed:', error)
+        // Fallback: try push if replace fails
+        router.push({ name: 'task-detail', params: { id: taskId } })
+      })
+  }, 200)
+}
 
 const getDifficultyText = (difficulty: string) => {
   const texts = {
@@ -175,6 +210,7 @@ watch(
   color: inherit;
   display: block;
   transition: all 0.2s ease;
+  cursor: pointer;
 }
 
 .lock-status-link:hover .lock-status {

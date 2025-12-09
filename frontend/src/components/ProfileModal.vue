@@ -49,6 +49,7 @@
                   size="normal"
                   :show-time="true"
                   class="profile-lock-indicator"
+                  @navigate="handleLockIndicatorNavigation"
                 />
               </div>
               <div class="user-basic-info">
@@ -107,6 +108,7 @@
               :showWhenFree="true"
               size="normal"
               class="profile-lock-status"
+              @navigate="handleLockStatusNavigation"
             />
           </div>
 
@@ -244,6 +246,16 @@ const viewFullProfile = () => {
     emit('close')
     router.push({ name: 'profile', params: { id: userProfile.value.id.toString() } })
   }
+}
+
+const handleLockIndicatorNavigation = (taskId: string) => {
+  console.log(`ProfileModal: Received LockIndicator navigation request for task ${taskId}, closing modal`)
+  emit('close')
+}
+
+const handleLockStatusNavigation = (taskId: string) => {
+  console.log(`ProfileModal: Received LockStatus navigation request for task ${taskId}, closing modal`)
+  emit('close')
 }
 
 const formatDateTime = (dateString: string): string => {
