@@ -247,7 +247,7 @@ TELEGRAM_BOT_CONFIG = {
 # Application URLs Configuration
 TELEGRAM_APP_CONFIG = {
     'BASE_URL': os.getenv('BASE_URL', 'https://lock-down.zheermao.top'),
-    'FRONTEND_URL': os.getenv('FRONTEND_URL', 'https://lock-down.zheermao.top'),
+    'FRONTEND_URL': os.getenv('FRONTEND_URL', 'https://lock-up.zheermao.top'),
 }
 
 # Production Security Settings (only if not in DEBUG mode)
