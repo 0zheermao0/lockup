@@ -244,7 +244,8 @@ class TelegramBotService:
         except Exception as e:
             logger.error(f"Error checking existing binding: {e}")
 
-        bind_url = f"https://your-domain.com/profile?telegram_bind={update.effective_user.id}"
+        frontend_url = getattr(settings, 'TELEGRAM_APP_CONFIG', {}).get('FRONTEND_URL', 'https://lock-down.zheermao.top')
+        bind_url = f"{frontend_url}/profile?telegram_bind={update.effective_user.id}"
 
         await update.message.reply_text(
             "🔗 请点击下面的链接在网页中完成绑定：\n\n"
