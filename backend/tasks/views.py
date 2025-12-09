@@ -379,8 +379,34 @@ def complete_task(request, pk):
     task.status = 'completed'
     task.completed_at = timezone.now()
 
-    # 任务完成 - 不再给予一次性完成奖励，改为依赖每小时自动发放
-    # 注释：原有的完成奖励机制已移除，现在完全依赖 process_hourly_rewards() 的每小时奖励分发
+    # 任务完成时的奖励处理
+    completion_rewards = 0
+    if task.task_type == 'lock':
+        # 1. 首先处理所有未发放的小时奖励
+        hourly_rewards_processed = _process_task_hourly_rewards(task)
+
+        # 2. 计算并发放完成奖励（基于难度的一次性奖励）
+        completion_bonus = _calculate_completion_bonus(task)
+        if completion_bonus > 0:
+            task.user.coins += completion_bonus
+            task.user.save()
+            completion_rewards = completion_bonus
+
+            # 创建完成奖励通知
+            Notification.create_notification(
+                recipient=task.user,
+                notification_type='coins_earned_task_completion',
+                actor=None,
+                related_object_type='task',
+                related_object_id=task.id,
+                extra_data={
+                    'task_title': task.title,
+                    'completion_bonus': completion_bonus,
+                    'difficulty': task.difficulty,
+                    'hourly_rewards_processed': hourly_rewards_processed
+                },
+                priority='normal'
+            )
 
     task.save()
 
@@ -391,9 +417,13 @@ def complete_task(request, pk):
         'key_destroyed': task.task_type == 'lock'
     }
 
-    # 元数据中标记使用小时制奖励系统
+    # 元数据中包含奖励信息
     if task.task_type == 'lock':
-        completion_metadata['reward_system'] = 'hourly_automatic'
+        completion_metadata.update({
+            'reward_system': 'hourly_plus_completion_bonus',
+            'completion_bonus': completion_rewards,
+            'hourly_rewards_processed': hourly_rewards_processed if 'hourly_rewards_processed' in locals() else 0
+        })
 
     if task.task_type == 'lock':
         # 记录完成时的所有条件状态
@@ -1208,15 +1238,83 @@ def process_hourly_rewards(request):
     })
 
 
-# 已废弃：原有的一次性完成奖励计算函数
-# 现在改为使用每小时自动发放的奖励机制 (process_hourly_rewards)
-# def _calculate_lock_task_completion_reward(task):
-#     """计算带锁任务完成奖励 - 已废弃
-#     原规则：
-#     - 每实际一小时奖励1coins（基础时长奖励）
-#     - 满1小时后，根据难度额外奖励：easy(1), normal(2), hard(3), hell(4) coins
-#     - 不满1小时不给难度奖励
-#
-#     现已改为每小时自动发放1积分，无需完成时一次性计算
-#     """
-#     pass
+def _process_task_hourly_rewards(task):
+    """为单个任务处理所有未发放的小时奖励（任务完成时调用）"""
+    if task.task_type != 'lock' or not task.start_time:
+        return 0
+
+    now = timezone.now()
+
+    # 计算任务已运行的总时间（小时）
+    elapsed_time = now - task.start_time
+    elapsed_hours = int(elapsed_time.total_seconds() // 3600)
+
+    if elapsed_hours < 1:
+        return 0
+
+    # 计算需要发放的奖励数量
+    rewards_to_give = elapsed_hours - task.total_hourly_rewards
+
+    if rewards_to_give <= 0:
+        return 0
+
+    # 发放奖励
+    next_reward_hour = task.total_hourly_rewards + 1
+
+    for hour_num in range(next_reward_hour, next_reward_hour + rewards_to_give):
+        # 给用户增加1积分
+        task.user.coins += 1
+        task.user.save()
+
+        # 创建奖励记录
+        HourlyReward.objects.create(
+            task=task,
+            user=task.user,
+            reward_amount=1,
+            hour_count=hour_num
+        )
+
+        # 记录到时间线
+        TaskTimelineEvent.objects.create(
+            task=task,
+            event_type='hourly_reward',
+            user=None,  # 系统事件
+            description=f'任务完成时补发第{hour_num}小时奖励：{task.user.username}获得1积分',
+            metadata={
+                'reward_amount': 1,
+                'hour_count': hour_num,
+                'total_coins': task.user.coins,
+                'completion_catchup': True
+            }
+        )
+
+    # 更新任务的奖励记录
+    task.total_hourly_rewards += rewards_to_give
+    task.last_hourly_reward_at = now
+    task.save()
+
+    return rewards_to_give
+
+
+def _calculate_completion_bonus(task):
+    """计算任务完成奖励（基于难度的一次性奖励）"""
+    if task.task_type != 'lock' or not task.start_time or not task.completed_at:
+        return 0
+
+    # 计算任务实际运行时间
+    elapsed_time = task.completed_at - task.start_time
+    elapsed_hours = elapsed_time.total_seconds() / 3600
+
+    # 只有运行超过1小时的任务才给完成奖励
+    if elapsed_hours < 1:
+        return 0
+
+    # 根据难度给予完成奖励
+    difficulty_bonus = {
+        'easy': 1,
+        'normal': 2,
+        'hard': 3,
+        'hell': 4
+    }
+
+    return difficulty_bonus.get(task.difficulty, 0)
