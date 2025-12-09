@@ -448,6 +448,8 @@
       :task-title="task?.title || ''"
       :task-type="task?.task_type || ''"
       :task-description="task?.description"
+      :task-id="task?.id"
+      :task-status="task?.status"
       @close="closeShareModal"
     />
   </div>

@@ -11,6 +11,7 @@ https://docs.djangoproject.com/en/5.2/ref/settings/
 """
 
 from pathlib import Path
+import os
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -20,12 +21,12 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # See https://docs.djangoproject.com/en/5.2/howto/deployment/checklist/
 
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = 'django-insecure-%-8f8s31opa=&9n$m2ynjv9ci$r#@fgl7pn43lzm@kokayhu7y'
+SECRET_KEY = os.getenv('SECRET_KEY', 'django-insecure-%-8f8s31opa=&9n$m2ynjv9ci$r#@fgl7pn43lzm@kokayhu7y')
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
+DEBUG = os.getenv('DEBUG', 'True').lower() == 'true'
 
-ALLOWED_HOSTS = []
+ALLOWED_HOSTS = os.getenv('ALLOWED_HOSTS', 'lock-up.zheermao.top,lock-down.zheermao.top,localhost,127.0.0.1').split(',')
 
 
 # Application definition
@@ -45,6 +46,7 @@ INSTALLED_APPS = [
     'posts',
     'tasks',
     'store',
+    'telegram_bot',
 ]
 
 MIDDLEWARE = [
@@ -81,12 +83,23 @@ WSGI_APPLICATION = 'lockup_backend.wsgi.application'
 # Database
 # https://docs.djangoproject.com/en/5.2/ref/settings/#databases
 
-DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': BASE_DIR / 'db.sqlite3',
+# Database configuration
+DATABASE_URL = os.getenv('DATABASE_URL')
+
+if DATABASE_URL:
+    # Production: Use PostgreSQL from DATABASE_URL
+    import dj_database_url
+    DATABASES = {
+        'default': dj_database_url.parse(DATABASE_URL)
     }
-}
+else:
+    # Development: Use SQLite
+    DATABASES = {
+        'default': {
+            'ENGINE': 'django.db.backends.sqlite3',
+            'NAME': BASE_DIR / 'db.sqlite3',
+        }
+    }
 
 
 # Password validation
@@ -151,19 +164,27 @@ REST_FRAMEWORK = {
 }
 
 # CORS settings
-CORS_ALLOWED_ORIGINS = [
-    "http://localhost:3000",  # React dev server
-    "http://127.0.0.1:3000",
-    "http://localhost:5173",  # Vite dev server
-    "http://127.0.0.1:5173",
-    "http://localhost:8000",  # Django admin
-    "http://127.0.0.1:8000",
-]
-
-# 开发环境允许所有来源（仅用于开发）
-if DEBUG:
-    CORS_ALLOW_ALL_ORIGINS = True
-    CORS_ALLOWED_ORIGINS = []
+CORS_ALLOWED_ORIGINS_ENV = os.getenv('CORS_ALLOWED_ORIGINS', '')
+if CORS_ALLOWED_ORIGINS_ENV:
+    # Production: Use environment variable
+    CORS_ALLOWED_ORIGINS = [origin.strip() for origin in CORS_ALLOWED_ORIGINS_ENV.split(',')]
+    CORS_ALLOW_ALL_ORIGINS = False
+else:
+    # Development/Default: Use predefined origins
+    CORS_ALLOWED_ORIGINS = [
+        "http://localhost:3000",  # React dev server
+        "http://127.0.0.1:3000",
+        "http://localhost:5173",  # Vite dev server
+        "http://127.0.0.1:5173",
+        "http://localhost:8000",  # Django admin
+        "http://127.0.0.1:8000",
+        "https://lock-down.zheermao.top",
+        "https://lock-up.zheermao.top",
+    ]
+    # 开发环境允许所有来源（仅用于开发）
+    if DEBUG:
+        CORS_ALLOW_ALL_ORIGINS = True
+        CORS_ALLOWED_ORIGINS = []
 
 CORS_ALLOW_CREDENTIALS = True
 
@@ -201,3 +222,47 @@ JWT_AUTH = {
     'JWT_EXPIRATION_DELTA': datetime.timedelta(days=7),
     'JWT_ALLOW_REFRESH': True,
 }
+
+# Telegram Bot Configuration
+TELEGRAM_BOT_TOKEN = os.getenv('TELEGRAM_BOT_TOKEN', '8593610083:AAEHkca4MOhtkaDJRQnQtzYQVDloWLIiJsE')
+TELEGRAM_BOT_USERNAME = os.getenv('TELEGRAM_BOT_USERNAME', 'lock_up_bot')
+TELEGRAM_WEBHOOK_URL = os.getenv('TELEGRAM_WEBHOOK_URL', 'https://lock-down.zheermao.top/api/telegram/webhook/')
+
+# Telegram Security Configuration (生产环境必须配置)
+TELEGRAM_SECURITY = {
+    'WEBHOOK_SECRET_TOKEN': os.getenv('TELEGRAM_WEBHOOK_SECRET', None),  # 生产环境必须设置
+    'RATE_LIMITING_ENABLED': os.getenv('TELEGRAM_RATE_LIMIT_ENABLED', 'True').lower() == 'true',
+    'MAX_REQUESTS_PER_MINUTE': int(os.getenv('TELEGRAM_MAX_REQUESTS_PER_MINUTE', '60')),
+    # IP 白名单 - Telegram 官方 IP 范围
+    'IP_WHITELIST': os.getenv('TELEGRAM_IP_WHITELIST', '').split(',') if os.getenv('TELEGRAM_IP_WHITELIST') else [],
+    # 允许的更新类型
+    'ALLOWED_UPDATES': ['message', 'callback_query'],
+}
+
+# Telegram Bot Application Configuration
+TELEGRAM_BOT_CONFIG = {
+    'AUTO_START_BOT': os.getenv('TELEGRAM_AUTO_START_BOT', 'True').lower() == 'true',
+}
+
+# Application URLs Configuration
+TELEGRAM_APP_CONFIG = {
+    'BASE_URL': os.getenv('BASE_URL', 'https://lock-down.zheermao.top'),
+    'FRONTEND_URL': os.getenv('FRONTEND_URL', 'https://lock-down.zheermao.top'),
+}
+
+# Production Security Settings (only if not in DEBUG mode)
+if not DEBUG:
+    # SSL/HTTPS Settings
+    SECURE_SSL_REDIRECT = os.getenv('SECURE_SSL_REDIRECT', 'True').lower() == 'true'
+    SECURE_HSTS_SECONDS = int(os.getenv('SECURE_HSTS_SECONDS', '31536000'))
+    SECURE_HSTS_INCLUDE_SUBDOMAINS = os.getenv('SECURE_HSTS_INCLUDE_SUBDOMAINS', 'True').lower() == 'true'
+    SECURE_HSTS_PRELOAD = os.getenv('SECURE_HSTS_PRELOAD', 'True').lower() == 'true'
+
+    # Cookie Security
+    SESSION_COOKIE_SECURE = os.getenv('SESSION_COOKIE_SECURE', 'True').lower() == 'true'
+    CSRF_COOKIE_SECURE = os.getenv('CSRF_COOKIE_SECURE', 'True').lower() == 'true'
+
+    # Additional Security Headers
+    SECURE_CONTENT_TYPE_NOSNIFF = True
+    SECURE_BROWSER_XSS_FILTER = True
+    X_FRAME_OPTIONS = 'DENY'

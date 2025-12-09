@@ -840,135 +840,27 @@ def reject_board_task(request, pk):
 @permission_classes([IsAuthenticated])
 def add_overtime(request, pk):
     """为进行中的带锁任务随机加时"""
+    from .utils import add_overtime_to_task
+
     task = get_object_or_404(LockTask, pk=pk)
 
-    # 检查是否是带锁任务
-    if task.task_type != 'lock':
-        return Response(
-            {'error': '只能为带锁任务加时'},
-            status=status.HTTP_400_BAD_REQUEST
-        )
+    # 使用工具函数处理加时逻辑
+    result = add_overtime_to_task(task, request.user)
 
-    # 检查任务状态 - 允许对活跃状态和投票状态的任务加时
-    if task.status not in ['active', 'voting']:
-        return Response(
-            {'error': '只能为进行中的任务（包括投票期）加时'},
-            status=status.HTTP_400_BAD_REQUEST
-        )
-
-    # 检查是否是自己的任务（不能为自己的任务加时）
-    if task.user == request.user:
-        return Response(
-            {'error': '不能为自己的任务加时'},
-            status=status.HTTP_400_BAD_REQUEST
-        )
-
-    # 检查两小时内是否已经为同一个发布者的任务加过时
-    two_hours_ago = timezone.now() - timedelta(hours=2)
-    recent_overtime = OvertimeAction.objects.filter(
-        user=request.user,
-        task_publisher=task.user,
-        created_at__gte=two_hours_ago
-    ).exists()
-
-    if recent_overtime:
-        return Response(
-            {'error': '两小时内只能对同一个发布者的带锁任务随机加时一次'},
-            status=status.HTTP_400_BAD_REQUEST
-        )
-
-    # 检查任务是否可以加时
-    # 对于投票状态的任务，只要投票期未结束就可以加时
-    if task.status == 'voting':
-        if task.voting_end_time and timezone.now() >= task.voting_end_time:
-            return Response(
-                {'error': '投票期已结束，无法加时'},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-    # 对于活跃状态的任务，无论倒计时是否结束都可以加时
-    # 这允许为倒计时已结束但仍在进行中的任务延长时间
-
-    # 根据难度等级确定加时范围（分钟）
-    difficulty_overtime_map = {
-        'easy': 10,     # 简单：10分钟
-        'normal': 20,   # 普通：20分钟
-        'hard': 30,     # 困难：30分钟
-        'hell': 60      # 地狱：60分钟
-    }
-
-    base_overtime = difficulty_overtime_map.get(task.difficulty, 20)  # 默认20分钟
-
-    # 随机加时（在基础时间的50%-150%之间）
-    min_overtime = int(base_overtime * 0.5)
-    max_overtime = int(base_overtime * 1.5)
-    overtime_minutes = random.randint(min_overtime, max_overtime)
-
-    # 记录时间变化前的状态
-    previous_end_time = task.end_time
-
-    # 更新任务结束时间
-    now = timezone.now()
-    if task.end_time:
-        # 如果倒计时已经结束，从现在开始加时；否则从原结束时间加时
-        if now >= task.end_time:
-            # 倒计时已结束，从现在开始延长
-            task.end_time = now + timezone.timedelta(minutes=overtime_minutes)
-        else:
-            # 倒计时未结束，从原结束时间延长
-            task.end_time = task.end_time + timezone.timedelta(minutes=overtime_minutes)
+    if result['success']:
+        # 返回加时信息
+        response_data = {
+            'message': result['message'],
+            'overtime_minutes': result['overtime_minutes'],
+            'new_end_time': result['new_end_time'].isoformat() if result['new_end_time'] else None,
+            'difficulty': result['task'].difficulty
+        }
+        return Response(response_data, status=status.HTTP_200_OK)
     else:
-        # 如果没有结束时间，从现在开始加时
-        task.end_time = now + timezone.timedelta(minutes=overtime_minutes)
-
-    task.save()
-
-    # 记录加时操作
-    OvertimeAction.objects.create(
-        task=task,
-        user=request.user,
-        task_publisher=task.user,
-        overtime_minutes=overtime_minutes
-    )
-
-    # 创建时间线事件
-    TaskTimelineEvent.objects.create(
-        task=task,
-        event_type='overtime_added',
-        user=request.user,
-        time_change_minutes=overtime_minutes,
-        previous_end_time=previous_end_time,
-        new_end_time=task.end_time,
-        description=f'{request.user.username} 为任务随机加时 {overtime_minutes} 分钟',
-        metadata={
-            'difficulty': task.difficulty,
-            'overtime_range': f'{min_overtime}-{max_overtime} 分钟',
-            'base_overtime': base_overtime
-        }
-    )
-
-    # 创建加时通知
-    Notification.create_notification(
-        recipient=task.user,
-        notification_type='task_overtime_added',
-        actor=request.user,
-        related_object_type='task',
-        related_object_id=task.id,
-        extra_data={
-            'overtime_minutes': overtime_minutes,
-            'difficulty': task.difficulty,
-            'new_end_time': task.end_time.isoformat() if task.end_time else None
-        }
-    )
-
-    # 返回加时信息
-    response_data = {
-        'message': f'成功为任务加时 {overtime_minutes} 分钟',
-        'overtime_minutes': overtime_minutes,
-        'new_end_time': task.end_time.isoformat() if task.end_time else None,
-        'difficulty': task.difficulty
-    }
-
-    return Response(response_data, status=status.HTTP_200_OK)
+        return Response(
+            {'error': result['message']},
+            status=status.HTTP_400_BAD_REQUEST
+        )
 
 
 @api_view(['GET'])

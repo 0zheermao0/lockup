@@ -39,6 +39,17 @@
               <span class="share-icon">📱</span>
               <span class="share-text">分享到 Telegram</span>
             </button>
+
+            <!-- Telegram Bot sharing for lock tasks -->
+            <button
+              v-if="canShareToTelegramBot"
+              @click="shareToTelegramBot"
+              class="share-btn telegram-bot-btn"
+              title="分享到 Telegram Bot，朋友可以直接点击按钮为您的任务加时"
+            >
+              <span class="share-icon">🤖</span>
+              <span class="share-text">Telegram Bot 加时分享</span>
+            </button>
           </div>
         </div>
 
@@ -70,6 +81,8 @@
 
 <script setup lang="ts">
 import { ref, computed, nextTick } from 'vue'
+import { useAuthStore } from '../stores/auth'
+import { telegramApi } from '../lib/api-telegram'
 
 interface Props {
   isVisible: boolean
@@ -77,6 +90,8 @@ interface Props {
   taskTitle: string
   taskType: string
   taskDescription?: string
+  taskId?: string
+  taskStatus?: string
 }
 
 interface Emits {
@@ -85,6 +100,8 @@ interface Emits {
 
 const props = defineProps<Props>()
 const emit = defineEmits<Emits>()
+
+const authStore = useAuthStore()
 
 const urlInput = ref<HTMLInputElement>()
 const copySuccess = ref(false)
@@ -97,6 +114,21 @@ const taskTypeText = computed(() => {
     board: '📋 任务板'
   }
   return typeMap[props.taskType] || props.taskType
+})
+
+// Check if this is a shareable lock task (active or voting)
+const canShareToTelegramBot = computed(() => {
+  return props.taskType === 'lock' &&
+         props.taskId &&
+         props.taskStatus &&
+         ['active', 'voting'].includes(props.taskStatus) &&
+         authStore.isAuthenticated
+})
+
+// Check if user is the task owner
+const isOwnTask = computed(() => {
+  // This would need to be passed from parent component or determined from task data
+  return true // For now, assume user can share their own tasks
 })
 
 const closeModal = () => {
@@ -162,6 +194,49 @@ const shareToTelegram = () => {
   setTimeout(() => {
     showToast.value = false
   }, 3000)
+}
+
+const shareToTelegramBot = async () => {
+  if (!props.taskId || !canShareToTelegramBot.value) {
+    showToast.value = true
+    toastMessage.value = '无法分享此任务到 Telegram Bot'
+    setTimeout(() => {
+      showToast.value = false
+    }, 3000)
+    return
+  }
+
+  try {
+    showToast.value = true
+    toastMessage.value = '正在生成 Telegram Bot 分享内容...'
+
+    await telegramApi.shareTaskDirectly(props.taskId)
+
+    toastMessage.value = '已在 Telegram 中打开任务分享！'
+    setTimeout(() => {
+      showToast.value = false
+      emit('close') // Close the modal after successful share
+    }, 2000)
+
+  } catch (error: any) {
+    console.error('Error sharing to Telegram Bot:', error)
+
+    let errorMessage = '分享到 Telegram Bot 失败'
+    if (error.data?.error) {
+      errorMessage = error.data.error
+    } else if (error.status === 403) {
+      errorMessage = '只能分享自己的任务'
+    } else if (error.status === 404) {
+      errorMessage = '任务不存在'
+    } else if (error.status === 400) {
+      errorMessage = '只能分享进行中的带锁任务'
+    }
+
+    toastMessage.value = `❌ ${errorMessage}`
+    setTimeout(() => {
+      showToast.value = false
+    }, 4000)
+  }
 }
 
 const truncateText = (text: string, maxLength: number): string => {
@@ -377,6 +452,32 @@ const truncateText = (text: string, maxLength: number): string => {
 
 .telegram-btn:hover {
   background: linear-gradient(135deg, #006699, #004466);
+}
+
+.telegram-bot-btn {
+  background: linear-gradient(135deg, #28a745, #20c997);
+  color: white;
+  position: relative;
+  overflow: hidden;
+}
+
+.telegram-bot-btn:hover {
+  background: linear-gradient(135deg, #20c997, #17a2b8);
+}
+
+.telegram-bot-btn::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -100%;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.2), transparent);
+  transition: left 0.5s;
+}
+
+.telegram-bot-btn:hover::before {
+  left: 100%;
 }
 
 .share-icon {

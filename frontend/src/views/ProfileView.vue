@@ -139,6 +139,97 @@
             </div>
           </section>
 
+          <!-- Telegram 绑定设置 (只对自己显示) -->
+          <section v-if="isOwnProfile" class="telegram-section">
+            <h3>🤖 Telegram Bot 绑定</h3>
+            <div class="telegram-content">
+              <!-- 绑定状态 -->
+              <div v-if="telegramStatus" class="telegram-status">
+                <div v-if="telegramStatus.is_bound" class="bound-status">
+                  <div class="status-header">
+                    <span class="status-badge bound">✅ 已绑定</span>
+                    <span class="telegram-username">@{{ telegramStatus.telegram_username }}</span>
+                  </div>
+                  <div class="status-details">
+                    <p>绑定时间: {{ formatDate(telegramStatus.bound_at) }}</p>
+                    <div class="notification-setting">
+                      <label class="notification-toggle">
+                        <input
+                          type="checkbox"
+                          :checked="telegramStatus.notifications_enabled"
+                          @change="toggleTelegramNotifications"
+                          :disabled="telegramActionLoading"
+                        />
+                        <span>接收 Telegram 通知</span>
+                      </label>
+                    </div>
+                  </div>
+                  <div class="telegram-actions">
+                    <button
+                      @click="unbindTelegram"
+                      :disabled="telegramActionLoading"
+                      class="unbind-btn"
+                    >
+                      {{ telegramActionLoading ? '处理中...' : '解除绑定' }}
+                    </button>
+                  </div>
+                </div>
+
+                <div v-else class="unbound-status">
+                  <div class="status-header">
+                    <span class="status-badge unbound">❌ 未绑定</span>
+                  </div>
+                  <div class="bind-instructions">
+                    <p>绑定 Telegram Bot 后可以：</p>
+                    <ul>
+                      <li>🔔 接收应用通知到 Telegram</li>
+                      <li>⏰ 给朋友分享的任务加时</li>
+                      <li>🎮 参与朋友分享的游戏挑战</li>
+                      <li>🤝 与其他绑定用户互动</li>
+                    </ul>
+                    <div class="bind-methods">
+                      <p><strong>绑定方式：</strong></p>
+                      <div class="bind-option">
+                        <span>1. 点击下面的按钮打开 Telegram Bot</span>
+                        <button
+                          @click="openTelegramBot"
+                          class="telegram-bind-btn"
+                          :disabled="telegramActionLoading"
+                        >
+                          🚀 打开 Telegram Bot
+                        </button>
+                      </div>
+                      <div class="bind-option">
+                        <span>2. 或者复制链接手动打开</span>
+                        <div class="link-copy">
+                          <input
+                            ref="telegramLinkInput"
+                            :value="telegramBotLink"
+                            readonly
+                            class="link-input"
+                          />
+                          <button @click="copyTelegramLink" class="copy-btn">
+                            {{ linkCopied ? '已复制' : '复制' }}
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div v-if="telegramLoading" class="loading-status">
+                <span>加载 Telegram 状态中...</span>
+              </div>
+
+              <div v-if="telegramError" class="error-status">
+                <span>{{ telegramError }}</span>
+                <button @click="fetchTelegramStatus" class="retry-btn">重试</button>
+              </div>
+            </div>
+          </section>
+
+
           <!-- Settings Section (只对自己显示) -->
           <section v-if="isOwnProfile" class="settings-section">
             <h3>隐私设置</h3>
@@ -181,6 +272,7 @@ import { ref, onMounted, computed, reactive } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '../stores/auth'
 import { authApi } from '../lib/api'
+import { telegramApi, type TelegramStatus } from '../lib/api-telegram'
 import LockStatus from '../components/LockStatus.vue'
 import type { User } from '../types/index.js'
 
@@ -195,6 +287,14 @@ const editMode = ref(false)
 const saving = ref(false)
 const avatarInput = ref<HTMLInputElement>()
 
+// Telegram 相关状态
+const telegramStatus = ref<TelegramStatus | null>(null)
+const telegramLoading = ref(false)
+const telegramError = ref('')
+const telegramActionLoading = ref(false)
+const linkCopied = ref(false)
+const telegramLinkInput = ref<HTMLInputElement>()
+
 const editForm = reactive({
   username: '',
   bio: '',
@@ -204,6 +304,11 @@ const editForm = reactive({
 const isOwnProfile = computed(() => {
   if (!userProfile.value || !authStore.user) return false
   return userProfile.value.id === authStore.user.id
+})
+
+const telegramBotLink = computed(() => {
+  if (!authStore.user) return ''
+  return telegramApi.generateDeepLink(authStore.user.id)
 })
 
 const goBack = () => {
@@ -360,8 +465,144 @@ const formatTotalLockDuration = (minutes: number) => {
   }
 }
 
-onMounted(() => {
-  fetchUserProfile()
+// Telegram 相关方法
+const fetchTelegramStatus = async () => {
+  if (!isOwnProfile.value) return
+
+  telegramLoading.value = true
+  telegramError.value = ''
+
+  try {
+    telegramStatus.value = await telegramApi.getTelegramStatus()
+  } catch (error: any) {
+    console.error('Error fetching Telegram status:', error)
+    telegramError.value = error.data?.error || '获取 Telegram 状态失败'
+  } finally {
+    telegramLoading.value = false
+  }
+}
+
+const openTelegramBot = () => {
+  const link = telegramBotLink.value
+  if (link) {
+    window.open(link, '_blank')
+  }
+}
+
+const copyTelegramLink = async () => {
+  const link = telegramBotLink.value
+  if (!link) return
+
+  try {
+    await navigator.clipboard.writeText(link)
+    linkCopied.value = true
+    setTimeout(() => {
+      linkCopied.value = false
+    }, 2000)
+  } catch (error) {
+    // 备用方法：选中文本
+    if (telegramLinkInput.value) {
+      telegramLinkInput.value.select()
+      telegramLinkInput.value.setSelectionRange(0, 99999)
+      try {
+        document.execCommand('copy')
+        linkCopied.value = true
+        setTimeout(() => {
+          linkCopied.value = false
+        }, 2000)
+      } catch (err) {
+        console.error('Failed to copy link:', err)
+        alert('复制失败，请手动复制链接')
+      }
+    }
+  }
+}
+
+const toggleTelegramNotifications = async () => {
+  if (!telegramStatus.value?.is_bound) return
+
+  telegramActionLoading.value = true
+
+  try {
+    const response = await telegramApi.toggleTelegramNotifications()
+    if (telegramStatus.value) {
+      telegramStatus.value.notifications_enabled = response.notifications_enabled
+    }
+    console.log(response.message)
+  } catch (error: any) {
+    console.error('Error toggling Telegram notifications:', error)
+    alert(error.data?.error || '设置失败，请重试')
+  } finally {
+    telegramActionLoading.value = false
+  }
+}
+
+const unbindTelegram = async () => {
+  if (!telegramStatus.value?.is_bound) return
+
+  if (!confirm('确定要解除 Telegram 绑定吗？解除后将无法接收 Telegram 通知。')) {
+    return
+  }
+
+  telegramActionLoading.value = true
+
+  try {
+    await telegramApi.unbindTelegram()
+    telegramStatus.value = {
+      is_bound: false,
+      notifications_enabled: true,
+      can_receive_notifications: false
+    }
+    console.log('Telegram 绑定已解除')
+  } catch (error: any) {
+    console.error('Error unbinding Telegram:', error)
+    alert(error.data?.error || '解绑失败，请重试')
+  } finally {
+    telegramActionLoading.value = false
+  }
+}
+
+const formatDate = (dateString?: string) => {
+  if (!dateString) return ''
+  const date = new Date(dateString)
+  return date.toLocaleString('zh-CN', {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit'
+  })
+}
+
+// 处理深度链接绑定
+const handleDeepLinkBinding = async () => {
+  const telegramBind = route.query.telegram_bind as string
+  if (telegramBind && isOwnProfile.value) {
+    try {
+      const telegramUserId = parseInt(telegramBind)
+      if (!isNaN(telegramUserId)) {
+        const response = await telegramApi.handleDeepLinkBinding(telegramUserId)
+        alert(`绑定成功！欢迎使用 Telegram Bot`)
+        await fetchTelegramStatus()
+        // 清除 URL 参数
+        router.replace({ path: route.path })
+      }
+    } catch (error: any) {
+      console.error('Error handling deep link binding:', error)
+      alert(error.data?.error || '绑定失败，请重试')
+    }
+  }
+}
+
+onMounted(async () => {
+  await fetchUserProfile()
+
+  // 如果是自己的资料页，加载 Telegram 状态
+  if (isOwnProfile.value) {
+    await fetchTelegramStatus()
+    // 处理深度链接绑定
+    await handleDeepLinkBinding()
+  }
 })
 </script>
 
@@ -559,7 +800,7 @@ onMounted(() => {
   color: #f39c12;
 }
 
-.lock-status-section, .stats-section, .settings-section {
+.lock-status-section, .stats-section, .settings-section, .telegram-section {
   background: white;
   padding: 2rem;
   border-radius: 8px;
@@ -671,7 +912,7 @@ onMounted(() => {
     padding: 1rem;
   }
 
-  .lock-status-section, .stats-section, .settings-section {
+  .lock-status-section, .stats-section, .settings-section, .telegram-section {
     padding: 1.5rem;
   }
 
@@ -706,6 +947,294 @@ onMounted(() => {
     flex-direction: column;
     align-items: flex-start;
     gap: 0.5rem;
+  }
+}
+
+/* Telegram 相关样式 */
+.telegram-section h3 {
+  margin: 0 0 1.5rem 0;
+  font-weight: 900;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+.telegram-content {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.telegram-status {
+  width: 100%;
+}
+
+.status-header {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+
+.status-badge {
+  padding: 0.5rem 1rem;
+  border-radius: 20px;
+  font-weight: 600;
+  font-size: 0.875rem;
+}
+
+.status-badge.bound {
+  background-color: #d4edda;
+  color: #155724;
+  border: 1px solid #c3e6cb;
+}
+
+.status-badge.unbound {
+  background-color: #f8d7da;
+  color: #721c24;
+  border: 1px solid #f5c6cb;
+}
+
+.telegram-username {
+  font-weight: 600;
+  color: #007bff;
+  font-family: monospace;
+}
+
+.status-details {
+  margin-bottom: 1rem;
+  padding: 1rem;
+  background-color: #f8f9fa;
+  border-radius: 6px;
+  border: 1px solid #e9ecef;
+}
+
+.status-details p {
+  margin: 0 0 0.5rem 0;
+  color: #666;
+  font-size: 0.875rem;
+}
+
+.notification-setting {
+  margin-top: 1rem;
+}
+
+.notification-toggle {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  cursor: pointer;
+  font-weight: 500;
+}
+
+.notification-toggle input[type="checkbox"] {
+  width: auto;
+  margin: 0;
+  transform: scale(1.2);
+}
+
+.telegram-actions {
+  display: flex;
+  gap: 1rem;
+}
+
+.unbind-btn {
+  background-color: #dc3545;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  padding: 0.5rem 1rem;
+  cursor: pointer;
+  font-size: 0.875rem;
+  font-weight: 500;
+}
+
+.unbind-btn:hover:not(:disabled) {
+  background-color: #c82333;
+}
+
+.unbind-btn:disabled {
+  background-color: #6c757d;
+  cursor: not-allowed;
+}
+
+.bind-instructions {
+  margin-top: 1rem;
+}
+
+.bind-instructions p {
+  margin: 0 0 1rem 0;
+  font-weight: 500;
+}
+
+.bind-instructions ul {
+  margin: 0 0 1.5rem 1.5rem;
+  padding: 0;
+}
+
+.bind-instructions li {
+  margin-bottom: 0.5rem;
+  color: #666;
+}
+
+.bind-methods {
+  background-color: #f8f9fa;
+  padding: 1.5rem;
+  border-radius: 6px;
+  border: 1px solid #e9ecef;
+}
+
+.bind-option {
+  margin-bottom: 1.5rem;
+  padding-bottom: 1rem;
+  border-bottom: 1px solid #e9ecef;
+}
+
+.bind-option:last-child {
+  margin-bottom: 0;
+  padding-bottom: 0;
+  border-bottom: none;
+}
+
+.bind-option span {
+  display: block;
+  margin-bottom: 0.75rem;
+  font-weight: 500;
+  color: #333;
+}
+
+.telegram-bind-btn {
+  background: linear-gradient(135deg, #0088cc, #0066aa);
+  color: white;
+  border: none;
+  border-radius: 6px;
+  padding: 0.75rem 1.5rem;
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 0.9rem;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.telegram-bind-btn:hover:not(:disabled) {
+  background: linear-gradient(135deg, #0066aa, #004488);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 8px rgba(0, 136, 204, 0.3);
+}
+
+.telegram-bind-btn:disabled {
+  background: #6c757d;
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
+}
+
+.link-copy {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.link-input {
+  flex: 1;
+  padding: 0.5rem;
+  border: 2px solid #ddd;
+  border-radius: 4px;
+  font-size: 0.875rem;
+  font-family: monospace;
+  background-color: #f8f9fa;
+  color: #666;
+}
+
+.link-input:focus {
+  outline: none;
+  border-color: #007bff;
+}
+
+.copy-btn {
+  background-color: #28a745;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  padding: 0.5rem 1rem;
+  cursor: pointer;
+  font-size: 0.875rem;
+  font-weight: 500;
+  white-space: nowrap;
+  transition: background-color 0.2s;
+}
+
+.copy-btn:hover {
+  background-color: #218838;
+}
+
+.loading-status, .error-status {
+  padding: 1rem;
+  border-radius: 6px;
+  text-align: center;
+}
+
+.loading-status {
+  background-color: #e3f2fd;
+  color: #1565c0;
+  border: 1px solid #bbdefb;
+}
+
+.error-status {
+  background-color: #f8d7da;
+  color: #721c24;
+  border: 1px solid #f5c6cb;
+}
+
+.retry-btn {
+  background-color: #007bff;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  padding: 0.5rem 1rem;
+  cursor: pointer;
+  font-size: 0.875rem;
+  margin-left: 1rem;
+}
+
+.retry-btn:hover {
+  background-color: #0056b3;
+}
+
+/* Mobile 响应式 - Telegram */
+@media (max-width: 768px) {
+  .telegram-section {
+    padding: 1.5rem;
+  }
+
+  .status-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.5rem;
+  }
+
+  .bind-methods {
+    padding: 1rem;
+  }
+
+  .link-copy {
+    flex-direction: column;
+    gap: 0.75rem;
+  }
+
+  .link-input {
+    width: 100%;
+  }
+
+  .telegram-actions {
+    flex-direction: column;
+    gap: 0.75rem;
+  }
+
+  .telegram-bind-btn {
+    width: 100%;
+    justify-content: center;
   }
 }
 </style>

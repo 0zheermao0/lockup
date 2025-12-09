@@ -49,6 +49,34 @@ class User(AbstractUser):
         help_text="个人简介"
     )
 
+    # Telegram Bot 绑定
+    telegram_user_id = models.BigIntegerField(
+        null=True,
+        blank=True,
+        unique=True,
+        help_text="Telegram 用户ID"
+    )
+    telegram_username = models.CharField(
+        max_length=100,
+        null=True,
+        blank=True,
+        help_text="Telegram 用户名"
+    )
+    telegram_chat_id = models.BigIntegerField(
+        null=True,
+        blank=True,
+        help_text="Telegram 聊天ID"
+    )
+    telegram_bound_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text="Telegram 绑定时间"
+    )
+    telegram_notifications_enabled = models.BooleanField(
+        default=True,
+        help_text="是否启用 Telegram 通知"
+    )
+
     # 统计信息
     total_posts = models.IntegerField(default=0, help_text="发布动态总数")
     total_likes_received = models.IntegerField(default=0, help_text="收到点赞总数")
@@ -126,6 +154,33 @@ class User(AbstractUser):
                 total_duration += max(0, actual_duration)
 
         return total_duration
+
+    def bind_telegram(self, telegram_user_id, telegram_username=None, telegram_chat_id=None):
+        """绑定 Telegram 账户"""
+        self.telegram_user_id = telegram_user_id
+        self.telegram_username = telegram_username
+        self.telegram_chat_id = telegram_chat_id
+        self.telegram_bound_at = timezone.now()
+        self.save()
+
+    def unbind_telegram(self):
+        """解绑 Telegram 账户"""
+        self.telegram_user_id = None
+        self.telegram_username = None
+        self.telegram_chat_id = None
+        self.telegram_bound_at = None
+        self.telegram_notifications_enabled = True  # 重置为默认值
+        self.save()
+
+    def is_telegram_bound(self):
+        """检查是否已绑定 Telegram"""
+        return self.telegram_user_id is not None
+
+    def can_receive_telegram_notifications(self):
+        """检查是否可以接收 Telegram 通知"""
+        return (self.is_telegram_bound() and
+                self.telegram_notifications_enabled and
+                self.telegram_chat_id is not None)
 
 
 class Friendship(models.Model):
@@ -421,7 +476,54 @@ class Notification(models.Model):
             extra_data=extra_data or {}
         )
 
+        # 异步发送 Telegram 通知
+        cls._send_telegram_notification_async(notification)
+
         return notification
+
+    @classmethod
+    def _send_telegram_notification_async(cls, notification):
+        """异步发送 Telegram 通知"""
+        try:
+            # 导入放在方法内部避免循环导入
+            from telegram_bot.services import telegram_service
+
+            # 检查用户是否可以接收 Telegram 通知
+            if notification.recipient.can_receive_telegram_notifications():
+                # 异步发送通知（这里简化处理，实际生产环境可能需要使用 Celery 等任务队列）
+                import asyncio
+                import threading
+
+                def send_notification():
+                    loop = asyncio.new_event_loop()
+                    asyncio.set_event_loop(loop)
+                    try:
+                        loop.run_until_complete(
+                            telegram_service.send_notification(
+                                user_id=notification.recipient.id,
+                                title=notification.title,
+                                message=notification.message,
+                                extra_data=notification.extra_data
+                            )
+                        )
+                    except Exception as e:
+                        # 记录错误但不影响主流程
+                        import logging
+                        logger = logging.getLogger(__name__)
+                        logger.error(f"Failed to send Telegram notification: {e}")
+                    finally:
+                        loop.close()
+
+                # 在后台线程中发送通知
+                thread = threading.Thread(target=send_notification)
+                thread.daemon = True
+                thread.start()
+
+        except Exception as e:
+            # 记录错误但不影响主流程
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.error(f"Error in Telegram notification async send: {e}")
 
     @classmethod
     def _get_default_title(cls, notification_type, actor):
