@@ -2,11 +2,30 @@
   <div class="duration-selector">
     <label v-if="label" class="duration-label">{{ label }}</label>
 
+    <!-- 输入模式切换 -->
+    <div class="input-mode-toggle">
+      <button
+        type="button"
+        @click="inputMode = 'select'"
+        :class="['mode-btn', { active: inputMode === 'select' }]"
+      >
+        📋 下拉选择
+      </button>
+      <button
+        type="button"
+        @click="inputMode = 'input'"
+        :class="['mode-btn', { active: inputMode === 'input' }]"
+      >
+        ⌨️ 手动输入
+      </button>
+    </div>
+
     <div class="duration-inputs">
-      <!-- 天数选择 -->
+      <!-- 天数 -->
       <div class="duration-unit">
         <label class="unit-label">天</label>
         <select
+          v-if="inputMode === 'select'"
           v-model="days"
           @change="updateDuration"
           class="duration-select"
@@ -15,12 +34,25 @@
           <option value="0">0</option>
           <option v-for="day in maxDays" :key="day" :value="day">{{ day }}</option>
         </select>
+        <input
+          v-else
+          v-model.number="days"
+          @input="updateDuration"
+          @blur="validateInput"
+          type="number"
+          min="0"
+          :max="maxDays"
+          placeholder="0"
+          class="duration-input"
+          :class="{ 'has-value': days > 0 }"
+        />
       </div>
 
-      <!-- 小时选择 -->
+      <!-- 小时 -->
       <div class="duration-unit">
         <label class="unit-label">小时</label>
         <select
+          v-if="inputMode === 'select'"
           v-model="hours"
           @change="updateDuration"
           class="duration-select"
@@ -29,12 +61,25 @@
           <option value="0">0</option>
           <option v-for="hour in 23" :key="hour" :value="hour">{{ hour }}</option>
         </select>
+        <input
+          v-else
+          v-model.number="hours"
+          @input="updateDuration"
+          @blur="validateInput"
+          type="number"
+          min="0"
+          max="23"
+          placeholder="0"
+          class="duration-input"
+          :class="{ 'has-value': hours > 0 }"
+        />
       </div>
 
-      <!-- 分钟选择 -->
+      <!-- 分钟 -->
       <div class="duration-unit">
         <label class="unit-label">分钟</label>
         <select
+          v-if="inputMode === 'select'"
           v-model="minutes"
           @change="updateDuration"
           class="duration-select"
@@ -44,6 +89,18 @@
           <option v-for="minute in [5, 10, 15, 20, 30, 45]" :key="minute" :value="minute">{{ minute }}</option>
           <option value="59">59</option>
         </select>
+        <input
+          v-else
+          v-model.number="minutes"
+          @input="updateDuration"
+          @blur="validateInput"
+          type="number"
+          min="0"
+          max="59"
+          placeholder="0"
+          class="duration-input"
+          :class="{ 'has-value': minutes > 0 }"
+        />
       </div>
     </div>
 
@@ -115,6 +172,7 @@ const days = ref(0)
 const hours = ref(0)
 const minutes = ref(0)
 const error = ref('')
+const inputMode = ref<'select' | 'input'>('select') // 默认为下拉选择模式
 
 // 计算属性
 const maxDays = computed(() => Math.floor(props.maxMinutes / (24 * 60)))
@@ -197,6 +255,21 @@ const setFromMinutes = (totalMins: number) => {
   minutes.value = m
 }
 
+const validateInput = () => {
+  // 确保输入值在有效范围内
+  if (days.value < 0) days.value = 0
+  if (days.value > maxDays.value) days.value = maxDays.value
+  if (hours.value < 0) hours.value = 0
+  if (hours.value > 23) hours.value = 23
+  if (minutes.value < 0) minutes.value = 0
+  if (minutes.value > 59) minutes.value = 59
+
+  // 确保都是整数
+  days.value = Math.floor(days.value || 0)
+  hours.value = Math.floor(hours.value || 0)
+  minutes.value = Math.floor(minutes.value || 0)
+}
+
 // 监听外部值变化
 watch(() => props.modelValue, (newValue) => {
   if (newValue !== totalMinutes.value) {
@@ -226,6 +299,44 @@ onMounted(() => {
   font-weight: 600;
   color: #333;
   font-size: 1rem;
+}
+
+.input-mode-toggle {
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+  padding: 0.25rem;
+  background-color: #f8f9fa;
+  border: 2px solid #e9ecef;
+  border-radius: 8px;
+}
+
+.mode-btn {
+  flex: 1;
+  padding: 0.5rem 0.75rem;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: #666;
+  font-size: 0.875rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.25rem;
+}
+
+.mode-btn:hover {
+  background-color: #e9ecef;
+  color: #333;
+}
+
+.mode-btn.active {
+  background-color: #007bff;
+  color: white;
+  box-shadow: 0 2px 4px rgba(0, 123, 255, 0.2);
 }
 
 .duration-inputs {
@@ -272,6 +383,42 @@ onMounted(() => {
   border-color: #28a745;
   background-color: #f8fff9;
   color: #155724;
+}
+
+.duration-input {
+  width: 100%;
+  padding: 0.75rem;
+  border: 2px solid #ddd;
+  border-radius: 6px;
+  font-size: 1rem;
+  font-weight: 600;
+  text-align: center;
+  background: white;
+  transition: all 0.2s ease;
+  -moz-appearance: textfield; /* Firefox */
+}
+
+.duration-input::-webkit-outer-spin-button,
+.duration-input::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+.duration-input:focus {
+  outline: none;
+  border-color: #007bff;
+  box-shadow: 0 0 0 3px rgba(0, 123, 255, 0.1);
+}
+
+.duration-input.has-value {
+  border-color: #28a745;
+  background-color: #f8fff9;
+  color: #155724;
+}
+
+.duration-input::placeholder {
+  color: #999;
+  font-weight: normal;
 }
 
 .duration-display {
@@ -373,7 +520,8 @@ onMounted(() => {
     flex-shrink: 0;
   }
 
-  .duration-select {
+  .duration-select,
+  .duration-input {
     width: 120px;
     flex-shrink: 0;
   }
