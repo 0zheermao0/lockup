@@ -244,7 +244,7 @@ class TelegramBotService:
         except Exception as e:
             logger.error(f"Error checking existing binding: {e}")
 
-        frontend_url = getattr(settings, 'TELEGRAM_APP_CONFIG', {}).get('FRONTEND_URL', 'https://lock-down.zheermao.top')
+        frontend_url = getattr(settings, 'TELEGRAM_APP_CONFIG', {}).get('FRONTEND_URL', 'https://lock-up.zheermao.top')
         bind_url = f"{frontend_url}/profile?telegram_bind={update.effective_user.id}"
 
         await update.message.reply_text(
