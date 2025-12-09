@@ -171,6 +171,51 @@ def bind_telegram(request):
 
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
+def initiate_telegram_binding(request):
+    """启动 Telegram 绑定流程 - 为自动绑定做准备"""
+    try:
+        telegram_user_id = request.data.get('telegram_user_id')
+
+        if not telegram_user_id:
+            return Response(
+                {'error': 'telegram_user_id is required'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # 检查是否已经有其他用户绑定了这个 Telegram 账户
+        existing_user = User.objects.filter(telegram_user_id=telegram_user_id).first()
+        if existing_user and existing_user != request.user:
+            return Response(
+                {'error': '此 Telegram 账户已被其他用户绑定'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # 预设置用户的 telegram_user_id，但不设置 chat_id（等待 /start 命令完成绑定）
+        request.user.telegram_user_id = telegram_user_id
+        request.user.telegram_chat_id = None  # 重置 chat_id，等待 webhook 设置
+        request.user.save()
+
+        # 生成 Bot 链接
+        bot_username = getattr(settings, 'TELEGRAM_BOT_USERNAME', 'lock_up_bot')
+        bot_url = f"https://t.me/{bot_username}"
+
+        return Response({
+            'message': '绑定准备完成，请点击链接前往 Telegram Bot',
+            'bot_url': bot_url,
+            'telegram_user_id': telegram_user_id,
+            'next_step': '在 Telegram 中发送 /start 命令完成绑定'
+        })
+
+    except Exception as e:
+        logger.error(f"Error initiating Telegram binding: {e}")
+        return Response(
+            {'error': '启动绑定失败，请重试'},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
 def unbind_telegram(request):
     """解绑 Telegram 账户"""
     try:

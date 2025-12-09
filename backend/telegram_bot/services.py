@@ -6,6 +6,7 @@ from typing import Optional, Dict, Any
 from collections import defaultdict
 from django.conf import settings
 from django.contrib.auth import get_user_model
+from asgiref.sync import sync_to_async
 from telegram import Bot, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, MessageHandler, filters
 from tasks.models import LockTask
@@ -92,12 +93,15 @@ class TelegramBotService:
 
         return True
 
-    def _is_user_authorized(self, user_id: int) -> bool:
+    async def _is_user_authorized(self, user_id: int) -> bool:
         """检查用户是否已绑定并授权使用Bot"""
         try:
-            user = User.objects.get(telegram_user_id=user_id)
-            return user.is_telegram_bound()
-        except User.DoesNotExist:
+            user_query = await sync_to_async(User.objects.filter)(telegram_user_id=user_id)
+            user = await sync_to_async(user_query.first)()
+            if user:
+                return await sync_to_async(user.is_telegram_bound)()
+            return False
+        except Exception:
             return False
 
     def _register_handlers(self):
@@ -137,6 +141,71 @@ class TelegramBotService:
                 await self._process_binding(update, context, bind_token)
                 return
 
+        # 自动绑定逻辑：检查是否有等待绑定的用户
+        try:
+            # 查找正在等待绑定此 Telegram 用户ID 的用户
+            pending_user = await sync_to_async(User.objects.filter)(
+                telegram_user_id=user_id,
+                telegram_chat_id__isnull=True  # 还没有完成绑定
+            )
+            pending_user = await sync_to_async(pending_user.first)()
+
+            if pending_user:
+                # 完成绑定：设置 chat_id
+                pending_user.telegram_chat_id = chat_id
+                if username:
+                    pending_user.telegram_username = username
+                await sync_to_async(pending_user.save)()
+
+                success_text = f"""
+✅ 绑定成功！
+
+您的 Lockup 账户 **{pending_user.username}** 已成功绑定到 Telegram！
+
+现在您可以：
+• 🔔 接收任务通知
+• ⏰ 通过 Bot 给朋友的任务加时
+• 🎮 玩各种小游戏
+
+使用 /help 查看所有可用命令
+                """
+
+                try:
+                    await update.message.reply_text(success_text, parse_mode='Markdown')
+                    logger.info(f"Successfully bound user {pending_user.username} (ID: {pending_user.id}) to Telegram user {user_id}")
+                    return
+                except Exception as e:
+                    logger.error(f"Failed to send binding success message: {e}")
+                    return
+
+        except Exception as e:
+            logger.error(f"Error during auto-binding check: {e}")
+
+        # 检查用户是否已经绑定
+        try:
+            existing_user = await sync_to_async(User.objects.filter)(telegram_user_id=user_id)
+            existing_user = await sync_to_async(existing_user.first)()
+
+            if existing_user:
+                already_bound_text = f"""
+👋 欢迎回来，{existing_user.username}！
+
+您的账户已经绑定成功。
+
+使用 /help 查看所有可用命令
+                """
+                try:
+                    await update.message.reply_text(already_bound_text)
+                    logger.info(f"User {existing_user.username} already bound, sent welcome back message")
+                    return
+                except Exception as e:
+                    logger.error(f"Failed to send welcome back message: {e}")
+                    return
+
+        except Exception as e:
+            logger.error(f"Error checking existing user binding: {e}")
+
+        # 默认欢迎消息（未绑定的用户）
         welcome_text = """
 🔒 欢迎使用 Lockup Telegram Bot！
 
@@ -152,7 +221,7 @@ class TelegramBotService:
 
         try:
             await update.message.reply_text(welcome_text)
-            logger.info(f"Sent welcome message to user {user_id}")
+            logger.info(f"Sent welcome message to new user {user_id}")
         except Exception as e:
             logger.error(f"Failed to send welcome message to user {user_id}: {e}")
             # In case of failure, we still continue processing
@@ -163,14 +232,17 @@ class TelegramBotService:
 
         # 检查用户是否已经绑定
         try:
-            user = User.objects.get(telegram_chat_id=chat_id)
-            await update.message.reply_text(
-                f"您已经绑定了账户：{user.username}\n\n"
-                "如需重新绑定，请先使用 /unbind 解绑"
-            )
-            return
-        except User.DoesNotExist:
-            pass
+            user_query = await sync_to_async(User.objects.filter)(telegram_chat_id=chat_id)
+            user = await sync_to_async(user_query.first)()
+
+            if user:
+                await update.message.reply_text(
+                    f"您已经绑定了账户：{user.username}\n\n"
+                    "如需重新绑定，请先使用 /unbind 解绑"
+                )
+                return
+        except Exception as e:
+            logger.error(f"Error checking existing binding: {e}")
 
         bind_url = f"https://your-domain.com/profile?telegram_bind={update.effective_user.id}"
 
@@ -185,17 +257,25 @@ class TelegramBotService:
         chat_id = update.effective_chat.id
 
         try:
-            user = User.objects.get(telegram_chat_id=chat_id)
-            user.unbind_telegram()
+            user_query = await sync_to_async(User.objects.filter)(telegram_chat_id=chat_id)
+            user = await sync_to_async(user_query.first)()
 
+            if user:
+                await sync_to_async(user.unbind_telegram)()
+
+                await update.message.reply_text(
+                    f"✅ 已成功解绑账户：{user.username}\n\n"
+                    "您可以随时使用 /bind 重新绑定"
+                )
+            else:
+                await update.message.reply_text(
+                    "❌ 您还没有绑定任何账户\n\n"
+                    "使用 /bind 开始绑定"
+                )
+        except Exception as e:
+            logger.error(f"Error in unbind handler: {e}")
             await update.message.reply_text(
-                f"✅ 已成功解绑账户：{user.username}\n\n"
-                "您可以随时使用 /bind 重新绑定"
-            )
-        except User.DoesNotExist:
-            await update.message.reply_text(
-                "❌ 您还没有绑定任何账户\n\n"
-                "使用 /bind 开始绑定"
+                "❌ 解绑过程中发生错误，请稍后重试"
             )
 
     async def _handle_status(self, update, context):
@@ -203,16 +283,19 @@ class TelegramBotService:
         chat_id = update.effective_chat.id
 
         try:
-            user = User.objects.get(telegram_chat_id=chat_id)
+            user_query = await sync_to_async(User.objects.filter)(telegram_chat_id=chat_id)
+            user = await sync_to_async(user_query.first)()
 
-            # 获取用户活跃任务
-            active_tasks = LockTask.objects.filter(
-                user=user,
-                task_type='lock',
-                status='active'
-            ).count()
+            if user:
+                # 获取用户活跃任务
+                active_tasks_query = await sync_to_async(LockTask.objects.filter)(
+                    user=user,
+                    task_type='lock',
+                    status='active'
+                )
+                active_tasks = await sync_to_async(active_tasks_query.count)()
 
-            status_text = f"""
+                status_text = f"""
 👤 **用户状态**
 用户名：{user.username}
 等级：Level {user.level}
@@ -226,14 +309,19 @@ Telegram 通知：{'✅ 已开启' if user.telegram_notifications_enabled else '
 发布动态：{user.total_posts}
 收到点赞：{user.total_likes_received}
 完成任务：{user.total_tasks_completed}
-            """
+                """
 
-            await update.message.reply_text(status_text, parse_mode='Markdown')
+                await update.message.reply_text(status_text, parse_mode='Markdown')
+            else:
+                await update.message.reply_text(
+                    "❌ 您还没有绑定任何账户\n\n"
+                    "使用 /bind 开始绑定"
+                )
 
-        except User.DoesNotExist:
+        except Exception as e:
+            logger.error(f"Error in status handler: {e}")
             await update.message.reply_text(
-                "❌ 您还没有绑定任何账户\n\n"
-                "使用 /bind 开始绑定"
+                "❌ 获取状态信息时发生错误，请稍后重试"
             )
 
     async def _handle_help(self, update, context):
@@ -275,13 +363,14 @@ Telegram 通知：{'✅ 已开启' if user.telegram_notifications_enabled else '
             return
 
         # 检查用户是否已绑定
-        if not self._is_user_authorized(user_id):
+        if not await self._is_user_authorized(user_id):
             await query.answer("❌ 请先绑定您的 Lockup 账户", show_alert=True)
             return
 
         try:
             callback_data = query.data
-            current_user = User.objects.get(telegram_user_id=user_id)
+            user_query = await sync_to_async(User.objects.filter)(telegram_user_id=user_id)
+            current_user = await sync_to_async(user_query.first)()
 
             # 处理任务加时回调
             if callback_data.startswith('overtime_'):
@@ -492,8 +581,9 @@ Telegram 通知：{'✅ 已开启' if user.telegram_notifications_enabled else '
             return False
 
         try:
-            user = User.objects.get(id=user_id)
-            if not user.can_receive_telegram_notifications():
+            user_query = await sync_to_async(User.objects.filter)(id=user_id)
+            user = await sync_to_async(user_query.first)()
+            if not user or not await sync_to_async(user.can_receive_telegram_notifications)():
                 return False
 
             notification_text = f"🔔 **{title}**\n\n{message}"

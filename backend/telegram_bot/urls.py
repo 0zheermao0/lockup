@@ -7,6 +7,7 @@ urlpatterns = [
 
     # 绑定管理
     path('bind/', views.bind_telegram, name='bind_telegram'),
+    path('initiate-binding/', views.initiate_telegram_binding, name='initiate_telegram_binding'),
     path('unbind/', views.unbind_telegram, name='unbind_telegram'),
     path('status/', views.telegram_status, name='telegram_status'),
     path('toggle-notifications/', views.toggle_telegram_notifications, name='toggle_telegram_notifications'),
