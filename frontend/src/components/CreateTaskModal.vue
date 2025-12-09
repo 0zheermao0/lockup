@@ -155,7 +155,6 @@
               v-model="form.duration_value!"
               :label="form.duration_type === 'fixed' ? '持续时间' : '最短时间'"
               :min-minutes="1"
-              :max-minutes="10080"
               :required="true"
             />
 
@@ -164,7 +163,6 @@
               v-model="form.duration_max!"
               label="最长时间"
               :min-minutes="form.duration_value || 1"
-              :max-minutes="10080"
               :required="true"
             />
           </div>
@@ -207,7 +205,6 @@
                 v-model.number="form.max_duration"
                 type="number"
                 min="1"
-                max="720"
                 placeholder="任务最长完成时间"
                 required
               />

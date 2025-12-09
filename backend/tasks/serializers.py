@@ -89,9 +89,20 @@ class LockTaskCreateSerializer(serializers.ModelSerializer):
                 if not data.get(field):
                     raise serializers.ValidationError(f"带锁任务必须填写 {field}")
 
+            # 验证持续时间基本要求（移除上限，允许无限制）
+            duration_value = data.get('duration_value')
+            duration_max = data.get('duration_max')
+
+            if duration_value and duration_value < 1:
+                raise serializers.ValidationError("持续时间至少为1分钟")
+
             # 随机时间类型需要最大值
-            if data.get('duration_type') == 'random' and not data.get('duration_max'):
-                raise serializers.ValidationError("随机时间类型必须设置最大持续时间")
+            if data.get('duration_type') == 'random':
+                if not duration_max:
+                    raise serializers.ValidationError("随机时间类型必须设置最大持续时间")
+
+                if duration_value and duration_max <= duration_value:
+                    raise serializers.ValidationError("最大持续时间必须大于最短持续时间")
 
             # 投票解锁需要投票相关参数
             if data.get('unlock_type') == 'vote':
@@ -105,6 +116,20 @@ class LockTaskCreateSerializer(serializers.ModelSerializer):
             for field in required_fields:
                 if not data.get(field):
                     raise serializers.ValidationError(f"任务板必须填写 {field}")
+
+            # 验证任务板基本要求（移除时间上限，允许无限制）
+            max_duration = data.get('max_duration')
+            reward = data.get('reward')
+
+            if max_duration and max_duration < 1:
+                raise serializers.ValidationError("最大完成时间至少为1小时")
+
+            # 奖励金额限制保持合理范围
+            if reward and reward > 10000:
+                raise serializers.ValidationError("奖励金额不能超过10000积分")
+
+            if reward and reward < 1:
+                raise serializers.ValidationError("奖励金额至少为1积分")
 
         return data
 

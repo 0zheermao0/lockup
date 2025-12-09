@@ -12,7 +12,6 @@
           @blur="validateInput"
           type="number"
           min="0"
-          :max="maxDays"
           placeholder="0"
           class="duration-input"
           :class="{ 'has-value': days > 0 }"
@@ -144,14 +143,9 @@ const presets: Preset[] = [
 const updateDuration = () => {
   const total = totalMinutes.value
 
-  // 验证范围
+  // 只验证最小时间限制，不限制最大时间
   if (total < props.minMinutes) {
     error.value = `最短时间不能少于 ${props.minMinutes} 分钟`
-    return
-  }
-
-  if (total > props.maxMinutes) {
-    error.value = `最长时间不能超过 ${formatMinutesToText(props.maxMinutes)}`
     return
   }
 
@@ -205,7 +199,7 @@ const setFromMinutes = (totalMins: number) => {
 const validateInput = () => {
   // 确保输入值在有效范围内
   if (days.value < 0) days.value = 0
-  if (days.value > maxDays.value) days.value = maxDays.value
+  // 移除天数上限限制，允许用户输入任意天数
   if (hours.value < 0) hours.value = 0
   if (hours.value > 23) hours.value = 23
   if (minutes.value < 0) minutes.value = 0
@@ -215,6 +209,9 @@ const validateInput = () => {
   days.value = Math.floor(days.value || 0)
   hours.value = Math.floor(hours.value || 0)
   minutes.value = Math.floor(minutes.value || 0)
+
+  // 验证总时长
+  updateDuration()
 }
 
 // 监听外部值变化
