@@ -1,7 +1,10 @@
 # 部署初始化指南
 
-## 问题描述
+本文档包含Lockup应用部署时必须执行的初始化步骤，确保系统正常运行。
 
+## 🏗️ 基础数据初始化
+
+### 问题描述
 线上部署时创建带锁任务报错："系统错误：钥匙道具类型不存在"
 
 **根本原因**: 数据库缺少系统运行必需的基础数据（ItemType 和 StoreItem）
@@ -161,6 +164,169 @@ python manage.py init_store_data --force
 
 ---
 
-📝 **创建时间**: 2025年10月13日
+## 🎁 奖励系统配置
+
+### 问题描述
+Commit 70041e4修改了奖励机制，从完成任务时一次性发放改为每小时自动发放，但缺少自动化配置。
+
+**症状**:
+- 用户没有获得每小时的1积分奖励
+- 完成任务时也没有获得所有的积分奖励
+
+### 解决方案
+
+#### 1. 手动运行奖励处理
+```bash
+# 激活虚拟环境
+source venv/bin/activate
+
+# 手动处理所有待发放的奖励
+python manage.py process_rewards
+```
+
+#### 2. 设置自动化定时任务
+```bash
+# 运行自动化设置脚本
+python scripts/setup_cron.py
+
+# 或手动添加到crontab
+echo "0 * * * * $(pwd)/venv/bin/python $(pwd)/manage.py process_rewards >> /tmp/lockup_rewards.log 2>&1" | crontab -
+```
+
+#### 3. 验证奖励系统
+```bash
+# 检查最近的奖励记录
+python manage.py shell -c "
+from tasks.models import HourlyReward
+recent_rewards = HourlyReward.objects.all().order_by('-created_at')[:5]
+print('最近的奖励记录:')
+for reward in recent_rewards:
+    print(f'  {reward.user.username}: {reward.task.title} 第{reward.hour_count}小时 +{reward.reward_amount}积分')
+"
+```
+
+#### 4. 监控奖励处理
+```bash
+# 查看奖励处理日志
+tail -f /tmp/lockup_rewards.log
+
+# 检查cron任务状态
+crontab -l | grep process_rewards
+```
+
+### 奖励机制说明
+
+1. **小时奖励**: 带锁任务每运行1小时自动获得1积分
+2. **完成奖励**: 任务完成时根据难度获得额外奖励
+   - Easy: +1积分
+   - Normal: +2积分
+   - Hard: +3积分
+   - Hell: +4积分
+3. **补发机制**: 任务完成时自动补发所有未发放的小时奖励
+
+---
+
+## 🤖 Telegram Bot 配置
+
+### 本地开发环境
+
+#### 方案1: 使用ngrok（推荐）
+```bash
+# 1. 启动ngrok隧道
+ngrok http 8000
+
+# 2. 复制HTTPS URL (如: https://abc123.ngrok.io)
+
+# 3. 设置webhook
+source venv/bin/activate
+python manage.py setup_telegram --set-webhook https://abc123.ngrok.io/api/telegram/webhook/
+
+# 4. 验证设置
+python manage.py setup_telegram --info
+```
+
+#### 方案2: 使用其他隧道工具
+```bash
+# Cloudflare Tunnel
+brew install cloudflared
+cloudflared tunnel --url http://localhost:8000
+
+# 或 localtunnel
+npm install -g localtunnel
+lt --port 8000
+```
+
+### 生产环境
+
+```bash
+# 直接设置生产环境webhook
+python manage.py setup_telegram --set-webhook https://your-domain.com/api/telegram/webhook/
+```
+
+### 手动设置Webhook（备用）
+```bash
+# 使用curl直接调用Telegram API
+curl -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/setWebhook" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "url": "https://your-domain.com/api/telegram/webhook/",
+    "allowed_updates": ["message", "callback_query"]
+  }'
+```
+
+### 测试绑定流程
+1. 在Telegram中找到Bot: @lock_up_bot
+2. 发送 /start 命令
+3. 在应用中点击"打开Telegram Bot"按钮
+4. Bot处理绑定逻辑并更新数据库
+5. 应用中显示绑定成功
+
+### 故障排除
+
+**ngrok连接失败**:
+- 检查网络连接
+- 尝试不同region: `ngrok http 8000 --region=ap`
+
+**Webhook设置失败**:
+- 确保URL是HTTPS
+- 检查Bot Token是否正确
+- 确认端口8000可访问
+
+**Bot不响应**:
+- 检查Django服务器运行状态
+- 查看Django日志中的webhook请求
+- 验证webhook URL路径正确
+
+**绑定不成功**:
+- 检查数据库连接
+- 查看Django日志中的错误信息
+- 确认用户已登录应用
+
+---
+
+## 📋 完整部署检查清单
+
+### 必须执行的步骤
+- [ ] 运行数据库迁移: `python manage.py migrate`
+- [ ] 初始化基础数据: `python manage.py init_store_data`
+- [ ] 设置奖励系统定时任务: `python scripts/setup_cron.py`
+- [ ] 配置Telegram Bot webhook（如果需要）
+
+### 验证步骤
+- [ ] 创建带锁任务成功
+- [ ] 奖励系统正常发放积分
+- [ ] Telegram Bot绑定功能正常
+- [ ] 所有API端点正常响应
+
+### 生产环境注意事项
+1. **环境变量**: 确保所有敏感配置通过环境变量设置
+2. **SSL证书**: 确保HTTPS正确配置（Telegram webhook要求）
+3. **防火墙**: 开放必要端口
+4. **监控**: 设置应用和数据库监控
+5. **备份**: 配置定期数据库备份
+
+---
+
+📝 **创建时间**: 2025年12月10日
 🔧 **维护者**: Claude Code Assistant
 📋 **状态**: 测试完成，生产就绪
