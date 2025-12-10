@@ -12,12 +12,14 @@ from .serializers import (
     PostStatsSerializer, CheckinVerificationSerializer
 )
 from users.models import Notification
+from tasks.pagination import DynamicPageNumberPagination
 
 
 class PostListCreateView(generics.ListCreateAPIView):
     """动态列表和创建视图"""
 
     permission_classes = [permissions.IsAuthenticated]
+    pagination_class = DynamicPageNumberPagination
 
     def get_serializer_class(self):
         if self.request.method == 'POST':

@@ -4,13 +4,14 @@ from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
-from django.db.models import Q
+from django.db.models import Q, Count
 from datetime import timedelta
 import random
 
 from .models import LockTask, TaskKey, TaskVote, OvertimeAction, TaskTimelineEvent, HourlyReward
 from store.models import ItemType, UserInventory, Item
 from users.models import Notification
+from .pagination import DynamicPageNumberPagination
 from .serializers import (
     LockTaskSerializer, LockTaskCreateSerializer,
     TaskKeySerializer, TaskVoteSerializer, TaskVoteCreateSerializer,
@@ -21,6 +22,7 @@ from .serializers import (
 class LockTaskListCreateView(generics.ListCreateAPIView):
     """任务列表和创建"""
     permission_classes = [IsAuthenticated]
+    pagination_class = DynamicPageNumberPagination
 
     def get_serializer_class(self):
         if self.request.method == 'POST':
@@ -57,7 +59,8 @@ class LockTaskListCreateView(generics.ListCreateAPIView):
         if my_taken == 'true':
             queryset = queryset.filter(taker=self.request.user)
 
-        return queryset
+        # Add ordering for consistent pagination results
+        return queryset.order_by('-created_at')
 
     def perform_create(self, serializer):
         from rest_framework.exceptions import ValidationError
@@ -1318,3 +1321,53 @@ def _calculate_completion_bonus(task):
     }
 
     return difficulty_bonus.get(task.difficulty, 0)
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def get_task_counts(request):
+    """获取任务数量统计（用于筛选标签显示正确的数字）"""
+    try:
+        # 在获取统计时，自动处理过期的投票
+        try:
+            _process_voting_results_internal()
+        except Exception as e:
+            print(f"Warning: Failed to process voting results: {e}")
+
+        # 基础查询集
+        base_queryset = LockTask.objects.all()
+
+        # 按任务类型分组统计
+        lock_tasks = base_queryset.filter(task_type='lock')
+        board_tasks = base_queryset.filter(task_type='board')
+
+        # 带锁任务统计
+        lock_counts = {
+            'all': lock_tasks.count(),
+            'active': lock_tasks.filter(status='active').count(),
+            'voting': lock_tasks.filter(status='voting').count(),
+            'completed': lock_tasks.filter(status='completed').count(),
+            'my_tasks': lock_tasks.filter(user=request.user).count(),
+        }
+
+        # 任务板统计
+        board_counts = {
+            'all': board_tasks.count(),
+            'open': board_tasks.filter(status='open').count(),
+            'taken': board_tasks.filter(status='taken').count(),
+            'submitted': board_tasks.filter(status='submitted').count(),
+            'completed': board_tasks.filter(status='completed').count(),
+            'my_published': board_tasks.filter(user=request.user).count(),
+            'my_taken': board_tasks.filter(taker=request.user).count(),
+        }
+
+        return Response({
+            'lock_tasks': lock_counts,
+            'board_tasks': board_counts
+        })
+
+    except Exception as e:
+        return Response(
+            {'error': f'获取任务统计失败: {str(e)}'},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )

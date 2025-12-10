@@ -36,4 +36,7 @@ urlpatterns = [
 
     # 小时奖励
     path('process-hourly-rewards/', views.process_hourly_rewards, name='process-hourly-rewards'),
+
+    # 任务统计
+    path('counts/', views.get_task_counts, name='task-counts'),
 ]
