@@ -65,59 +65,62 @@ def telegram_webhook(request):
         # 在生产环境中，建议使用 Celery 等任务队列
         logger.info(f"Processing Telegram webhook update: {update_data.get('update_id')}")
 
-        # 调用 telegram_service 处理更新
+        # 简化的webhook处理 - 直接处理命令而不使用复杂的事件循环
         try:
-            from telegram import Update
-            import asyncio
-            import threading
-            from concurrent.futures import ThreadPoolExecutor
+            # 检查是否是命令消息
+            if 'message' in update_data and 'text' in update_data['message']:
+                message_text = update_data['message']['text']
+                user_id = update_data['message']['from']['id']
+                chat_id = update_data['message']['chat']['id']
+                chat_type = update_data['message']['chat']['type']
 
-            # 创建 Update 对象
-            update = Update.de_json(update_data, telegram_service.bot)
+                # 简单的命令处理
+                if message_text.startswith('/'):
+                    command = message_text.split()[0].replace('/', '')
+                    logger.info(f"Processing command: {command} from user {user_id} in {chat_type}")
 
-            if update:
-                # 使用线程池来处理更新，避免事件循环问题
-                def process_update_sync():
-                    try:
-                        # 在新线程中创建独立的事件循环
-                        loop = asyncio.new_event_loop()
-                        asyncio.set_event_loop(loop)
+                    # 暂时记录命令，实际处理由原有逻辑完成
+                    from telegram import Update
+                    update = Update.de_json(update_data, telegram_service.bot)
 
-                        try:
-                            # 确保Bot已经初始化
-                            if loop.run_until_complete(telegram_service._ensure_initialized()):
-                                # 运行异步处理
-                                loop.run_until_complete(
-                                    telegram_service.application.process_update(update)
-                                )
-                                logger.info(f"Successfully processed update {update_data.get('update_id')}")
-                            else:
-                                logger.error("Failed to initialize Telegram Bot")
-                        finally:
-                            # 确保正确关闭循环
+                    if update:
+                        # 使用简化的异步处理
+                        import threading
+
+                        def simple_process():
                             try:
-                                # 取消所有待处理的任务
-                                pending_tasks = asyncio.all_tasks(loop)
-                                for task in pending_tasks:
-                                    task.cancel()
-                                # 等待任务完成
-                                if pending_tasks:
-                                    loop.run_until_complete(
-                                        asyncio.gather(*pending_tasks, return_exceptions=True)
-                                    )
-                            except Exception:
-                                pass
+                                import asyncio
+                                # 创建新的事件循环
+                                loop = asyncio.new_event_loop()
+                                asyncio.set_event_loop(loop)
+
+                                async def handle_command():
+                                    try:
+                                        # 确保初始化
+                                        if await telegram_service._ensure_initialized():
+                                            await telegram_service.application.process_update(update)
+                                            logger.info(f"Command {command} processed successfully")
+                                    except Exception as e:
+                                        logger.error(f"Error processing command {command}: {e}")
+
+                                # 运行处理
+                                loop.run_until_complete(handle_command())
+
+                            except Exception as e:
+                                logger.error(f"Error in command processing thread: {e}")
                             finally:
-                                loop.close()
+                                try:
+                                    loop.close()
+                                except:
+                                    pass
 
-                    except Exception as e:
-                        logger.error(f"Error in background thread: {e}")
-
-                # 使用守护线程处理，不阻塞webhook响应
-                thread = threading.Thread(target=process_update_sync, daemon=True)
-                thread.start()
+                        # 后台处理
+                        thread = threading.Thread(target=simple_process, daemon=True)
+                        thread.start()
+                else:
+                    logger.info(f"Non-command message from user {user_id}: {message_text[:50]}...")
             else:
-                logger.warning(f"Failed to create Update object from data: {update_data}")
+                logger.info(f"Non-message update: {list(update_data.keys())}")
 
         except Exception as e:
             logger.error(f"Error processing Telegram update: {e}")

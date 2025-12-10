@@ -124,6 +124,14 @@ class TelegramBotService:
         if not self.application:
             return
 
+        # 检查是否已经注册过处理器，避免重复注册
+        if hasattr(self, '_handlers_registered') and self._handlers_registered:
+            logger.info("Handlers already registered, skipping registration")
+            return
+
+        # 清除现有的处理器（如果有）
+        self.application.handlers.clear()
+
         # 命令处理器
         self.application.add_handler(CommandHandler("start", self._handle_start))
         self.application.add_handler(CommandHandler("bind", self._handle_bind))
@@ -137,15 +145,27 @@ class TelegramBotService:
         # 消息处理器
         self.application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, self._handle_message))
 
+        # 标记已注册
+        self._handlers_registered = True
+        logger.info("Telegram bot handlers registered successfully")
+
     async def _handle_start(self, update, context):
         """处理 /start 命令"""
         user_id = update.effective_user.id
         chat_id = update.effective_chat.id
+        chat_type = update.effective_chat.type
         username = update.effective_user.username
 
         # 安全检查：验证更新和频率限制
         if not self._validate_update(update) or not self._check_rate_limit(user_id):
             logger.warning(f"Security check failed for user {user_id} in _handle_start")
+            return
+
+        # 群聊中不处理 /start 命令
+        if chat_type != 'private':
+            await update.message.reply_text(
+                "🤖 请在私聊中使用 /start 命令来绑定您的账户"
+            )
             return
 
         # 检查是否是深度链接绑定
@@ -243,7 +263,21 @@ class TelegramBotService:
 
     async def _handle_bind(self, update, context):
         """处理 /bind 命令"""
+        user_id = update.effective_user.id
         chat_id = update.effective_chat.id
+        chat_type = update.effective_chat.type
+
+        # 安全检查：验证更新和频率限制
+        if not self._validate_update(update) or not self._check_rate_limit(user_id):
+            logger.warning(f"Security check failed for user {user_id} in _handle_bind")
+            return
+
+        # 群聊中不处理 /bind 命令
+        if chat_type != 'private':
+            await update.message.reply_text(
+                "🤖 请在私聊中使用 /bind 命令来绑定您的账户"
+            )
+            return
 
         # 检查用户是否已经绑定
         try:
@@ -270,7 +304,21 @@ class TelegramBotService:
 
     async def _handle_unbind(self, update, context):
         """处理 /unbind 命令"""
+        user_id = update.effective_user.id
         chat_id = update.effective_chat.id
+        chat_type = update.effective_chat.type
+
+        # 安全检查：验证更新和频率限制
+        if not self._validate_update(update) or not self._check_rate_limit(user_id):
+            logger.warning(f"Security check failed for user {user_id} in _handle_unbind")
+            return
+
+        # 群聊中不处理 /unbind 命令
+        if chat_type != 'private':
+            await update.message.reply_text(
+                "🤖 请在私聊中使用 /unbind 命令来解绑您的账户"
+            )
+            return
 
         try:
             user_query = await sync_to_async(User.objects.filter)(telegram_chat_id=chat_id)
@@ -296,27 +344,53 @@ class TelegramBotService:
 
     async def _handle_status(self, update, context):
         """处理 /status 命令"""
+        user_id = update.effective_user.id
         chat_id = update.effective_chat.id
+        chat_type = update.effective_chat.type
+
+        # 安全检查：验证更新和频率限制
+        if not self._validate_update(update) or not self._check_rate_limit(user_id):
+            logger.warning(f"Security check failed for user {user_id} in _handle_status")
+            return
 
         try:
-            user_query = await sync_to_async(User.objects.filter)(telegram_chat_id=chat_id)
+            # 根据聊天类型确定如何查找用户
+            if chat_type == 'private':
+                # 私聊：使用 chat_id 查找
+                user_query = await sync_to_async(User.objects.filter)(telegram_chat_id=chat_id)
+            else:
+                # 群聊：使用 user_id 查找
+                user_query = await sync_to_async(User.objects.filter)(telegram_user_id=user_id)
+
             user = await sync_to_async(user_query.first)()
 
-            if user:
-                # 获取用户活跃任务
-                active_tasks_query = await sync_to_async(LockTask.objects.filter)(
-                    user=user,
-                    task_type='lock',
-                    status='active'
-                )
-                active_tasks = await sync_to_async(active_tasks_query.count)()
+            if not user:
+                if chat_type == 'private':
+                    await update.message.reply_text(
+                        "❌ 您还没有绑定任何账户\n\n"
+                        "使用 /bind 开始绑定"
+                    )
+                else:
+                    await update.message.reply_text(
+                        f"❌ @{update.effective_user.username or update.effective_user.first_name} 还没有绑定账户"
+                    )
+                return
 
-                status_text = f"""
-👤 **用户状态**
+            # 获取用户活跃任务
+            active_tasks_query = await sync_to_async(LockTask.objects.filter)(
+                user=user,
+                task_type='lock',
+                status='active'
+            )
+            active_tasks_count = await sync_to_async(active_tasks_query.count)()
+
+            # 构建状态消息
+            if chat_type == 'private':
+                status_text = f"""👤 **用户状态**
 用户名：{user.username}
 等级：Level {user.level}
 积分：{user.coins}
-活跃任务：{active_tasks} 个
+活跃任务：{active_tasks_count} 个
 
 🔔 **通知设置**
 Telegram 通知：{'✅ 已开启' if user.telegram_notifications_enabled else '❌ 已关闭'}
@@ -324,26 +398,36 @@ Telegram 通知：{'✅ 已开启' if user.telegram_notifications_enabled else '
 📊 **统计信息**
 发布动态：{user.total_posts}
 收到点赞：{user.total_likes_received}
-完成任务：{user.total_tasks_completed}
-                """
-
-                await update.message.reply_text(status_text, parse_mode='Markdown')
+完成任务：{user.total_tasks_completed}"""
             else:
-                await update.message.reply_text(
-                    "❌ 您还没有绑定任何账户\n\n"
-                    "使用 /bind 开始绑定"
-                )
+                # 群聊中显示简化信息
+                status_text = f"""👤 **@{update.effective_user.username or update.effective_user.first_name} 的状态**
+用户名：{user.username}
+等级：Level {user.level}
+积分：{user.coins}
+活跃任务：{active_tasks_count} 个"""
+
+            await update.message.reply_text(status_text, parse_mode='Markdown')
+            logger.info(f"Status command processed successfully for user {user.username} in {chat_type} chat")
 
         except Exception as e:
-            logger.error(f"Error in status handler: {e}")
+            logger.error(f"Error in status handler for user {user_id}: {e}")
             await update.message.reply_text(
                 "❌ 获取状态信息时发生错误，请稍后重试"
             )
 
     async def _handle_help(self, update, context):
         """处理 /help 命令"""
-        help_text = """
-🤖 **Lockup Bot 帮助**
+        user_id = update.effective_user.id
+        chat_type = update.effective_chat.type
+
+        # 安全检查：验证更新和频率限制
+        if not self._validate_update(update) or not self._check_rate_limit(user_id):
+            logger.warning(f"Security check failed for user {user_id} in _handle_help")
+            return
+
+        if chat_type == 'private':
+            help_text = """🤖 **Lockup Bot 帮助**
 
 **基础命令：**
 /start - 开始使用
@@ -353,7 +437,7 @@ Telegram 通知：{'✅ 已开启' if user.telegram_notifications_enabled else '
 /help - 显示此帮助
 
 **Inline Mode：**
-在任何聊天中输入 `@your_bot_username` 然后输入朋友的用户名，可以给他们的活跃任务加时
+在任何聊天中输入 `@lock_up_bot` 然后输入朋友的用户名，可以给他们的活跃任务加时
 
 **游戏功能：**
 • 猜拳游戏：发送 "猜拳" 或 "rock paper scissors"
@@ -362,8 +446,18 @@ Telegram 通知：{'✅ 已开启' if user.telegram_notifications_enabled else '
 **通知功能：**
 绑定后会自动接收应用内的重要通知
 
-需要帮助？联系开发者或查看应用内说明。
-        """
+需要帮助？联系开发者或查看应用内说明。"""
+        else:
+            help_text = """🤖 **Lockup Bot 群聊帮助**
+
+**可用命令：**
+/status - 查看您的账户状态
+/help - 显示此帮助
+
+**注意：**
+• 绑定账户请私聊机器人使用 /start
+• 群聊中只显示基础状态信息
+• 完整功能请私聊使用"""
 
         await update.message.reply_text(help_text, parse_mode='Markdown')
 
