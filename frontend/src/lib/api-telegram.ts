@@ -125,17 +125,14 @@ export const telegramApi = {
   /**
    * 启动 Telegram 绑定流程 - 为自动绑定做准备
    */
-  async initiateTelegramBinding(telegramUserId: number): Promise<{
+  async initiateTelegramBinding(): Promise<{
     message: string;
     bot_url: string;
-    telegram_user_id: number;
+    binding_token: string;
     next_step: string;
   }> {
     return apiRequest('/telegram/initiate-binding/', {
       method: 'POST',
-      body: JSON.stringify({
-        telegram_user_id: telegramUserId,
-      }),
     });
   },
 

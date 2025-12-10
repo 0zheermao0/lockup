@@ -470,7 +470,7 @@ const openTelegramBot = async () => {
 
   try {
     // 使用新的绑定流程：先调用 initiate-binding API
-    const response = await telegramApi.initiateTelegramBinding(authStore.user.id)
+    const response = await telegramApi.initiateTelegramBinding()
 
     // 打开 Telegram Bot
     window.open(response.bot_url, '_blank')
