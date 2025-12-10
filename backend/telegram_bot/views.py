@@ -65,65 +65,80 @@ def telegram_webhook(request):
         # 在生产环境中，建议使用 Celery 等任务队列
         logger.info(f"Processing Telegram webhook update: {update_data.get('update_id')}")
 
-        # 简化的webhook处理 - 直接处理命令而不使用复杂的事件循环
+        # 简化的webhook处理 - 处理所有类型的更新
         try:
-            # 检查是否是命令消息
-            if 'message' in update_data and 'text' in update_data['message']:
-                message_text = update_data['message']['text']
-                user_id = update_data['message']['from']['id']
-                chat_id = update_data['message']['chat']['id']
-                chat_type = update_data['message']['chat']['type']
+            # 创建 Telegram Update 对象
+            from telegram import Update
+            update = Update.de_json(update_data, telegram_service.bot)
 
-                # 简单的命令处理
-                if message_text.startswith('/'):
-                    command = message_text.split()[0].replace('/', '')
-                    logger.info(f"Processing command: {command} from user {user_id} in {chat_type}")
+            if update:
+                # 确定更新类型并记录
+                update_type = None
+                user_id = None
 
-                    # 暂时记录命令，实际处理由原有逻辑完成
-                    from telegram import Update
-                    update = Update.de_json(update_data, telegram_service.bot)
-
-                    if update:
-                        # 使用简化的异步处理
-                        import threading
-
-                        def simple_process():
-                            try:
-                                import asyncio
-                                # 创建新的事件循环
-                                loop = asyncio.new_event_loop()
-                                asyncio.set_event_loop(loop)
-
-                                async def handle_command():
-                                    try:
-                                        # 确保初始化
-                                        if await telegram_service._ensure_initialized():
-                                            await telegram_service.application.process_update(update)
-                                            logger.info(f"Command {command} processed successfully")
-                                    except Exception as e:
-                                        logger.error(f"Error processing command {command}: {e}")
-
-                                # 运行处理
-                                loop.run_until_complete(handle_command())
-
-                            except Exception as e:
-                                logger.error(f"Error in command processing thread: {e}")
-                            finally:
-                                try:
-                                    loop.close()
-                                except:
-                                    pass
-
-                        # 后台处理
-                        thread = threading.Thread(target=simple_process, daemon=True)
-                        thread.start()
+                if update.message and update.message.text:
+                    update_type = "message"
+                    user_id = update.message.from_user.id
+                    if update.message.text.startswith('/'):
+                        command = update.message.text.split()[0].replace('/', '')
+                        logger.info(f"Processing command: {command} from user {user_id}")
+                    else:
+                        logger.info(f"Processing message from user {user_id}: {update.message.text[:50]}...")
+                elif update.callback_query:
+                    update_type = "callback_query"
+                    user_id = update.callback_query.from_user.id
+                    callback_data = update.callback_query.data
+                    logger.info(f"Processing callback query from user {user_id}: {callback_data}")
                 else:
-                    logger.info(f"Non-command message from user {user_id}: {message_text[:50]}...")
+                    update_type = "other"
+                    logger.info(f"Processing other update type: {list(update_data.keys())}")
+
+                # 使用统一的异步处理
+                import threading
+
+                def process_update():
+                    try:
+                        import asyncio
+                        # 创建新的事件循环
+                        loop = asyncio.new_event_loop()
+                        asyncio.set_event_loop(loop)
+
+                        async def handle_update():
+                            try:
+                                # 确保初始化
+                                if await telegram_service._ensure_initialized():
+                                    await telegram_service.application.process_update(update)
+                                    logger.info(f"Update {update_type} processed successfully for user {user_id}")
+                                else:
+                                    logger.error(f"Failed to initialize telegram service for update {update_type}")
+                            except Exception as e:
+                                logger.error(f"Error processing {update_type}: {e}")
+                                import traceback
+                                logger.error(f"Traceback: {traceback.format_exc()}")
+
+                        # 运行处理
+                        loop.run_until_complete(handle_update())
+
+                    except Exception as e:
+                        logger.error(f"Error in update processing thread: {e}")
+                        import traceback
+                        logger.error(f"Traceback: {traceback.format_exc()}")
+                    finally:
+                        try:
+                            loop.close()
+                        except:
+                            pass
+
+                # 后台处理
+                thread = threading.Thread(target=process_update, daemon=True)
+                thread.start()
             else:
-                logger.info(f"Non-message update: {list(update_data.keys())}")
+                logger.error(f"Failed to create Update object from: {update_data}")
 
         except Exception as e:
             logger.error(f"Error processing Telegram update: {e}")
+            import traceback
+            logger.error(f"Traceback: {traceback.format_exc()}")
             # 仍然返回 OK 以免 Telegram 重复发送
 
         return HttpResponse("OK")
