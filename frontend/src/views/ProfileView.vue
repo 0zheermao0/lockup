@@ -189,30 +189,16 @@
                       <li>🤝 与其他绑定用户互动</li>
                     </ul>
                     <div class="bind-methods">
-                      <p><strong>绑定方式：</strong></p>
+                      <p><strong>一键绑定：</strong></p>
                       <div class="bind-option">
-                        <span>1. 点击下面的按钮打开 Telegram Bot</span>
+                        <span>点击下面的按钮，系统会自动准备绑定并打开 Telegram Bot，然后在 Bot 中发送 /start 即可完成绑定</span>
                         <button
                           @click="openTelegramBot"
                           class="telegram-bind-btn"
                           :disabled="telegramActionLoading"
                         >
-                          🚀 打开 Telegram Bot
+                          🚀 {{ telegramActionLoading ? '准备中...' : '打开 Telegram Bot' }}
                         </button>
-                      </div>
-                      <div class="bind-option">
-                        <span>2. 或者复制链接手动打开</span>
-                        <div class="link-copy">
-                          <input
-                            ref="telegramLinkInput"
-                            :value="telegramBotLink"
-                            readonly
-                            class="link-input"
-                          />
-                          <button @click="copyTelegramLink" class="copy-btn">
-                            {{ linkCopied ? '已复制' : '复制' }}
-                          </button>
-                        </div>
                       </div>
                     </div>
                   </div>
@@ -293,8 +279,6 @@ const telegramStatus = ref<TelegramStatus | null>(null)
 const telegramLoading = ref(false)
 const telegramError = ref('')
 const telegramActionLoading = ref(false)
-const linkCopied = ref(false)
-const telegramLinkInput = ref<HTMLInputElement>()
 
 const editForm = reactive({
   username: '',
@@ -307,10 +291,6 @@ const isOwnProfile = computed(() => {
   return userProfile.value.id === authStore.user.id
 })
 
-const telegramBotLink = computed(() => {
-  if (!authStore.user) return ''
-  return telegramApi.generateDeepLink(authStore.user.id)
-})
 
 const goBack = () => {
   router.back()
@@ -483,41 +463,28 @@ const fetchTelegramStatus = async () => {
   }
 }
 
-const openTelegramBot = () => {
-  const link = telegramBotLink.value
-  if (link) {
-    window.open(link, '_blank')
-  }
-}
+const openTelegramBot = async () => {
+  if (!authStore.user) return
 
-const copyTelegramLink = async () => {
-  const link = telegramBotLink.value
-  if (!link) return
+  telegramActionLoading.value = true
 
   try {
-    await navigator.clipboard.writeText(link)
-    linkCopied.value = true
-    setTimeout(() => {
-      linkCopied.value = false
-    }, 2000)
-  } catch (error) {
-    // 备用方法：选中文本
-    if (telegramLinkInput.value) {
-      telegramLinkInput.value.select()
-      telegramLinkInput.value.setSelectionRange(0, 99999)
-      try {
-        document.execCommand('copy')
-        linkCopied.value = true
-        setTimeout(() => {
-          linkCopied.value = false
-        }, 2000)
-      } catch (err) {
-        console.error('Failed to copy link:', err)
-        alert('复制失败，请手动复制链接')
-      }
-    }
+    // 使用新的绑定流程：先调用 initiate-binding API
+    const response = await telegramApi.initiateTelegramBinding(authStore.user.id)
+
+    // 打开 Telegram Bot
+    window.open(response.bot_url, '_blank')
+
+    console.log(response.message)
+    console.log(response.next_step)
+  } catch (error: any) {
+    console.error('Error initiating Telegram binding:', error)
+    alert(error.data?.error || '启动绑定失败，请重试')
+  } finally {
+    telegramActionLoading.value = false
   }
 }
+
 
 const toggleTelegramNotifications = async () => {
   if (!telegramStatus.value?.is_bound) return
@@ -575,25 +542,6 @@ const formatDate = (dateString?: string) => {
   })
 }
 
-// 处理深度链接绑定
-const handleDeepLinkBinding = async () => {
-  const telegramBind = route.query.telegram_bind as string
-  if (telegramBind && isOwnProfile.value) {
-    try {
-      const telegramUserId = parseInt(telegramBind)
-      if (!isNaN(telegramUserId)) {
-        const response = await telegramApi.handleDeepLinkBinding(telegramUserId)
-        alert(`绑定成功！欢迎使用 Telegram Bot`)
-        await fetchTelegramStatus()
-        // 清除 URL 参数
-        router.replace({ path: route.path })
-      }
-    } catch (error: any) {
-      console.error('Error handling deep link binding:', error)
-      alert(error.data?.error || '绑定失败，请重试')
-    }
-  }
-}
 
 onMounted(async () => {
   await fetchUserProfile()
@@ -601,8 +549,6 @@ onMounted(async () => {
   // 如果是自己的资料页，加载 Telegram 状态
   if (isOwnProfile.value) {
     await fetchTelegramStatus()
-    // 处理深度链接绑定
-    await handleDeepLinkBinding()
   }
 })
 </script>

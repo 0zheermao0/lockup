@@ -294,12 +294,12 @@ class TelegramBotService:
             logger.error(f"Error checking existing binding: {e}")
 
         frontend_url = getattr(settings, 'TELEGRAM_APP_CONFIG', {}).get('FRONTEND_URL', 'https://lock-up.zheermao.top')
-        bind_url = f"{frontend_url}/profile?telegram_bind={update.effective_user.id}"
+        profile_url = f"{frontend_url}/profile"
 
         await update.message.reply_text(
-            "🔗 请点击下面的链接在网页中完成绑定：\n\n"
-            f"{bind_url}\n\n"
-            "绑定后您就可以使用所有 Bot 功能了！"
+            "🔗 请前往 Lockup 系统完成绑定：\n\n"
+            f"{profile_url}\n\n"
+            "在个人资料页面中点击「打开 Telegram Bot」按钮即可完成绑定！"
         )
 
     async def _handle_unbind(self, update, context):
@@ -400,8 +400,10 @@ Telegram 通知：{'✅ 已开启' if user.telegram_notifications_enabled else '
 收到点赞：{user.total_likes_received}
 完成任务：{user.total_tasks_completed}"""
             else:
-                # 群聊中显示简化信息
-                status_text = f"""👤 **@{update.effective_user.username or update.effective_user.first_name} 的状态**
+                # 群聊中显示简化信息，使用profile URL
+                frontend_url = getattr(settings, 'TELEGRAM_APP_CONFIG', {}).get('FRONTEND_URL', 'https://lock-up.zheermao.top')
+                profile_url = f"{frontend_url}/profile/{user.id}"
+                status_text = f"""👤 **{profile_url} 的状态**
 用户名：{user.username}
 等级：Level {user.level}
 积分：{user.coins}
