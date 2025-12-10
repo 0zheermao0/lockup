@@ -93,45 +93,88 @@ def telegram_webhook(request):
                     update_type = "other"
                     logger.info(f"Processing other update type: {list(update_data.keys())}")
 
-                # 使用统一的异步处理
+                # 使用队列和后台处理来避免双重触发问题
                 import threading
+                import queue
+                import time
 
-                def process_update():
-                    try:
+                # 全局更新队列和处理线程（如果不存在）
+                if not hasattr(telegram_webhook, '_update_queue'):
+                    telegram_webhook._update_queue = queue.Queue()
+                    telegram_webhook._processing = False
+                    telegram_webhook._last_update_ids = set()
+
+                # 检查是否是重复的更新
+                update_id = update_data.get('update_id')
+                if update_id in telegram_webhook._last_update_ids:
+                    logger.warning(f"Duplicate update {update_id} ignored")
+                    return HttpResponse("OK")
+
+                # 记录更新ID（保留最近100个）
+                telegram_webhook._last_update_ids.add(update_id)
+                if len(telegram_webhook._last_update_ids) > 100:
+                    oldest_id = min(telegram_webhook._last_update_ids)
+                    telegram_webhook._last_update_ids.remove(oldest_id)
+
+                # 将更新添加到队列
+                telegram_webhook._update_queue.put((update, update_type, user_id, time.time()))
+
+                # 启动处理线程（如果未运行）
+                if not telegram_webhook._processing:
+                    telegram_webhook._processing = True
+
+                    def process_updates_worker():
                         import asyncio
-                        # 创建新的事件循环
-                        loop = asyncio.new_event_loop()
-                        asyncio.set_event_loop(loop)
-
-                        async def handle_update():
-                            try:
-                                # 确保初始化
-                                if await telegram_service._ensure_initialized():
-                                    await telegram_service.application.process_update(update)
-                                    logger.info(f"Update {update_type} processed successfully for user {user_id}")
-                                else:
-                                    logger.error(f"Failed to initialize telegram service for update {update_type}")
-                            except Exception as e:
-                                logger.error(f"Error processing {update_type}: {e}")
-                                import traceback
-                                logger.error(f"Traceback: {traceback.format_exc()}")
-
-                        # 运行处理
-                        loop.run_until_complete(handle_update())
-
-                    except Exception as e:
-                        logger.error(f"Error in update processing thread: {e}")
-                        import traceback
-                        logger.error(f"Traceback: {traceback.format_exc()}")
-                    finally:
+                        loop = None
                         try:
-                            loop.close()
-                        except:
-                            pass
+                            loop = asyncio.new_event_loop()
+                            asyncio.set_event_loop(loop)
 
-                # 后台处理
-                thread = threading.Thread(target=process_update, daemon=True)
-                thread.start()
+                            async def handle_queued_updates():
+                                while True:
+                                    try:
+                                        # 获取队列中的更新
+                                        update, update_type, user_id, timestamp = telegram_webhook._update_queue.get(timeout=30)
+
+                                        # 检查更新是否太旧（超过60秒）
+                                        if time.time() - timestamp > 60:
+                                            logger.warning(f"Dropping old update {update_type} from user {user_id}")
+                                            telegram_webhook._update_queue.task_done()
+                                            continue
+
+                                        # 处理更新
+                                        try:
+                                            if await telegram_service._ensure_initialized():
+                                                await telegram_service.application.process_update(update)
+                                                logger.info(f"Update {update_type} processed successfully for user {user_id}")
+                                            else:
+                                                logger.error(f"Failed to initialize telegram service for update {update_type}")
+                                        except Exception as e:
+                                            logger.error(f"Error processing {update_type}: {e}")
+
+                                        telegram_webhook._update_queue.task_done()
+
+                                    except queue.Empty:
+                                        # 队列为空，继续等待
+                                        continue
+                                    except Exception as e:
+                                        logger.error(f"Error in update processing worker: {e}")
+
+                            loop.run_until_complete(handle_queued_updates())
+
+                        except Exception as e:
+                            logger.error(f"Error in update processing thread: {e}")
+                        finally:
+                            telegram_webhook._processing = False
+                            if loop:
+                                try:
+                                    loop.close()
+                                except:
+                                    pass
+
+                    # 启动后台线程
+                    thread = threading.Thread(target=process_updates_worker, daemon=True)
+                    thread.start()
             else:
                 logger.error(f"Failed to create Update object from: {update_data}")
 

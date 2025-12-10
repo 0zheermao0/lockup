@@ -66,17 +66,23 @@ class TelegramBotService:
             logger.warning("Bot or Application not configured")
             return False
 
+        # 如果已经初始化，直接返回
+        if getattr(self, '_initialized', False):
+            return True
+
         try:
-            # 检查 Bot 是否已经初始化
+            # 初始化 Bot
             if not getattr(self.bot, '_initialized', False):
                 logger.info("Initializing Bot...")
                 await self.bot.initialize()
+                self.bot._initialized = True
                 logger.info("Bot initialized successfully")
 
-            # 检查 Application 是否已经初始化
+            # 初始化 Application
             if not getattr(self.application, '_initialized', False):
                 logger.info("Initializing Application...")
                 await self.application.initialize()
+                self.application._initialized = True
                 logger.info("Application initialized successfully")
 
             # 确保处理器已注册
@@ -90,6 +96,8 @@ class TelegramBotService:
 
         except Exception as e:
             logger.error(f"Failed to initialize Telegram Bot: {e}")
+            import traceback
+            logger.error(f"Traceback: {traceback.format_exc()}")
             return False
 
     async def _safe_send_message(self, message_func, *args, **kwargs):
@@ -377,8 +385,6 @@ class TelegramBotService:
             logger.warning(f"Security check failed for user {user_id} in _handle_status")
             return
 
-        status_sent = False  # 追踪是否已发送状态消息
-
         try:
             # 根据聊天类型确定如何查找用户
             if chat_type == 'private':
@@ -437,31 +443,21 @@ Telegram 通知：{'✅ 已开启' if user.telegram_notifications_enabled else '
 积分：{user.coins}
 活跃任务：{active_tasks_count} 个"""
 
-            # 尝试发送状态消息
-            result = await self._safe_send_message(
+            # 发送状态消息
+            await self._safe_send_message(
                 update.message.reply_text,
                 status_text,
                 parse_mode='Markdown'
             )
 
-            if result is not None:
-                status_sent = True  # 标记状态消息已成功发送
-                logger.info(f"Status command processed successfully for user {user.username} in {chat_type} chat")
-            else:
-                # 如果发送状态消息失败，尝试发送简化的错误消息
-                await self._safe_send_message(
-                    update.message.reply_text,
-                    "❌ 获取状态信息时发生错误，请稍后重试"
-                )
+            logger.info(f"Status command processed successfully for user {user.username} in {chat_type} chat")
 
         except Exception as e:
             logger.error(f"Error in status handler for user {user_id}: {e}")
-            # 只有在没有成功发送状态消息的情况下才发送错误消息
-            if not status_sent:
-                await self._safe_send_message(
-                    update.message.reply_text,
-                    "❌ 获取状态信息时发生错误，请稍后重试"
-                )
+            await self._safe_send_message(
+                update.message.reply_text,
+                "❌ 获取状态信息时发生错误，请稍后重试"
+            )
 
     async def _handle_task(self, update, context):
         """处理 /task 命令 - 显示用户的带锁任务情况"""
@@ -603,49 +599,25 @@ Telegram 通知：{'✅ 已开启' if user.telegram_notifications_enabled else '
     async def _handle_help(self, update, context):
         """处理 /help 命令"""
         user_id = update.effective_user.id
-        chat_type = update.effective_chat.type
 
         # 安全检查：验证更新和频率限制
         if not self._validate_update(update) or not self._check_rate_limit(user_id):
             logger.warning(f"Security check failed for user {user_id} in _handle_help")
             return
 
-        if chat_type == 'private':
-            help_text = """🤖 **Lockup Bot 帮助**
+        help_text = """🤖 Lockup Bot 帮助
 
-**基础命令：**
+基础命令：
 /start - 开始使用
 /bind - 绑定 Lockup 账户
 /unbind - 解绑账户
 /status - 查看账户状态
 /task - 查看您的带锁任务
 /help - 显示此帮助
+通知功能：
+绑定后会自动接收应用内的重要通知"""
 
-**Inline Mode：**
-在任何聊天中输入 `@lock_up_bot` 然后输入朋友的用户名，可以给他们的活跃任务加时
-
-**游戏功能：**
-• 猜拳游戏：发送 "猜拳" 或 "rock paper scissors"
-• 时间转盘：发送 "转盘" 或 "wheel"
-
-**通知功能：**
-绑定后会自动接收应用内的重要通知
-
-需要帮助？联系开发者或查看应用内说明。"""
-        else:
-            help_text = """🤖 **Lockup Bot 群聊帮助**
-
-**可用命令：**
-/status - 查看您的账户状态
-/task - 查看您的带锁任务（其他人可以加时）
-/help - 显示此帮助
-
-**注意：**
-• 绑定账户请私聊机器人使用 /start
-• 群聊中只显示基础状态信息
-• 完整功能请私聊使用"""
-
-        await update.message.reply_text(help_text, parse_mode='Markdown')
+        await update.message.reply_text(help_text)
 
     async def _handle_callback_query(self, update, context):
         """处理回调查询 - 用于处理分享任务的加时按钮"""
