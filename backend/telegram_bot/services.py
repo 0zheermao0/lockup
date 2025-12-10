@@ -63,19 +63,48 @@ class TelegramBotService:
     async def _ensure_initialized(self):
         """确保Bot和Application已经初始化"""
         if not self.bot or not self.application:
+            logger.warning("Bot or Application not configured")
             return False
 
-        if not getattr(self, '_initialized', False):
-            try:
+        try:
+            # 检查 Bot 是否已经初始化
+            if not getattr(self.bot, '_initialized', False):
+                logger.info("Initializing Bot...")
                 await self.bot.initialize()
-                await self.application.initialize()
-                self._initialized = True
-                logger.info("Telegram Bot initialized successfully")
-            except Exception as e:
-                logger.error(f"Failed to initialize Telegram Bot: {e}")
-                return False
+                logger.info("Bot initialized successfully")
 
-        return True
+            # 检查 Application 是否已经初始化
+            if not getattr(self.application, '_initialized', False):
+                logger.info("Initializing Application...")
+                await self.application.initialize()
+                logger.info("Application initialized successfully")
+
+            # 确保处理器已注册
+            if not getattr(self, '_handlers_registered', False):
+                logger.info("Registering handlers...")
+                self._register_handlers()
+
+            self._initialized = True
+            logger.info("Telegram service fully initialized")
+            return True
+
+        except Exception as e:
+            logger.error(f"Failed to initialize Telegram Bot: {e}")
+            return False
+
+    async def _safe_send_message(self, message_func, *args, **kwargs):
+        """安全地发送Telegram消息，处理事件循环关闭等错误"""
+        try:
+            return await message_func(*args, **kwargs)
+        except Exception as e:
+            # 检查是否是事件循环关闭错误
+            if "Event loop is closed" in str(e) or "RuntimeError" in str(e):
+                logger.warning(f"Event loop error when sending message: {e}")
+                # 不抛出异常，只是记录日志
+                return None
+            else:
+                # 其他错误重新抛出
+                raise e
 
     def _check_rate_limit(self, user_id: int) -> bool:
         """检查用户请求频率限制"""
@@ -138,6 +167,7 @@ class TelegramBotService:
         self.application.add_handler(CommandHandler("bind", self._handle_bind))
         self.application.add_handler(CommandHandler("unbind", self._handle_unbind))
         self.application.add_handler(CommandHandler("status", self._handle_status))
+        self.application.add_handler(CommandHandler("task", self._handle_task))
         self.application.add_handler(CommandHandler("help", self._handle_help))
 
         # 回调查询处理器（处理按钮点击）
@@ -317,6 +347,8 @@ class TelegramBotService:
             logger.warning(f"Security check failed for user {user_id} in _handle_status")
             return
 
+        status_sent = False  # 追踪是否已发送状态消息
+
         try:
             # 根据聊天类型确定如何查找用户
             if chat_type == 'private':
@@ -330,12 +362,14 @@ class TelegramBotService:
 
             if not user:
                 if chat_type == 'private':
-                    await update.message.reply_text(
+                    await self._safe_send_message(
+                        update.message.reply_text,
                         "❌ 您还没有绑定任何账户\n\n"
                         "使用 /bind 开始绑定"
                     )
                 else:
-                    await update.message.reply_text(
+                    await self._safe_send_message(
+                        update.message.reply_text,
                         f"❌ @{update.effective_user.username or update.effective_user.first_name} 还没有绑定账户"
                     )
                 return
@@ -373,13 +407,167 @@ Telegram 通知：{'✅ 已开启' if user.telegram_notifications_enabled else '
 积分：{user.coins}
 活跃任务：{active_tasks_count} 个"""
 
-            await update.message.reply_text(status_text, parse_mode='Markdown')
-            logger.info(f"Status command processed successfully for user {user.username} in {chat_type} chat")
+            # 尝试发送状态消息
+            result = await self._safe_send_message(
+                update.message.reply_text,
+                status_text,
+                parse_mode='Markdown'
+            )
+
+            if result is not None:
+                status_sent = True  # 标记状态消息已成功发送
+                logger.info(f"Status command processed successfully for user {user.username} in {chat_type} chat")
+            else:
+                # 如果发送状态消息失败，尝试发送简化的错误消息
+                await self._safe_send_message(
+                    update.message.reply_text,
+                    "❌ 获取状态信息时发生错误，请稍后重试"
+                )
 
         except Exception as e:
             logger.error(f"Error in status handler for user {user_id}: {e}")
-            await update.message.reply_text(
-                "❌ 获取状态信息时发生错误，请稍后重试"
+            # 只有在没有成功发送状态消息的情况下才发送错误消息
+            if not status_sent:
+                await self._safe_send_message(
+                    update.message.reply_text,
+                    "❌ 获取状态信息时发生错误，请稍后重试"
+                )
+
+    async def _handle_task(self, update, context):
+        """处理 /task 命令 - 显示用户的带锁任务情况"""
+        user_id = update.effective_user.id
+        chat_id = update.effective_chat.id
+        chat_type = update.effective_chat.type
+
+        # 安全检查：验证更新和频率限制
+        if not self._validate_update(update) or not self._check_rate_limit(user_id):
+            logger.warning(f"Security check failed for user {user_id} in _handle_task")
+            return
+
+        try:
+            # 根据聊天类型确定如何查找用户
+            if chat_type == 'private':
+                # 私聊：使用 chat_id 查找
+                user_query = await sync_to_async(User.objects.filter)(telegram_chat_id=chat_id)
+            else:
+                # 群聊：使用 user_id 查找
+                user_query = await sync_to_async(User.objects.filter)(telegram_user_id=user_id)
+
+            user = await sync_to_async(user_query.first)()
+
+            if not user:
+                if chat_type == 'private':
+                    await self._safe_send_message(
+                        update.message.reply_text,
+                        "❌ 您还没有绑定任何账户\n\n"
+                        "使用 /bind 开始绑定"
+                    )
+                else:
+                    await self._safe_send_message(
+                        update.message.reply_text,
+                        f"❌ @{update.effective_user.username or update.effective_user.first_name} 还没有绑定账户\n\n"
+                        "请私聊机器人使用 /start 进行绑定"
+                    )
+                return
+
+            # 获取用户当前活跃的带锁任务
+            active_tasks_query = await sync_to_async(LockTask.objects.filter)(
+                user=user,
+                task_type='lock',
+                status='active'
+            )
+            active_tasks = await sync_to_async(list)(active_tasks_query)
+
+            if not active_tasks:
+                # 用户没有活跃的带锁任务
+                if chat_type == 'private':
+                    message_text = f"""🔓 **当前任务状态**
+
+您目前没有正在进行的带锁任务。
+
+💡 前往应用创建新的带锁任务，挑战自己的意志力！"""
+                else:
+                    message_text = f"""🔓 **@{user.username} 的任务状态**
+
+{user.username} 目前没有正在进行的带锁任务。
+
+💡 可以前往应用创建新的带锁任务！"""
+
+                await self._safe_send_message(
+                    update.message.reply_text,
+                    message_text,
+                    parse_mode='Markdown'
+                )
+                return
+
+            # 显示第一个活跃任务（如果有多个，显示最新的）
+            task = active_tasks[0]
+
+            # 计算剩余时间
+            if task.end_time:
+                from django.utils import timezone
+                remaining = task.end_time - timezone.now()
+                if remaining.total_seconds() > 0:
+                    hours = int(remaining.total_seconds() // 3600)
+                    minutes = int((remaining.total_seconds() % 3600) // 60)
+                    time_left = f"{hours}小时{minutes}分钟" if hours > 0 else f"{minutes}分钟"
+                else:
+                    time_left = "已到期"
+            else:
+                time_left = "无限制"
+
+            # 难度映射
+            difficulty_map = {
+                'easy': '🟢 简单',
+                'normal': '🟡 普通',
+                'hard': '🔴 困难',
+                'hell': '🔥 地狱'
+            }
+
+            # 构建任务信息
+            if chat_type == 'private':
+                task_text = f"""🔒 **您的带锁任务**
+
+📋 **任务标题**：{task.title}
+📊 **难度**：{difficulty_map.get(task.difficulty, task.difficulty)}
+⏰ **剩余时间**：{time_left}
+📅 **状态**：{'🔄 进行中' if task.status == 'active' else '🗳️ 投票期' if task.status == 'voting' else task.status}
+
+💡 **描述**：{task.description[:100] + '...' if len(task.description) > 100 else task.description}
+
+💪 坚持完成任务，挑战自己的意志力！"""
+            else:
+                task_text = f"""🔒 **@{user.username} 的带锁任务**
+
+📋 **任务标题**：{task.title}
+👤 **任务者**：{user.username}
+📊 **难度**：{difficulty_map.get(task.difficulty, task.difficulty)}
+⏰ **剩余时间**：{time_left}
+📅 **状态**：{'🔄 进行中' if task.status == 'active' else '🗳️ 投票期' if task.status == 'voting' else task.status}
+
+💡 **描述**：{task.description[:100] + '...' if len(task.description) > 100 else task.description}
+
+💪 帮助 {user.username} 坚持完成任务！"""
+
+            # 创建加时按钮
+            keyboard = InlineKeyboardMarkup([
+                [InlineKeyboardButton("⏰ 给TA加时", callback_data=f"task_overtime_{task.id}")]
+            ])
+
+            await self._safe_send_message(
+                update.message.reply_text,
+                task_text,
+                parse_mode='Markdown',
+                reply_markup=keyboard
+            )
+
+            logger.info(f"Task command processed successfully for user {user.username} in {chat_type} chat, task: {task.title}")
+
+        except Exception as e:
+            logger.error(f"Error in task handler for user {user_id}: {e}")
+            await self._safe_send_message(
+                update.message.reply_text,
+                "❌ 获取任务信息时发生错误，请稍后重试"
             )
 
     async def _handle_help(self, update, context):
@@ -400,6 +588,7 @@ Telegram 通知：{'✅ 已开启' if user.telegram_notifications_enabled else '
 /bind - 绑定 Lockup 账户
 /unbind - 解绑账户
 /status - 查看账户状态
+/task - 查看您的带锁任务
 /help - 显示此帮助
 
 **Inline Mode：**
@@ -418,6 +607,7 @@ Telegram 通知：{'✅ 已开启' if user.telegram_notifications_enabled else '
 
 **可用命令：**
 /status - 查看您的账户状态
+/task - 查看您的带锁任务（其他人可以加时）
 /help - 显示此帮助
 
 **注意：**
@@ -438,17 +628,23 @@ Telegram 通知：{'✅ 已开启' if user.telegram_notifications_enabled else '
             await query.answer("❌ 请求过于频繁，请稍后再试")
             return
 
-        # 检查用户是否已绑定
-        if not await self._is_user_authorized(user_id):
-            await query.answer("❌ 请先绑定您的 Lockup 账户", show_alert=True)
-            return
-
         try:
             callback_data = query.data
+
+            # 处理 /task 命令的加时按钮
+            if callback_data.startswith('task_overtime_'):
+                await self._handle_task_overtime_callback(query, callback_data, user_id)
+                return
+
+            # 检查用户是否已绑定（只对其他类型的回调检查）
+            if not await self._is_user_authorized(user_id):
+                await query.answer("❌ 请先绑定您的 Lockup 账户", show_alert=True)
+                return
+
             user_query = await sync_to_async(User.objects.filter)(telegram_user_id=user_id)
             current_user = await sync_to_async(user_query.first)()
 
-            # 处理任务加时回调
+            # 处理任务加时回调（原有的分享任务功能）
             if callback_data.startswith('overtime_'):
                 await self._handle_overtime_callback(query, callback_data, current_user)
 
@@ -465,6 +661,72 @@ Telegram 通知：{'✅ 已开启' if user.telegram_notifications_enabled else '
         except Exception as e:
             await query.answer("❌ 操作失败，请稍后重试", show_alert=True)
             logger.error(f"Unexpected error in callback query: {e}")
+
+    async def _handle_task_overtime_callback(self, query, callback_data, clicker_user_id):
+        """处理 /task 命令的任务加时回调"""
+        task_id = callback_data.replace('task_overtime_', '')
+
+        try:
+            # 检查点击加时按钮的用户是否已绑定
+            clicker_query = await sync_to_async(User.objects.filter)(telegram_user_id=clicker_user_id)
+            clicker_user = await sync_to_async(clicker_query.first)()
+
+            if not clicker_user:
+                # 用户未绑定，引导绑定
+                frontend_url = getattr(settings, 'TELEGRAM_APP_CONFIG', {}).get('FRONTEND_URL', 'https://lock-up.zheermao.top')
+                profile_url = f"{frontend_url}/profile"
+
+                await query.answer(
+                    f"❌ 您还没有绑定 Lockup 账户，无法进行加时操作\n\n"
+                    f"请前往 {profile_url} 绑定您的账户，然后就可以给朋友的任务加时了！",
+                    show_alert=True
+                )
+                return
+
+            # 获取任务信息
+            task_query = await sync_to_async(LockTask.objects.filter)(id=task_id)
+            task = await sync_to_async(task_query.first)()
+
+            if not task:
+                await query.answer("❌ 任务不存在", show_alert=True)
+                return
+
+            # 检查任务状态
+            if task.status != 'active':
+                await query.answer("❌ 任务已结束，无法加时", show_alert=True)
+                return
+
+            # 生成随机加时时间（15-120分钟）
+            random_minutes = random.randint(15, 120)
+
+            # 执行加时操作
+            overtime_result = add_overtime_to_task(task, clicker_user, random_minutes)
+
+            if overtime_result['success']:
+                # 加时成功，更新消息
+                original_text = query.message.text
+                updated_text = f"{original_text}\n\n🎯 @{clicker_user.username} 给这个任务加了 {random_minutes} 分钟！"
+
+                # 更新消息，移除按钮（防止重复点击）
+                await query.edit_message_text(
+                    text=updated_text,
+                    reply_markup=None,
+                    parse_mode='Markdown'
+                )
+
+                # 发送确认消息
+                await query.answer(f"✅ 成功给任务加时 {random_minutes} 分钟！", show_alert=True)
+
+                logger.info(f"Task overtime successful: user {clicker_user.username} added {random_minutes} minutes to task {task.title}")
+
+            else:
+                # 加时失败
+                await query.answer(f"❌ 加时失败：{overtime_result['message']}", show_alert=True)
+                logger.warning(f"Task overtime failed: {overtime_result['message']}")
+
+        except Exception as e:
+            logger.error(f"Error in task overtime callback: {e}")
+            await query.answer("❌ 加时操作失败，请稍后重试", show_alert=True)
 
     async def _handle_overtime_callback(self, query, callback_data, current_user):
         """处理任务加时回调"""
