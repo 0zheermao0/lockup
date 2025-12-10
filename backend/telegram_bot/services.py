@@ -40,8 +40,10 @@ class TelegramBotService:
 
     def _setup_bot(self):
         """初始化 Bot"""
-        if not settings.TELEGRAM_BOT_TOKEN or settings.TELEGRAM_BOT_TOKEN == 'YOUR_BOT_TOKEN_HERE':
-            logger.warning("Telegram Bot Token not configured")
+        # 检查Token是否正确配置
+        token = getattr(settings, 'TELEGRAM_BOT_TOKEN', None)
+        if not token or token == 'YOUR_BOT_TOKEN_HERE' or len(token) < 40:
+            logger.warning(f"Telegram Bot Token not configured or invalid. Token: {token[:20] if token else 'None'}...")
             return
 
         try:

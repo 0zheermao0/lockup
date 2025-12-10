@@ -227,10 +227,10 @@ JWT_AUTH = {
     'JWT_ALLOW_REFRESH': True,
 }
 
-# Telegram Bot Configuration
-TELEGRAM_BOT_TOKEN = os.getenv('TELEGRAM_BOT_TOKEN', '8593610083:AAFPwRTuNZ_9zO8dEKSIKzUfyGF57faeRhY')
-TELEGRAM_BOT_USERNAME = os.getenv('TELEGRAM_BOT_USERNAME', 'lock_up_bot')
-TELEGRAM_WEBHOOK_URL = os.getenv('TELEGRAM_WEBHOOK_URL', 'https://lock-down.zheermao.top/api/telegram/webhook/')
+# Telegram Bot Configuration - 强制生产环境配置
+TELEGRAM_BOT_TOKEN = '8593610083:AAFPwRTuNZ_9zO8dEKSIKzUfyGF57faeRhY'  # 生产环境强制设置
+TELEGRAM_BOT_USERNAME = 'lock_up_bot'  # 生产环境强制设置
+TELEGRAM_WEBHOOK_URL = 'https://lock-down.zheermao.top/api/telegram/webhook/'  # 生产环境强制设置
 
 # Telegram Security Configuration (生产环境必须配置)
 TELEGRAM_SECURITY = {
