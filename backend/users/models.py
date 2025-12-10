@@ -76,6 +76,12 @@ class User(AbstractUser):
         default=True,
         help_text="是否启用 Telegram 通知"
     )
+    telegram_binding_token = models.CharField(
+        max_length=100,
+        null=True,
+        blank=True,
+        help_text="临时绑定令牌，用于自动绑定流程"
+    )
 
     # 统计信息
     total_posts = models.IntegerField(default=0, help_text="发布动态总数")

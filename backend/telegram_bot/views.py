@@ -195,35 +195,26 @@ def bind_telegram(request):
 def initiate_telegram_binding(request):
     """启动 Telegram 绑定流程 - 为自动绑定做准备"""
     try:
-        telegram_user_id = request.data.get('telegram_user_id')
+        # 不再需要 telegram_user_id 参数，因为我们使用绑定令牌
+        import uuid
 
-        if not telegram_user_id:
-            return Response(
-                {'error': 'telegram_user_id is required'},
-                status=status.HTTP_400_BAD_REQUEST
-            )
+        # 生成唯一的绑定令牌
+        binding_token = f"bind_{request.user.id}_{uuid.uuid4().hex[:8]}"
 
-        # 检查是否已经有其他用户绑定了这个 Telegram 账户
-        existing_user = User.objects.filter(telegram_user_id=telegram_user_id).first()
-        if existing_user and existing_user != request.user:
-            return Response(
-                {'error': '此 Telegram 账户已被其他用户绑定'},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-
-        # 预设置用户的 telegram_user_id，但不设置 chat_id（等待 /start 命令完成绑定）
-        request.user.telegram_user_id = telegram_user_id
+        # 保存绑定令牌到用户记录
+        request.user.telegram_binding_token = binding_token
+        request.user.telegram_user_id = None  # 清除之前的错误数据
         request.user.telegram_chat_id = None  # 重置 chat_id，等待 webhook 设置
         request.user.save()
 
-        # 生成 Bot 链接
+        # 生成 Bot 链接，包含绑定令牌
         bot_username = getattr(settings, 'TELEGRAM_BOT_USERNAME', 'lock_up_bot')
-        bot_url = f"https://t.me/{bot_username}"
+        bot_url = f"https://t.me/{bot_username}?start={binding_token}"
 
         return Response({
             'message': '绑定准备完成，请点击链接前往 Telegram Bot',
             'bot_url': bot_url,
-            'telegram_user_id': telegram_user_id,
+            'binding_token': binding_token,
             'next_step': '在 Telegram 中发送 /start 命令完成绑定'
         })
 

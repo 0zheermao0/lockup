@@ -6,6 +6,7 @@ from typing import Optional, Dict, Any
 from collections import defaultdict
 from django.conf import settings
 from django.contrib.auth import get_user_model
+from django.utils import timezone
 from asgiref.sync import sync_to_async
 from telegram import Bot, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, MessageHandler, filters
@@ -173,48 +174,11 @@ class TelegramBotService:
             bind_token = context.args[0]
             if bind_token.startswith('bind_'):
                 # 处理绑定请求
-                await self._process_binding(update, context, bind_token)
+                await self._process_binding(update, context, bind_token, user_id, chat_id, username)
                 return
 
-        # 自动绑定逻辑：检查是否有等待绑定的用户
-        try:
-            # 查找正在等待绑定此 Telegram 用户ID 的用户
-            pending_user = await sync_to_async(User.objects.filter)(
-                telegram_user_id=user_id,
-                telegram_chat_id__isnull=True  # 还没有完成绑定
-            )
-            pending_user = await sync_to_async(pending_user.first)()
-
-            if pending_user:
-                # 完成绑定：设置 chat_id
-                pending_user.telegram_chat_id = chat_id
-                if username:
-                    pending_user.telegram_username = username
-                await sync_to_async(pending_user.save)()
-
-                success_text = f"""
-✅ 绑定成功！
-
-您的 Lockup 账户 **{pending_user.username}** 已成功绑定到 Telegram！
-
-现在您可以：
-• 🔔 接收任务通知
-• ⏰ 通过 Bot 给朋友的任务加时
-• 🎮 玩各种小游戏
-
-使用 /help 查看所有可用命令
-                """
-
-                try:
-                    await update.message.reply_text(success_text, parse_mode='Markdown')
-                    logger.info(f"Successfully bound user {pending_user.username} (ID: {pending_user.id}) to Telegram user {user_id}")
-                    return
-                except Exception as e:
-                    logger.error(f"Failed to send binding success message: {e}")
-                    return
-
-        except Exception as e:
-            logger.error(f"Error during auto-binding check: {e}")
+        # 自动绑定逻辑已移到 _process_binding 方法中
+        # 这里不再需要查找等待绑定的用户
 
         # 检查用户是否已经绑定
         try:
@@ -681,11 +645,64 @@ Telegram 通知：{'✅ 已开启' if user.telegram_notifications_enabled else '
 
         await message.edit_text(result_text, parse_mode='Markdown')
 
-    async def _process_binding(self, update, context, bind_token):
+    async def _process_binding(self, update, context, bind_token, user_id, chat_id, username):
         """处理深度链接绑定"""
-        # 这里应该验证 bind_token 并完成绑定
-        # 实际实现中需要与后端 API 配合
-        pass
+        try:
+            # 根据绑定令牌查找等待绑定的用户
+            pending_user = await sync_to_async(User.objects.filter)(
+                telegram_binding_token=bind_token
+            )
+            pending_user = await sync_to_async(pending_user.first)()
+
+            if not pending_user:
+                await update.message.reply_text(
+                    "❌ 绑定令牌无效或已过期，请重新在系统中点击绑定按钮。"
+                )
+                return
+
+            # 检查是否已经有其他用户绑定了这个 Telegram 账户
+            existing_user = await sync_to_async(User.objects.filter)(telegram_user_id=user_id)
+            existing_user = await sync_to_async(existing_user.first)()
+
+            if existing_user and existing_user != pending_user:
+                await update.message.reply_text(
+                    f"❌ 此 Telegram 账户已被用户 {existing_user.username} 绑定。"
+                )
+                return
+
+            # 完成绑定：设置 Telegram 信息并清除绑定令牌
+            pending_user.telegram_user_id = user_id
+            pending_user.telegram_chat_id = chat_id
+            if username:
+                pending_user.telegram_username = username
+            pending_user.telegram_bound_at = timezone.now()
+            pending_user.telegram_binding_token = None  # 清除绑定令牌
+            await sync_to_async(pending_user.save)()
+
+            success_text = f"""
+✅ 绑定成功！
+
+您的 Lockup 账户 **{pending_user.username}** 已成功绑定到 Telegram！
+
+现在您可以：
+• 🔔 接收任务通知
+• ⏰ 通过 Bot 给朋友的任务加时
+• 🎮 玩各种小游戏
+
+使用 /help 查看所有可用命令
+            """
+
+            try:
+                await update.message.reply_text(success_text, parse_mode='Markdown')
+                logger.info(f"Successfully bound user {pending_user.username} (ID: {pending_user.id}) to Telegram user {user_id}")
+            except Exception as e:
+                logger.error(f"Failed to send binding success message: {e}")
+
+        except Exception as e:
+            logger.error(f"Error during binding process: {e}")
+            await update.message.reply_text(
+                "❌ 绑定过程中发生错误，请稍后重试。"
+            )
 
     async def send_notification(self, user_id: int, title: str, message: str, extra_data: Dict[Any, Any] = None):
         """发送通知给指定用户"""
