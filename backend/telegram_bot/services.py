@@ -106,6 +106,36 @@ class TelegramBotService:
                 # 其他错误重新抛出
                 raise e
 
+    async def _safe_callback_response(self, query, message, show_alert=False):
+        """安全地回应回调查询"""
+        try:
+            await query.answer(message, show_alert=show_alert)
+            return True
+        except Exception as e:
+            if "Event loop is closed" in str(e) or "RuntimeError" in str(e):
+                logger.warning(f"Event loop error in callback response: {e}")
+                return False
+            else:
+                logger.error(f"Error in callback response: {e}")
+                return False
+
+    async def _safe_edit_message(self, query, text, reply_markup=None, parse_mode=None):
+        """安全地编辑消息"""
+        try:
+            await query.edit_message_text(
+                text=text,
+                reply_markup=reply_markup,
+                parse_mode=parse_mode
+            )
+            return True
+        except Exception as e:
+            if "Event loop is closed" in str(e) or "RuntimeError" in str(e):
+                logger.warning(f"Event loop error in message edit: {e}")
+                return False
+            else:
+                logger.error(f"Error in message edit: {e}")
+                return False
+
     def _check_rate_limit(self, user_id: int) -> bool:
         """检查用户请求频率限制"""
         if not getattr(settings, 'TELEGRAM_SECURITY', {}).get('RATE_LIMITING_ENABLED', True):
@@ -625,7 +655,7 @@ Telegram 通知：{'✅ 已开启' if user.telegram_notifications_enabled else '
         # 安全检查：验证更新和频率限制
         if not self._validate_update(update) or not self._check_rate_limit(user_id):
             logger.warning(f"Security check failed for user {user_id} in _handle_callback_query")
-            await query.answer("❌ 请求过于频繁，请稍后再试")
+            await self._safe_callback_response(query, "❌ 请求过于频繁，请稍后再试")
             return
 
         try:
@@ -638,7 +668,7 @@ Telegram 通知：{'✅ 已开启' if user.telegram_notifications_enabled else '
 
             # 检查用户是否已绑定（只对其他类型的回调检查）
             if not await self._is_user_authorized(user_id):
-                await query.answer("❌ 请先绑定您的 Lockup 账户", show_alert=True)
+                await self._safe_callback_response(query, "❌ 请先绑定您的 Lockup 账户", show_alert=True)
                 return
 
             user_query = await sync_to_async(User.objects.filter)(telegram_user_id=user_id)
@@ -653,18 +683,19 @@ Telegram 通知：{'✅ 已开启' if user.telegram_notifications_enabled else '
                 await self._handle_game_callback(query, callback_data, current_user)
 
             else:
-                await query.answer("❌ 无效的操作")
+                await self._safe_callback_response(query, "❌ 无效的操作")
 
         except User.DoesNotExist:
-            await query.answer("❌ 用户不存在", show_alert=True)
+            await self._safe_callback_response(query, "❌ 用户不存在", show_alert=True)
             logger.error(f"User not found for telegram_user_id: {user_id}")
         except Exception as e:
-            await query.answer("❌ 操作失败，请稍后重试", show_alert=True)
+            await self._safe_callback_response(query, "❌ 操作失败，请稍后重试", show_alert=True)
             logger.error(f"Unexpected error in callback query: {e}")
 
     async def _handle_task_overtime_callback(self, query, callback_data, clicker_user_id):
         """处理 /task 命令的任务加时回调"""
         task_id = callback_data.replace('task_overtime_', '')
+        logger.info(f"Processing task overtime callback: task_id={task_id}, user_id={clicker_user_id}")
 
         try:
             # 检查点击加时按钮的用户是否已绑定
@@ -676,11 +707,13 @@ Telegram 通知：{'✅ 已开启' if user.telegram_notifications_enabled else '
                 frontend_url = getattr(settings, 'TELEGRAM_APP_CONFIG', {}).get('FRONTEND_URL', 'https://lock-up.zheermao.top')
                 profile_url = f"{frontend_url}/profile"
 
-                await query.answer(
+                message = (
                     f"❌ 您还没有绑定 Lockup 账户，无法进行加时操作\n\n"
-                    f"请前往 {profile_url} 绑定您的账户，然后就可以给朋友的任务加时了！",
-                    show_alert=True
+                    f"请前往 {profile_url} 绑定您的账户，然后就可以给朋友的任务加时了！"
                 )
+
+                await self._safe_callback_response(query, message, show_alert=True)
+                logger.info(f"User {clicker_user_id} not bound, sent binding guidance")
                 return
 
             # 获取任务信息
@@ -688,19 +721,23 @@ Telegram 通知：{'✅ 已开启' if user.telegram_notifications_enabled else '
             task = await sync_to_async(task_query.first)()
 
             if not task:
-                await query.answer("❌ 任务不存在", show_alert=True)
+                await self._safe_callback_response(query, "❌ 任务不存在", show_alert=True)
+                logger.warning(f"Task {task_id} not found")
                 return
 
             # 检查任务状态
             if task.status != 'active':
-                await query.answer("❌ 任务已结束，无法加时", show_alert=True)
+                await self._safe_callback_response(query, "❌ 任务已结束，无法加时", show_alert=True)
+                logger.warning(f"Task {task_id} is not active, status: {task.status}")
                 return
 
             # 生成随机加时时间（15-120分钟）
             random_minutes = random.randint(15, 120)
+            logger.info(f"Generated random minutes: {random_minutes}")
 
-            # 执行加时操作
-            overtime_result = add_overtime_to_task(task, clicker_user, random_minutes)
+            # 执行加时操作（使用 sync_to_async 包装同步函数）
+            overtime_result = await sync_to_async(add_overtime_to_task)(task, clicker_user, random_minutes)
+            logger.info(f"Overtime result: {overtime_result}")
 
             if overtime_result['success']:
                 # 加时成功，更新消息
@@ -708,25 +745,39 @@ Telegram 通知：{'✅ 已开启' if user.telegram_notifications_enabled else '
                 updated_text = f"{original_text}\n\n🎯 @{clicker_user.username} 给这个任务加了 {random_minutes} 分钟！"
 
                 # 更新消息，移除按钮（防止重复点击）
-                await query.edit_message_text(
-                    text=updated_text,
+                edit_success = await self._safe_edit_message(
+                    query,
+                    updated_text,
                     reply_markup=None,
                     parse_mode='Markdown'
                 )
 
                 # 发送确认消息
-                await query.answer(f"✅ 成功给任务加时 {random_minutes} 分钟！", show_alert=True)
+                response_success = await self._safe_callback_response(
+                    query,
+                    f"✅ 成功给任务加时 {random_minutes} 分钟！",
+                    show_alert=True
+                )
 
-                logger.info(f"Task overtime successful: user {clicker_user.username} added {random_minutes} minutes to task {task.title}")
+                if edit_success and response_success:
+                    logger.info(f"Task overtime successful: user {clicker_user.username} added {random_minutes} minutes to task {task.title}")
+                else:
+                    logger.warning(f"Task overtime successful but message update failed: edit={edit_success}, response={response_success}")
 
             else:
                 # 加时失败
-                await query.answer(f"❌ 加时失败：{overtime_result['message']}", show_alert=True)
+                await self._safe_callback_response(
+                    query,
+                    f"❌ 加时失败：{overtime_result['message']}",
+                    show_alert=True
+                )
                 logger.warning(f"Task overtime failed: {overtime_result['message']}")
 
         except Exception as e:
             logger.error(f"Error in task overtime callback: {e}")
-            await query.answer("❌ 加时操作失败，请稍后重试", show_alert=True)
+            import traceback
+            logger.error(f"Traceback: {traceback.format_exc()}")
+            await self._safe_callback_response(query, "❌ 加时操作失败，请稍后重试", show_alert=True)
 
     async def _handle_overtime_callback(self, query, callback_data, current_user):
         """处理任务加时回调"""
