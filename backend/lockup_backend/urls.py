@@ -30,7 +30,9 @@ urlpatterns = [
     path('api/telegram/', include('telegram_bot.urls')),  # Telegram Bot 功能
 ]
 
-# 开发环境下提供媒体文件访问
+# 提供媒体文件访问（开发环境和生产环境）
+urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
+
+# 开发环境下提供静态文件访问
 if settings.DEBUG:
-    urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
     urlpatterns += static(settings.STATIC_URL, document_root=settings.STATIC_ROOT)
