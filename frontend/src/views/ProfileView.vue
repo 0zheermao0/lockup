@@ -148,7 +148,8 @@
                 <div v-if="telegramStatus.is_bound" class="bound-status">
                   <div class="status-header">
                     <span class="status-badge bound">✅ 已绑定</span>
-                    <span class="telegram-username">@{{ telegramStatus.telegram_username }}</span>
+                    <span v-if="telegramStatus.telegram_username" class="telegram-username">@{{ telegramStatus.telegram_username }}</span>
+                    <span v-else class="telegram-username-missing">用户名未设置</span>
                   </div>
                   <div class="status-details">
                     <p>绑定时间: {{ formatDate(telegramStatus.bound_at) }}</p>

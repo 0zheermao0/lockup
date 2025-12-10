@@ -174,7 +174,8 @@ class User(AbstractUser):
 
     def is_telegram_bound(self):
         """检查是否已绑定 Telegram"""
-        return self.telegram_user_id is not None
+        return (self.telegram_user_id is not None and
+                self.telegram_chat_id is not None)
 
     def can_receive_telegram_notifications(self):
         """检查是否可以接收 Telegram 通知"""

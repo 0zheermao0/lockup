@@ -70,33 +70,51 @@ def telegram_webhook(request):
             from telegram import Update
             import asyncio
             import threading
+            from concurrent.futures import ThreadPoolExecutor
 
             # 创建 Update 对象
             update = Update.de_json(update_data, telegram_service.bot)
 
             if update:
-                # 在后台线程中处理更新，避免阻塞webhook响应
-                def process_update_in_thread():
+                # 使用线程池来处理更新，避免事件循环问题
+                def process_update_sync():
                     try:
-                        # 创建新的事件循环用于后台处理
+                        # 在新线程中创建独立的事件循环
                         loop = asyncio.new_event_loop()
                         asyncio.set_event_loop(loop)
 
-                        async def process_update_safely():
-                            try:
-                                await telegram_service.application.process_update(update)
+                        try:
+                            # 确保Bot已经初始化
+                            if loop.run_until_complete(telegram_service._ensure_initialized()):
+                                # 运行异步处理
+                                loop.run_until_complete(
+                                    telegram_service.application.process_update(update)
+                                )
                                 logger.info(f"Successfully processed update {update_data.get('update_id')}")
-                            except Exception as e:
-                                logger.error(f"Error in update processing: {e}")
+                            else:
+                                logger.error("Failed to initialize Telegram Bot")
+                        finally:
+                            # 确保正确关闭循环
+                            try:
+                                # 取消所有待处理的任务
+                                pending_tasks = asyncio.all_tasks(loop)
+                                for task in pending_tasks:
+                                    task.cancel()
+                                # 等待任务完成
+                                if pending_tasks:
+                                    loop.run_until_complete(
+                                        asyncio.gather(*pending_tasks, return_exceptions=True)
+                                    )
+                            except Exception:
+                                pass
+                            finally:
+                                loop.close()
 
-                        # 运行处理任务
-                        loop.run_until_complete(process_update_safely())
-                        loop.close()
                     except Exception as e:
                         logger.error(f"Error in background thread: {e}")
 
-                # 在后台线程中处理，不阻塞webhook响应
-                thread = threading.Thread(target=process_update_in_thread, daemon=True)
+                # 使用守护线程处理，不阻塞webhook响应
+                thread = threading.Thread(target=process_update_sync, daemon=True)
                 thread.start()
             else:
                 logger.warning(f"Failed to create Update object from data: {update_data}")

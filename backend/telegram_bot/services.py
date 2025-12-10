@@ -43,23 +43,38 @@ class TelegramBotService:
             logger.warning("Telegram Bot Token not configured")
             return
 
-        self.bot = Bot(token=settings.TELEGRAM_BOT_TOKEN)
-        self.application = Application.builder().token(settings.TELEGRAM_BOT_TOKEN).build()
-
-        # 初始化应用程序和Bot
         try:
-            import asyncio
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-            loop.run_until_complete(self.bot.initialize())
-            loop.run_until_complete(self.application.initialize())
-            loop.close()
-        except Exception as e:
-            logger.error(f"Failed to initialize Telegram application: {e}")
-            return
+            self.bot = Bot(token=settings.TELEGRAM_BOT_TOKEN)
+            self.application = Application.builder().token(settings.TELEGRAM_BOT_TOKEN).build()
 
-        # 注册处理器
-        self._register_handlers()
+            # 注册处理器
+            self._register_handlers()
+
+            # 延迟初始化：只在第一次使用时初始化
+            self._initialized = False
+
+            logger.info("Telegram Bot service configured successfully")
+        except Exception as e:
+            logger.error(f"Failed to setup Telegram Bot: {e}")
+            self.bot = None
+            self.application = None
+
+    async def _ensure_initialized(self):
+        """确保Bot和Application已经初始化"""
+        if not self.bot or not self.application:
+            return False
+
+        if not getattr(self, '_initialized', False):
+            try:
+                await self.bot.initialize()
+                await self.application.initialize()
+                self._initialized = True
+                logger.info("Telegram Bot initialized successfully")
+            except Exception as e:
+                logger.error(f"Failed to initialize Telegram Bot: {e}")
+                return False
+
+        return True
 
     def _check_rate_limit(self, user_id: int) -> bool:
         """检查用户请求频率限制"""
