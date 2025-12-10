@@ -65,6 +65,8 @@ export const tasksApi = {
     status?: string
     my_tasks?: boolean
     my_taken?: boolean
+    page?: number
+    page_size?: number
   } = {}) => {
     const searchParams = new URLSearchParams()
 
@@ -72,6 +74,8 @@ export const tasksApi = {
     if (params.status) searchParams.append('status', params.status)
     if (params.my_tasks) searchParams.append('my_tasks', 'true')
     if (params.my_taken) searchParams.append('my_taken', 'true')
+    if (params.page) searchParams.append('page', params.page.toString())
+    if (params.page_size) searchParams.append('page_size', params.page_size.toString())
 
     const queryString = searchParams.toString()
     const url = queryString ? `/tasks/?${queryString}` : '/tasks/'
@@ -251,5 +255,27 @@ export const tasksApi = {
       console.error('Error getting active lock task:', error)
       return null
     }
+  },
+
+  // 获取任务数量统计
+  getTaskCounts: async (): Promise<{
+    lock_tasks: {
+      all: number
+      active: number
+      voting: number
+      completed: number
+      my_tasks: number
+    }
+    board_tasks: {
+      all: number
+      open: number
+      taken: number
+      submitted: number
+      completed: number
+      my_published: number
+      my_taken: number
+    }
+  }> => {
+    return apiRequest('/tasks/counts/')
   }
 }

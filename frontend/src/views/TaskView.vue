@@ -23,14 +23,14 @@
               :class="['task-type-tab', { active: activeTaskType === 'lock' }]"
             >
               🔒 带锁任务
-              <span class="count-badge">{{ lockTasks.length }}</span>
+              <span class="count-badge">{{ taskCounts?.lock_tasks?.all || 0 }}</span>
             </button>
             <button
               @click="activeTaskType = 'board'"
               :class="['task-type-tab', { active: activeTaskType === 'board' }]"
             >
               📋 任务板
-              <span class="count-badge">{{ boardTasks.length }}</span>
+              <span class="count-badge">{{ taskCounts?.board_tasks?.all || 0 }}</span>
             </button>
           </div>
         </section>
@@ -253,11 +253,50 @@ const activeFilter = ref('active')
 const activeTaskType = ref<'lock' | 'board'>('lock')
 const currentTime = ref(Date.now())
 const progressInterval = ref<number>()
+const taskCounts = ref<any>(null)
+const countsLoading = ref(false)
 
 // Sorting state
 const sortBy = ref<'remaining_time' | 'created_time' | 'end_time'>('created_time')
 const sortOrder = ref<'asc' | 'desc'>('desc')
 const showSortDropdown = ref(false)
+
+// Create a function to get the appropriate API call based on current filters
+const getFilteredTasks = async (page: number, pageSize: number) => {
+  const extraFilters: any = {
+    task_type: activeTaskType.value
+  }
+
+  // Apply filter based on activeFilter
+  if (activeFilter.value === 'active') {
+    extraFilters.status = 'active'
+  } else if (activeFilter.value === 'voting') {
+    extraFilters.status = 'voting'
+  } else if (activeFilter.value === 'completed') {
+    extraFilters.status = 'completed'
+  } else if (activeFilter.value === 'my-tasks') {
+    extraFilters.my_tasks = true
+  } else if (activeFilter.value === 'open') {
+    extraFilters.status = 'open'
+  } else if (activeFilter.value === 'taken') {
+    extraFilters.status = 'taken'
+  } else if (activeFilter.value === 'submitted') {
+    extraFilters.status = 'submitted'
+  } else if (activeFilter.value === 'my-published') {
+    extraFilters.my_tasks = true
+  } else if (activeFilter.value === 'my-taken') {
+    extraFilters.my_taken = true
+  }
+  // 'all' doesn't need additional filters
+
+  try {
+    const response = await tasksStore.getPaginatedTasks(page, pageSize, extraFilters)
+    return response
+  } catch (error) {
+    console.error('API error:', error)
+    throw error
+  }
+}
 
 // 无限滚动设置
 const {
@@ -271,96 +310,72 @@ const {
   initialize,
   refresh
 } = useInfiniteScroll(
-  tasksStore.getPaginatedTasks,
+  getFilteredTasks,
   {
-    initialPageSize: 20,
+    initialPageSize: 10,
     threshold: 200,
     loadDelay: 300
   }
 )
 
-// Task type separation
-const lockTasks = computed(() => tasks.value.filter(task => task.task_type === 'lock'))
-const boardTasks = computed(() => tasks.value.filter(task => task.task_type === 'board'))
-
-// Current tasks based on active type
-const currentTasks = computed(() => {
-  return activeTaskType.value === 'lock' ? lockTasks.value : boardTasks.value
-})
+// For display purposes, use all tasks since they're already filtered
+const currentTasks = computed(() => tasks.value)
+const lockTasks = computed(() => tasks.value) // Not needed anymore since we filter server-side
+const boardTasks = computed(() => tasks.value) // Not needed anymore since we filter server-side
 
 // Filter tabs based on task type
-const lockFilterTabs = computed(() => [
-  { key: 'all', label: '全部', count: lockTasks.value.length },
-  { key: 'active', label: '进行中', count: lockTasks.value.filter(t => t.status === 'active').length },
-  { key: 'voting', label: '投票中', count: lockTasks.value.filter(t => t.status === 'voting').length },
-  { key: 'completed', label: '已完成', count: lockTasks.value.filter(t => t.status === 'completed').length },
-  { key: 'my-tasks', label: '我的任务', count: lockTasks.value.filter(t => t.user.id === authStore.user?.id).length }
-])
+const lockFilterTabs = computed(() => {
+  if (!taskCounts.value) {
+    // Fallback to showing counts without numbers when API data is not available
+    return [
+      { key: 'all', label: '全部', count: 0 },
+      { key: 'active', label: '进行中', count: 0 },
+      { key: 'voting', label: '投票中', count: 0 },
+      { key: 'completed', label: '已完成', count: 0 },
+      { key: 'my-tasks', label: '我的任务', count: 0 }
+    ]
+  }
+  return [
+    { key: 'all', label: '全部', count: taskCounts.value.lock_tasks.all },
+    { key: 'active', label: '进行中', count: taskCounts.value.lock_tasks.active },
+    { key: 'voting', label: '投票中', count: taskCounts.value.lock_tasks.voting },
+    { key: 'completed', label: '已完成', count: taskCounts.value.lock_tasks.completed },
+    { key: 'my-tasks', label: '我的任务', count: taskCounts.value.lock_tasks.my_tasks }
+  ]
+})
 
-const boardFilterTabs = computed(() => [
-  { key: 'all', label: '全部', count: boardTasks.value.length },
-  { key: 'open', label: '开放中', count: boardTasks.value.filter(t => t.status === 'open').length },
-  { key: 'taken', label: '已接取', count: boardTasks.value.filter(t => t.status === 'taken').length },
-  { key: 'submitted', label: '已提交', count: boardTasks.value.filter(t => t.status === 'submitted').length },
-  { key: 'completed', label: '已完成', count: boardTasks.value.filter(t => t.status === 'completed').length },
-  { key: 'my-published', label: '我发布的', count: boardTasks.value.filter(t => t.user.id === authStore.user?.id).length },
-  { key: 'my-taken', label: '我接取的', count: boardTasks.value.filter(t => t.taker?.id === authStore.user?.id).length }
-])
+const boardFilterTabs = computed(() => {
+  if (!taskCounts.value) {
+    // Fallback to showing counts without numbers when API data is not available
+    return [
+      { key: 'all', label: '全部', count: 0 },
+      { key: 'open', label: '开放中', count: 0 },
+      { key: 'taken', label: '已接取', count: 0 },
+      { key: 'submitted', label: '已提交', count: 0 },
+      { key: 'completed', label: '已完成', count: 0 },
+      { key: 'my-published', label: '我发布的', count: 0 },
+      { key: 'my-taken', label: '我接取的', count: 0 }
+    ]
+  }
+  return [
+    { key: 'all', label: '全部', count: taskCounts.value.board_tasks.all },
+    { key: 'open', label: '开放中', count: taskCounts.value.board_tasks.open },
+    { key: 'taken', label: '已接取', count: taskCounts.value.board_tasks.taken },
+    { key: 'submitted', label: '已提交', count: taskCounts.value.board_tasks.submitted },
+    { key: 'completed', label: '已完成', count: taskCounts.value.board_tasks.completed },
+    { key: 'my-published', label: '我发布的', count: taskCounts.value.board_tasks.my_published },
+    { key: 'my-taken', label: '我接取的', count: taskCounts.value.board_tasks.my_taken }
+  ]
+})
 
 const currentFilterTabs = computed(() => {
   return activeTaskType.value === 'lock' ? lockFilterTabs.value : boardFilterTabs.value
 })
 
-// Filtered and sorted tasks
+// Since we're using server-side filtering, we only need to sort the tasks
 const filteredTasks = computed(() => {
-  const tasks = currentTasks.value
-
-  // First apply filters
-  let filtered: Task[] = []
-  if (activeTaskType.value === 'lock') {
-    switch (activeFilter.value) {
-      case 'active':
-        filtered = tasks.filter(task => task.status === 'active')
-        break
-      case 'voting':
-        filtered = tasks.filter(task => task.status === 'voting')
-        break
-      case 'completed':
-        filtered = tasks.filter(task => task.status === 'completed')
-        break
-      case 'my-tasks':
-        filtered = tasks.filter(task => task.user.id === authStore.user?.id)
-        break
-      default:
-        filtered = tasks
-    }
-  } else {
-    switch (activeFilter.value) {
-      case 'open':
-        filtered = tasks.filter(task => task.status === 'open')
-        break
-      case 'taken':
-        filtered = tasks.filter(task => task.status === 'taken')
-        break
-      case 'submitted':
-        filtered = tasks.filter(task => task.status === 'submitted')
-        break
-      case 'completed':
-        filtered = tasks.filter(task => task.status === 'completed')
-        break
-      case 'my-published':
-        filtered = tasks.filter(task => task.user.id === authStore.user?.id)
-        break
-      case 'my-taken':
-        filtered = tasks.filter(task => task.task_type === 'board' && task.taker?.id === authStore.user?.id)
-        break
-      default:
-        filtered = tasks
-    }
-  }
-
-  // Then apply sorting
-  return sortTasks(filtered)
+  // Tasks are already filtered server-side, just apply sorting
+  return sortTasks(currentTasks.value)
 })
 
 // Sorting functions
@@ -447,9 +462,26 @@ const closeCreateModal = () => {
   showCreateModal.value = false
 }
 
+// Fetch task counts
+const fetchTaskCounts = async () => {
+  if (countsLoading.value) return
+
+  countsLoading.value = true
+  try {
+    taskCounts.value = await tasksApi.getTaskCounts()
+  } catch (error) {
+    console.error('Failed to fetch task counts:', error)
+  } finally {
+    countsLoading.value = false
+  }
+}
+
 const handleTaskCreated = async () => {
   // Refresh the task list
   refresh()
+
+  // Refresh task counts
+  await fetchTaskCounts()
 
   // Refresh user data to update lock status on homepage/profile
   try {
@@ -470,6 +502,8 @@ const deleteTask = async (task: Task) => {
 
   try {
     await tasksStore.deleteTask(task.id)
+    // Refresh task counts after deletion
+    await fetchTaskCounts()
     console.log('任务删除成功')
   } catch (error) {
     console.error('Error deleting task:', error)
@@ -691,10 +725,22 @@ watch(activeTaskType, (newType) => {
   } else {
     activeFilter.value = 'all'     // 任务板默认显示"全部"
   }
+  // Refresh tasks when task type changes
+  refresh()
 })
 
-onMounted(() => {
-  initialize()
+// Watch for filter changes and refresh tasks
+watch(activeFilter, () => {
+  refresh()
+})
+
+onMounted(async () => {
+  // Initialize task list and counts in parallel
+  await Promise.all([
+    initialize(),
+    fetchTaskCounts()
+  ])
+
   startProgressUpdate()
   document.addEventListener('click', handleClickOutside)
 })

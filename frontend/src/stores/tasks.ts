@@ -61,11 +61,23 @@ export const useTasksStore = defineStore('tasks', () => {
   }
 
   // Get paginated tasks for infinite scroll
-  const getPaginatedTasks = async (page: number, pageSize: number = 10): Promise<PaginatedResponse<Task>> => {
+  const getPaginatedTasks = async (
+    page: number,
+    pageSize: number = 10,
+    extraFilters: {
+      task_type?: 'lock' | 'board'
+      status?: string
+      my_tasks?: boolean
+      my_taken?: boolean
+    } = {}
+  ): Promise<PaginatedResponse<Task>> => {
     const response = await tasksApi.getTasks({
-      task_type: filters.value.task_type as 'lock' | 'board' | undefined,
-      status: filters.value.status,
-      my_tasks: filters.value.my_tasks
+      task_type: extraFilters.task_type || filters.value.task_type as 'lock' | 'board' | undefined,
+      status: extraFilters.status || filters.value.status,
+      my_tasks: extraFilters.my_tasks !== undefined ? extraFilters.my_tasks : filters.value.my_tasks,
+      my_taken: extraFilters.my_taken,
+      page: page,
+      page_size: pageSize
     }) as any
     return response as PaginatedResponse<Task>
   }
