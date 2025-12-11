@@ -24,6 +24,10 @@ urlpatterns = [
     path('<uuid:pk>/start-voting/', views.start_voting, name='task-start-voting'),
     path('<uuid:pk>/vote/', views.vote_task, name='task-vote'),
 
+    # 钥匙玩法 - 手动时间调整和时间显示切换
+    path('<uuid:pk>/manual-time-adjustment/', views.manual_time_adjustment, name='task-manual-time-adjustment'),
+    path('<uuid:pk>/toggle-time-display/', views.toggle_time_display, name='task-toggle-time-display'),
+
     # 钥匙管理
     path('keys/my/', views.my_keys, name='my-keys'),
 

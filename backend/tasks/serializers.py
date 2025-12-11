@@ -25,6 +25,8 @@ class LockTaskSerializer(serializers.ModelSerializer):
             'completion_proof', 'completed_at',
             # 时间字段
             'start_time', 'end_time', 'created_at', 'updated_at',
+            # 钥匙玩法字段
+            'time_display_hidden',
             # 计算字段
             'key_holder', 'vote_count', 'vote_agreement_count'
         ]

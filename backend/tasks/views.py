@@ -1323,6 +1323,207 @@ def _calculate_completion_bonus(task):
     return difficulty_bonus.get(task.difficulty, 0)
 
 
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def manual_time_adjustment(request, pk):
+    """手动调整任务时间（加时或减时）- 需要钥匙持有者权限"""
+    task = get_object_or_404(LockTask, pk=pk)
+
+    # 检查任务类型
+    if task.task_type != 'lock':
+        return Response(
+            {'error': '只能调整带锁任务的时间'},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+
+    # 检查任务状态
+    if task.status not in ['active', 'voting']:
+        return Response(
+            {'error': '任务不在可调整时间的状态'},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+
+    # 检查用户是否持有对应的钥匙道具
+    task_key_item = Item.objects.filter(
+        item_type__name='key',
+        owner=request.user,
+        status='available',
+        properties__task_id=str(task.id)
+    ).first()
+
+    if not task_key_item:
+        return Response(
+            {'error': '只有钥匙持有者可以手动调整时间'},
+            status=status.HTTP_403_FORBIDDEN
+        )
+
+    # 获取调整类型和参数
+    adjustment_type = request.data.get('type')  # 'increase' 或 'decrease'
+
+    if adjustment_type not in ['increase', 'decrease']:
+        return Response(
+            {'error': '调整类型必须是 increase 或 decrease'},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+
+    # 检查用户积分是否足够（每次操作消耗10积分）
+    cost = 10
+    if request.user.coins < cost:
+        return Response(
+            {'error': f'积分不足，需要{cost}积分，当前{request.user.coins}积分'},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+
+    # 固定时间调整（±20分钟）
+    adjustment_minutes = 20
+
+    # 记录原始结束时间
+    original_end_time = task.end_time
+
+    # 调整任务结束时间
+    if task.end_time:
+        now = timezone.now()
+        time_remaining_minutes = (task.end_time - now).total_seconds() / 60
+
+        if adjustment_type == 'decrease':
+            # 如果倒计时已结束，返回错误
+            if time_remaining_minutes <= 0:
+                return Response(
+                    {'error': '倒计时已结束，无法进行减时操作'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+            # 如果剩余时间不足20分钟，直接减到倒计时结束
+            if time_remaining_minutes < 20:
+                adjustment_minutes = -int(time_remaining_minutes)
+                new_end_time = now
+            else:
+                adjustment_minutes = -20
+                new_end_time = task.end_time + timezone.timedelta(minutes=adjustment_minutes)
+        else:  # increase
+            adjustment_minutes = 20
+            new_end_time = task.end_time + timezone.timedelta(minutes=adjustment_minutes)
+
+        task.end_time = new_end_time
+    else:
+        return Response(
+            {'error': '任务没有设置结束时间，无法调整'},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+
+    task.save()
+
+    # 扣除用户积分
+    request.user.coins -= cost
+    request.user.save()
+
+    # 创建时间线事件
+    event_type = 'time_wheel_increase' if adjustment_type == 'increase' else 'time_wheel_decrease'
+    description = f'钥匙持有者手动{"加时" if adjustment_type == "increase" else "减时"}{abs(adjustment_minutes)}分钟（消耗{cost}积分）'
+
+    TaskTimelineEvent.objects.create(
+        task=task,
+        event_type=event_type,
+        user=request.user,
+        time_change_minutes=adjustment_minutes,
+        previous_end_time=original_end_time,
+        new_end_time=task.end_time,
+        description=description,
+        metadata={
+            'adjustment_type': adjustment_type,
+            'adjustment_minutes': abs(adjustment_minutes),
+            'cost': cost,
+            'user_remaining_coins': request.user.coins,
+            'manual_adjustment': True,
+            'key_holder_action': True
+        }
+    )
+
+    return Response({
+        'message': f'成功{"加时" if adjustment_type == "increase" else "减时"}{abs(adjustment_minutes)}分钟',
+        'adjustment_minutes': adjustment_minutes,
+        'new_end_time': task.end_time.isoformat(),
+        'cost': cost,
+        'remaining_coins': request.user.coins
+    })
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def toggle_time_display(request, pk):
+    """切换时间显示/隐藏状态 - 需要钥匙持有者权限"""
+    task = get_object_or_404(LockTask, pk=pk)
+
+    # 检查任务类型
+    if task.task_type != 'lock':
+        return Response(
+            {'error': '只能切换带锁任务的时间显示'},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+
+    # 检查任务状态
+    if task.status not in ['active', 'voting']:
+        return Response(
+            {'error': '任务不在可切换时间显示的状态'},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+
+    # 检查用户是否持有对应的钥匙道具
+    task_key_item = Item.objects.filter(
+        item_type__name='key',
+        owner=request.user,
+        status='available',
+        properties__task_id=str(task.id)
+    ).first()
+
+    if not task_key_item:
+        return Response(
+            {'error': '只有钥匙持有者可以切换时间显示'},
+            status=status.HTTP_403_FORBIDDEN
+        )
+
+    # 检查用户积分是否足够（每次操作消耗50积分）
+    cost = 50
+    if request.user.coins < cost:
+        return Response(
+            {'error': f'积分不足，需要{cost}积分，当前{request.user.coins}积分'},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+
+    # 切换时间显示状态
+    task.time_display_hidden = not task.time_display_hidden
+    task.save()
+
+    # 扣除用户积分
+    request.user.coins -= cost
+    request.user.save()
+
+    # 创建时间线事件
+    action = '隐藏' if task.time_display_hidden else '显示'
+    description = f'钥匙持有者切换时间显示为{action}（消耗{cost}积分）'
+
+    TaskTimelineEvent.objects.create(
+        task=task,
+        event_type='manual_adjustment',
+        user=request.user,
+        description=description,
+        metadata={
+            'action': 'toggle_time_display',
+            'time_display_hidden': task.time_display_hidden,
+            'cost': cost,
+            'user_remaining_coins': request.user.coins,
+            'key_holder_action': True
+        }
+    )
+
+    return Response({
+        'message': f'成功{action}时间显示',
+        'time_display_hidden': task.time_display_hidden,
+        'cost': cost,
+        'remaining_coins': request.user.coins
+    })
+
+
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def get_task_counts(request):

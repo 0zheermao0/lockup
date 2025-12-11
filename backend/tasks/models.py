@@ -87,6 +87,9 @@ class LockTask(models.Model):
     last_hourly_reward_at = models.DateTimeField(blank=True, null=True, help_text='上次获得小时奖励的时间')
     total_hourly_rewards = models.IntegerField(default=0, help_text='总共获得的小时奖励数')
 
+    # 钥匙玩法字段
+    time_display_hidden = models.BooleanField(default=False, help_text='是否隐藏时间显示')
+
     class Meta:
         ordering = ['-created_at']
 
