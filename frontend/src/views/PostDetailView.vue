@@ -249,6 +249,7 @@ import { usePostsStore } from '../stores/posts'
 import { useNotificationStore } from '../stores/notifications'
 import { postsApi } from '../lib/api'
 import { formatDistanceToNow } from '../lib/utils'
+import { smartGoBack } from '../utils/navigation'
 import LockIndicator from '../components/LockIndicator.vue'
 import ProfileModal from '../components/ProfileModal.vue'
 import RichTextEditor from '../components/RichTextEditor.vue'
@@ -290,7 +291,7 @@ const canDeletePost = computed(() => {
 })
 
 const goBack = () => {
-  router.back()
+  smartGoBack(router, 'home')
 }
 
 const fetchPost = async () => {

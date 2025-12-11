@@ -462,6 +462,7 @@ import { useAuthStore } from '../stores/auth'
 import { useTasksStore } from '../stores/tasks'
 import { tasksApi } from '../lib/api-tasks'
 import { storeApi } from '../lib/api'
+import { smartGoBack } from '../utils/navigation'
 import TaskSubmissionModal from '../components/TaskSubmissionModal.vue'
 import ProfileModal from '../components/ProfileModal.vue'
 import VoteConfirmationModal from '../components/VoteConfirmationModal.vue'
@@ -857,7 +858,7 @@ const shareUrl = computed(() => {
 
 // Methods
 const goBack = () => {
-  router.back()
+  smartGoBack(router, 'tasks')
 }
 
 const openShareModal = () => {

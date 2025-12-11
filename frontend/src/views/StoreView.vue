@@ -3,7 +3,7 @@
     <!-- Header -->
     <header class="store-header">
       <div class="header-content">
-        <button @click="$router.back()" class="back-btn">
+        <button @click="goBack" class="back-btn">
           ← 返回
         </button>
         <h1 class="store-title">🛍️ 积分商店</h1>
@@ -130,11 +130,19 @@
 
 <script setup lang="ts">
 import { ref, onMounted, computed } from 'vue'
+import { useRouter } from 'vue-router'
 import { storeApi } from '../lib/api'
 import { useAuthStore } from '../stores/auth'
+import { smartGoBack } from '../utils/navigation'
 import type { StoreItem, UserInventory } from '../types'
 
 const authStore = useAuthStore()
+const router = useRouter()
+
+// Methods
+const goBack = () => {
+  smartGoBack(router, 'home')
+}
 
 // Reactive data
 const storeItems = ref<StoreItem[]>([])

@@ -260,6 +260,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '../stores/auth'
 import { authApi } from '../lib/api'
 import { telegramApi, type TelegramStatus } from '../lib/api-telegram'
+import { smartGoBack } from '../utils/navigation'
 import LockStatus from '../components/LockStatus.vue'
 import type { User } from '../types/index.js'
 
@@ -293,7 +294,7 @@ const isOwnProfile = computed(() => {
 
 
 const goBack = () => {
-  router.back()
+  smartGoBack(router, 'home')
 }
 
 const fetchUserProfile = async () => {
