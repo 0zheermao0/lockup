@@ -146,22 +146,25 @@
                 </div>
                 <div class="task-actions">
                   <button
-                    v-if="canAddOvertime(task)"
-                    @click="addOvertime(task, $event)"
-                    class="overtime-btn"
-                    title="随机加时"
-                  >
-                    ⏰
-                  </button>
-                  <button
                     v-if="canDeleteTask(task)"
                     @click.stop="deleteTask(task)"
-                    class="delete-btn"
+                    class="action-btn delete-btn"
                     title="删除任务"
                   >
-                    🗑️
+                    🗑️ 删除
                   </button>
                 </div>
+              </div>
+
+              <!-- Quick Actions for Task Card -->
+              <div v-if="canAddOvertime(task)" class="task-quick-actions">
+                <button
+                  @click="addOvertime(task, $event)"
+                  class="task-quick-btn overtime-btn"
+                  title="随机加时"
+                >
+                  ⏰ 随机加时
+                </button>
               </div>
 
               <div class="task-content">
@@ -1071,35 +1074,72 @@ onUnmounted(() => {
   color: white;
 }
 
-.delete-btn, .overtime-btn {
-  background: none;
-  border: none;
-  cursor: pointer;
-  padding: 0.5rem;
-  border-radius: 4px;
-  background-color: #f8f9fa;
-  margin-left: 0.5rem;
+/* Task Actions */
+.task-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
 }
 
-.delete-btn:hover {
+.action-btn {
+  border: 2px solid #000;
+  cursor: pointer;
+  padding: 0.5rem 1rem;
+  border-radius: 4px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  font-size: 0.75rem;
+  box-shadow: 2px 2px 0 #000;
+  transition: all 0.2s ease;
+}
+
+.action-btn.delete-btn {
   background-color: #dc3545;
   color: white;
 }
 
-.overtime-btn {
-  background-color: #fd7e14;
-  color: white;
-  font-size: 1rem;
+.action-btn.delete-btn:hover {
+  transform: translate(-1px, -1px);
+  box-shadow: 3px 3px 0 #000;
+  background-color: #c82333;
 }
 
-.overtime-btn:hover {
-  background-color: #e76500;
-  transform: scale(1.1);
-}
-
-.task-actions {
+/* Task Quick Actions */
+.task-quick-actions {
   display: flex;
-  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+  border-top: 2px solid #e9ecef;
+  margin-top: 1rem;
+}
+
+.task-quick-btn {
+  background: #fd7e14;
+  color: white;
+  border: 3px solid #000;
+  padding: 0.75rem 1.5rem;
+  font-weight: 900;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  cursor: pointer;
+  box-shadow: 4px 4px 0 #000;
+  transition: all 0.2s ease;
+  font-size: 0.875rem;
+}
+
+.task-quick-btn:hover {
+  transform: translate(-2px, -2px);
+  box-shadow: 6px 6px 0 #000;
+  background-color: #e76500;
+}
+
+.task-quick-btn.overtime-btn {
+  background: linear-gradient(135deg, #fd7e14, #ff6b35);
+}
+
+.task-quick-btn.overtime-btn:hover {
+  background: linear-gradient(135deg, #e76500, #e55a2b);
 }
 
 .countdown {
@@ -1342,6 +1382,21 @@ onUnmounted(() => {
 
   .progress-bar {
     margin-right: 0;
+  }
+
+  .task-quick-actions {
+    padding: 0.75rem;
+  }
+
+  .task-quick-btn {
+    width: 100%;
+    padding: 1rem;
+    font-size: 1rem;
+  }
+
+  .action-btn {
+    font-size: 0.625rem;
+    padding: 0.375rem 0.75rem;
   }
 
   .filter-tabs {

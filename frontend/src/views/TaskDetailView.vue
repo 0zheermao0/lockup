@@ -40,6 +40,92 @@
 
         <!-- Task Detail -->
         <div v-else-if="task" class="task-detail-content">
+          <!-- Quick Actions Bar - 高频操作区域 -->
+          <section v-if="canManageTask || canClaimTask || canSubmitProof || canReviewTask || canAddOvertime || canStartVoting || canVote" class="quick-actions-bar">
+            <div class="quick-actions-content">
+              <div class="actions-primary">
+                <!-- Lock task primary actions -->
+                <button
+                  v-if="task.status === 'pending' && canManageTask"
+                  @click="startTask"
+                  class="quick-action-btn primary large"
+                >
+                  🚀 开始任务
+                </button>
+                <button
+                  v-if="task.status === 'active' && canCompleteTask"
+                  @click="completeTask"
+                  class="quick-action-btn success large"
+                >
+                  ✅ 完成任务
+                </button>
+                <button
+                  v-if="(task.status === 'active' || task.status === 'voting') && canManageLockTask"
+                  @click="stopTask"
+                  class="quick-action-btn danger large"
+                >
+                  ⏹️ 停止任务
+                </button>
+
+                <!-- Board task primary actions -->
+                <button
+                  v-if="canClaimTask"
+                  @click="claimTask"
+                  class="quick-action-btn warning large"
+                >
+                  📋 揭榜任务
+                </button>
+                <button
+                  v-if="canSubmitProof"
+                  @click="openSubmissionModal"
+                  class="quick-action-btn info large"
+                >
+                  📤 提交完成证明
+                </button>
+                <button
+                  v-if="canReviewTask"
+                  @click="approveTask"
+                  class="quick-action-btn success large"
+                >
+                  ✅ 审核通过
+                </button>
+                <button
+                  v-if="canReviewTask"
+                  @click="rejectTask"
+                  class="quick-action-btn danger large"
+                >
+                  ❌ 审核拒绝
+                </button>
+
+                <!-- Voting actions -->
+                <button
+                  v-if="canStartVoting"
+                  @click="startVoting"
+                  class="quick-action-btn vote large pulse"
+                >
+                  🗳️ 发起投票
+                </button>
+                <button
+                  v-else-if="canVote"
+                  @click="openVoteModal"
+                  class="quick-action-btn vote large"
+                >
+                  🗳️ 参与投票
+                </button>
+              </div>
+
+              <div class="actions-secondary">
+                <!-- Secondary actions -->
+                <button
+                  v-if="canAddOvertime"
+                  @click="addOvertime"
+                  class="quick-action-btn secondary"
+                >
+                  ⏰ 随机加时
+                </button>
+              </div>
+            </div>
+          </section>
           <!-- Task Info Card -->
           <section class="task-card">
             <div class="task-header">
@@ -234,72 +320,6 @@
             </div>
           </section>
 
-          <!-- Action Buttons -->
-          <section v-if="canManageTask || canClaimTask || canSubmitProof || canReviewTask || canAddOvertime" class="actions-section">
-            <div class="action-buttons">
-              <!-- Lock task actions -->
-              <button
-                v-if="task.status === 'pending' && canManageTask"
-                @click="startTask"
-                class="action-btn start-btn"
-              >
-                🚀 开始任务
-              </button>
-              <button
-                v-if="task.status === 'active' && canCompleteTask"
-                @click="completeTask"
-                class="action-btn complete-btn"
-              >
-                ✅ 完成任务
-              </button>
-              <button
-                v-if="(task.status === 'active' || task.status === 'voting') && canManageLockTask"
-                @click="stopTask"
-                class="action-btn stop-btn"
-              >
-                ⏹️ 停止任务
-              </button>
-
-              <!-- Overtime action for active lock tasks (others only) -->
-              <button
-                v-if="canAddOvertime"
-                @click="addOvertime"
-                class="action-btn overtime-btn"
-              >
-                ⏰ 随机加时
-              </button>
-
-              <!-- Board task actions -->
-              <button
-                v-if="canClaimTask"
-                @click="claimTask"
-                class="action-btn claim-btn"
-              >
-                📋 揭榜任务
-              </button>
-              <button
-                v-if="canSubmitProof"
-                @click="openSubmissionModal"
-                class="action-btn submit-btn"
-              >
-                📤 提交完成证明
-              </button>
-              <button
-                v-if="canReviewTask"
-                @click="approveTask"
-                class="action-btn approve-btn"
-              >
-                ✅ 审核通过
-              </button>
-              <button
-                v-if="canReviewTask"
-                @click="rejectTask"
-                class="action-btn reject-btn"
-              >
-                ❌ 审核拒绝
-              </button>
-            </div>
-          </section>
 
           <!-- Voting Section for Vote-based Tasks -->
           <section v-if="taskUnlockType === 'vote' && (task.status === 'active' || task.status === 'voting')" class="voting-section">
@@ -345,26 +365,7 @@
               </div>
             </div>
 
-            <!-- Voting buttons -->
-            <div class="vote-actions">
-              <!-- Start voting button (only for task owner when countdown ends) -->
-              <button
-                v-if="canStartVoting"
-                @click="startVoting"
-                class="start-vote-btn"
-              >
-                🗳️ 发起投票
-              </button>
-
-              <!-- Vote button (for everyone during voting period) -->
-              <button
-                v-else-if="canVote"
-                @click="openVoteModal"
-                class="vote-btn"
-              >
-                🗳️ 参与投票
-              </button>
-            </div>
+            <!-- 投票按钮已移至页面顶部快速操作栏 -->
 
             <!-- Status messages -->
             <div v-if="hasVoted" class="voted-message">
@@ -2526,6 +2527,142 @@ onUnmounted(() => {
 
 .failure-reasons div {
   margin: 0.25rem 0;
+}
+
+/* Quick Actions Bar */
+.quick-actions-bar {
+  background: white;
+  border: 4px solid #000;
+  padding: 1.5rem;
+  box-shadow: 8px 8px 0 #000;
+  margin-bottom: 2rem;
+  position: sticky;
+  top: 0;
+  z-index: 10;
+}
+
+.quick-actions-content {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.actions-primary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  justify-content: center;
+}
+
+.actions-secondary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  justify-content: center;
+}
+
+.quick-action-btn {
+  border: 3px solid #000;
+  font-weight: 900;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  cursor: pointer;
+  box-shadow: 4px 4px 0 #000;
+  transition: all 0.2s ease;
+  font-size: 0.875rem;
+  padding: 0.75rem 1.5rem;
+}
+
+.quick-action-btn.large {
+  font-size: 1rem;
+  padding: 1rem 2rem;
+  box-shadow: 6px 6px 0 #000;
+}
+
+.quick-action-btn:hover {
+  transform: translate(-2px, -2px);
+  box-shadow: 8px 8px 0 #000;
+}
+
+.quick-action-btn.large:hover {
+  transform: translate(-2px, -2px);
+  box-shadow: 10px 10px 0 #000;
+}
+
+.quick-action-btn.primary {
+  background: #007bff;
+  color: white;
+}
+
+.quick-action-btn.success {
+  background: #28a745;
+  color: white;
+}
+
+.quick-action-btn.danger {
+  background: #dc3545;
+  color: white;
+}
+
+.quick-action-btn.warning {
+  background: #ffc107;
+  color: #000;
+}
+
+.quick-action-btn.info {
+  background: #17a2b8;
+  color: white;
+}
+
+.quick-action-btn.vote {
+  background: linear-gradient(135deg, #ffc107, #fd7e14);
+  color: #000;
+  border-width: 4px;
+}
+
+.quick-action-btn.secondary {
+  background: #fd7e14;
+  color: white;
+}
+
+.quick-action-btn.pulse {
+  animation: pulse-vote 2s infinite;
+}
+
+@keyframes pulse-vote {
+  0%, 100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.8;
+    transform: scale(1.05);
+  }
+}
+
+/* Ensure quick actions bar doesn't interfere with mobile layout */
+@media (max-width: 768px) {
+  .quick-actions-bar {
+    position: relative;
+    padding: 1rem;
+    margin-bottom: 1.5rem;
+  }
+
+  .actions-primary {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .actions-secondary {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .quick-action-btn {
+    width: 100%;
+    justify-content: center;
+    text-align: center;
+  }
 }
 
 /* Mobile responsive */
