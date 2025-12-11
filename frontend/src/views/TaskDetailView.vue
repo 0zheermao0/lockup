@@ -1455,10 +1455,6 @@ const rejectTask = async () => {
 const addOvertime = async () => {
   if (!task.value || !canAddOvertime.value) return
 
-  if (!confirm('确定要为这个任务随机加时吗？加时力度基于任务难度等级。')) {
-    return
-  }
-
   try {
     const result = await tasksApi.addOvertime(task.value.id)
 
