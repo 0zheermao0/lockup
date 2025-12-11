@@ -1,7 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import { postsApi } from '../lib/api'
-import type { Post, PaginatedResponse } from '../types/index.js'
+import type { Post, PaginatedResponse } from '../types/index'
 
 export const usePostsStore = defineStore('posts', () => {
   // State

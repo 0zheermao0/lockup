@@ -123,6 +123,8 @@ export interface LockTask extends BaseLockTask {
   overtime_duration?: number // 置顶时间 (分钟)
   start_time?: string
   end_time?: string
+  // 钥匙玩法字段
+  time_display_hidden?: boolean // 是否隐藏时间显示
 }
 
 export interface BoardTask extends BaseLockTask {

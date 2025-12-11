@@ -262,7 +262,7 @@ import { authApi } from '../lib/api'
 import { telegramApi, type TelegramStatus } from '../lib/api-telegram'
 import { smartGoBack } from '../utils/navigation'
 import LockStatus from '../components/LockStatus.vue'
-import type { User } from '../types/index.js'
+import type { User } from '../types/index'
 
 const route = useRoute()
 const router = useRouter()

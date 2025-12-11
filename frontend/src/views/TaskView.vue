@@ -176,16 +176,17 @@
                   <span class="label">持续时间:</span>
                   <span class="value">{{ formatDuration(task) }}</span>
                 </div>
-                <div v-if="task.task_type === 'lock' && (task as any).started_at" class="task-time">
+                <!-- 隐藏时间相关信息当 time_display_hidden 为 true 时 -->
+                <div v-if="task.task_type === 'lock' && (task as any).started_at && !isTaskTimeHidden(task)" class="task-time">
                   <span class="label">开始时间:</span>
                   <span class="value">{{ formatDateTime((task as any).started_at) }}</span>
                 </div>
-                <div v-if="task.task_type === 'lock' && (task as any).end_time" class="task-time">
+                <div v-if="task.task_type === 'lock' && (task as any).end_time && !isTaskTimeHidden(task)" class="task-time">
                   <span class="label">结束时间:</span>
                   <span class="value">{{ formatDateTime((task as any).end_time) }}</span>
                 </div>
-                <!-- 剩余时间显示 -->
-                <div v-if="getTimeRemaining(task) > 0" class="task-time-remaining">
+                <!-- 剩余时间显示 - 隐藏时间时不显示 -->
+                <div v-if="getTimeRemaining(task) > 0 && !isTaskTimeHidden(task)" class="task-time-remaining">
                   <span class="label">剩余时间:</span>
                   <span class="value countdown" :class="{ 'overtime': getTimeRemaining(task) <= 0 }">
                     {{ formatTimeRemaining(getTimeRemaining(task)) }}
@@ -193,12 +194,16 @@
                 </div>
                 <div v-else-if="(task.status === 'active' && task.task_type === 'lock') || (task.status === 'taken' && task.task_type === 'board')" class="task-time-remaining">
                   <span class="label">状态:</span>
-                  <span class="value overtime">倒计时已结束</span>
+                  <span v-if="!isTaskTimeHidden(task)" class="value overtime">倒计时已结束</span>
+                  <span v-else class="value time-hidden-placeholder">
+                    <span class="hidden-time-indicator">🔒 时间已隐藏</span>
+                  </span>
                 </div>
               </div>
 
               <div class="task-progress">
-                <div v-if="(task.task_type === 'lock' && task.status === 'active') || (task.task_type === 'board' && task.status === 'taken')" class="progress-bar mobile-progress-container">
+                <!-- 隐藏进度条当时间被隐藏时 -->
+                <div v-if="((task.task_type === 'lock' && task.status === 'active') || (task.task_type === 'board' && task.status === 'taken')) && !isTaskTimeHidden(task)" class="progress-bar mobile-progress-container">
                   <div
                     class="progress-fill mobile-progress-fill"
                     :class="getProgressColorClass(task)"
@@ -212,6 +217,10 @@
                   <div class="mobile-debug-info">
                     {{ getProgressPercent(task).toFixed(1) }}% {{ getProgressColorClass(task) }}
                   </div>
+                </div>
+                <!-- 时间隐藏时显示占位符 -->
+                <div v-else-if="((task.task_type === 'lock' && task.status === 'active') || (task.task_type === 'board' && task.status === 'taken')) && isTaskTimeHidden(task)" class="progress-hidden-placeholder">
+                  <span class="hidden-time-indicator">🔒 进度已隐藏</span>
                 </div>
                 <div class="task-user">
                   <div class="avatar">
@@ -243,16 +252,15 @@
       @success="handleTaskCreated"
     />
 
-    <!-- Overtime Notification -->
-    <OvertimeNotification
-      :is-visible="showOvertimeNotification"
-      :is-success="overtimeNotificationData.isSuccess"
-      :primary-message="overtimeNotificationData.primaryMessage"
-      :secondary-message="overtimeNotificationData.secondaryMessage"
-      :overtime-minutes="overtimeNotificationData.overtimeMinutes"
-      :new-end-time="overtimeNotificationData.newEndTime"
-      :error-code="overtimeNotificationData.errorCode"
-      @close="showOvertimeNotification = false"
+    <!-- Notification Toast -->
+    <NotificationToast
+      :is-visible="showToast"
+      :type="toastData.type"
+      :title="toastData.title"
+      :message="toastData.message"
+      :secondary-message="toastData.secondaryMessage"
+      :details="toastData.details"
+      @close="showToast = false"
     />
   </div>
 </template>
@@ -268,8 +276,8 @@ import { tasksApi } from '../lib/api-tasks'
 import { smartGoBack } from '../utils/navigation'
 import CreateTaskModal from '../components/CreateTaskModal.vue'
 import NotificationBell from '../components/NotificationBell.vue'
-import OvertimeNotification from '../components/OvertimeNotification.vue'
-import type { Task } from '../types/index.js'
+import NotificationToast from '../components/NotificationToast.vue'
+import type { Task } from '../types/index'
 import type { LockTask } from '../types'
 
 const router = useRouter()
@@ -285,18 +293,18 @@ const progressInterval = ref<number>()
 const taskCounts = ref<any>(null)
 const countsLoading = ref(false)
 
-// Overtime notification state
-const showOvertimeNotification = ref(false)
-const overtimeNotificationData = ref<{
-  isSuccess: boolean
-  primaryMessage: string
+// Toast notification state
+const showToast = ref(false)
+const toastData = ref<{
+  type: 'success' | 'error' | 'warning' | 'info'
+  title: string
+  message: string
   secondaryMessage?: string
-  overtimeMinutes?: number
-  newEndTime?: string
-  errorCode?: string
+  details?: Record<string, any>
 }>({
-  isSuccess: false,
-  primaryMessage: ''
+  type: 'info',
+  title: '',
+  message: ''
 })
 
 // Sorting state
@@ -737,6 +745,12 @@ const canAddOvertime = (task: Task) => {
          task.user.id !== authStore.user?.id
 }
 
+// Check if task time display is hidden
+const isTaskTimeHidden = (task: Task) => {
+  if (!task || task.task_type !== 'lock') return false
+  return (task as any).time_display_hidden || false
+}
+
 // Add overtime function
 const addOvertime = async (task: Task, event: Event) => {
   event.stopPropagation() // Prevent card click
@@ -756,14 +770,17 @@ const addOvertime = async (task: Task, event: Event) => {
     authStore.refreshUser()
 
     // Show success notification
-    overtimeNotificationData.value = {
-      isSuccess: true,
-      primaryMessage: `成功为任务加时 ${result.overtime_minutes} 分钟！`,
+    showToast.value = true
+    toastData.value = {
+      type: 'success',
+      title: '随机加时成功',
+      message: `成功为任务加时 ${result.overtime_minutes} 分钟！`,
       secondaryMessage: '任务时间已延长，继续加油吧！',
-      overtimeMinutes: result.overtime_minutes,
-      newEndTime: result.new_end_time
+      details: {
+        '加时时长': `${result.overtime_minutes} 分钟`,
+        '新的结束时间': formatDateTime(result.new_end_time)
+      }
     }
-    showOvertimeNotification.value = true
     console.log('任务加时成功:', result)
   } catch (error: any) {
     console.error('Error adding overtime:', error)
@@ -787,12 +804,13 @@ const addOvertime = async (task: Task, event: Event) => {
     }
 
     // Show error notification
-    overtimeNotificationData.value = {
-      isSuccess: false,
-      primaryMessage: errorMessage,
+    showToast.value = true
+    toastData.value = {
+      type: 'error',
+      title: '随机加时失败',
+      message: errorMessage,
       secondaryMessage: '请稍后重试或联系管理员'
     }
-    showOvertimeNotification.value = true
   }
 }
 
@@ -1779,6 +1797,53 @@ onUnmounted(() => {
       transform: scale(1.03);
       filter: brightness(1.3);
     }
+  }
+}
+
+/* 时间隐藏相关样式 */
+.time-hidden-placeholder {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.hidden-time-indicator {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.25rem 0.5rem;
+  background: linear-gradient(135deg, #343a40, #495057);
+  color: white;
+  border: 1px solid #000;
+  border-radius: 4px;
+  font-weight: 700;
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  box-shadow: 1px 1px 0 #000;
+  animation: gentle-pulse 2s ease-in-out infinite;
+}
+
+.progress-hidden-placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: 1;
+  height: 40px;
+  background: linear-gradient(135deg, #f8f9fa, #e9ecef);
+  border: 2px dashed #6c757d;
+  border-radius: 6px;
+  max-width: 66.67%;
+}
+
+@keyframes gentle-pulse {
+  0%, 100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.8;
+    transform: scale(1.02);
   }
 }
 </style>

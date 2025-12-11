@@ -47,7 +47,7 @@
 
 <script setup lang="ts">
 import { ref } from 'vue'
-import type { LockTask } from '../types/index.js'
+import type { LockTask } from '../types/index'
 
 interface Props {
   isVisible: boolean

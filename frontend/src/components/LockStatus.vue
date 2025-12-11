@@ -42,7 +42,7 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
-import type { ActiveLockTask } from '../types/index.js'
+import type { ActiveLockTask } from '../types/index'
 
 interface Props {
   lockTask?: ActiveLockTask | null

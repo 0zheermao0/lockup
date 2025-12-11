@@ -232,7 +232,7 @@
 import { ref, reactive, watch } from 'vue'
 import { tasksApi } from '../lib/api-tasks'
 import { postsApi } from '../lib/api'
-import type { TaskCreateRequest } from '../types/index.js'
+import type { TaskCreateRequest } from '../types/index'
 import DurationSelector from './DurationSelector.vue'
 
 interface Props {

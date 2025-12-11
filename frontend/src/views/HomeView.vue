@@ -42,7 +42,7 @@
         <!-- Sidebar -->
         <aside class="sidebar">
           <!-- Lock Status -->
-          <div class="lock-status-card">
+          <div v-if="authStore.user?.active_lock_task" class="lock-status-card">
             <LockStatus
               :lockTask="authStore.user?.active_lock_task"
               :showActions="true"
@@ -90,7 +90,7 @@
         <!-- Mobile Quick Access Bar -->
         <div class="mobile-quick-access">
           <!-- Lock Status Mobile -->
-          <div class="mobile-lock-status">
+          <div v-if="authStore.user?.active_lock_task" class="mobile-lock-status">
             <LockStatus
               :lockTask="authStore.user?.active_lock_task"
               :showActions="false"
@@ -264,7 +264,7 @@ import LockIndicator from '../components/LockIndicator.vue'
 import ProfileModal from '../components/ProfileModal.vue'
 import NotificationBell from '../components/NotificationBell.vue'
 import TaskBroadcast from '../components/TaskBroadcast.vue'
-import type { Post } from '../types/index.js'
+import type { Post } from '../types/index'
 
 const router = useRouter()
 const authStore = useAuthStore()
@@ -565,17 +565,55 @@ onMounted(() => {
 .sidebar {
   display: flex;
   flex-direction: column;
-  gap: 1.5rem;
+  gap: 1rem;
+  position: sticky;
+  top: 2rem;
+  height: fit-content;
+  max-height: calc(100vh - 4rem);
+  overflow-y: auto;
+  padding-right: 8px;
+  margin-right: -8px;
+}
+
+/* Custom scrollbar for Neo-Brutalism style */
+.sidebar::-webkit-scrollbar {
+  width: 8px;
+}
+
+.sidebar::-webkit-scrollbar-track {
+  background: #f1f1f1;
+  border: 2px solid #000;
+  border-radius: 4px;
+}
+
+.sidebar::-webkit-scrollbar-thumb {
+  background: linear-gradient(135deg, #667eea, #764ba2);
+  border: 2px solid #000;
+  border-radius: 4px;
+}
+
+.sidebar::-webkit-scrollbar-thumb:hover {
+  background: linear-gradient(135deg, #f093fb, #f5576c);
 }
 
 .lock-status-card,
 .user-card,
 .actions-card {
   background: white;
-  padding: 1.5rem;
+  padding: 1rem;
   border-radius: 8px;
-  border: 2px solid #000;
+  border: 3px solid #000;
   box-shadow: 4px 4px 0 #000;
+  transition: all 0.3s cubic-bezier(0.4, 0.0, 0.2, 1);
+  transform: translateZ(0);
+  will-change: transform, box-shadow;
+}
+
+.lock-status-card:hover,
+.user-card:hover,
+.actions-card:hover {
+  transform: translate(-2px, -2px);
+  box-shadow: 6px 6px 0 #000;
 }
 
 .lock-status-card {
@@ -585,69 +623,123 @@ onMounted(() => {
 
 .user-card h3,
 .actions-card h3 {
-  margin: 0 0 1rem 0;
+  margin: 0 0 0.75rem 0;
   font-weight: 900;
   text-transform: uppercase;
   letter-spacing: 1px;
+  color: #000;
+  text-shadow: 1px 1px 0 rgba(0, 0, 0, 0.1);
+  position: relative;
+  font-size: 0.9rem;
+}
+
+.user-card h3::after,
+.actions-card h3::after {
+  content: '';
+  position: absolute;
+  bottom: -4px;
+  left: 0;
+  width: 30px;
+  height: 3px;
+  background: linear-gradient(135deg, #667eea, #764ba2);
+  border-radius: 2px;
 }
 
 .info-item {
   display: flex;
   justify-content: space-between;
-  margin-bottom: 0.75rem;
+  margin-bottom: 0.5rem;
+  padding: 0.375rem 0;
+  border-bottom: 1px solid #f0f0f0;
+  transition: all 0.2s ease;
+}
+
+.info-item:hover {
+  background-color: #f8f9fa;
+  margin: 0 -0.5rem 0.5rem -0.5rem;
+  padding: 0.375rem 0.5rem;
+  border-radius: 4px;
+  border-bottom: 1px solid #e9ecef;
+}
+
+.info-item:last-child {
+  border-bottom: none;
+  margin-bottom: 0;
 }
 
 .label {
   color: #666;
   font-size: 0.875rem;
+  font-weight: 500;
 }
 
 .value {
-  font-weight: bold;
+  font-weight: 700;
+  color: #333;
+  padding: 0.25rem 0.5rem;
+  background: linear-gradient(135deg, #f8f9fa, #e9ecef);
+  border: 1px solid #dee2e6;
+  border-radius: 4px;
+  font-size: 0.875rem;
+  min-width: 40px;
+  text-align: center;
 }
 
 .action-btn {
   width: 100%;
-  padding: 0.75rem;
-  border: none;
-  border-radius: 4px;
-  font-weight: bold;
+  padding: 0.625rem;
+  border: 3px solid #000;
+  border-radius: 6px;
+  font-weight: 900;
   color: white;
-  margin-bottom: 0.75rem;
+  margin-bottom: 0.5rem;
   cursor: pointer;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  box-shadow: 3px 3px 0 #000;
+  transition: all 0.2s cubic-bezier(0.4, 0.0, 0.2, 1);
+  font-size: 0.8rem;
+  position: relative;
+  overflow: hidden;
 }
 
 .action-btn.blue {
-  background-color: #007bff;
+  background: linear-gradient(135deg, #007bff, #0056b3);
 }
 
 .action-btn.green {
-  background-color: #28a745;
+  background: linear-gradient(135deg, #28a745, #218838);
 }
 
 .action-btn.orange {
-  background-color: #fd7e14;
+  background: linear-gradient(135deg, #fd7e14, #e76500);
 }
 
 .action-btn.purple {
-  background-color: #6f42c1;
+  background: linear-gradient(135deg, #6f42c1, #5a2d91);
 }
 
 .action-btn.yellow {
-  background-color: #ffc107;
+  background: linear-gradient(135deg, #ffc107, #e0a800);
   color: #212529;
 }
 
 .action-btn.teal {
-  background-color: #20c997;
+  background: linear-gradient(135deg, #20c997, #17a2b8);
 }
 
 .action-btn.brown {
-  background-color: #8d6e63;
+  background: linear-gradient(135deg, #8d6e63, #6d4c41);
 }
 
 .action-btn:hover {
-  opacity: 0.9;
+  transform: translate(-2px, -2px);
+  box-shadow: 5px 5px 0 #000, 0 5px 10px rgba(0, 0, 0, 0.2);
+}
+
+.action-btn:active {
+  transform: translate(0, 0);
+  box-shadow: 2px 2px 0 #000, 0 2px 4px rgba(0, 0, 0, 0.1);
 }
 
 .posts-feed-header {
@@ -905,15 +997,21 @@ onMounted(() => {
 .mobile-quick-access {
   display: none;
   background: white;
-  border: 2px solid #000;
+  border: 3px solid #000;
   border-radius: 8px;
-  box-shadow: 4px 4px 0 #000;
+  box-shadow: 6px 6px 0 #000;
   margin-bottom: 1.5rem;
   padding: 1rem;
   gap: 1rem;
   align-items: center;
   overflow-x: auto;
   white-space: nowrap;
+  position: sticky;
+  top: 1rem;
+  z-index: 10;
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  transition: all 0.3s cubic-bezier(0.4, 0.0, 0.2, 1);
 }
 
 .mobile-lock-status {
@@ -957,31 +1055,51 @@ onMounted(() => {
 }
 
 .mobile-action-btn {
-  width: 44px;
-  height: 44px;
-  border: 2px solid #000;
+  width: 48px;
+  height: 48px;
+  border: 3px solid #000;
   border-radius: 50%;
   background: linear-gradient(135deg, #667eea, #764ba2);
   color: white;
   font-size: 1.2rem;
   cursor: pointer;
-  transition: all 0.2s ease;
+  transition: all 0.2s cubic-bezier(0.4, 0.0, 0.2, 1);
   display: flex;
   align-items: center;
   justify-content: center;
-  box-shadow: 2px 2px 0 rgba(0, 0, 0, 0.2);
+  box-shadow: 4px 4px 0 #000;
   flex-shrink: 0;
+  position: relative;
+  overflow: hidden;
+  font-weight: 600;
+}
+
+.mobile-action-btn::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: linear-gradient(135deg, rgba(255,255,255,0.2), transparent);
+  border-radius: inherit;
+  opacity: 0;
+  transition: opacity 0.3s ease;
+}
+
+.mobile-action-btn:hover::before {
+  opacity: 1;
 }
 
 .mobile-action-btn:hover {
-  transform: translateY(-1px);
-  box-shadow: 3px 3px 0 rgba(0, 0, 0, 0.3);
+  transform: translate(-2px, -2px);
+  box-shadow: 6px 6px 0 #000;
   background: linear-gradient(135deg, #f093fb, #f5576c);
 }
 
 .mobile-action-btn:active {
-  transform: translateY(0);
-  box-shadow: 1px 1px 0 rgba(0, 0, 0, 0.2);
+  transform: translate(0, 0);
+  box-shadow: 2px 2px 0 #000;
 }
 
 /* Mobile responsive */

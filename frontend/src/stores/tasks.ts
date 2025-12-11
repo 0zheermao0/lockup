@@ -1,7 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import { tasksApi } from '../lib/api-tasks'
-import type { PaginatedResponse, LockTask, BoardTask, Task } from '../types/index.js'
+import type { PaginatedResponse, LockTask, BoardTask, Task } from '../types/index'
 
 export const useTasksStore = defineStore('tasks', () => {
   // State

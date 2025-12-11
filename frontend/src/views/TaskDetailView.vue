@@ -123,6 +123,7 @@
                 >
                   ⏰ 随机加时
                 </button>
+
               </div>
             </div>
           </section>
@@ -167,8 +168,11 @@
             <div class="task-details-grid">
               <div v-if="task.task_type === 'lock' && task.status === 'active'" class="detail-item">
                 <span class="label">剩余时间</span>
-                <span class="value countdown-display" :class="{ 'overtime': timeRemaining <= 0 }">
+                <span v-if="!taskTimeDisplayHidden" class="value countdown-display" :class="{ 'overtime': timeRemaining <= 0 }">
                   {{ timeRemaining > 0 ? formatTimeRemaining(timeRemaining) : '倒计时已结束' }}
+                </span>
+                <span v-else class="value">
+                  <span class="hidden-time-placeholder">🔒 时间已隐藏</span>
                 </span>
               </div>
               <div v-if="task.task_type === 'lock' && taskStartTime" class="detail-item">
@@ -177,7 +181,12 @@
               </div>
               <div v-if="task.task_type === 'lock' && taskEndTime" class="detail-item">
                 <span class="label">预计结束时间</span>
-                <span class="value">{{ formatDateTime(taskEndTime) }}</span>
+                <span v-if="!taskTimeDisplayHidden" class="value">
+                  {{ formatDateTime(taskEndTime) }}
+                </span>
+                <span v-else class="value">
+                  <span class="hidden-time-placeholder">🔒 时间已隐藏</span>
+                </span>
               </div>
               <div class="detail-item">
                 <span class="label">难度等级</span>
@@ -220,7 +229,10 @@
                   <div class="timeline-content">
                     <div class="timeline-title">{{ event.event_type_display }}</div>
                     <div class="timeline-description">{{ event.description }}</div>
-                    <div class="timeline-time">{{ formatDateTime(event.created_at) }}</div>
+                    <div v-if="!taskTimeDisplayHidden" class="timeline-time">{{ formatDateTime(event.created_at) }}</div>
+                    <div v-else class="timeline-time-hidden">
+                      <span class="hidden-time-placeholder">🔒 时间已隐藏</span>
+                    </div>
                     <div v-if="event.user" class="timeline-user">
                       操作者:
                       <button
@@ -231,12 +243,18 @@
                         {{ event.user.username }}
                       </button>
                     </div>
-                    <div v-if="event.time_change_minutes" class="timeline-time-change">
+                    <div v-if="event.time_change_minutes && !taskTimeDisplayHidden" class="timeline-time-change">
                       时间变化: {{ event.time_change_minutes > 0 ? '+' : '' }}{{ event.time_change_minutes }} 分钟
                     </div>
-                    <div v-if="event.previous_end_time && event.new_end_time" class="timeline-times">
+                    <div v-else-if="event.time_change_minutes && taskTimeDisplayHidden" class="timeline-time-change-hidden">
+                      <span class="hidden-time-placeholder">🔒 时间变化已隐藏</span>
+                    </div>
+                    <div v-if="event.previous_end_time && event.new_end_time && !taskTimeDisplayHidden" class="timeline-times">
                       <div class="previous-time">原定结束: {{ formatDateTime(event.previous_end_time) }}</div>
                       <div class="new-time">新的结束: {{ formatDateTime(event.new_end_time) }}</div>
+                    </div>
+                    <div v-else-if="event.previous_end_time && event.new_end_time && taskTimeDisplayHidden" class="timeline-times-hidden">
+                      <span class="hidden-time-placeholder">🔒 时间信息已隐藏</span>
                     </div>
                   </div>
                 </div>
@@ -262,15 +280,21 @@
             <!-- Progress Bar for Active Lock Tasks or Taken Board Tasks -->
             <div v-if="(task.task_type === 'lock' && task.status === 'active') || (task.task_type === 'board' && task.status === 'taken')" class="task-progress-section">
               <h3>进度</h3>
-              <div class="progress-container">
+              <div v-if="!taskTimeDisplayHidden" class="progress-container">
                 <div class="progress-bar">
                   <div class="progress-fill" :style="{ width: progressPercent + '%' }"></div>
                 </div>
                 <div class="progress-text">{{ progressPercent.toFixed(1) }}% 完成</div>
               </div>
+              <div v-else class="progress-hidden-section">
+                <span class="hidden-time-placeholder">🔒 进度已隐藏</span>
+              </div>
               <div class="time-remaining">
-                <span v-if="timeRemaining > 0">剩余时间: {{ formatTimeRemaining(timeRemaining) }}</span>
-                <span v-else class="overtime">倒计时已结束</span>
+                <span v-if="!taskTimeDisplayHidden">
+                  <span v-if="timeRemaining > 0">剩余时间: {{ formatTimeRemaining(timeRemaining) }}</span>
+                  <span v-else class="overtime">倒计时已结束</span>
+                </span>
+                <span v-else class="hidden-time-placeholder">🔒 时间已隐藏</span>
               </div>
 
               <!-- 带锁任务完成提示 -->
@@ -289,7 +313,12 @@
                       🗳️ 投票解锁任务：倒计时结束后可发起投票，投票通过后等待实际时间结束才能完成
                     </div>
                     <div v-else-if="timeRemaining > 0" class="hint-waiting">
-                      ✅ 投票已通过！等待倒计时结束后可手动完成任务：{{ formatTimeRemaining(timeRemaining) }}
+                      <span v-if="!taskTimeDisplayHidden">
+                        ✅ 投票已通过！等待倒计时结束后可手动完成任务：{{ formatTimeRemaining(timeRemaining) }}
+                      </span>
+                      <span v-else>
+                        ✅ 投票已通过！等待倒计时结束后可手动完成任务：<span class="hidden-time-placeholder">🔒 时间已隐藏</span>
+                      </span>
                     </div>
                     <div v-else class="hint-ready">
                       🎉 投票已通过且倒计时已结束，您可以手动完成任务！
@@ -328,7 +357,12 @@
             <!-- Task in active state, waiting for countdown -->
             <div v-if="task.status === 'active'" class="voting-waiting">
               <div v-if="timeRemaining > 0" class="vote-countdown-notice">
-                ⏳ 投票将在倒计时结束后开放: {{ formatTimeRemaining(timeRemaining) }}
+                <span v-if="!taskTimeDisplayHidden">
+                  ⏳ 投票将在倒计时结束后开放: {{ formatTimeRemaining(timeRemaining) }}
+                </span>
+                <span v-else>
+                  ⏳ 投票将在倒计时结束后开放: <span class="hidden-time-placeholder">🔒 时间已隐藏</span>
+                </span>
               </div>
               <div v-else-if="isOwnTask" class="vote-ready-notice">
                 ✅ 倒计时已结束，你可以发起投票！点击按钮开始10分钟投票期
@@ -343,11 +377,19 @@
               <div class="voting-period-info">
                 <h4>🗳️ 投票期进行中</h4>
                 <div class="voting-countdown">
-                  投票剩余时间: <strong>{{ formatVotingTimeRemaining() }}</strong>
+                  <span v-if="!taskTimeDisplayHidden">
+                    投票剩余时间: <strong>{{ formatVotingTimeRemaining() }}</strong>
+                  </span>
+                  <span v-else>
+                    投票剩余时间: <span class="hidden-time-placeholder">🔒 时间已隐藏</span>
+                  </span>
                 </div>
-                <div class="voting-schedule">
+                <div v-if="!taskTimeDisplayHidden" class="voting-schedule">
                   投票开始: {{ formatDateTime(taskVotingStartTime || '') }}<br>
                   投票结束: {{ formatDateTime(taskVotingEndTime || '') }}
+                </div>
+                <div v-else class="voting-schedule">
+                  <span class="hidden-time-placeholder">🔒 投票时间已隐藏</span>
                 </div>
               </div>
             </div>
@@ -415,6 +457,89 @@
               </div>
             </div>
           </section>
+
+          <!-- Key Holder Actions Section -->
+          <section v-if="canManageKeyActions" class="key-holder-section">
+            <div class="key-holder-header">
+              <h3>🔑 钥匙持有者专属操作</h3>
+              <div class="key-holder-info">
+                <span class="coins-display">💰 当前积分: {{ authStore.user?.coins || 0 }}</span>
+              </div>
+            </div>
+
+            <div class="key-actions-grid">
+              <!-- Manual Time Adjustment -->
+              <div class="key-action-card">
+                <div class="action-header">
+                  <h4>⏰ 手动时间调整</h4>
+                  <span class="action-cost">消耗 10 积分</span>
+                </div>
+                <p class="action-description">固定调整任务时间 ±20 分钟</p>
+                <div class="action-buttons">
+                  <button
+                    @click="manualTimeAdjustment('increase')"
+                    :disabled="!canAffordTimeAdjustment"
+                    class="key-action-btn increase"
+                    :class="{ 'disabled': !canAffordTimeAdjustment }"
+                  >
+                    ⏰ 加时
+                  </button>
+                  <button
+                    @click="manualTimeAdjustment('decrease')"
+                    :disabled="!canAffordTimeAdjustment"
+                    class="key-action-btn decrease"
+                    :class="{ 'disabled': !canAffordTimeAdjustment }"
+                  >
+                    ⏰ 减时
+                  </button>
+                </div>
+              </div>
+
+              <!-- Time Display Toggle -->
+              <div class="key-action-card">
+                <div class="action-header">
+                  <h4>👁️ 时间显示控制</h4>
+                  <span class="action-cost">消耗 50 积分</span>
+                </div>
+                <p class="action-description">
+                  当前状态: {{ taskTimeDisplayHidden ? '🌫️ 时间已隐藏' : '👁️ 时间可见' }}
+                </p>
+                <div class="action-buttons">
+                  <button
+                    @click="toggleTimeDisplay"
+                    :disabled="!canAffordTimeToggle"
+                    class="key-action-btn time-toggle"
+                    :class="{
+                      'disabled': !canAffordTimeToggle,
+                      'hidden-mode': taskTimeDisplayHidden
+                    }"
+                  >
+                    {{ taskTimeDisplayHidden ? '👁️ 显示时间' : '🙈 隐藏时间' }}
+                  </button>
+                </div>
+              </div>
+
+              <!-- Key Return Option -->
+              <div v-if="taskKey && taskKey.original_owner && taskKey.original_owner.id !== authStore.user?.id" class="key-action-card">
+                <div class="action-header">
+                  <h4>🔄 钥匙归还</h4>
+                  <span class="action-cost">免费</span>
+                </div>
+                <p class="action-description">
+                  将钥匙归还给原持有者: <strong>{{ taskKey.original_owner.username }}</strong>
+                </p>
+                <div class="action-buttons">
+                  <button
+                    @click="returnKeyToOriginalOwner"
+                    :disabled="returningKey"
+                    class="key-action-btn return"
+                  >
+                    {{ returningKey ? '归还中...' : '🔄 归还钥匙' }}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </section>
         </div>
       </div>
     </main>
@@ -454,16 +579,16 @@
       @close="closeShareModal"
     />
 
-    <!-- Overtime Notification -->
-    <OvertimeNotification
-      :is-visible="showOvertimeNotification"
-      :is-success="overtimeNotificationData.isSuccess"
-      :primary-message="overtimeNotificationData.primaryMessage"
-      :secondary-message="overtimeNotificationData.secondaryMessage"
-      :overtime-minutes="overtimeNotificationData.overtimeMinutes"
-      :new-end-time="overtimeNotificationData.newEndTime"
-      :error-code="overtimeNotificationData.errorCode"
-      @close="showOvertimeNotification = false"
+
+    <!-- Notification Toast -->
+    <NotificationToast
+      :is-visible="showToast"
+      :type="toastData.type"
+      :title="toastData.title"
+      :message="toastData.message"
+      :secondary-message="toastData.secondaryMessage"
+      :details="toastData.details"
+      @close="showToast = false"
     />
   </div>
 </template>
@@ -480,8 +605,8 @@ import TaskSubmissionModal from '../components/TaskSubmissionModal.vue'
 import ProfileModal from '../components/ProfileModal.vue'
 import VoteConfirmationModal from '../components/VoteConfirmationModal.vue'
 import ShareModal from '../components/ShareModal.vue'
-import OvertimeNotification from '../components/OvertimeNotification.vue'
-import type { Task } from '../types/index.js'
+import NotificationToast from '../components/NotificationToast.vue'
+import type { Task } from '../types/index'
 
 const route = useRoute()
 const router = useRouter()
@@ -510,18 +635,19 @@ const taskKey = ref<any>(null)
 const returningKey = ref(false)
 const showShareModal = ref(false)
 
-// Overtime notification state
-const showOvertimeNotification = ref(false)
-const overtimeNotificationData = ref<{
-  isSuccess: boolean
-  primaryMessage: string
+
+// Toast notification state
+const showToast = ref(false)
+const toastData = ref<{
+  type: 'success' | 'error' | 'warning' | 'info'
+  title: string
+  message: string
   secondaryMessage?: string
-  overtimeMinutes?: number
-  newEndTime?: string
-  errorCode?: string
+  details?: Record<string, any>
 }>({
-  isSuccess: false,
-  primaryMessage: ''
+  type: 'info',
+  title: '',
+  message: ''
 })
 
 // Computed properties for template access
@@ -882,6 +1008,38 @@ const shareUrl = computed(() => {
   if (!task.value) return ''
   const baseUrl = window.location.origin
   return `${baseUrl}/tasks/${task.value.id}`
+})
+
+// 钥匙玩法相关计算属性
+const taskTimeDisplayHidden = computed(() => {
+  if (!task.value || task.value.task_type !== 'lock') return false
+  return (task.value as any).time_display_hidden || false
+})
+
+const canManageKeyActions = computed(() => {
+  if (!task.value || task.value.task_type !== 'lock') return false
+
+  // Only key holders can manage key actions
+  const isKeyHolder = hasTaskKey.value && !keyCheckLoading.value
+
+  console.log('🔑 canManageKeyActions check:', {
+    hasTaskKey: hasTaskKey.value,
+    keyCheckLoading: keyCheckLoading.value,
+    isKeyHolder,
+    taskId: task.value.id
+  })
+
+  return isKeyHolder
+})
+
+const canAffordTimeAdjustment = computed(() => {
+  if (!authStore.user || !canManageKeyActions.value) return false
+  return authStore.user.coins >= 10 // 手动时间调整需要10积分
+})
+
+const canAffordTimeToggle = computed(() => {
+  if (!authStore.user || !canManageKeyActions.value) return false
+  return authStore.user.coins >= 50 // 时间显示切换需要50积分
 })
 
 // Methods
@@ -1495,14 +1653,17 @@ const addOvertime = async () => {
     authStore.refreshUser()
 
     // 显示加时信息
-    overtimeNotificationData.value = {
-      isSuccess: true,
-      primaryMessage: `成功为任务加时 ${result.overtime_minutes} 分钟！`,
+    showToast.value = true
+    toastData.value = {
+      type: 'success',
+      title: '随机加时成功',
+      message: `成功为任务加时 ${result.overtime_minutes} 分钟！`,
       secondaryMessage: '任务时间已延长，继续加油吧！',
-      overtimeMinutes: result.overtime_minutes,
-      newEndTime: result.new_end_time
+      details: {
+        '加时时长': `${result.overtime_minutes} 分钟`,
+        '新的结束时间': formatDateTime(result.new_end_time)
+      }
     }
-    showOvertimeNotification.value = true
     console.log('任务加时成功:', result)
   } catch (error: any) {
     console.error('Error adding overtime:', error)
@@ -1524,26 +1685,29 @@ const addOvertime = async () => {
     }
 
     // 显示错误通知
-    overtimeNotificationData.value = {
-      isSuccess: false,
-      primaryMessage: errorMessage,
+    showToast.value = true
+    toastData.value = {
+      type: 'error',
+      title: '随机加时失败',
+      message: errorMessage,
       secondaryMessage: '请稍后重试或联系管理员'
     }
-    showOvertimeNotification.value = true
   }
 }
 
 const returnKeyToOriginalOwner = async () => {
   if (!taskKey.value || !taskKey.value.original_owner) {
-    alert('无法归还：钥匙信息不完整')
+    showToast.value = true
+    toastData.value = {
+      type: 'error',
+      title: '无法归还',
+      message: '钥匙信息不完整',
+      secondaryMessage: '请刷新页面后重试'
+    }
     return
   }
 
   const originalOwnerName = taskKey.value.original_owner.username
-
-  if (!confirm(`确定要将钥匙归还给 ${originalOwnerName} 吗？\n\n归还后您将失去对此任务的控制权。`)) {
-    return
-  }
 
   try {
     returningKey.value = true
@@ -1553,7 +1717,19 @@ const returnKeyToOriginalOwner = async () => {
     // 重新检查钥匙状态
     await checkUserHasTaskKey()
 
-    alert(`✅ 成功将钥匙归还给 ${originalOwnerName}`)
+    showToast.value = true
+    toastData.value = {
+      type: 'success',
+      title: '钥匙归还成功',
+      message: `🔄 已成功将钥匙归还给 ${originalOwnerName}`,
+      secondaryMessage: '您已失去对此任务的控制权',
+      details: {
+        '归还对象': originalOwnerName,
+        '操作时间': formatDateTime(new Date().toISOString()),
+        '状态变化': '钥匙持有者 → 普通用户'
+      }
+    }
+
     console.log('钥匙归还成功:', result)
 
   } catch (error: any) {
@@ -1561,9 +1737,9 @@ const returnKeyToOriginalOwner = async () => {
 
     // 处理特定错误消息
     let errorMessage = '归还钥匙失败，请重试'
+    let secondaryMessage = '请稍后重试或联系管理员'
 
     if (error.data?.error) {
-      // 直接显示后端返回的具体错误信息
       errorMessage = error.data.error
     } else if (error.status === 404) {
       errorMessage = '钥匙不存在或您没有权限归还此钥匙'
@@ -1572,13 +1748,187 @@ const returnKeyToOriginalOwner = async () => {
     } else if (error.status === 500) {
       errorMessage = '服务器内部错误，请稍后重试'
     } else if (error.message) {
-      // 网络错误或其他客户端错误
       errorMessage = `网络错误：${error.message}`
     }
 
-    alert(`❌ ${errorMessage}`)
+    showToast.value = true
+    toastData.value = {
+      type: 'error',
+      title: '归还失败',
+      message: errorMessage,
+      secondaryMessage: secondaryMessage
+    }
   } finally {
     returningKey.value = false
+  }
+}
+
+// 钥匙玩法方法
+const manualTimeAdjustment = async (type: 'increase' | 'decrease') => {
+  if (!task.value || !canAffordTimeAdjustment.value) {
+    showToast.value = true
+    toastData.value = {
+      type: 'error',
+      title: '操作失败',
+      message: '积分不足或无权限进行时间调整',
+      secondaryMessage: '请检查您的积分余额和权限设置'
+    }
+    return
+  }
+
+  // 检查剩余时间
+  const remaining = timeRemaining.value
+  const remainingMinutes = Math.floor(remaining / (1000 * 60))
+
+  if (type === 'decrease' && remaining <= 0) {
+    showToast.value = true
+    toastData.value = {
+      type: 'warning',
+      title: '无法减时',
+      message: '任务倒计时已结束，无法进行减时操作',
+      secondaryMessage: '只能对正在倒计时的任务进行时间调整'
+    }
+    return
+  }
+
+  try {
+    const result = await tasksApi.manualTimeAdjustment(task.value.id, type)
+
+    // 更新任务结束时间
+    if (result.new_end_time && task.value && task.value.task_type === 'lock') {
+      (task.value as any).end_time = result.new_end_time
+    }
+
+    // 刷新用户数据以更新积分
+    await authStore.refreshUser()
+
+    // 刷新任务时间线
+    await fetchTimeline()
+
+    // 显示成功消息
+    const actionText = type === 'increase' ? '加时' : '减时'
+    const adjustmentMinutes = Math.abs(result.adjustment_minutes)
+
+    showToast.value = true
+    toastData.value = {
+      type: 'success',
+      title: `${actionText}成功`,
+      message: `已${actionText} ${adjustmentMinutes} 分钟`,
+      secondaryMessage: `消耗了 ${result.cost} 积分`,
+      details: {
+        '调整时间': `${result.adjustment_minutes > 0 ? '+' : ''}${result.adjustment_minutes} 分钟`,
+        '消耗积分': `${result.cost} 积分`,
+        '剩余积分': `${result.remaining_coins} 积分`,
+        '新的结束时间': formatDateTime(result.new_end_time)
+      }
+    }
+
+    console.log('手动时间调整成功:', result)
+  } catch (error: any) {
+    console.error('Error adjusting time:', error)
+
+    // 处理特定错误消息
+    let errorMessage = '时间调整失败，请重试'
+    let secondaryMessage = '请稍后重试或联系管理员'
+
+    if (error.data?.error) {
+      errorMessage = error.data.error
+    } else if (error.status === 404) {
+      errorMessage = '任务不存在或已被删除'
+    } else if (error.status === 403) {
+      errorMessage = '您没有权限调整此任务的时间'
+    } else if (error.status === 400) {
+      errorMessage = '积分不足或操作无效'
+      secondaryMessage = '请检查您的积分余额'
+    } else if (error.status === 500) {
+      errorMessage = '服务器内部错误，请稍后重试'
+    } else if (error.message) {
+      errorMessage = `网络错误：${error.message}`
+    }
+
+    showToast.value = true
+    toastData.value = {
+      type: 'error',
+      title: '操作失败',
+      message: errorMessage,
+      secondaryMessage: secondaryMessage
+    }
+  }
+}
+
+const toggleTimeDisplay = async () => {
+  if (!task.value || !canAffordTimeToggle.value) {
+    showToast.value = true
+    toastData.value = {
+      type: 'error',
+      title: '操作失败',
+      message: '积分不足或无权限切换时间显示',
+      secondaryMessage: '切换时间显示需要50积分，请检查您的余额'
+    }
+    return
+  }
+
+  try {
+    const result = await tasksApi.toggleTimeDisplay(task.value.id)
+
+    // 更新任务的时间显示状态
+    if (task.value && task.value.task_type === 'lock') {
+      (task.value as any).time_display_hidden = result.time_display_hidden
+    }
+
+    // 刷新用户数据以更新积分
+    await authStore.refreshUser()
+
+    // 刷新任务时间线
+    await fetchTimeline()
+
+    // 显示成功消息
+    const statusText = result.time_display_hidden ? '隐藏' : '显示'
+    const statusIcon = result.time_display_hidden ? '🙈' : '👁️'
+
+    showToast.value = true
+    toastData.value = {
+      type: 'success',
+      title: `时间${statusText}成功`,
+      message: `${statusIcon} 时间显示已${statusText}`,
+      secondaryMessage: `消耗了 ${result.cost} 积分`,
+      details: {
+        '当前状态': result.time_display_hidden ? '🌫️ 时间已隐藏' : '👁️ 时间可见',
+        '消耗积分': `${result.cost} 积分`,
+        '剩余积分': `${result.remaining_coins} 积分`
+      }
+    }
+
+    console.log('时间显示切换成功:', result)
+  } catch (error: any) {
+    console.error('Error toggling time display:', error)
+
+    // 处理特定错误消息
+    let errorMessage = '时间显示切换失败，请重试'
+    let secondaryMessage = '请稍后重试或联系管理员'
+
+    if (error.data?.error) {
+      errorMessage = error.data.error
+    } else if (error.status === 404) {
+      errorMessage = '任务不存在或已被删除'
+    } else if (error.status === 403) {
+      errorMessage = '您没有权限切换此任务的时间显示'
+    } else if (error.status === 400) {
+      errorMessage = '积分不足或操作无效'
+      secondaryMessage = '请检查您的积分余额'
+    } else if (error.status === 500) {
+      errorMessage = '服务器内部错误，请稍后重试'
+    } else if (error.message) {
+      errorMessage = `网络错误：${error.message}`
+    }
+
+    showToast.value = true
+    toastData.value = {
+      type: 'error',
+      title: '操作失败',
+      message: errorMessage,
+      secondaryMessage: secondaryMessage
+    }
   }
 }
 
@@ -2899,6 +3249,20 @@ onUnmounted(() => {
   background-color: #6c757d;
 }
 
+.timeline-time-hidden,
+.timeline-time-change-hidden,
+.timeline-times-hidden {
+  margin: 0.25rem 0;
+}
+
+.timeline-time-hidden .hidden-time-placeholder,
+.timeline-time-change-hidden .hidden-time-placeholder,
+.timeline-times-hidden .hidden-time-placeholder {
+  font-size: 0.7rem;
+  padding: 0.25rem 0.5rem;
+  margin: 0;
+}
+
 @keyframes pulse-success {
   0%, 100% { opacity: 1; transform: scale(1); }
   50% { opacity: 0.7; transform: scale(1.1); }
@@ -2958,4 +3322,254 @@ onUnmounted(() => {
     opacity: 0.7;
   }
 }
+
+/* 时间隐藏占位符样式 */
+.progress-hidden-section {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+  background: linear-gradient(135deg, #f8f9fa, #e9ecef);
+  border: 2px dashed #6c757d;
+  border-radius: 8px;
+  margin-bottom: 1rem;
+}
+
+.hidden-time-placeholder {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 1rem;
+  background: linear-gradient(135deg, #343a40, #495057);
+  color: white;
+  border: 2px solid #000;
+  border-radius: 6px;
+  font-weight: 700;
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  box-shadow: 2px 2px 0 #000;
+  animation: gentle-pulse 2s ease-in-out infinite;
+}
+
+@keyframes gentle-pulse {
+  0%, 100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.8;
+    transform: scale(1.02);
+  }
+}
+
+/* 钥匙持有者操作部分样式 */
+.key-holder-section {
+  background: white;
+  border: 4px solid #000;
+  border-radius: 12px;
+  box-shadow: 8px 8px 0 #000;
+  padding: 2rem;
+  margin-top: 2rem;
+}
+
+.key-holder-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 2rem;
+  padding-bottom: 1rem;
+  border-bottom: 3px solid #000;
+}
+
+.key-holder-header h3 {
+  margin: 0;
+  font-size: 1.5rem;
+  font-weight: 900;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: #000;
+}
+
+.key-holder-info {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.coins-display {
+  background: linear-gradient(135deg, #ffc107, #fd7e14);
+  color: #000;
+  padding: 0.5rem 1rem;
+  border: 3px solid #000;
+  border-radius: 8px;
+  font-weight: 900;
+  font-size: 0.9rem;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  box-shadow: 3px 3px 0 #000;
+}
+
+.key-actions-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 1.5rem;
+}
+
+.key-action-card {
+  background: linear-gradient(135deg, #f8f9fa, #e9ecef);
+  border: 3px solid #000;
+  border-radius: 8px;
+  padding: 1.5rem;
+  box-shadow: 4px 4px 0 #000;
+  transition: all 0.2s ease;
+}
+
+.key-action-card:hover {
+  transform: translate(-2px, -2px);
+  box-shadow: 6px 6px 0 #000;
+}
+
+.action-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.75rem;
+}
+
+.action-header h4 {
+  margin: 0;
+  font-size: 1.1rem;
+  font-weight: 800;
+  color: #000;
+}
+
+.action-cost {
+  background: linear-gradient(135deg, #dc3545, #c82333);
+  color: white;
+  padding: 0.25rem 0.75rem;
+  border: 2px solid #000;
+  border-radius: 4px;
+  font-weight: 700;
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  box-shadow: 2px 2px 0 #000;
+}
+
+.action-description {
+  margin: 0 0 1rem 0;
+  font-size: 0.9rem;
+  color: #495057;
+  line-height: 1.4;
+}
+
+.action-buttons {
+  display: flex;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.key-action-btn {
+  background: linear-gradient(135deg, #007bff, #0056b3);
+  color: white;
+  border: 3px solid #000;
+  border-radius: 6px;
+  padding: 0.75rem 1.5rem;
+  font-weight: 800;
+  font-size: 0.9rem;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  cursor: pointer;
+  box-shadow: 3px 3px 0 #000;
+  transition: all 0.2s ease;
+  min-width: 120px;
+}
+
+.key-action-btn:hover:not(.disabled) {
+  transform: translate(-1px, -1px);
+  box-shadow: 4px 4px 0 #000;
+}
+
+.key-action-btn.disabled {
+  background: linear-gradient(135deg, #6c757d, #5a6268);
+  color: #adb5bd;
+  cursor: not-allowed;
+  opacity: 0.6;
+  transform: none;
+  box-shadow: 2px 2px 0 #000;
+}
+
+.key-action-btn.increase {
+  background: linear-gradient(135deg, #28a745, #218838);
+}
+
+.key-action-btn.increase:hover:not(.disabled) {
+  background: linear-gradient(135deg, #218838, #1e7e34);
+}
+
+.key-action-btn.decrease {
+  background: linear-gradient(135deg, #dc3545, #c82333);
+}
+
+.key-action-btn.decrease:hover:not(.disabled) {
+  background: linear-gradient(135deg, #c82333, #bd2130);
+}
+
+.key-action-btn.time-toggle {
+  background: linear-gradient(135deg, #fd7e14, #e76500);
+  min-width: 160px;
+}
+
+.key-action-btn.time-toggle:hover:not(.disabled) {
+  background: linear-gradient(135deg, #e76500, #dc5f00);
+}
+
+.key-action-btn.time-toggle.hidden-mode {
+  background: linear-gradient(135deg, #17a2b8, #138496);
+  animation: pulse-hidden-mode 2s ease-in-out infinite;
+}
+
+.key-action-btn.return {
+  background: linear-gradient(135deg, #6f42c1, #5a2d91);
+}
+
+.key-action-btn.return:hover:not(:disabled) {
+  background: linear-gradient(135deg, #5a2d91, #4c2a85);
+}
+
+@keyframes pulse-hidden-mode {
+  0%, 100% {
+    opacity: 1;
+    box-shadow: 3px 3px 0 #000;
+  }
+  50% {
+    opacity: 0.8;
+    box-shadow: 5px 5px 0 #000;
+    transform: translate(-1px, -1px);
+  }
+}
+
+/* Mobile responsive for key holder section */
+@media (max-width: 768px) {
+  .key-holder-header {
+    flex-direction: column;
+    gap: 1rem;
+    text-align: center;
+  }
+
+  .key-actions-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .action-buttons {
+    justify-content: center;
+  }
+
+  .key-action-btn {
+    flex: 1;
+    min-width: auto;
+  }
+}
+
 </style>

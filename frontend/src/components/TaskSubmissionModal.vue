@@ -151,7 +151,7 @@
 import { ref, reactive, watch } from 'vue'
 import { tasksApi } from '../lib/api'
 import RichTextEditor from './RichTextEditor.vue'
-import type { LockTask } from '../types/index.js'
+import type { LockTask } from '../types/index'
 
 interface Props {
   isVisible: boolean

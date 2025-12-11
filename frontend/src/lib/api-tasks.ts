@@ -1,4 +1,4 @@
-import type { LockTask, TaskCreateRequest } from '../types/index.js'
+import type { LockTask, TaskCreateRequest } from '../types/index'
 import { API_BASE_URL } from '../config/index.js';
 
 class ApiError extends Error {
@@ -277,5 +277,31 @@ export const tasksApi = {
     }
   }> => {
     return apiRequest('/tasks/counts/')
+  },
+
+  // 手动时间调整（钥匙玩法）
+  manualTimeAdjustment: async (id: string, type: 'increase' | 'decrease'): Promise<{
+    message: string
+    adjustment_minutes: number
+    new_end_time: string
+    cost: number
+    remaining_coins: number
+  }> => {
+    return apiRequest(`/tasks/${id}/manual-time-adjustment/`, {
+      method: 'POST',
+      body: JSON.stringify({ type })
+    })
+  },
+
+  // 切换时间显示/隐藏（钥匙玩法）
+  toggleTimeDisplay: async (id: string): Promise<{
+    message: string
+    time_display_hidden: boolean
+    cost: number
+    remaining_coins: number
+  }> => {
+    return apiRequest(`/tasks/${id}/toggle-time-display/`, {
+      method: 'POST'
+    })
   }
 }

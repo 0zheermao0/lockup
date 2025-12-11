@@ -253,7 +253,7 @@ import { smartGoBack } from '../utils/navigation'
 import LockIndicator from '../components/LockIndicator.vue'
 import ProfileModal from '../components/ProfileModal.vue'
 import RichTextEditor from '../components/RichTextEditor.vue'
-import type { Post } from '../types/index.js'
+import type { Post } from '../types/index'
 
 const route = useRoute()
 const router = useRouter()
