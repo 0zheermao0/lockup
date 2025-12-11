@@ -1,8 +1,29 @@
-asgiref==3.10.0
+# Core Django Framework
 Django==5.2.7
-django-cors-headers==4.9.0
 djangorestframework==3.16.1
-pillow==11.3.0
+
+# Database Support
+dj-database-url==2.3.0  # For production database configuration
+psycopg2-binary==2.10.1  # PostgreSQL adapter for production
+
+# Configuration Management
+python-dotenv==1.0.1  # Environment variables management (used in settings.py)
+
+# Cross-Origin Resource Sharing
+django-cors-headers==4.9.0
+
+# Image Processing
+Pillow==11.3.0
+
+# Authentication & Security
 PyJWT==2.10.1
-python-decouple==3.8
+
+# HTTP Requests (for Telegram Bot)
+requests==2.32.5
+
+# Utilities
+pytz==2025.2  # Timezone support
+
+# Core Dependencies (auto-installed with Django but explicit for clarity)
+asgiref==3.10.0
 sqlparse==0.5.3
