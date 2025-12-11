@@ -858,7 +858,7 @@ const shareUrl = computed(() => {
 
 // Methods
 const goBack = () => {
-  smartGoBack(router, 'tasks')
+  smartGoBack(router, { defaultRoute: 'home' })
 }
 
 const openShareModal = () => {

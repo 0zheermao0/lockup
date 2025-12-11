@@ -294,7 +294,7 @@ const isOwnProfile = computed(() => {
 
 
 const goBack = () => {
-  smartGoBack(router, 'home')
+  smartGoBack(router, { defaultRoute: 'home' })
 }
 
 const fetchUserProfile = async () => {

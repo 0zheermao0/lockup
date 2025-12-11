@@ -141,7 +141,7 @@ const router = useRouter()
 
 // Methods
 const goBack = () => {
-  smartGoBack(router, 'home')
+  smartGoBack(router, { defaultRoute: 'home' })
 }
 
 // Reactive data

@@ -291,7 +291,7 @@ const canDeletePost = computed(() => {
 })
 
 const goBack = () => {
-  smartGoBack(router, 'home')
+  smartGoBack(router, { defaultRoute: 'home' })
 }
 
 const fetchPost = async () => {
