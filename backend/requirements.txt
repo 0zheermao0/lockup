@@ -1,29 +1,77 @@
-# Core Django Framework
-Django==5.2.7
-djangorestframework==3.16.1
+# =============================================================================
+# LOCKUP BACKEND REQUIREMENTS
+# =============================================================================
+# This file contains all dependencies for the Lockup Django backend application.
+# Updated: 2025-12-11
+# Python Version: 3.11+
 
-# Database Support
-dj-database-url==2.3.0  # For production database configuration
-psycopg2-binary==2.10.1  # PostgreSQL adapter for production
+# =============================================================================
+# CORE DJANGO FRAMEWORK
+# =============================================================================
+Django==5.2.7              # Main Django framework
+djangorestframework==3.16.1 # REST API framework
+asgiref==3.10.0            # ASGI utilities (Django dependency)
+sqlparse==0.5.3            # SQL parsing utilities
 
-# Configuration Management
-python-dotenv==1.0.1  # Environment variables management (used in settings.py)
+# =============================================================================
+# DATABASE SUPPORT
+# =============================================================================
+dj-database-url==2.3.0     # Database URL parsing for production (used in settings.py)
+psycopg2-binary==2.10.1    # PostgreSQL adapter for production deployment
 
-# Cross-Origin Resource Sharing
-django-cors-headers==4.9.0
+# =============================================================================
+# TELEGRAM BOT INTEGRATION
+# =============================================================================
+python-telegram-bot==22.5  # Telegram Bot API wrapper (extensively used in telegram_bot app)
 
-# Image Processing
-Pillow==11.3.0
+# =============================================================================
+# HTTP & NETWORKING
+# =============================================================================
+requests==2.32.5           # HTTP requests library (used in telegram setup scripts)
+urllib3==2.6.1             # HTTP client library (requests dependency)
 
-# Authentication & Security
-PyJWT==2.10.1
+# =============================================================================
+# CONFIGURATION & ENVIRONMENT MANAGEMENT
+# =============================================================================
+python-dotenv==1.2.1       # Environment variables management (used in settings.py)
+python-decouple==3.8       # Alternative config management (legacy support)
 
-# HTTP Requests (for Telegram Bot)
-requests==2.32.5
+# =============================================================================
+# CROSS-ORIGIN RESOURCE SHARING
+# =============================================================================
+django-cors-headers==4.9.0 # CORS handling for frontend integration
 
-# Utilities
-pytz==2025.2  # Timezone support
+# =============================================================================
+# IMAGE & MEDIA PROCESSING
+# =============================================================================
+Pillow==11.3.0             # Python Imaging Library for image handling
 
-# Core Dependencies (auto-installed with Django but explicit for clarity)
-asgiref==3.10.0
-sqlparse==0.5.3
+# =============================================================================
+# AUTHENTICATION & SECURITY
+# =============================================================================
+PyJWT==2.10.1              # JSON Web Token implementation
+
+# =============================================================================
+# ASYNC & NETWORKING SUPPORT
+# =============================================================================
+httpx==0.28.1              # Async HTTP client (telegram-bot dependency)
+httpcore==1.0.9            # HTTP core library
+h11==0.16.0                # HTTP/1.1 implementation
+anyio==4.12.0              # Async I/O support
+certifi==2025.11.12        # SSL certificate verification
+
+# =============================================================================
+# UTILITIES & HELPERS
+# =============================================================================
+typing_extensions==4.15.0  # Extended typing support for older Python versions
+charset-normalizer==3.4.4  # Character encoding detection
+idna==3.11                  # Internationalized domain names
+
+# =============================================================================
+# OPTIONAL DEPENDENCIES (Currently installed but not actively used)
+# =============================================================================
+# The following packages are installed but not currently used in the codebase.
+# They may be removed in future versions if confirmed unused:
+#
+# openpyxl==3.1.5           # Excel file processing (not found in codebase)
+# et_xmlfile==2.0.0         # Excel XML processing (openpyxl dependency)
