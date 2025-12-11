@@ -3,7 +3,7 @@
     <!-- Header -->
     <header class="explore-header">
       <div class="header-content">
-        <button @click="$router.back()" class="back-btn">
+        <button @click="goBack" class="back-btn">
           ← 返回
         </button>
         <h1 class="explore-title">🗺️ 神秘探索</h1>
@@ -351,9 +351,13 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
+import { useRouter } from 'vue-router'
 import { storeApi } from '../lib/api'
 import { useAuthStore } from '../stores/auth'
+import { smartGoBack } from '../utils/navigation'
 import type { ExplorationZone, BuriedTreasure, UserInventory } from '../types'
+
+const router = useRouter()
 
 // Reactive data
 const zones = ref<ExplorationZone[]>([])
@@ -380,6 +384,9 @@ const digging = ref(false)
 const diggingTreasureId = ref('')
 
 // Methods
+const goBack = () => {
+  smartGoBack(router, { defaultRoute: 'home' })
+}
 const loadZones = async () => {
   try {
     loadingZones.value = true

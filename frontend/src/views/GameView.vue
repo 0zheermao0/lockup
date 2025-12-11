@@ -3,7 +3,7 @@
     <!-- Header -->
     <header class="game-header">
       <div class="header-content">
-        <button @click="$router.back()" class="back-btn">
+        <button @click="goBack" class="back-btn">
           ← 返回
         </button>
         <h1 class="game-title">🎮 游戏中心</h1>
@@ -285,13 +285,21 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
+import { useRouter } from 'vue-router'
 import { storeApi, tasksApi } from '../lib/api'
 import { useAuthStore } from '../stores/auth'
+import { smartGoBack } from '../utils/navigation'
 import TimeWheel from '../components/TimeWheel.vue'
 import NotificationBell from '../components/NotificationBell.vue'
 import type { Game } from '../types'
 
+const router = useRouter()
 const authStore = useAuthStore()
+
+// Methods
+const goBack = () => {
+  smartGoBack(router, { defaultRoute: 'home' })
+}
 
 // Reactive data
 const activeTab = ref('rockPaperScissors')

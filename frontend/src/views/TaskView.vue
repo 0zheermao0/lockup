@@ -238,6 +238,7 @@ import { useTasksStore } from '../stores/tasks'
 import { useInfiniteScroll } from '../composables/useInfiniteScroll'
 import { formatDistanceToNow } from '../lib/utils'
 import { tasksApi } from '../lib/api-tasks'
+import { smartGoBack } from '../utils/navigation'
 import CreateTaskModal from '../components/CreateTaskModal.vue'
 import NotificationBell from '../components/NotificationBell.vue'
 import type { Task } from '../types/index.js'
@@ -451,7 +452,7 @@ const getSortLabel = () => {
 }
 
 const goBack = () => {
-  router.back()
+  smartGoBack(router, { defaultRoute: 'home' })
 }
 
 const openCreateModal = () => {

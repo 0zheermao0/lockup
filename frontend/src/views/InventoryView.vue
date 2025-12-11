@@ -3,7 +3,7 @@
     <!-- Header -->
     <header class="inventory-header">
       <div class="header-content">
-        <button @click="$router.back()" class="back-btn">
+        <button @click="goBack" class="back-btn">
           ← 返回
         </button>
         <h1 class="inventory-title">🎒 物品背包</h1>
@@ -369,6 +369,7 @@
 import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { storeApi } from '../lib/api'
+import { smartGoBack } from '../utils/navigation'
 import type { UserInventory, Item } from '../types'
 
 // Router
@@ -406,6 +407,10 @@ const showDiscardModal = ref(false)
 const discardingItem = ref(false)
 
 // Methods
+const goBack = () => {
+  smartGoBack(router, { defaultRoute: 'home' })
+}
+
 const loadInventory = async () => {
   try {
     loading.value = true
