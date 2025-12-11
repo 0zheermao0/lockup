@@ -1,8 +1,8 @@
 import type { Router } from 'vue-router'
 
 /**
- * 智能返回导航函数
- * 分析用户来源并智能返回到合适的页面
+ * 智能返回导航函数 - 应用内安全返回
+ * 分析用户在应用内的导航路径，确保返回时不离开应用
  *
  * @param router Vue Router 实例
  * @param options 配置选项
@@ -16,87 +16,81 @@ export function smartGoBack(
 ) {
   const { defaultRoute = 'home', checkReferrer = true } = options
 
-  // 检查是否有有效的历史记录
-  const hasValidHistory = window.history.length > 1
   const referrer = document.referrer
+  const currentUrl = window.location.href
+  const currentPath = window.location.pathname
 
   console.log('🔙 smartGoBack debug:', {
-    hasValidHistory,
-    historyLength: window.history.length,
+    currentPath,
     referrer,
-    currentUrl: window.location.href
+    defaultRoute
   })
 
-  // 如果启用了引用页检查，分析用户来源
-  if (checkReferrer && referrer) {
-    const referrerUrl = new URL(referrer)
-    const currentUrl = new URL(window.location.href)
+  // 确定目标返回路由
+  let targetRoute = defaultRoute
 
-    // 检查是否来自同一个应用（相同的origin）
-    if (referrerUrl.origin === currentUrl.origin) {
-      // 分析具体的来源页面并决定返回路由
-      const referrerPath = referrerUrl.pathname
-
-      console.log('🔙 Analyzing referrer path:', referrerPath)
-
-      // 根据来源页面决定返回的目标
-      let targetRoute = defaultRoute
-
-      if (referrerPath === '/' || referrerPath === '/home') {
-        targetRoute = 'home'
-      } else if (referrerPath.startsWith('/tasks') && !referrerPath.includes('/tasks/')) {
-        // 来自任务列表页面，但不是任务详情页面
-        targetRoute = 'tasks'
-      } else if (referrerPath.startsWith('/profile')) {
-        targetRoute = 'profile'
-      } else if (referrerPath.startsWith('/inventory')) {
-        targetRoute = 'inventory'
-      } else if (referrerPath.startsWith('/store')) {
-        targetRoute = 'store'
-      } else if (referrerPath.startsWith('/games')) {
-        targetRoute = 'games'
-      } else if (referrerPath.startsWith('/explore')) {
-        targetRoute = 'explore'
-      } else if (referrerPath.startsWith('/post')) {
-        // 来自动态相关页面，返回首页（动态流）
-        targetRoute = 'home'
-      }
-
-      console.log('🔙 Determined target route from referrer:', targetRoute)
-
-      // 如果有有效历史记录，优先使用浏览器返回
-      if (hasValidHistory) {
-        try {
-          router.back()
-          return
-        } catch (error) {
-          console.warn('router.back() failed, using determined route:', error)
-          router.push({ name: targetRoute })
-          return
-        }
-      } else {
-        // 没有有效历史记录，直接跳转到分析出的目标页面
-        console.log('🔙 No valid history, navigating to determined route:', targetRoute)
-        router.push({ name: targetRoute })
-        return
-      }
-    }
+  // 特殊处理：如果当前在任务详情页面，应该返回任务列表
+  if (currentPath.startsWith('/tasks/')) {
+    console.log('🔙 Current page is task detail, returning to tasks list')
+    targetRoute = 'tasks'
   }
-
-  // 如果有有效历史记录但不是从应用内跳转，或者没有启用引用页检查
-  if (hasValidHistory) {
+  // 如果当前在动态详情页面，返回首页
+  else if (currentPath.startsWith('/post/') || currentPath.startsWith('/posts/')) {
+    console.log('🔙 Current page is post detail, returning to home')
+    targetRoute = 'home'
+  }
+  // 如果启用了引用页检查且有引用页，分析来源
+  else if (checkReferrer && referrer) {
     try {
-      console.log('🔙 Using browser back with valid history')
-      router.back()
+      const referrerUrl = new URL(referrer)
+      const currentUrlObj = new URL(currentUrl)
+
+      // 检查是否来自同一个应用（相同的origin）
+      if (referrerUrl.origin === currentUrlObj.origin) {
+        const referrerPath = referrerUrl.pathname
+
+        // 根据来源页面决定返回的目标（仅限应用内页面）
+        if (referrerPath === '/' || referrerPath === '/home') {
+          targetRoute = 'home'
+        } else if (referrerPath === '/tasks' || referrerPath === '/tasks/') {
+          // 来自任务列表页面
+          targetRoute = 'tasks'
+        } else if (referrerPath.startsWith('/tasks/') && referrerPath !== currentUrlObj.pathname) {
+          // 来自其他任务详情页面，返回任务列表
+          targetRoute = 'tasks'
+        } else if (referrerPath.startsWith('/post/') || referrerPath.startsWith('/posts/')) {
+          // 来自动态详情页面，返回首页（动态流）
+          targetRoute = 'home'
+        } else if (referrerPath.startsWith('/profile')) {
+          targetRoute = 'profile'
+        } else if (referrerPath.startsWith('/inventory')) {
+          targetRoute = 'inventory'
+        } else if (referrerPath.startsWith('/store')) {
+          targetRoute = 'store'
+        } else if (referrerPath.startsWith('/games')) {
+          targetRoute = 'games'
+        } else if (referrerPath.startsWith('/explore')) {
+          targetRoute = 'explore'
+        } else {
+          // 其他应用内页面，返回首页
+          targetRoute = 'home'
+        }
+
+        console.log('🔙 Using referrer-based route:', targetRoute)
+      } else {
+        // 来自外部网站，使用默认路由
+        console.log('🔙 Referrer is external, using default route:', defaultRoute)
+        targetRoute = defaultRoute
+      }
     } catch (error) {
-      console.warn('router.back() failed, falling back to default route:', error)
-      router.push({ name: defaultRoute })
+      console.warn('🔙 Error parsing referrer URL:', error)
+      targetRoute = defaultRoute
     }
-  } else {
-    // 没有有效历史记录，返回到默认页面
-    console.log('🔙 No valid history, using default route:', defaultRoute)
-    router.push({ name: defaultRoute })
   }
+
+  // 执行应用内导航 - 永远不使用 router.back()
+  console.log('🔙 Final decision - Navigating to target route:', targetRoute)
+  router.push({ name: targetRoute })
 }
 
 /**
