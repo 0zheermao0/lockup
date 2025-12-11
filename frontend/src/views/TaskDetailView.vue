@@ -453,6 +453,18 @@
       :task-status="task?.status"
       @close="closeShareModal"
     />
+
+    <!-- Overtime Notification -->
+    <OvertimeNotification
+      :is-visible="showOvertimeNotification"
+      :is-success="overtimeNotificationData.isSuccess"
+      :primary-message="overtimeNotificationData.primaryMessage"
+      :secondary-message="overtimeNotificationData.secondaryMessage"
+      :overtime-minutes="overtimeNotificationData.overtimeMinutes"
+      :new-end-time="overtimeNotificationData.newEndTime"
+      :error-code="overtimeNotificationData.errorCode"
+      @close="showOvertimeNotification = false"
+    />
   </div>
 </template>
 
@@ -468,6 +480,7 @@ import TaskSubmissionModal from '../components/TaskSubmissionModal.vue'
 import ProfileModal from '../components/ProfileModal.vue'
 import VoteConfirmationModal from '../components/VoteConfirmationModal.vue'
 import ShareModal from '../components/ShareModal.vue'
+import OvertimeNotification from '../components/OvertimeNotification.vue'
 import type { Task } from '../types/index.js'
 
 const route = useRoute()
@@ -496,6 +509,20 @@ const keyCheckLoading = ref(false)
 const taskKey = ref<any>(null)
 const returningKey = ref(false)
 const showShareModal = ref(false)
+
+// Overtime notification state
+const showOvertimeNotification = ref(false)
+const overtimeNotificationData = ref<{
+  isSuccess: boolean
+  primaryMessage: string
+  secondaryMessage?: string
+  overtimeMinutes?: number
+  newEndTime?: string
+  errorCode?: string
+}>({
+  isSuccess: false,
+  primaryMessage: ''
+})
 
 // Computed properties for template access
 const taskUnlockType = computed(() => {
@@ -1468,7 +1495,14 @@ const addOvertime = async () => {
     authStore.refreshUser()
 
     // 显示加时信息
-    alert(`成功为任务加时 ${result.overtime_minutes} 分钟！`)
+    overtimeNotificationData.value = {
+      isSuccess: true,
+      primaryMessage: `成功为任务加时 ${result.overtime_minutes} 分钟！`,
+      secondaryMessage: '任务时间已延长，继续加油吧！',
+      overtimeMinutes: result.overtime_minutes,
+      newEndTime: result.new_end_time
+    }
+    showOvertimeNotification.value = true
     console.log('任务加时成功:', result)
   } catch (error: any) {
     console.error('Error adding overtime:', error)
@@ -1489,7 +1523,13 @@ const addOvertime = async () => {
       errorMessage = `网络错误：${error.message}`
     }
 
-    alert(`❌ ${errorMessage}`)
+    // 显示错误通知
+    overtimeNotificationData.value = {
+      isSuccess: false,
+      primaryMessage: errorMessage,
+      secondaryMessage: '请稍后重试或联系管理员'
+    }
+    showOvertimeNotification.value = true
   }
 }
 
@@ -2640,12 +2680,19 @@ onUnmounted(() => {
   }
 }
 
-/* Ensure quick actions bar doesn't interfere with mobile layout */
+/* Optimize quick actions bar for mobile layout with sticky positioning */
 @media (max-width: 768px) {
   .quick-actions-bar {
-    position: relative;
+    position: sticky;
+    top: 0;
     padding: 1rem;
     margin-bottom: 1.5rem;
+    z-index: 100;
+    background: white;
+    border: 3px solid #000;
+    box-shadow: 6px 6px 0 #000;
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
   }
 
   .actions-primary {
@@ -2860,5 +2907,55 @@ onUnmounted(() => {
 @keyframes pulse-warning {
   0%, 100% { opacity: 1; transform: scale(1); }
   50% { opacity: 0.7; transform: scale(1.1); }
+}
+
+/* Enhanced mobile sticky actions with scroll effects */
+@media (max-width: 768px) {
+  /* Add smooth transitions for sticky positioning */
+  .quick-actions-bar {
+    transition: all 0.3s cubic-bezier(0.4, 0.0, 0.2, 1);
+    will-change: transform, box-shadow;
+  }
+
+  /* Enhanced shadow when scrolling */
+  .quick-actions-bar.scrolled {
+    box-shadow: 6px 6px 0 #000, 0 8px 32px rgba(0, 0, 0, 0.3);
+    transform: translateZ(0);
+  }
+
+  /* Optimize button interactions on mobile */
+  .quick-action-btn {
+    touch-action: manipulation;
+    -webkit-tap-highlight-color: transparent;
+    transition: all 0.2s cubic-bezier(0.4, 0.0, 0.2, 1);
+    min-height: 48px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .quick-action-btn:active {
+    transform: scale(0.98);
+    box-shadow: 2px 2px 0 #000;
+  }
+
+  /* Ensure content doesn't hide behind sticky bar */
+  .task-detail-content {
+    scroll-margin-top: 120px;
+  }
+
+  /* Add visual indicator for sticky state */
+  .quick-actions-bar::after {
+    content: '';
+    position: absolute;
+    bottom: -3px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 40px;
+    height: 3px;
+    background: linear-gradient(90deg, #007bff, #28a745);
+    border-radius: 2px;
+    opacity: 0.7;
+  }
 }
 </style>

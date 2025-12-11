@@ -198,8 +198,20 @@
               </div>
 
               <div class="task-progress">
-                <div v-if="task.status === 'active'" class="progress-bar">
-                  <div class="progress-fill" :style="{ width: getProgressPercent(task) + '%' }"></div>
+                <div v-if="(task.task_type === 'lock' && task.status === 'active') || (task.task_type === 'board' && task.status === 'taken')" class="progress-bar mobile-progress-container">
+                  <div
+                    class="progress-fill mobile-progress-fill"
+                    :class="getProgressColorClass(task)"
+                    :style="{
+                      width: Math.max(10, getProgressPercent(task)) + '%',
+                      '--mobile-progress': Math.max(10, getProgressPercent(task)) + '%'
+                    }"
+                    :title="`进度: ${getProgressPercent(task).toFixed(1)}% - ${getProgressColorClass(task)}`"
+                  ></div>
+                  <!-- 移动端调试显示 -->
+                  <div class="mobile-debug-info">
+                    {{ getProgressPercent(task).toFixed(1) }}% {{ getProgressColorClass(task) }}
+                  </div>
                 </div>
                 <div class="task-user">
                   <div class="avatar">
@@ -230,6 +242,18 @@
       @close="closeCreateModal"
       @success="handleTaskCreated"
     />
+
+    <!-- Overtime Notification -->
+    <OvertimeNotification
+      :is-visible="showOvertimeNotification"
+      :is-success="overtimeNotificationData.isSuccess"
+      :primary-message="overtimeNotificationData.primaryMessage"
+      :secondary-message="overtimeNotificationData.secondaryMessage"
+      :overtime-minutes="overtimeNotificationData.overtimeMinutes"
+      :new-end-time="overtimeNotificationData.newEndTime"
+      :error-code="overtimeNotificationData.errorCode"
+      @close="showOvertimeNotification = false"
+    />
   </div>
 </template>
 
@@ -244,6 +268,7 @@ import { tasksApi } from '../lib/api-tasks'
 import { smartGoBack } from '../utils/navigation'
 import CreateTaskModal from '../components/CreateTaskModal.vue'
 import NotificationBell from '../components/NotificationBell.vue'
+import OvertimeNotification from '../components/OvertimeNotification.vue'
 import type { Task } from '../types/index.js'
 import type { LockTask } from '../types'
 
@@ -259,6 +284,20 @@ const currentTime = ref(Date.now())
 const progressInterval = ref<number>()
 const taskCounts = ref<any>(null)
 const countsLoading = ref(false)
+
+// Overtime notification state
+const showOvertimeNotification = ref(false)
+const overtimeNotificationData = ref<{
+  isSuccess: boolean
+  primaryMessage: string
+  secondaryMessage?: string
+  overtimeMinutes?: number
+  newEndTime?: string
+  errorCode?: string
+}>({
+  isSuccess: false,
+  primaryMessage: ''
+})
 
 // Sorting state
 const sortBy = ref<'remaining_time' | 'created_time' | 'end_time'>('created_time')
@@ -582,23 +621,69 @@ const formatDateTime = (dateTime: string) => {
 }
 
 const getProgressPercent = (task: Task) => {
-  if (task.status !== 'active' || task.task_type !== 'lock') {
-    return 0
+  // Handle lock tasks
+  if (task.task_type === 'lock' && task.status === 'active') {
+    const lockTask = task as any
+    if (!lockTask.start_time || !lockTask.end_time) {
+      return 0
+    }
+
+    const start = new Date(lockTask.start_time).getTime()
+    const end = new Date(lockTask.end_time).getTime()
+    const now = currentTime.value
+
+    if (now <= start) return 0
+    if (now >= end) return 100
+
+    return ((now - start) / (end - start)) * 100
   }
 
-  const lockTask = task as any
-  if (!lockTask.started_at || !lockTask.end_time) {
-    return 0
+  // Handle board tasks
+  if (task.task_type === 'board' && task.status === 'taken') {
+    const boardTask = task as any
+    if (!boardTask.taken_at || !boardTask.deadline) {
+      return 0
+    }
+
+    const start = new Date(boardTask.taken_at).getTime()
+    const end = new Date(boardTask.deadline).getTime()
+    const now = currentTime.value
+
+    if (now <= start) return 0
+    if (now >= end) return 100
+
+    return ((now - start) / (end - start)) * 100
   }
 
-  const start = new Date(lockTask.started_at).getTime()
-  const end = new Date(lockTask.end_time).getTime()
-  const now = currentTime.value
+  return 0
+}
 
-  if (now <= start) return 0
-  if (now >= end) return 100
+// Get progress color class based on time remaining
+const getProgressColorClass = (task: Task) => {
+  // Check if task is active (lock tasks) or taken (board tasks)
+  const isProgressActive = (task.task_type === 'lock' && task.status === 'active') ||
+                          (task.task_type === 'board' && task.status === 'taken')
 
-  return ((now - start) / (end - start)) * 100
+  if (!isProgressActive) {
+    return 'progress-green'
+  }
+
+  const timeRemaining = getTimeRemaining(task)
+  const thirtyMinutes = 30 * 60 * 1000 // 30 minutes in milliseconds
+  const progressPercent = getProgressPercent(task)
+
+  // Last 30 minutes - red
+  if (timeRemaining > 0 && timeRemaining <= thirtyMinutes) {
+    return 'progress-red'
+  }
+  // Over 50% completed - orange
+  else if (progressPercent > 50) {
+    return 'progress-orange'
+  }
+  // Initial/early stage - green
+  else {
+    return 'progress-green'
+  }
 }
 
 // Time remaining calculation
@@ -670,8 +755,15 @@ const addOvertime = async (task: Task, event: Event) => {
     // Refresh user data to update lock status
     authStore.refreshUser()
 
-    // Show success message
-    alert(`成功为任务加时 ${result.overtime_minutes} 分钟！`)
+    // Show success notification
+    overtimeNotificationData.value = {
+      isSuccess: true,
+      primaryMessage: `成功为任务加时 ${result.overtime_minutes} 分钟！`,
+      secondaryMessage: '任务时间已延长，继续加油吧！',
+      overtimeMinutes: result.overtime_minutes,
+      newEndTime: result.new_end_time
+    }
+    showOvertimeNotification.value = true
     console.log('任务加时成功:', result)
   } catch (error: any) {
     console.error('Error adding overtime:', error)
@@ -694,7 +786,13 @@ const addOvertime = async (task: Task, event: Event) => {
       errorMessage = `网络错误：${error.message}`
     }
 
-    alert(`❌ ${errorMessage}`)
+    // Show error notification
+    overtimeNotificationData.value = {
+      isSuccess: false,
+      primaryMessage: errorMessage,
+      secondaryMessage: '请稍后重试或联系管理员'
+    }
+    showOvertimeNotification.value = true
   }
 }
 
@@ -757,6 +855,8 @@ onUnmounted(() => {
 .task-view {
   min-height: 100vh;
   background-color: #f5f5f5;
+  width: 100%;
+  overflow-x: hidden;
 }
 
 .header {
@@ -815,6 +915,14 @@ onUnmounted(() => {
   max-width: 1200px;
   margin: 0 auto;
   padding: 2rem 1rem;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.container {
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
 }
 
 .task-type-section {
@@ -961,9 +1069,13 @@ onUnmounted(() => {
 
 .tasks-list {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 1.25rem;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 1.5rem;
   margin-bottom: 2rem;
+  width: 100%;
+  margin-left: 0;
+  margin-right: 0;
+  box-sizing: border-box;
 }
 
 .task-card {
@@ -976,8 +1088,12 @@ onUnmounted(() => {
   transition: transform 0.2s ease, box-shadow 0.2s ease;
   display: flex;
   flex-direction: column;
-  height: fit-content;
-  min-height: 280px;
+  height: auto;
+  min-height: 300px;
+  max-height: 400px;
+  width: 100%;
+  box-sizing: border-box;
+  overflow: hidden;
 }
 
 .task-card:hover {
@@ -997,6 +1113,10 @@ onUnmounted(() => {
   font-weight: bold;
   margin: 0 0 0.5rem 0;
   color: #333;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 100%;
 }
 
 .task-meta {
@@ -1190,6 +1310,7 @@ onUnmounted(() => {
   margin-bottom: 0.75rem;
   font-size: 0.8rem;
   flex: 1;
+  overflow: hidden;
 }
 
 .task-duration, .task-time, .task-time-remaining {
@@ -1212,27 +1333,64 @@ onUnmounted(() => {
   justify-content: space-between;
   padding-top: 1rem;
   border-top: 1px solid #e9ecef;
+  gap: 1rem; /* 确保进度条和用户信息之间有间距 */
 }
 
 .progress-bar {
   flex: 1;
-  height: 8px;
+  height: 10px;
   background-color: #e9ecef;
-  border-radius: 4px;
+  border: 2px solid #000;
+  border-radius: 0;
   overflow: hidden;
-  margin-right: 1rem;
+  box-shadow: inset 2px 2px 4px rgba(0, 0, 0, 0.2);
+  position: relative;
+  max-width: 66.67%; /* 确保进度条最大占用2/3宽度，为用户名预留1/3空间 */
 }
 
 .progress-fill {
   height: 100%;
   background-color: #007bff;
-  transition: width 0.3s ease;
+  transition: width 0.3s ease, background-color 0.5s ease;
+  position: relative;
+  border-right: 1px solid rgba(0, 0, 0, 0.3);
+  min-width: 2px; /* Ensure minimum visibility */
+}
+
+/* Progress color variations */
+.progress-fill.progress-green {
+  background: linear-gradient(90deg, #28a745, #20c997);
+  box-shadow: inset 0 2px 4px rgba(255, 255, 255, 0.3);
+}
+
+.progress-fill.progress-orange {
+  background: linear-gradient(90deg, #fd7e14, #ffc107);
+  box-shadow: inset 0 2px 4px rgba(255, 255, 255, 0.3);
+}
+
+.progress-fill.progress-red {
+  background: linear-gradient(90deg, #dc3545, #e74c3c);
+  box-shadow: inset 0 2px 4px rgba(255, 255, 255, 0.3);
+  animation: pulse-urgent 2s infinite;
+}
+
+@keyframes pulse-urgent {
+  0%, 100% {
+    box-shadow: inset 0 2px 4px rgba(255, 255, 255, 0.3);
+    opacity: 1;
+  }
+  50% {
+    box-shadow: inset 0 2px 4px rgba(255, 255, 255, 0.5);
+    opacity: 0.8;
+  }
 }
 
 .task-user {
   display: flex;
   align-items: center;
   gap: 0.5rem;
+  max-width: 33.33%; /* 限制用户区域最大宽度为卡片的1/3 */
+  flex-shrink: 0;
 }
 
 .avatar {
@@ -1251,6 +1409,11 @@ onUnmounted(() => {
 .username {
   font-size: 0.875rem;
   color: #666;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  flex: 1;
+  min-width: 0; /* 允许文本收缩 */
 }
 
 /* Sorting dropdown styles */
@@ -1366,6 +1529,14 @@ onUnmounted(() => {
   margin: 0 0.75rem;
 }
 
+/* Tablet responsive */
+@media (max-width: 1024px) and (min-width: 769px) {
+  .tasks-list {
+    max-width: 100%;
+    gap: 1.25rem;
+  }
+}
+
 /* Mobile responsive */
 @media (max-width: 768px) {
   .header-content {
@@ -1380,6 +1551,9 @@ onUnmounted(() => {
   .tasks-list {
     grid-template-columns: repeat(2, 1fr);
     gap: 1rem;
+    max-width: 100%;
+    margin-left: 0;
+    margin-right: 0;
   }
 
   .task-card {
@@ -1413,8 +1587,98 @@ onUnmounted(() => {
     align-items: stretch;
   }
 
-  .progress-bar {
-    margin-right: 0;
+  /* 移动端专用进度条样式 - 使用新的类名避免冲突 */
+  .mobile-progress-container {
+    margin-right: 0 !important;
+    height: 50px !important; /* 增加到50px */
+    max-width: 100% !important;
+    border: none !important;
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2) !important;
+    border-radius: 8px !important;
+    background: linear-gradient(135deg, #e9ecef, #dee2e6) !important; /* 渐变背景更明显 */
+    padding: 4px !important; /* 增加内边距 */
+    overflow: hidden !important;
+    flex: none !important;
+    position: relative !important;
+  }
+
+  .mobile-progress-fill {
+    min-width: 30px !important; /* 增加最小宽度 */
+    border: none !important;
+    border-radius: 4px !important;
+    height: calc(100% - 8px) !important; /* 减去内边距 */
+    margin: 4px !important;
+    position: relative !important;
+    display: block !important;
+    transition: all 0.3s ease !important;
+    background: linear-gradient(135deg, #007bff, #0056b3) !important; /* 默认渐变蓝色 */
+    box-shadow: inset 0 2px 4px rgba(255, 255, 255, 0.3), 0 2px 4px rgba(0, 0, 0, 0.2) !important;
+  }
+
+  /* 移动端调试信息 */
+  .mobile-debug-info {
+    position: absolute !important;
+    top: -25px !important;
+    left: 0 !important;
+    font-size: 11px !important;
+    font-weight: bold !important;
+    color: #dc3545 !important;
+    background: rgba(255, 255, 255, 0.9) !important;
+    padding: 2px 6px !important;
+    border-radius: 3px !important;
+    border: 1px solid #dc3545 !important;
+    z-index: 1000 !important;
+    white-space: nowrap !important;
+  }
+
+  .task-user {
+    max-width: 100%; /* 移动端用户信息占满宽度 */
+    justify-content: center; /* 居中显示用户信息 */
+    margin-top: 0.5rem; /* 与进度条保持间距 */
+  }
+
+  .username {
+    max-width: 200px; /* 设置最大宽度避免过长 */
+    text-align: center; /* 居中显示用户名 */
+    white-space: nowrap; /* 不允许换行 */
+    overflow: hidden; /* 隐藏溢出内容 */
+    text-overflow: ellipsis; /* 添加省略号 */
+  }
+
+  /* 移动端专用进度条颜色样式 */
+  .mobile-progress-fill.progress-green {
+    background: linear-gradient(135deg, #28a745, #20c997, #17a2b8) !important;
+    box-shadow:
+      inset 0 3px 6px rgba(255, 255, 255, 0.7),
+      0 3px 6px rgba(40, 167, 69, 0.4) !important;
+  }
+
+  .mobile-progress-fill.progress-orange {
+    background: linear-gradient(135deg, #fd7e14, #ffc107, #ff6b35) !important;
+    box-shadow:
+      inset 0 3px 6px rgba(255, 255, 255, 0.7),
+      0 3px 6px rgba(253, 126, 20, 0.4) !important;
+  }
+
+  .mobile-progress-fill.progress-red {
+    background: linear-gradient(135deg, #dc3545, #e74c3c, #ff6b6b) !important;
+    box-shadow:
+      inset 0 3px 6px rgba(255, 255, 255, 0.7),
+      0 3px 6px rgba(220, 53, 69, 0.4) !important;
+    animation: pulse-urgent-mobile 1.5s infinite;
+  }
+
+  @keyframes pulse-urgent-mobile {
+    0%, 100% {
+      opacity: 1;
+      transform: scale(1);
+      filter: brightness(1);
+    }
+    50% {
+      opacity: 0.9;
+      transform: scale(1.02);
+      filter: brightness(1.2);
+    }
   }
 
   .task-quick-actions {
@@ -1463,6 +1727,58 @@ onUnmounted(() => {
 
   .task-card {
     min-height: 240px;
+  }
+
+  /* 小屏幕专用进度条 - 进一步增强 */
+  .mobile-progress-container {
+    height: 60px !important; /* 小屏幕上更高 */
+    border-radius: 12px !important;
+    padding: 6px !important;
+    box-shadow: 0 6px 12px rgba(0, 0, 0, 0.25) !important;
+    background: linear-gradient(135deg, #e9ecef, #ced4da) !important;
+  }
+
+  .mobile-progress-fill {
+    min-width: 40px !important; /* 小屏幕最小宽度更大 */
+    border-radius: 6px !important;
+    height: calc(100% - 12px) !important;
+    margin: 6px !important;
+  }
+
+  /* 小屏幕进度条颜色最大化增强 */
+  .mobile-progress-fill.progress-green {
+    background: linear-gradient(135deg, #28a745, #20c997, #17a2b8, #4caf50) !important;
+    box-shadow:
+      inset 0 4px 8px rgba(255, 255, 255, 0.8),
+      0 4px 8px rgba(40, 167, 69, 0.5) !important;
+  }
+
+  .mobile-progress-fill.progress-orange {
+    background: linear-gradient(135deg, #fd7e14, #ffc107, #ff6b35, #ff9800) !important;
+    box-shadow:
+      inset 0 4px 8px rgba(255, 255, 255, 0.8),
+      0 4px 8px rgba(253, 126, 20, 0.5) !important;
+  }
+
+  .mobile-progress-fill.progress-red {
+    background: linear-gradient(135deg, #dc3545, #e74c3c, #ff6b6b, #f44336) !important;
+    box-shadow:
+      inset 0 4px 8px rgba(255, 255, 255, 0.8),
+      0 4px 8px rgba(220, 53, 69, 0.5) !important;
+    animation: pulse-urgent-small 1.5s infinite;
+  }
+
+  @keyframes pulse-urgent-small {
+    0%, 100% {
+      opacity: 1;
+      transform: scale(1);
+      filter: brightness(1);
+    }
+    50% {
+      opacity: 0.95;
+      transform: scale(1.03);
+      filter: brightness(1.3);
+    }
   }
 }
 </style>
