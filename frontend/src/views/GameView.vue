@@ -108,8 +108,18 @@
 
         <!-- Available games -->
         <div v-if="hasActiveLockTask" class="game-section">
-          <h3 class="section-title">待接受的挑战</h3>
-
+          <div class="section-header">
+            <h3 class="section-title">待接受的挑战</h3>
+            <button
+              @click="refreshGames"
+              :disabled="loadingGames"
+              class="refresh-btn"
+              title="刷新挑战列表"
+            >
+              <span class="refresh-icon" :class="{ spinning: loadingGames }">🔄</span>
+              刷新
+            </button>
+          </div>
 
           <!-- Loading -->
           <div v-if="loadingGames" class="loading-center">
@@ -606,6 +616,11 @@ const loadGames = async () => {
   }
 }
 
+const refreshGames = async () => {
+  console.log('Manual refresh triggered')
+  await loadGames()
+}
+
 const getGameTypeText = (gameType: string): string => {
   const types = {
     'rock_paper_scissors': '石头剪刀布',
@@ -666,18 +681,16 @@ const cancelGame = async (gameId: string) => {
 }
 
 const startGamePolling = () => {
+  // DISABLED: Auto-polling has been disabled. Users should use the refresh button instead.
+  console.log('Game polling is disabled - users can use the refresh button to manually update challenges')
+  return
+
+  /* COMMENTED OUT - keeping code for reference
   if (gamePollingInterval.value) return
 
   gamePollingInterval.value = window.setInterval(async () => {
-    if (activeTab.value === 'rockPaperScissors' && hasActiveLockTask.value) {
-      loadGames()
-    }
-
-    // Also check for expired tasks periodically
+    // Only check and process hourly rewards for active lock tasks
     try {
-      await tasksApi.checkAndCompleteExpiredTasks()
-
-      // Check and process hourly rewards for active lock tasks
       if (hasActiveLockTask.value) {
         await tasksApi.processHourlyRewards()
       }
@@ -691,9 +704,10 @@ const startGamePolling = () => {
         console.log('Lock task expired and was auto-completed')
       }
     } catch (err) {
-      console.error('Error checking expired tasks:', err)
+      console.error('Error in game polling:', err)
     }
   }, 5000) // Poll every 5 seconds
+  */
 }
 
 const stopGamePolling = () => {
@@ -723,16 +737,18 @@ onMounted(async () => {
   await loadActiveLockTask()
 
   if (hasActiveLockTask.value) {
+    // Load games once on initial page load
     loadGames()
-    startGamePolling()
+    // startGamePolling() // Removed auto-polling - users can use refresh button for updates
   }
 })
 
 // Watch activeTab changes
 const handleTabChange = () => {
   if (activeTab.value === 'rockPaperScissors' && hasActiveLockTask.value) {
-    loadGames()
-    startGamePolling()
+    // Auto-loading removed - users should use the refresh button to manually update challenges
+    // loadGames() // Removed automatic loading - users can use refresh button instead
+    // startGamePolling() // Removed auto-polling - users can use refresh button instead
   } else {
     stopGamePolling()
   }
@@ -916,13 +932,64 @@ onUnmounted(() => {
   margin-bottom: 2rem;
 }
 
+.section-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1.5rem;
+}
+
 .section-title {
   font-size: 1.5rem;
   font-weight: 900;
   text-transform: uppercase;
   letter-spacing: 1px;
-  margin: 0 0 1.5rem 0;
+  margin: 0;
   color: #000;
+}
+
+.refresh-btn {
+  background: #17a2b8;
+  color: white;
+  border: 3px solid #000;
+  border-radius: 6px;
+  padding: 0.5rem 1rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  cursor: pointer;
+  box-shadow: 3px 3px 0 #000;
+  transition: all 0.2s ease;
+  font-size: 0.875rem;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.refresh-btn:hover:not(:disabled) {
+  transform: translate(-1px, -1px);
+  box-shadow: 4px 4px 0 #000;
+  background: #138496;
+}
+
+.refresh-btn:disabled {
+  background: #6c757d;
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.refresh-icon {
+  display: inline-block;
+  transition: transform 0.3s ease;
+}
+
+.refresh-icon.spinning {
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
 }
 
 .section-description {

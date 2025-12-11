@@ -59,7 +59,50 @@
             <!-- 通知内容 -->
             <div class="notification-content">
               <div class="notification-title">{{ notification.title }}</div>
-              <div class="notification-message">{{ notification.message }}</div>
+              <div class="notification-message">
+                <!-- 特殊处理游戏结果通知 -->
+                <template v-if="notification.notification_type === 'game_result'">
+                  <div class="game-result-content">
+                    <p>{{ notification.message }}</p>
+
+                    <!-- 游戏详情 -->
+                    <div v-if="notification.extra_data" class="game-details">
+                      <div v-if="notification.extra_data.your_choice && notification.extra_data.opponent_choice" class="game-choices">
+                        <span class="choice-item">你的出拳: {{ getChoiceEmoji(notification.extra_data.your_choice) }}</span>
+                        <span class="vs-text">VS</span>
+                        <span class="choice-item">对手出拳: {{ getChoiceEmoji(notification.extra_data.opponent_choice) }}</span>
+                      </div>
+
+                      <!-- 可点击的对手用户名 -->
+                      <div v-if="notification.extra_data.opponent_username" class="opponent-info">
+                        对手:
+                        <span
+                          class="opponent-username clickable-username"
+                          @click.stop="openOpponentProfile(notification.extra_data.opponent_id, notification.extra_data.opponent_username)"
+                        >
+                          {{ notification.extra_data.opponent_username }}
+                        </span>
+                      </div>
+
+                      <!-- 积分变化信息 -->
+                      <div v-if="notification.extra_data.bet_amount" class="bet-info">
+                        下注积分: {{ notification.extra_data.bet_amount }}
+                      </div>
+                      <div v-if="notification.extra_data.coins_change" class="coins-change" :class="{ positive: notification.extra_data.coins_change > 0, negative: notification.extra_data.coins_change < 0 }">
+                        积分变化: {{ notification.extra_data.coins_change > 0 ? '+' : '' }}{{ notification.extra_data.coins_change }}
+                      </div>
+                      <div v-if="notification.extra_data.time_penalty_minutes" class="time-penalty">
+                        时间惩罚: +{{ notification.extra_data.time_penalty_minutes }} 分钟
+                      </div>
+                    </div>
+                  </div>
+                </template>
+
+                <!-- 普通通知内容 -->
+                <template v-else>
+                  {{ notification.message }}
+                </template>
+              </div>
 
               <!-- 通知元信息 -->
               <div class="notification-meta">
@@ -94,12 +137,6 @@
         </div>
       </div>
 
-      <!-- 查看更多 -->
-      <div v-if="hasMoreNotifications" class="view-more">
-        <button @click="loadMore" class="view-more-btn">
-          查看更多通知
-        </button>
-      </div>
     </div>
   </div>
 </template>
@@ -118,7 +155,6 @@ const showDropdown = ref(false)
 const loading = ref(false)
 const notifications = ref<NotificationItem[]>([])
 const limit = ref(10)
-const hasMoreNotifications = ref(false)
 
 // 计算属性
 const unreadCount = computed(() => {
@@ -156,7 +192,8 @@ const getNotificationIcon = (type: string) => {
     friend_request: '👋',
     friend_accepted: '🤝',
     level_upgraded: '⬆️',
-    system_announcement: '📢'
+    system_announcement: '📢',
+    game_result: '🎮'
   }
   return iconMap[type] || '📢'
 }
@@ -216,11 +253,6 @@ const loadNotifications = async () => {
       notifications.value = newNotifications
     }
 
-    // 检查是否有更多通知
-    if (notifications.value.length >= limit.value) {
-      const totalNotifications = await notificationStore.fetchNotificationStats()
-      hasMoreNotifications.value = totalNotifications.total_notifications > notifications.value.length
-    }
   } catch (error) {
     console.error('加载通知失败:', error)
   } finally {
@@ -228,10 +260,6 @@ const loadNotifications = async () => {
   }
 }
 
-const loadMore = async () => {
-  limit.value += 10
-  await loadNotifications()
-}
 
 const handleNotificationClick = async (notification: NotificationItem) => {
   // 如果通知未读，标记为已读
@@ -244,6 +272,21 @@ const handleNotificationClick = async (notification: NotificationItem) => {
     router.push(notification.target_url)
     showDropdown.value = false
   }
+}
+
+const openOpponentProfile = (opponentId: string, opponentUsername: string) => {
+  // 打开对手的个人资料页面
+  router.push({ name: 'profile', params: { id: opponentId } })
+  showDropdown.value = false
+}
+
+const getChoiceEmoji = (choice: string) => {
+  const choiceMap: Record<string, string> = {
+    rock: '🪨 石头',
+    paper: '📄 布',
+    scissors: '✂️ 剪刀'
+  }
+  return choiceMap[choice] || choice
 }
 
 const markAsRead = async (notificationId: string) => {
@@ -625,26 +668,6 @@ onUnmounted(() => {
   color: white;
 }
 
-.view-more {
-  padding: 1rem;
-  text-align: center;
-  border-top: 1px solid #e9ecef;
-}
-
-.view-more-btn {
-  padding: 0.5rem 1rem;
-  background: linear-gradient(135deg, #f8f9fa, #e9ecef);
-  border: 1px solid #000;
-  border-radius: 6px;
-  font-weight: 500;
-  cursor: pointer;
-  transition: all 0.2s ease;
-}
-
-.view-more-btn:hover {
-  transform: translateY(-1px);
-  box-shadow: 2px 2px 0 #000;
-}
 
 @keyframes bell-ring {
   0%, 10%, 20%, 30%, 40%, 50%, 60%, 70%, 80%, 90%, 100% {
@@ -674,6 +697,107 @@ onUnmounted(() => {
   100% {
     opacity: 1;
   }
+}
+
+/* Game result notification styles */
+.game-result-content {
+  margin-top: 0.5rem;
+}
+
+.game-details {
+  margin-top: 0.75rem;
+  padding: 0.75rem;
+  background: linear-gradient(135deg, #f8f9fa, #e9ecef);
+  border: 2px solid #000;
+  border-radius: 6px;
+  font-size: 0.8rem;
+}
+
+.game-choices {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-bottom: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.choice-item {
+  background: white;
+  padding: 0.375rem 0.75rem;
+  border: 2px solid #000;
+  border-radius: 4px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.vs-text {
+  font-weight: 900;
+  color: #dc3545;
+  font-size: 0.9rem;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+.opponent-info {
+  margin: 0.5rem 0;
+  font-weight: 500;
+}
+
+.clickable-username {
+  color: #007bff;
+  font-weight: 700;
+  text-decoration: underline;
+  cursor: pointer;
+  padding: 0.25rem 0.5rem;
+  border-radius: 4px;
+  margin-left: 0.25rem;
+  transition: all 0.2s ease;
+  display: inline-block;
+}
+
+.clickable-username:hover {
+  background-color: #007bff;
+  color: white;
+  transform: translate(-1px, -1px);
+  box-shadow: 2px 2px 0 #000;
+  text-decoration: none;
+}
+
+.bet-info,
+.coins-change,
+.time-penalty {
+  margin: 0.25rem 0;
+  padding: 0.25rem 0.5rem;
+  border-radius: 4px;
+  font-weight: 600;
+  font-size: 0.75rem;
+}
+
+.bet-info {
+  background: rgba(255, 193, 7, 0.1);
+  color: #856404;
+  border: 1px solid #ffc107;
+}
+
+.coins-change {
+  border: 1px solid #28a745;
+}
+
+.coins-change.positive {
+  background: rgba(40, 167, 69, 0.1);
+  color: #28a745;
+}
+
+.coins-change.negative {
+  background: rgba(220, 53, 69, 0.1);
+  color: #dc3545;
+  border-color: #dc3545;
+}
+
+.time-penalty {
+  background: rgba(220, 53, 69, 0.1);
+  color: #dc3545;
+  border: 1px solid #dc3545;
 }
 
 /* 移动端响应式 */
