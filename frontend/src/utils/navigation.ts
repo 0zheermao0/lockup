@@ -102,6 +102,6 @@ export function smartGoBack(
  */
 export function createSmartGoBack(router: Router, fallbackRoute: string = 'home') {
   return (fallbackParams?: Record<string, any>) => {
-    smartGoBack(router, fallbackRoute, { fallbackParams })
+    smartGoBack(router, { defaultRoute: fallbackRoute })
   }
 }
