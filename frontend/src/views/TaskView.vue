@@ -1614,61 +1614,63 @@ onUnmounted(() => {
 
   .task-card {
     padding: 0.75rem;
-    min-height: 260px;
+    min-height: 240px; /* 减少最小高度 */
   }
 
   .task-header {
     flex-direction: column;
-    gap: 0.5rem;
-    margin-bottom: 0.5rem;
+    gap: 0.375rem; /* 减少间距 */
+    margin-bottom: 0.375rem; /* 减少底部间距 */
   }
 
   .task-meta {
-    gap: 0.5rem;
+    gap: 0.375rem; /* 减少间距 */
   }
 
   .task-description {
     font-size: 0.85rem;
-    margin-bottom: 0.5rem;
+    margin-bottom: 0.375rem; /* 减少底部间距 */
+    line-height: 1.3; /* 优化行高 */
   }
 
   .task-details {
     font-size: 0.75rem;
-    margin-bottom: 0.5rem;
+    margin-bottom: 0.375rem; /* 减少底部间距 */
   }
 
   .task-progress {
     flex-direction: column;
-    gap: 0.75rem;
+    gap: 0.5rem; /* 减少间距 */
     align-items: stretch;
+    margin-top: auto; /* 让进度条区域贴底 */
   }
 
   /* 移动端专用进度条样式 - 使用新的类名避免冲突 */
   .mobile-progress-container {
     margin-right: 0 !important;
-    height: 50px !important; /* 增加到50px */
+    height: 32px !important; /* 减少高度以节省空间 */
     max-width: 100% !important;
     border: none !important;
-    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2) !important;
-    border-radius: 8px !important;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.15) !important;
+    border-radius: 6px !important;
     background: linear-gradient(135deg, #e9ecef, #dee2e6) !important; /* 渐变背景更明显 */
-    padding: 4px !important; /* 增加内边距 */
+    padding: 3px !important; /* 减少内边距 */
     overflow: hidden !important;
     flex: none !important;
     position: relative !important;
   }
 
   .mobile-progress-fill {
-    min-width: 30px !important; /* 增加最小宽度 */
+    min-width: 24px !important; /* 减少最小宽度 */
     border: none !important;
-    border-radius: 4px !important;
-    height: calc(100% - 8px) !important; /* 减去内边距 */
-    margin: 4px !important;
+    border-radius: 3px !important;
+    height: calc(100% - 6px) !important; /* 减去内边距 */
+    margin: 3px !important;
     position: relative !important;
     display: block !important;
     transition: all 0.3s ease !important;
     background: linear-gradient(135deg, #007bff, #0056b3) !important; /* 默认渐变蓝色 */
-    box-shadow: inset 0 2px 4px rgba(255, 255, 255, 0.3), 0 2px 4px rgba(0, 0, 0, 0.2) !important;
+    box-shadow: inset 0 1px 2px rgba(255, 255, 255, 0.3), 0 1px 2px rgba(0, 0, 0, 0.2) !important;
   }
 
   /* 移动端调试信息 */
@@ -1690,7 +1692,8 @@ onUnmounted(() => {
   .task-user {
     max-width: 100%; /* 移动端用户信息占满宽度 */
     justify-content: center; /* 居中显示用户信息 */
-    margin-top: 0.5rem; /* 与进度条保持间距 */
+    margin-top: 0.25rem; /* 减少与进度条的间距 */
+    padding-top: 0.25rem; /* 添加少量内边距 */
   }
 
   .username {
@@ -1785,20 +1788,20 @@ onUnmounted(() => {
     min-height: 240px;
   }
 
-  /* 小屏幕专用进度条 - 进一步增强 */
+  /* 小屏幕专用进度条 - 优化高度 */
   .mobile-progress-container {
-    height: 60px !important; /* 小屏幕上更高 */
-    border-radius: 12px !important;
-    padding: 6px !important;
-    box-shadow: 0 6px 12px rgba(0, 0, 0, 0.25) !important;
+    height: 36px !important; /* 减少小屏幕高度 */
+    border-radius: 8px !important;
+    padding: 4px !important;
+    box-shadow: 0 3px 6px rgba(0, 0, 0, 0.2) !important;
     background: linear-gradient(135deg, #e9ecef, #ced4da) !important;
   }
 
   .mobile-progress-fill {
-    min-width: 40px !important; /* 小屏幕最小宽度更大 */
-    border-radius: 6px !important;
-    height: calc(100% - 12px) !important;
-    margin: 6px !important;
+    min-width: 28px !important; /* 减少小屏幕最小宽度 */
+    border-radius: 4px !important;
+    height: calc(100% - 8px) !important;
+    margin: 4px !important;
   }
 
   /* 小屏幕进度条颜色最大化增强 */
