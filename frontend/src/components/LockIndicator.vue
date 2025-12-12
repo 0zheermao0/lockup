@@ -20,6 +20,7 @@
 <script setup lang="ts">
 import { computed, ref, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
+import { useAuthStore } from '../stores/auth'
 import { authApi } from '../lib/api'
 import type { User } from '../types'
 
@@ -208,9 +209,8 @@ const fetchUserLockStatus = async () => {
   // If user has an ID but no lock task data, and it's the current user,
   // try to get lock status from authStore
   if (props.user?.id && !props.user.active_lock_task) {
-    // Import authStore to check if this user is the current user
+    // Check if this user is the current user using authStore
     try {
-      const { useAuthStore } = await import('../stores/auth')
       const authStore = useAuthStore()
 
       // If this is the current user, use their lock task from authStore

@@ -613,6 +613,30 @@ def join_game(request, game_id):
                                 # 平局，重新开始
                                 game.status = 'waiting'
                                 game.save()
+
+                                # 给双方发送平局通知
+                                for participant in valid_participants:
+                                    opponent = valid_participants[1] if participant == valid_participants[0] else valid_participants[0]
+                                    Notification.create_notification(
+                                        recipient=participant.user,
+                                        notification_type='game_result',
+                                        actor=opponent.user,
+                                        title='石头剪刀布平局',
+                                        message=f'与 {opponent.user.username} 的石头剪刀布游戏平局，游戏重新开始',
+                                        related_object_type='game',
+                                        related_object_id=game.id,
+                                        extra_data={
+                                            'game_type': 'rock_paper_scissors',
+                                            'result': 'tie',
+                                            'your_choice': participant.action['choice'],
+                                            'opponent_choice': opponent.action['choice'],
+                                            'opponent_username': opponent.user.username,
+                                            'opponent_id': opponent.user.id,
+                                            'bet_amount': game.bet_amount
+                                        },
+                                        priority='normal'
+                                    )
+
                                 return Response({
                                     'message': '平局！游戏重新开始',
                                     'results': results
@@ -626,9 +650,16 @@ def join_game(request, game_id):
                                 winner = p2.user
                                 loser = p1.user
 
-                            # 处理结果
-                            game.winner = winner
+                            # 处理结果 - 存储在result字段中，因为Game模型没有winner字段
+                            game.result = {
+                                'winner': winner.username,
+                                'loser': loser.username,
+                                'winner_choice': choice1 if winner == p1.user else choice2,
+                                'loser_choice': choice2 if winner == p1.user else choice1,
+                                'game_results': results
+                            }
                             game.status = 'completed'
+                            game.completed_at = timezone.now()
                             game.save()
 
                             # 输家加时30分钟
@@ -662,11 +693,57 @@ def join_game(request, game_id):
                                     }
                                 )
 
+                            # 给获胜者发送胜利通知
+                            Notification.create_notification(
+                                recipient=winner,
+                                notification_type='game_result',
+                                actor=loser,
+                                title='石头剪刀布获胜',
+                                message=f'恭喜！您在与 {loser.username} 的石头剪刀布游戏中获胜，获得 {game.bet_amount} 积分',
+                                related_object_type='game',
+                                related_object_id=game.id,
+                                extra_data={
+                                    'game_type': 'rock_paper_scissors',
+                                    'result': 'win',
+                                    'your_choice': game.result['winner_choice'],
+                                    'opponent_choice': game.result['loser_choice'],
+                                    'opponent_username': loser.username,
+                                    'opponent_id': loser.id,
+                                    'bet_amount': game.bet_amount,
+                                    'coins_change': game.bet_amount  # 获胜者得到积分
+                                },
+                                priority='normal'
+                            )
+
+                            # 给失败者发送失败通知
+                            Notification.create_notification(
+                                recipient=loser,
+                                notification_type='game_result',
+                                actor=winner,
+                                title='石头剪刀布失败',
+                                message=f'很遗憾，您在与 {winner.username} 的石头剪刀布游戏中失败，锁时间增加30分钟',
+                                related_object_type='game',
+                                related_object_id=game.id,
+                                extra_data={
+                                    'game_type': 'rock_paper_scissors',
+                                    'result': 'lose',
+                                    'your_choice': game.result['loser_choice'],
+                                    'opponent_choice': game.result['winner_choice'],
+                                    'opponent_username': winner.username,
+                                    'opponent_id': winner.id,
+                                    'bet_amount': game.bet_amount,
+                                    'time_penalty_minutes': 30  # 失败者增加锁时间
+                                },
+                                priority='normal'
+                            )
+
                             return Response({
                                 'message': f'{winner.username} 获胜！{loser.username} 增加30分钟锁时间',
                                 'winner': winner.username,
                                 'loser': loser.username,
-                                'results': results
+                                'results': results,
+                                'coins_change': game.bet_amount,  # 为前端显示积分变化
+                                'remaining_coins': getattr(winner, 'coins', 0)  # 获胜者的剩余积分
                             })
 
                 return Response({
