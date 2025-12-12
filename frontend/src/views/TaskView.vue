@@ -514,13 +514,13 @@ const getTaskEndTime = (task: Task) => {
 const getDifficultyValue = (task: Task) => {
   if (task.task_type === 'lock') {
     const lockTask = task as any
-    const difficultyMap = {
+    const difficultyMap: Record<string, number> = {
       'easy': 1,
       'normal': 2,
       'hard': 3,
       'hell': 4
     }
-    return difficultyMap[lockTask.difficulty] || 0
+    return difficultyMap[lockTask.difficulty as string] || 0
   } else if (task.task_type === 'board') {
     const boardTask = task as any
     // For board tasks, use reward amount as difficulty indicator
