@@ -81,6 +81,18 @@
                   >
                     🏁 结束时间
                   </button>
+                  <button
+                    @click="setSortBy('user_activity')"
+                    :class="['sort-option', { active: sortBy === 'user_activity' }]"
+                  >
+                    ⚡ 用户活跃度
+                  </button>
+                  <button
+                    @click="setSortBy('difficulty')"
+                    :class="['sort-option', { active: sortBy === 'difficulty' }]"
+                  >
+                    🔥 难度等级
+                  </button>
                 </div>
 
                 <div class="sort-divider"></div>
@@ -223,9 +235,12 @@
                   <span class="hidden-time-indicator">🔒 进度已隐藏</span>
                 </div>
                 <div class="task-user">
-                  <div class="avatar">
-                    {{ task.user.username.charAt(0).toUpperCase() }}
-                  </div>
+                  <UserAvatar
+                    :user="task.user"
+                    size="small"
+                    :clickable="false"
+                    :show-lock-indicator="true"
+                  />
                   <span class="username">{{ task.user.username }}</span>
                 </div>
               </div>
@@ -277,6 +292,7 @@ import { smartGoBack } from '../utils/navigation'
 import CreateTaskModal from '../components/CreateTaskModal.vue'
 import NotificationBell from '../components/NotificationBell.vue'
 import NotificationToast from '../components/NotificationToast.vue'
+import UserAvatar from '../components/UserAvatar.vue'
 import type { Task } from '../types/index'
 import type { LockTask } from '../types'
 
@@ -308,7 +324,7 @@ const toastData = ref<{
 })
 
 // Sorting state
-const sortBy = ref<'remaining_time' | 'created_time' | 'end_time'>('created_time')
+const sortBy = ref<'remaining_time' | 'created_time' | 'end_time' | 'user_activity' | 'difficulty'>('created_time')
 const sortOrder = ref<'asc' | 'desc'>('desc')
 const showSortDropdown = ref(false)
 
@@ -461,6 +477,18 @@ const sortTasks = (tasks: Task[]) => {
         bValue = bEndTime
         break
 
+      case 'user_activity':
+        // Sort by user activity score
+        aValue = a.user.activity_score || 0
+        bValue = b.user.activity_score || 0
+        break
+
+      case 'difficulty':
+        // Sort by difficulty level
+        aValue = getDifficultyValue(a)
+        bValue = getDifficultyValue(b)
+        break
+
       default:
         return 0
     }
@@ -482,11 +510,31 @@ const getTaskEndTime = (task: Task) => {
   return null
 }
 
+// Convert difficulty to numerical value for sorting
+const getDifficultyValue = (task: Task) => {
+  if (task.task_type === 'lock') {
+    const lockTask = task as any
+    const difficultyMap = {
+      'easy': 1,
+      'normal': 2,
+      'hard': 3,
+      'hell': 4
+    }
+    return difficultyMap[lockTask.difficulty] || 0
+  } else if (task.task_type === 'board') {
+    const boardTask = task as any
+    // For board tasks, use reward amount as difficulty indicator
+    // Higher reward = higher difficulty
+    return boardTask.reward || 0
+  }
+  return 0
+}
+
 const toggleSortOrder = () => {
   sortOrder.value = sortOrder.value === 'asc' ? 'desc' : 'asc'
 }
 
-const setSortBy = (criteria: 'remaining_time' | 'created_time' | 'end_time') => {
+const setSortBy = (criteria: 'remaining_time' | 'created_time' | 'end_time' | 'user_activity' | 'difficulty') => {
   sortBy.value = criteria
   showSortDropdown.value = false
 }
@@ -495,7 +543,9 @@ const getSortLabel = () => {
   const labels = {
     remaining_time: '剩余时间',
     created_time: '创建时间',
-    end_time: '结束时间'
+    end_time: '结束时间',
+    user_activity: '用户活跃度',
+    difficulty: '难度等级'
   }
   const orderLabel = sortOrder.value === 'asc' ? '升序' : '降序'
   return `${labels[sortBy.value]} (${orderLabel})`
@@ -1411,18 +1461,6 @@ onUnmounted(() => {
   flex-shrink: 0;
 }
 
-.avatar {
-  width: 24px;
-  height: 24px;
-  border-radius: 50%;
-  background-color: #007bff;
-  color: white;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-weight: bold;
-  font-size: 0.75rem;
-}
 
 .username {
   font-size: 0.875rem;

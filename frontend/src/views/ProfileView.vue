@@ -34,15 +34,12 @@
           <section class="profile-header">
             <div class="avatar-section">
               <div class="avatar-container">
-                <img
-                  v-if="userProfile.avatar"
-                  :src="userProfile.avatar"
-                  :alt="userProfile.username"
-                  class="avatar"
+                <UserAvatar
+                  :user="userProfile"
+                  size="xl"
+                  :clickable="false"
+                  :show-lock-indicator="false"
                 />
-                <div v-else class="avatar-placeholder">
-                  {{ userProfile.username.charAt(0).toUpperCase() }}
-                </div>
                 <button
                   v-if="isOwnProfile && editMode"
                   @click="triggerAvatarUpload"
@@ -262,6 +259,7 @@ import { authApi } from '../lib/api'
 import { telegramApi, type TelegramStatus } from '../lib/api-telegram'
 import { smartGoBack } from '../utils/navigation'
 import LockStatus from '../components/LockStatus.vue'
+import UserAvatar from '../components/UserAvatar.vue'
 import type { User } from '../types/index'
 
 const route = useRoute()
@@ -654,24 +652,6 @@ onMounted(async () => {
   height: 120px;
 }
 
-.avatar, .avatar-placeholder {
-  width: 100%;
-  height: 100%;
-  border-radius: 50%;
-  border: 3px solid #000;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 2rem;
-  font-weight: bold;
-  object-fit: cover;
-}
-
-.avatar-placeholder {
-  background-color: #007bff;
-  color: white;
-}
-
 .avatar-upload-btn {
   position: absolute;
   bottom: 0;
@@ -692,6 +672,7 @@ onMounted(async () => {
 .avatar-upload-btn:hover {
   background: #0056b3;
 }
+
 
 .profile-info {
   flex: 1;

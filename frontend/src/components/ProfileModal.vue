@@ -41,15 +41,11 @@
           <div class="profile-section">
             <div class="user-header">
               <div class="avatar-section">
-                <div class="avatar-large">
-                  {{ userProfile.username.charAt(0).toUpperCase() }}
-                </div>
-                <LockIndicator
+                <UserAvatar
                   :user="userProfile"
-                  size="normal"
-                  :show-time="true"
-                  class="profile-lock-indicator"
-                  @navigate="handleLockIndicatorNavigation"
+                  size="large"
+                  :clickable="false"
+                  :show-lock-indicator="true"
                 />
               </div>
               <div class="user-basic-info">
@@ -156,6 +152,7 @@ import { useAuthStore } from '../stores/auth'
 import { authApi } from '../lib/api'
 import LockIndicator from './LockIndicator.vue'
 import LockStatus from './LockStatus.vue'
+import UserAvatar from './UserAvatar.vue'
 import { formatDistanceToNow } from '../lib/utils'
 import type { User } from '../types'
 
@@ -490,27 +487,6 @@ onUnmounted(() => {
   align-items: center;
 }
 
-.avatar-large {
-  width: 80px;
-  height: 80px;
-  border-radius: 50%;
-  background: linear-gradient(135deg, #007bff, #0056b3);
-  color: white;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-weight: 900;
-  font-size: 2rem;
-  border: 4px solid #000;
-  box-shadow: 4px 4px 0 #000;
-}
-
-.profile-lock-indicator {
-  position: absolute;
-  top: -5px;
-  right: -10px;
-  z-index: 2;
-}
 
 .user-basic-info {
   flex: 1;

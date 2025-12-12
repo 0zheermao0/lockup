@@ -143,9 +143,14 @@
                 </div>
               </div>
               <div class="task-user">
-                <div class="avatar">
-                  {{ task.user.username.charAt(0).toUpperCase() }}
-                </div>
+                <UserAvatar
+                  :user="task.user"
+                  size="normal"
+                  :clickable="true"
+                  :show-lock-indicator="true"
+                  :title="`查看 ${task.user.username} 的资料`"
+                  @click="openUserProfile(task.user.id)"
+                />
                 <div class="user-info">
                   <button
                     @click="openUserProfile(task.user.id)"
@@ -606,6 +611,7 @@ import ProfileModal from '../components/ProfileModal.vue'
 import VoteConfirmationModal from '../components/VoteConfirmationModal.vue'
 import ShareModal from '../components/ShareModal.vue'
 import NotificationToast from '../components/NotificationToast.vue'
+import UserAvatar from '../components/UserAvatar.vue'
 import type { Task } from '../types/index'
 
 const route = useRoute()
@@ -2278,18 +2284,6 @@ onUnmounted(() => {
   gap: 1rem;
 }
 
-.avatar {
-  width: 48px;
-  height: 48px;
-  border-radius: 50%;
-  background-color: #007bff;
-  color: white;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-weight: bold;
-  font-size: 1.2rem;
-}
 
 .username {
   font-weight: bold;

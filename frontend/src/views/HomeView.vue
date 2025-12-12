@@ -16,16 +16,14 @@
             </div>
 
             <!-- 用户头像 -->
-            <div @click="goToProfile" class="profile-avatar" :title="`${authStore.user?.username} 的个人资料`">
-              <span class="avatar-text">{{ authStore.user?.username?.charAt(0).toUpperCase() || 'U' }}</span>
-              <LockIndicator
-                v-if="authStore.user?.active_lock_task"
-                :user="authStore.user"
-                size="mini"
-                :show-time="false"
-                class="avatar-lock-indicator"
-              />
-            </div>
+            <UserAvatar
+              :user="authStore.user"
+              size="normal"
+              :clickable="true"
+              :show-lock-indicator="true"
+              :title="`${authStore.user?.username} 的个人资料`"
+              @click="goToProfile"
+            />
 
             <!-- 退出按钮 -->
             <button @click="handleLogout" class="logout-circle" title="退出登录">
@@ -157,17 +155,14 @@
             >
               <div class="post-header">
                 <div class="user-info">
-                  <div class="avatar-container">
-                    <div class="avatar">
-                      {{ post.user.username.charAt(0).toUpperCase() }}
-                    </div>
-                    <LockIndicator
-                      :user="post.user"
-                      size="mini"
-                      :show-time="false"
-                      class="avatar-lock-indicator"
-                    />
-                  </div>
+                  <UserAvatar
+                    :user="post.user"
+                    size="small"
+                    :clickable="true"
+                    :show-lock-indicator="true"
+                    :title="`查看 ${post.user.username} 的资料`"
+                    @click.stop="openProfileModal(post.user)"
+                  />
                   <div>
                     <div
                       class="username clickable"
@@ -260,10 +255,10 @@ import { useInfiniteScroll } from '../composables/useInfiniteScroll'
 import { formatDistanceToNow } from '../lib/utils'
 import CreatePostModal from '../components/CreatePostModal.vue'
 import LockStatus from '../components/LockStatus.vue'
-import LockIndicator from '../components/LockIndicator.vue'
 import ProfileModal from '../components/ProfileModal.vue'
 import NotificationBell from '../components/NotificationBell.vue'
 import TaskBroadcast from '../components/TaskBroadcast.vue'
+import UserAvatar from '../components/UserAvatar.vue'
 import type { Post } from '../types/index'
 
 const router = useRouter()
@@ -487,41 +482,6 @@ onMounted(() => {
   position: relative;
 }
 
-/* 用户头像正圆 */
-.profile-avatar {
-  width: 40px;
-  height: 40px;
-  border-radius: 50%;
-  background: linear-gradient(135deg, #667eea, #764ba2);
-  border: 2px solid #000;
-  box-shadow: 2px 2px 0 rgba(0, 0, 0, 0.2);
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  position: relative;
-  transition: all 0.2s ease;
-}
-
-.profile-avatar:hover {
-  transform: translateY(-1px);
-  box-shadow: 3px 3px 0 rgba(0, 0, 0, 0.3);
-  background: linear-gradient(135deg, #f093fb, #f5576c);
-}
-
-.avatar-text {
-  color: white;
-  font-weight: 700;
-  font-size: 1rem;
-  text-transform: uppercase;
-}
-
-.avatar-lock-indicator {
-  position: absolute;
-  top: -2px;
-  right: -2px;
-  z-index: 2;
-}
 
 /* 退出按钮正圆 */
 .logout-circle {
@@ -832,31 +792,6 @@ onMounted(() => {
   align-items: center;
 }
 
-.avatar-container {
-  position: relative;
-  display: flex;
-  align-items: center;
-}
-
-.avatar {
-  width: 32px;
-  height: 32px;
-  border-radius: 50%;
-  background-color: #007bff;
-  color: white;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-weight: bold;
-  font-size: 0.875rem;
-}
-
-.avatar-lock-indicator {
-  position: absolute;
-  top: -2px;
-  right: -8px;
-  z-index: 2;
-}
 
 .username {
   font-weight: bold;
@@ -1169,14 +1104,6 @@ onMounted(() => {
     gap: 0.6rem;
   }
 
-  .profile-avatar {
-    width: 32px;
-    height: 32px;
-  }
-
-  .avatar-text {
-    font-size: 0.875rem;
-  }
 
   .logout-circle {
     width: 30px;
