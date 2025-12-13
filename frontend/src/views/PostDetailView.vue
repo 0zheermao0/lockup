@@ -159,7 +159,7 @@
             </form>
 
             <!-- Comments List -->
-            <div v-if="comments.length > 0" class="comments-list">
+            <div ref="commentsContainer" class="comments-list comments-scroll-container" v-show="comments.length > 0">
               <div
                 v-for="comment in comments"
                 :key="comment.id"
@@ -216,19 +216,17 @@
               </div>
             </div>
 
-            <!-- Load More Comments Button -->
-            <div v-if="commentsLoaded && pagination && pagination.has_next" class="load-more-section">
-              <button
-                @click="loadMoreComments"
-                :disabled="loadingComments"
-                class="load-more-btn"
-              >
-                {{ loadingComments ? '加载中...' : '加载更多评论' }}
-              </button>
+            <!-- Loading indicator and no comments message -->
+            <div v-if="loadingComments && comments.length > 0" class="loading-more">
+              正在加载更多评论...
             </div>
 
             <div v-else-if="!commentsLoaded && comments.length === 0" class="no-comments">
               还没有评论，快来抢沙发吧！
+            </div>
+
+            <div v-else-if="commentsLoaded && !pagination?.has_next && comments.length > 0" class="no-more">
+              没有更多评论了
             </div>
           </section>
         </div>
@@ -253,7 +251,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, computed } from 'vue'
+import { ref, onMounted, onUnmounted, computed, nextTick, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '../stores/auth'
 import { usePostsStore } from '../stores/posts'
@@ -300,6 +298,10 @@ const pagination = ref<{
 } | null>(null)
 const currentPage = ref(1)
 const pageSize = 5
+
+// Comments scroll container ref for auto-loading
+const commentsContainer = ref<HTMLElement>()
+let loadTimeout: ReturnType<typeof setTimeout> | null = null
 
 const openProfileModal = (user: any) => {
   selectedUser.value = user
@@ -372,8 +374,62 @@ const loadComments = async (page: number = 1, reset: boolean = false) => {
 }
 
 const loadMoreComments = async () => {
-  if (!pagination.value?.has_next) return
+  if (!pagination.value?.has_next || loadingComments.value) return
   await loadComments(currentPage.value + 1, false)
+}
+
+// Comments scroll event handler
+const handleCommentsScroll = () => {
+  if (!commentsContainer.value || loadingComments.value || !pagination.value?.has_next) {
+    console.log('Scroll handler early return:', {
+      hasContainer: !!commentsContainer.value,
+      isLoading: loadingComments.value,
+      hasNext: pagination.value?.has_next
+    })
+    return
+  }
+
+  const container = commentsContainer.value
+  const scrollHeight = container.scrollHeight
+  const scrollTop = container.scrollTop
+  const clientHeight = container.clientHeight
+  const distanceFromBottom = scrollHeight - scrollTop - clientHeight
+
+  console.log('Scroll event:', {
+    scrollHeight,
+    scrollTop,
+    clientHeight,
+    distanceFromBottom,
+    threshold: 200
+  })
+
+  // Check if user has scrolled near the bottom (200px threshold)
+  if (distanceFromBottom < 200) {
+    console.log('Near bottom, loading more comments...')
+    // Clear any existing timeout to prevent rapid firing
+    if (loadTimeout) {
+      clearTimeout(loadTimeout)
+    }
+
+    // Debounce the load more action
+    loadTimeout = setTimeout(() => {
+      loadMoreComments()
+    }, 100)
+  }
+}
+
+// Setup scroll listener for comments
+const setupScrollListener = async () => {
+  await nextTick()
+  if (commentsContainer.value) {
+    // Remove any existing listener to prevent duplicates
+    commentsContainer.value.removeEventListener('scroll', handleCommentsScroll)
+    // Add the scroll listener
+    commentsContainer.value.addEventListener('scroll', handleCommentsScroll, { passive: true })
+    console.log('Scroll listener attached to comments container')
+  } else {
+    console.warn('Comments container not found when setting up scroll listener')
+  }
 }
 
 const toggleLike = async () => {
@@ -454,7 +510,7 @@ const submitComment = async () => {
 
     const newCommentData = await postsApi.createComment(post.value.id, commentData)
 
-    // 添加新评论到本地状态（添加到开头，因为是最新的）
+    // 添加新评论到本地状态（添加到开头，因为现在是倒序排序）
     comments.value.unshift(newCommentData)
 
     // 更新评论数量
@@ -518,8 +574,27 @@ const closeImageModal = () => {
   selectedImage.value = ''
 }
 
-onMounted(() => {
-  fetchPost()
+onMounted(async () => {
+  await fetchPost()
+  // Set up scroll listener after initial load
+  setupScrollListener()
+})
+
+// Watch for comments being loaded and set up scroll listener
+watch(commentsLoaded, (newVal) => {
+  if (newVal && comments.value.length > 0) {
+    setupScrollListener()
+  }
+})
+
+onUnmounted(() => {
+  // Clean up scroll listener and timeout
+  if (commentsContainer.value) {
+    commentsContainer.value.removeEventListener('scroll', handleCommentsScroll)
+  }
+  if (loadTimeout) {
+    clearTimeout(loadTimeout)
+  }
 })
 </script>
 
@@ -827,6 +902,34 @@ onMounted(() => {
   gap: 1.5rem;
 }
 
+/* Comments scroll container for auto-loading */
+.comments-scroll-container {
+  max-height: 600px;
+  overflow-y: auto;
+  padding-right: 0.5rem;
+  margin-right: -0.5rem;
+}
+
+.comments-scroll-container::-webkit-scrollbar {
+  width: 8px;
+}
+
+.comments-scroll-container::-webkit-scrollbar-track {
+  background: #f1f1f1;
+  border: 2px solid #000;
+  border-radius: 4px;
+}
+
+.comments-scroll-container::-webkit-scrollbar-thumb {
+  background: linear-gradient(135deg, #667eea, #764ba2);
+  border: 2px solid #000;
+  border-radius: 4px;
+}
+
+.comments-scroll-container::-webkit-scrollbar-thumb:hover {
+  background: linear-gradient(135deg, #f093fb, #f5576c);
+}
+
 .comment-item {
   padding: 1rem;
   border: 1px solid #e9ecef;
@@ -923,6 +1026,25 @@ onMounted(() => {
   color: #666;
   font-style: italic;
   padding: 2rem;
+}
+
+.loading-more {
+  text-align: center;
+  color: #666;
+  font-style: italic;
+  padding: 1rem;
+  background-color: #f8f9fa;
+  border-radius: 4px;
+  margin-top: 1rem;
+}
+
+.no-more {
+  text-align: center;
+  color: #999;
+  font-size: 0.875rem;
+  padding: 1rem;
+  margin-top: 1rem;
+  border-top: 1px solid #e9ecef;
 }
 
 .image-modal {
@@ -1119,40 +1241,6 @@ onMounted(() => {
   border-top: 2px solid #e9ecef;
 }
 
-/* Load More Comments */
-.load-more-section {
-  display: flex;
-  justify-content: center;
-  margin-top: 2rem;
-  padding-top: 1.5rem;
-  border-top: 2px solid #e9ecef;
-}
-
-.load-more-btn {
-  background-color: #007bff;
-  color: white;
-  border: 2px solid #000;
-  border-radius: 8px;
-  padding: 0.75rem 2rem;
-  cursor: pointer;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-  box-shadow: 4px 4px 0 #000;
-  transition: all 0.2s ease;
-}
-
-.load-more-btn:hover:not(:disabled) {
-  background-color: #0056b3;
-  transform: translate(-1px, -1px);
-  box-shadow: 5px 5px 0 #000;
-}
-
-.load-more-btn:disabled {
-  background-color: #6c757d;
-  cursor: not-allowed;
-  opacity: 0.7;
-}
 
 /* Mobile responsive */
 @media (max-width: 768px) {

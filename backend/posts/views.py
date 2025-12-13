@@ -167,7 +167,7 @@ def get_post_comments(request, post_id):
             'user'
         ).prefetch_related(
             'images', 'likes'
-        ).order_by('created_at')
+        ).order_by('-created_at')
 
         # 分页
         paginator = Paginator(comments_queryset, page_size)
@@ -475,7 +475,7 @@ def get_post_comments(request, post_id):
             'user'
         ).prefetch_related(
             'images', 'likes'
-        ).order_by('created_at')
+        ).order_by('-created_at')
 
         # 分页
         paginator = Paginator(comments_queryset, page_size)
