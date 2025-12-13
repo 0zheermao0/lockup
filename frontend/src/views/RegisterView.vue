@@ -159,12 +159,6 @@
           </div>
         </div>
 
-        <div v-if="error" class="error">
-          <div v-for="(line, index) in error.split('\n')" :key="index">
-            {{ line }}
-          </div>
-        </div>
-
         <button type="submit" :disabled="authStore.isLoading">
           {{ authStore.isLoading ? '注册中...' : '注册' }}
         </button>
@@ -174,6 +168,17 @@
         <p>已有账号？ <router-link to="/login">立即登录</router-link></p>
       </div>
     </div>
+
+    <!-- Notification Toast -->
+    <NotificationToast
+      :is-visible="showToast"
+      :type="toastData.type"
+      :title="toastData.title"
+      :message="toastData.message"
+      :secondary-message="toastData.secondaryMessage"
+      :details="toastData.details"
+      @close="showToast = false"
+    />
   </div>
 </template>
 
@@ -181,6 +186,7 @@
 import { ref, reactive, computed, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '../stores/auth'
+import NotificationToast from '../components/NotificationToast.vue'
 import type { RegisterRequest } from '../types/index'
 
 const router = useRouter()
@@ -202,6 +208,20 @@ const passwordFieldErrors = ref<string[]>([])
 const passwordConfirmFieldErrors = ref<string[]>([])
 const usernameFieldErrors = ref<string[]>([])
 const emailFieldErrors = ref<string[]>([])
+
+// Toast notification state
+const showToast = ref(false)
+const toastData = ref<{
+  type: 'success' | 'error' | 'warning' | 'info'
+  title: string
+  message: string
+  secondaryMessage?: string
+  details?: Record<string, any>
+}>({
+  type: 'info',
+  title: '',
+  message: ''
+})
 
 // Password validation state
 const passwordValidation = reactive({
@@ -253,76 +273,135 @@ const clearFieldErrors = () => {
   emailFieldErrors.value = []
 }
 
-// Enhanced error parsing with field-specific error handling
-const parseRegistrationError = (err: any): string => {
+// Enhanced error parsing with field-specific error handling and NotificationToast data
+const parseRegistrationError = (err: any): {
+  type: 'success' | 'error' | 'warning' | 'info'
+  title: string
+  message: string
+  secondaryMessage?: string
+  details?: Record<string, any>
+} => {
   console.log('Registration error:', err)
+  console.log('Error data:', err.data)
+  console.log('Error response:', err.response?.data)
 
   // Clear previous field errors
   clearFieldErrors()
 
-  // Check if this is a DRF validation error with field-specific errors
-  if (err.response?.data && typeof err.response.data === 'object') {
-    const errorData = err.response.data
+  // Default error response structure
+  let errorResult = {
+    type: 'error' as const,
+    title: '注册失败',
+    message: '注册过程中发生错误',
+    secondaryMessage: '请检查输入信息后重试',
+    details: {} as Record<string, any>
+  }
+
+  // The ApiError structure: err.data contains the actual response data
+  const errorData = err.data || err.response?.data || {}
+
+  console.log('Parsed error data:', errorData)
+
+  if (errorData && typeof errorData === 'object') {
+    const fieldErrorsFound: string[] = []
 
     // Handle field-specific errors and store them separately
     if (errorData.password && Array.isArray(errorData.password)) {
       passwordFieldErrors.value = errorData.password as string[]
+      fieldErrorsFound.push('密码')
+      errorResult.details['密码错误'] = (errorData.password as string[]).join('，')
     }
 
     if (errorData.username && Array.isArray(errorData.username)) {
       usernameFieldErrors.value = errorData.username as string[]
+      fieldErrorsFound.push('用户名')
+      errorResult.details['用户名错误'] = (errorData.username as string[]).join('，')
+
+      // Check for specific username uniqueness error
+      const usernameErrors = errorData.username as string[]
+      if (usernameErrors.some((error: string) => error.toLowerCase().includes('already exists') || error.includes('已存在'))) {
+        errorResult.title = '用户名已存在'
+        errorResult.message = '该用户名已被其他用户注册'
+        errorResult.secondaryMessage = '请选择其他用户名'
+        errorResult.details['解决方案'] = '尝试在用户名后添加数字或使用其他用户名'
+        return errorResult
+      }
     }
 
     if (errorData.email && Array.isArray(errorData.email)) {
       emailFieldErrors.value = errorData.email as string[]
+      fieldErrorsFound.push('邮箱')
+      errorResult.details['邮箱错误'] = (errorData.email as string[]).join('，')
+
+      // Check for specific email uniqueness error
+      const emailErrors = errorData.email as string[]
+      if (emailErrors.some((error: string) => error.toLowerCase().includes('already exists') || error.includes('已存在'))) {
+        errorResult.title = '邮箱已被注册'
+        errorResult.message = '该邮箱地址已被其他用户使用'
+        errorResult.secondaryMessage = '请使用其他邮箱地址或尝试找回密码'
+        errorResult.details['解决方案'] = '使用其他邮箱地址注册，或前往登录页面找回密码'
+        return errorResult
+      }
     }
 
     if (errorData.password_confirm && Array.isArray(errorData.password_confirm)) {
       passwordConfirmFieldErrors.value = errorData.password_confirm as string[]
+      fieldErrorsFound.push('确认密码')
+      errorResult.details['确认密码错误'] = (errorData.password_confirm as string[]).join('，')
     }
 
     // Handle non-field errors (general validation errors)
     if (errorData.non_field_errors && Array.isArray(errorData.non_field_errors)) {
       const nonFieldErrors = errorData.non_field_errors as string[]
-      return nonFieldErrors.join('\n')
+      errorResult.message = nonFieldErrors[0] || '表单验证失败'
+      errorResult.secondaryMessage = nonFieldErrors.length > 1 ? nonFieldErrors.slice(1).join('，') : '请检查输入信息'
+      errorResult.details['验证错误'] = nonFieldErrors.join('，')
+      return errorResult
     }
 
     // Handle Django's general error messages
     if (errorData.detail) {
-      return errorData.detail
+      errorResult.message = errorData.detail
+      errorResult.secondaryMessage = '请联系管理员或稍后重试'
+      return errorResult
     }
 
     // Handle specific error field
     if (errorData.error) {
-      return errorData.error
+      errorResult.message = errorData.error
+      return errorResult
     }
 
     // Handle message field
     if (errorData.message) {
-      return errorData.message
+      errorResult.message = errorData.message
+      return errorResult
     }
 
-    // If we have field-specific errors, show a general message
-    // The specific errors will be displayed next to their respective fields
-    if (passwordFieldErrors.value.length > 0 ||
-        usernameFieldErrors.value.length > 0 ||
-        emailFieldErrors.value.length > 0 ||
-        passwordConfirmFieldErrors.value.length > 0) {
-      return '请修正下方标注的错误信息'
+    // If we have field-specific errors, show a summary message
+    if (fieldErrorsFound.length > 0) {
+      errorResult.title = '表单验证失败'
+      errorResult.message = `以下字段存在错误：${fieldErrorsFound.join('、')}`
+      errorResult.secondaryMessage = '请查看表单中红色标注的错误信息并修正'
+      return errorResult
     }
 
-    // Handle any other field errors by combining all error messages with field labels
+    // Handle any other field errors
     const allErrors: string[] = []
     for (const [field, fieldErrors] of Object.entries(errorData)) {
       if (Array.isArray(fieldErrors)) {
         const fieldErrorMessages = fieldErrors as string[]
         if (field === 'username') {
+          usernameFieldErrors.value = fieldErrorMessages
           allErrors.push(`用户名：${fieldErrorMessages.join('，')}`)
         } else if (field === 'email') {
+          emailFieldErrors.value = fieldErrorMessages
           allErrors.push(`邮箱：${fieldErrorMessages.join('，')}`)
         } else if (field === 'password') {
+          passwordFieldErrors.value = fieldErrorMessages
           allErrors.push(`密码：${fieldErrorMessages.join('，')}`)
         } else if (field === 'password_confirm') {
+          passwordConfirmFieldErrors.value = fieldErrorMessages
           allErrors.push(`确认密码：${fieldErrorMessages.join('，')}`)
         } else {
           allErrors.push(...fieldErrorMessages)
@@ -333,41 +412,106 @@ const parseRegistrationError = (err: any): string => {
     }
 
     if (allErrors.length > 0) {
-      return allErrors.join('\n')
+      errorResult.message = allErrors[0]
+      errorResult.secondaryMessage = allErrors.length > 1 ? allErrors.slice(1).join('，') : undefined
+      errorResult.details['详细错误'] = allErrors.join('；')
+      return errorResult
     }
   }
 
   // Handle HTTP status codes with meaningful messages
-  if (err.response?.status === 400) {
-    return '提交的信息有误，请检查后重试'
-  } else if (err.response?.status === 409) {
-    return '用户名或邮箱已被注册，请使用其他信息'
-  } else if (err.response?.status === 429) {
-    return '注册尝试过于频繁，请稍后再试'
-  } else if (err.response?.status >= 500) {
-    return '服务器内部错误，请稍后重试'
+  if (err.status === 400) {
+    errorResult.title = '请求格式错误'
+    errorResult.message = '提交的信息格式有误'
+    errorResult.secondaryMessage = '请检查所有字段是否正确填写'
+    errorResult.details['状态码'] = '400'
+    errorResult.details['错误类型'] = '客户端请求错误'
+  } else if (err.status === 409) {
+    errorResult.title = '注册信息冲突'
+    errorResult.message = '用户名或邮箱已被注册'
+    errorResult.secondaryMessage = '请使用其他用户名或邮箱地址'
+    errorResult.details['状态码'] = '409'
+    errorResult.details['错误类型'] = '资源冲突'
+  } else if (err.status === 429) {
+    errorResult.title = '请求过于频繁'
+    errorResult.message = '注册尝试次数过多'
+    errorResult.secondaryMessage = '请稍等片刻后再试'
+    errorResult.details['状态码'] = '429'
+    errorResult.details['错误类型'] = '频率限制'
+  } else if (err.status >= 500) {
+    errorResult.title = '服务器错误'
+    errorResult.message = '服务器内部发生错误'
+    errorResult.secondaryMessage = '请稍后重试或联系管理员'
+    errorResult.details['状态码'] = err.status?.toString() || '未知'
+    errorResult.details['错误类型'] = '服务器内部错误'
   } else if (!navigator.onLine) {
-    return '网络连接已断开，请检查网络设置'
+    errorResult.title = '网络连接错误'
+    errorResult.message = '网络连接已断开'
+    errorResult.secondaryMessage = '请检查网络设置后重试'
+    errorResult.details['错误类型'] = '网络连接问题'
+  } else {
+    // Final fallback for network errors or unexpected error formats
+    // Check if err.message contains useful information
+    if (err.message && !err.message.startsWith('HTTP ')) {
+      errorResult.message = err.message
+    } else {
+      errorResult.message = '注册失败，请重试'
+    }
+    errorResult.secondaryMessage = '请检查网络连接或稍后重试'
+    errorResult.details['原始错误'] = err.message || '未知错误'
+    errorResult.details['错误对象'] = JSON.stringify(err, null, 2)
   }
 
-  // Final fallback for network errors or unexpected error formats
-  return err.message || '注册失败，请检查网络连接后重试'
+  return errorResult
 }
 
 const handleRegister = async () => {
   error.value = ''
   clearFieldErrors()
+  showToast.value = false
 
+  // Client-side validation for password match
   if (form.password !== form.password_confirm) {
-    error.value = '密码确认不匹配'
+    toastData.value = {
+      type: 'warning',
+      title: '密码确认错误',
+      message: '两次输入的密码不一致',
+      secondaryMessage: '请确保确认密码与密码字段完全相同',
+      details: {
+        '问题': '密码确认不匹配',
+        '解决方法': '重新输入确认密码'
+      }
+    }
+    showToast.value = true
     return
   }
 
   try {
     await authStore.register(form)
-    router.push('/')
+
+    // Success notification
+    toastData.value = {
+      type: 'success',
+      title: '注册成功',
+      message: '欢迎加入锁芯社区！',
+      secondaryMessage: '正在为您跳转到首页...',
+      details: {
+        '用户名': form.username,
+        '邮箱': form.email,
+        '注册时间': new Date().toLocaleString('zh-CN')
+      }
+    }
+    showToast.value = true
+
+    // Delay navigation to show success message
+    setTimeout(() => {
+      router.push('/')
+    }, 2000)
+
   } catch (err: any) {
-    error.value = parseRegistrationError(err)
+    const errorData = parseRegistrationError(err)
+    toastData.value = errorData
+    showToast.value = true
   }
 }
 </script>
