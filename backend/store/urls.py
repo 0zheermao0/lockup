@@ -30,4 +30,8 @@ urlpatterns = [
     # 物品管理相关
     path('discard-item/', views.discard_item, name='discard-item'),
     path('return-item/', views.return_item_to_original_owner, name='return-item'),
+
+    # 分享相关
+    path('share-item/', views.create_share_link, name='create-share-link'),
+    path('claim/<str:share_token>/', views.claim_shared_item, name='claim-shared-item'),
 ]

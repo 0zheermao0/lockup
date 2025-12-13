@@ -13,7 +13,7 @@ from datetime import timedelta
 
 from .models import (
     ItemType, UserInventory, Item, StoreItem, Purchase,
-    Game, GameParticipant, DriftBottle, BuriedTreasure, GameSession
+    Game, GameParticipant, DriftBottle, BuriedTreasure, GameSession, SharedItem
 )
 from users.models import Notification
 from .serializers import (
@@ -526,6 +526,9 @@ class GameListCreateView(generics.ListCreateAPIView):
 @permission_classes([IsAuthenticated])
 def join_game(request, game_id):
     """加入游戏"""
+    # Ensure Notification is available in local scope to prevent scoping issues
+    from users.models import Notification as NotificationModel
+
     serializer = JoinGameSerializer(data=request.data)
     if serializer.is_valid():
         try:
@@ -617,7 +620,7 @@ def join_game(request, game_id):
                                 # 给双方发送平局通知
                                 for participant in valid_participants:
                                     opponent = valid_participants[1] if participant == valid_participants[0] else valid_participants[0]
-                                    Notification.create_notification(
+                                    NotificationModel.create_notification(
                                         recipient=participant.user,
                                         notification_type='game_result',
                                         actor=opponent.user,
@@ -694,7 +697,7 @@ def join_game(request, game_id):
                                 )
 
                             # 给获胜者发送胜利通知
-                            Notification.create_notification(
+                            NotificationModel.create_notification(
                                 recipient=winner,
                                 notification_type='game_result',
                                 actor=loser,
@@ -716,7 +719,7 @@ def join_game(request, game_id):
                             )
 
                             # 给失败者发送失败通知
-                            Notification.create_notification(
+                            NotificationModel.create_notification(
                                 recipient=loser,
                                 notification_type='game_result',
                                 actor=winner,
@@ -1334,4 +1337,164 @@ def return_item_to_original_owner(request):
     except Exception as e:
         return Response({
             'error': f'归还物品失败: {str(e)}'
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def create_share_link(request):
+    """创建分享链接"""
+    try:
+        item_id = request.data.get('item_id')
+        if not item_id:
+            return Response({
+                'error': '缺少物品ID'
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        with transaction.atomic():
+            user = request.user
+
+            # 获取要分享的物品
+            item = get_object_or_404(
+                Item,
+                id=item_id,
+                owner=user,
+                status='available'
+            )
+
+            # 检查物品类型是否可分享 (photo, note, key)
+            if item.item_type.name not in ['photo', 'note', 'key']:
+                return Response({
+                    'error': f'{item.item_type.display_name} 不支持分享'
+                }, status=status.HTTP_400_BAD_REQUEST)
+
+            # 检查该物品是否已有活跃的分享链接
+            existing_share = SharedItem.objects.filter(
+                sharer=user,
+                item=item,
+                status='active',
+                expires_at__gt=timezone.now()
+            ).first()
+
+            if existing_share:
+                # 如果已有活跃分享链接，重用现有的
+                shared_item = existing_share
+                share_token = existing_share.share_token
+            else:
+                # 生成新的分享token
+                import secrets
+                share_token = secrets.token_urlsafe(32)
+
+                # 创建分享记录
+                shared_item = SharedItem.objects.create(
+                    sharer=user,
+                    item=item,
+                    share_token=share_token,
+                    expires_at=timezone.now() + timedelta(hours=24)  # 24小时后过期
+                )
+
+            # 物品保持在背包中，不改变状态，只有被成功领取后才转移
+
+            # 生成分享链接URL
+            from django.conf import settings
+            base_url = getattr(settings, 'FRONTEND_URL', 'http://localhost:5173')
+            share_url = f"{base_url}/claim/{share_token}"
+
+            return Response({
+                'message': f'成功创建 {item.item_type.display_name} 的分享链接',
+                'share_url': share_url,
+                'share_id': str(shared_item.id),
+                'expires_at': shared_item.expires_at.isoformat()
+            }, status=status.HTTP_201_CREATED)
+
+    except Exception as e:
+        return Response({
+            'error': f'创建分享链接失败: {str(e)}'
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def claim_shared_item(request, share_token):
+    """领取分享的物品"""
+    try:
+        with transaction.atomic():
+            user = request.user
+
+            # 获取分享记录
+            shared_item = get_object_or_404(
+                SharedItem,
+                share_token=share_token,
+                status='active',
+                expires_at__gt=timezone.now()
+            )
+
+            # 检查不能领取自己分享的物品
+            if shared_item.sharer == user:
+                return Response({
+                    'error': '不能领取自己分享的物品'
+                }, status=status.HTTP_400_BAD_REQUEST)
+
+            # 验证物品仍然属于原分享者且状态为可用
+            item = shared_item.item
+            if item.owner != shared_item.sharer:
+                return Response({
+                    'error': '物品已不属于原分享者，无法领取'
+                }, status=status.HTTP_400_BAD_REQUEST)
+
+            if item.status != 'available':
+                return Response({
+                    'error': f'物品状态异常（{item.status}），无法领取'
+                }, status=status.HTTP_400_BAD_REQUEST)
+
+            # 检查背包容量
+            inventory, _ = UserInventory.objects.get_or_create(user=user)
+            if inventory.available_slots < 1:
+                return Response({
+                    'error': f'背包空间不足，剩余{inventory.available_slots}格'
+                }, status=status.HTTP_400_BAD_REQUEST)
+
+            # 转移物品所有权（从原主人背包转移到领取者背包）
+            item.owner = user
+            item.inventory = inventory  # 移到领取者背包
+            item.status = 'available'
+            item.save()
+
+            # 更新分享状态
+            shared_item.claimer = user
+            shared_item.status = 'claimed'
+            shared_item.claimed_at = timezone.now()
+            shared_item.save()
+
+            # 创建通知给分享者
+            Notification.create_notification(
+                recipient=shared_item.sharer,
+                notification_type='item_shared',
+                actor=user,
+                title='物品被领取',
+                message=f'{user.username} 领取了您分享的 {item.item_type.display_name}',
+                related_object_type='shared_item',
+                related_object_id=shared_item.id,
+                extra_data={
+                    'item_type': item.item_type.name,
+                    'item_display_name': item.item_type.display_name,
+                    'claimed_by': user.username,
+                    'claimed_at': shared_item.claimed_at.isoformat()
+                }
+            )
+
+            return Response({
+                'message': f'成功领取 {item.item_type.display_name}！',
+                'item': {
+                    'id': str(item.id),
+                    'type': item.item_type.display_name,
+                    'properties': item.properties
+                },
+                'sharer': shared_item.sharer.username,
+                'remaining_slots': inventory.available_slots
+            }, status=status.HTTP_200_OK)
+
+    except Exception as e:
+        return Response({
+            'error': f'领取物品失败: {str(e)}'
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)

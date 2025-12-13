@@ -69,6 +69,7 @@ class Item(models.Model):
         ('expired', '已过期'),
         ('in_drift_bottle', '在漂流瓶中'),
         ('buried', '已掩埋'),
+        ('shared', '已分享'),
     ]
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
@@ -270,6 +271,38 @@ class BuriedTreasure(models.Model):
 
     def __str__(self):
         return f"宝物 {self.item.item_type.display_name} by {self.burier.username}"
+
+
+class SharedItem(models.Model):
+    """分享的道具"""
+
+    STATUS_CHOICES = [
+        ('active', '可领取'),
+        ('claimed', '已领取'),
+        ('expired', '已过期'),
+    ]
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    sharer = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='shared_items')
+    claimer = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name='claimed_shared_items')
+
+    # 分享的道具
+    item = models.ForeignKey(Item, on_delete=models.CASCADE)
+
+    # 分享链接和状态
+    share_token = models.CharField(max_length=64, unique=True, help_text='分享链接的唯一标识符')
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='active')
+
+    # 时间信息
+    created_at = models.DateTimeField(auto_now_add=True)
+    claimed_at = models.DateTimeField(null=True, blank=True)
+    expires_at = models.DateTimeField(help_text='分享链接过期时间')
+
+    class Meta:
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f"分享: {self.item.item_type.display_name} by {self.sharer.username}"
 
 
 class GameSession(models.Model):

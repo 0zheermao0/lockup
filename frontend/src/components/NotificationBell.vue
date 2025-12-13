@@ -98,6 +98,34 @@
                   </div>
                 </template>
 
+                <!-- 特殊处理物品分享通知 -->
+                <template v-else-if="notification.notification_type === 'item_shared'">
+                  <div class="item-shared-content">
+                    <!-- 基础消息，但将用户名替换为可点击的链接 -->
+                    <p v-if="notification.extra_data && notification.extra_data.claimer_username">
+                      <span
+                        class="claimer-username clickable-username"
+                        @click.prevent.stop="openClaimerProfile(notification.extra_data.claimer_id, notification.extra_data.claimer_username)"
+                      >
+                        {{ notification.extra_data.claimer_username }}
+                      </span>
+                      领取了您分享的
+                      <span class="item-name">{{ notification.extra_data.item_display_name }}</span>
+                    </p>
+                    <p v-else>{{ notification.message }}</p>
+
+                    <!-- 物品详情 -->
+                    <div v-if="notification.extra_data" class="item-details">
+                      <div v-if="notification.extra_data.item_display_name" class="item-info">
+                        物品: {{ notification.extra_data.item_display_name }}
+                      </div>
+                      <div v-if="notification.extra_data.claimed_at" class="claimed-time">
+                        领取时间: {{ new Date(notification.extra_data.claimed_at).toLocaleString('zh-CN') }}
+                      </div>
+                    </div>
+                  </div>
+                </template>
+
                 <!-- 普通通知内容 -->
                 <template v-else>
                   {{ notification.message }}
@@ -189,6 +217,7 @@ const getNotificationIcon = (type: string) => {
     photo_viewed: '📷',
     drift_bottle_found: '🍾',
     item_received: '🎁',
+    item_shared: '🔗',
     friend_request: '👋',
     friend_accepted: '🤝',
     level_upgraded: '⬆️',
@@ -277,6 +306,13 @@ const handleNotificationClick = async (notification: NotificationItem) => {
 const openOpponentProfile = (opponentId: string, opponentUsername: string) => {
   // 打开对手的个人资料页面
   router.push({ name: 'profile', params: { id: opponentId } })
+  showDropdown.value = false
+}
+
+const openClaimerProfile = (claimerId: string, claimerUsername: string) => {
+  console.log('openClaimerProfile called:', claimerId, claimerUsername)
+  // 打开物品领取者的个人资料页面
+  router.push({ name: 'profile', params: { id: claimerId } })
   showDropdown.value = false
 }
 
@@ -753,6 +789,10 @@ onUnmounted(() => {
   margin-left: 0.25rem;
   transition: all 0.2s ease;
   display: inline-block;
+  position: relative;
+  z-index: 10;
+  pointer-events: auto;
+  border: 2px solid transparent;
 }
 
 .clickable-username:hover {
@@ -761,6 +801,42 @@ onUnmounted(() => {
   transform: translate(-1px, -1px);
   box-shadow: 2px 2px 0 #000;
   text-decoration: none;
+  border-color: #000;
+}
+
+/* Item shared notification styles */
+.item-shared-content {
+  padding: 0.5rem 0;
+  position: relative;
+}
+
+.item-shared-content p {
+  position: relative;
+  z-index: 1;
+}
+
+.item-shared-content .item-name {
+  font-weight: 700;
+  color: #17a2b8;
+  padding: 0.125rem 0.25rem;
+  border-radius: 3px;
+  background-color: rgba(23, 162, 184, 0.1);
+}
+
+.item-shared-content .item-details {
+  margin-top: 0.5rem;
+  padding: 0.5rem;
+  background-color: #f8f9fa;
+  border-radius: 4px;
+  border-left: 3px solid #17a2b8;
+}
+
+.item-shared-content .item-info,
+.item-shared-content .claimed-time {
+  margin: 0.25rem 0;
+  font-size: 0.875rem;
+  color: #666;
+  font-weight: 500;
 }
 
 .bet-info,

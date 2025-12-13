@@ -5,6 +5,8 @@ from django.db.models import Q
 from django.utils import timezone
 from datetime import timedelta
 from django.shortcuts import get_object_or_404
+from django.core.paginator import Paginator, PageNotAnInteger, EmptyPage
+import logging
 from .models import Post, PostLike, Comment, CommentLike
 from .serializers import (
     PostSerializer, PostCreateSerializer, CommentSerializer,
@@ -13,6 +15,8 @@ from .serializers import (
 )
 from users.models import Notification
 from tasks.pagination import DynamicPageNumberPagination
+
+logger = logging.getLogger(__name__)
 
 
 class PostListCreateView(generics.ListCreateAPIView):
@@ -148,6 +152,106 @@ def toggle_post_like(request, post_id):
 
 @api_view(['GET'])
 @permission_classes([permissions.IsAuthenticated])
+def get_post_comments(request, post_id):
+    """获取动态的评论列表（分页）"""
+    try:
+        # 获取动态
+        post = Post.objects.get(id=post_id)
+
+        # 分页参数
+        page = int(request.GET.get('page', 1))
+        page_size = min(int(request.GET.get('page_size', 5)), 20)  # 限制最大每页20个
+
+        # 获取评论查询集
+        comments_queryset = Comment.objects.filter(post=post).select_related(
+            'user'
+        ).prefetch_related(
+            'images', 'likes'
+        ).order_by('created_at')
+
+        # 分页
+        paginator = Paginator(comments_queryset, page_size)
+
+        try:
+            comments_page = paginator.page(page)
+        except PageNotAnInteger:
+            comments_page = paginator.page(1)
+        except EmptyPage:
+            comments_page = paginator.page(paginator.num_pages)
+
+        # 序列化评论
+        comments_data = []
+        for comment in comments_page:
+            # 检查是否已点赞
+            is_liked = CommentLike.objects.filter(user=request.user, comment=comment).exists()
+
+            comment_data = {
+                'id': str(comment.id),
+                'user': {
+                    'id': comment.user.id,
+                    'username': comment.user.username,
+                    'avatar': comment.user.avatar.url if comment.user.avatar else None,
+                    'level': comment.user.level,
+                },
+                'content': comment.content,
+                'parent': str(comment.parent.id) if comment.parent else None,
+                'likes_count': comment.likes_count,
+                'is_liked': is_liked,
+                'images': [
+                    {
+                        'id': img.id,
+                        'image': img.image.url,
+                        'order': img.order,
+                        'created_at': img.created_at.isoformat()
+                    }
+                    for img in comment.images.all()
+                ],
+                'created_at': comment.created_at.isoformat(),
+                'updated_at': comment.updated_at.isoformat(),
+            }
+
+            # 获取回复（只获取直接回复，不递归）
+            replies = Comment.objects.filter(parent=comment).select_related('user').prefetch_related('images', 'likes')[:3]
+            comment_data['replies'] = []
+            for reply in replies:
+                is_reply_liked = CommentLike.objects.filter(user=request.user, comment=reply).exists()
+                comment_data['replies'].append({
+                    'id': str(reply.id),
+                    'user': {
+                        'id': reply.user.id,
+                        'username': reply.user.username,
+                        'avatar': reply.user.avatar.url if reply.user.avatar else None,
+                        'level': reply.user.level,
+                    },
+                    'content': reply.content,
+                    'likes_count': reply.likes_count,
+                    'is_liked': is_reply_liked,
+                    'created_at': reply.created_at.isoformat(),
+                })
+
+            comments_data.append(comment_data)
+
+        return Response({
+            'comments': comments_data,
+            'pagination': {
+                'page': comments_page.number,
+                'page_size': page_size,
+                'total_pages': paginator.num_pages,
+                'total_count': paginator.count,
+                'has_next': comments_page.has_next(),
+                'has_previous': comments_page.has_previous(),
+            }
+        })
+
+    except Post.DoesNotExist:
+        return Response({'error': '动态不存在'}, status=404)
+    except Exception as e:
+        logger.error(f"Error getting post comments: {e}")
+        return Response({'error': '获取评论失败'}, status=500)
+
+
+@api_view(['GET'])
+@permission_classes([permissions.IsAuthenticated])
 def post_stats(request):
     """动态统计信息"""
     today = timezone.now().date()
@@ -224,7 +328,7 @@ def get_post_detail(request, post_id):
     """获取单个动态详情"""
     try:
         post = Post.objects.select_related('user').prefetch_related(
-            'images', 'likes', 'comments__user', 'comments__likes', 'comments__images'
+            'images', 'likes'
         ).get(id=post_id)
     except Post.DoesNotExist:
         return Response(
@@ -352,3 +456,103 @@ def toggle_comment_like(request, comment_id):
             })
 
         return Response({'message': '还没有点赞'})
+
+
+@api_view(['GET'])
+@permission_classes([permissions.IsAuthenticated])
+def get_post_comments(request, post_id):
+    """获取动态的评论列表（分页）"""
+    try:
+        # 获取动态
+        post = Post.objects.get(id=post_id)
+
+        # 分页参数
+        page = int(request.GET.get('page', 1))
+        page_size = min(int(request.GET.get('page_size', 5)), 20)  # 限制最大每页20个
+
+        # 获取评论查询集
+        comments_queryset = Comment.objects.filter(post=post).select_related(
+            'user'
+        ).prefetch_related(
+            'images', 'likes'
+        ).order_by('created_at')
+
+        # 分页
+        paginator = Paginator(comments_queryset, page_size)
+
+        try:
+            comments_page = paginator.page(page)
+        except PageNotAnInteger:
+            comments_page = paginator.page(1)
+        except EmptyPage:
+            comments_page = paginator.page(paginator.num_pages)
+
+        # 序列化评论
+        comments_data = []
+        for comment in comments_page:
+            # 检查是否已点赞
+            is_liked = CommentLike.objects.filter(user=request.user, comment=comment).exists()
+
+            comment_data = {
+                'id': str(comment.id),
+                'user': {
+                    'id': comment.user.id,
+                    'username': comment.user.username,
+                    'avatar': comment.user.avatar.url if comment.user.avatar else None,
+                    'level': comment.user.level,
+                },
+                'content': comment.content,
+                'parent': str(comment.parent.id) if comment.parent else None,
+                'likes_count': comment.likes_count,
+                'is_liked': is_liked,
+                'images': [
+                    {
+                        'id': img.id,
+                        'image': img.image.url,
+                        'order': img.order,
+                        'created_at': img.created_at.isoformat()
+                    }
+                    for img in comment.images.all()
+                ],
+                'created_at': comment.created_at.isoformat(),
+                'updated_at': comment.updated_at.isoformat(),
+            }
+
+            # 获取回复（只获取直接回复，不递归）
+            replies = Comment.objects.filter(parent=comment).select_related('user').prefetch_related('images', 'likes')[:3]
+            comment_data['replies'] = []
+            for reply in replies:
+                is_reply_liked = CommentLike.objects.filter(user=request.user, comment=reply).exists()
+                comment_data['replies'].append({
+                    'id': str(reply.id),
+                    'user': {
+                        'id': reply.user.id,
+                        'username': reply.user.username,
+                        'avatar': reply.user.avatar.url if reply.user.avatar else None,
+                        'level': reply.user.level,
+                    },
+                    'content': reply.content,
+                    'likes_count': reply.likes_count,
+                    'is_liked': is_reply_liked,
+                    'created_at': reply.created_at.isoformat(),
+                })
+
+            comments_data.append(comment_data)
+
+        return Response({
+            'comments': comments_data,
+            'pagination': {
+                'page': comments_page.number,
+                'page_size': page_size,
+                'total_pages': paginator.num_pages,
+                'total_count': paginator.count,
+                'has_next': comments_page.has_next(),
+                'has_previous': comments_page.has_previous(),
+            }
+        })
+
+    except Post.DoesNotExist:
+        return Response({'error': '动态不存在'}, status=404)
+    except Exception as e:
+        logger.error(f"Error getting post comments: {e}")
+        return Response({'error': '获取评论失败'}, status=500)

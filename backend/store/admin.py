@@ -1,7 +1,7 @@
 from django.contrib import admin
 from .models import (
     ItemType, UserInventory, Item, StoreItem, Purchase,
-    Game, GameParticipant, DriftBottle, BuriedTreasure, GameSession
+    Game, GameParticipant, DriftBottle, BuriedTreasure, GameSession, SharedItem
 )
 
 
@@ -28,10 +28,26 @@ class UserInventoryAdmin(admin.ModelAdmin):
 
 @admin.register(Item)
 class ItemAdmin(admin.ModelAdmin):
-    list_display = ['item_type', 'owner', 'status', 'created_at']
+    list_display = ['item_type', 'owner', 'original_owner', 'status', 'inventory', 'created_at']
     list_filter = ['item_type', 'status', 'created_at']
-    search_fields = ['owner__username', 'item_type__name']
+    search_fields = ['owner__username', 'original_owner__username', 'item_type__name']
     readonly_fields = ['created_at', 'used_at']
+
+    fieldsets = (
+        ('基本信息', {
+            'fields': ('item_type', 'owner', 'original_owner', 'status', 'inventory')
+        }),
+        ('物品属性', {
+            'fields': ('properties',),
+            'classes': ('collapse',)
+        }),
+        ('时间信息', {
+            'fields': ('created_at', 'used_at')
+        }),
+    )
+
+    def get_queryset(self, request):
+        return super().get_queryset(request).select_related('item_type', 'owner', 'original_owner', 'inventory')
 
 
 @admin.register(StoreItem)
@@ -82,3 +98,39 @@ class GameSessionAdmin(admin.ModelAdmin):
     list_filter = ['game_type', 'created_at']
     search_fields = ['user__username']
     readonly_fields = ['created_at']
+
+
+@admin.register(SharedItem)
+class SharedItemAdmin(admin.ModelAdmin):
+    """分享物品管理"""
+    list_display = ['sharer', 'item', 'status', 'share_token_short', 'claimer', 'created_at', 'expires_at']
+    list_filter = ['status', 'created_at', 'expires_at']
+    search_fields = ['sharer__username', 'claimer__username', 'item__item_type__name', 'share_token']
+    readonly_fields = ['share_token', 'created_at', 'claimed_at']
+    ordering = ['-created_at']
+
+    fieldsets = (
+        ('基本信息', {
+            'fields': ('sharer', 'item', 'status', 'share_token')
+        }),
+        ('分享设置', {
+            'fields': ('expires_at',)
+        }),
+        ('领取信息', {
+            'fields': ('claimer', 'claimed_at'),
+            'classes': ('collapse',)
+        }),
+        ('时间信息', {
+            'fields': ('created_at',)
+        }),
+    )
+
+    def get_queryset(self, request):
+        return super().get_queryset(request).select_related('sharer', 'claimer', 'item', 'item__item_type')
+
+    def share_token_short(self, obj):
+        """显示分享令牌的前8位"""
+        if obj.share_token:
+            return f"{obj.share_token[:8]}..."
+        return "-"
+    share_token_short.short_description = '分享令牌'

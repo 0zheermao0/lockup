@@ -159,9 +159,9 @@
             </form>
 
             <!-- Comments List -->
-            <div v-if="post.comments && post.comments.length > 0" class="comments-list">
+            <div v-if="comments.length > 0" class="comments-list">
               <div
-                v-for="comment in post.comments"
+                v-for="comment in comments"
                 :key="comment.id"
                 class="comment-item"
               >
@@ -216,7 +216,18 @@
               </div>
             </div>
 
-            <div v-else class="no-comments">
+            <!-- Load More Comments Button -->
+            <div v-if="commentsLoaded && pagination && pagination.has_next" class="load-more-section">
+              <button
+                @click="loadMoreComments"
+                :disabled="loadingComments"
+                class="load-more-btn"
+              >
+                {{ loadingComments ? '加载中...' : '加载更多评论' }}
+              </button>
+            </div>
+
+            <div v-else-if="!commentsLoaded && comments.length === 0" class="no-comments">
               还没有评论，快来抢沙发吧！
             </div>
           </section>
@@ -253,7 +264,7 @@ import { smartGoBack } from '../utils/navigation'
 import LockIndicator from '../components/LockIndicator.vue'
 import ProfileModal from '../components/ProfileModal.vue'
 import RichTextEditor from '../components/RichTextEditor.vue'
-import type { Post } from '../types/index'
+import type { Post, Comment } from '../types/index'
 
 const route = useRoute()
 const router = useRouter()
@@ -274,6 +285,21 @@ const selectedUser = ref<any>(null)
 // Comment image upload state
 const commentFileInput = ref<HTMLInputElement>()
 const selectedCommentImages = ref<Array<{ file: File; preview: string }>>([])
+
+// Comments lazy loading state
+const comments = ref<Comment[]>([])
+const loadingComments = ref(false)
+const commentsLoaded = ref(false)
+const pagination = ref<{
+  page: number
+  page_size: number
+  total_pages: number
+  total_count: number
+  has_next: boolean
+  has_previous: boolean
+} | null>(null)
+const currentPage = ref(1)
+const pageSize = 5
 
 const openProfileModal = (user: any) => {
   selectedUser.value = user
@@ -305,6 +331,8 @@ const fetchPost = async () => {
   try {
     const fetchedPost = await postsApi.getPost(postId)
     post.value = fetchedPost
+    // After fetching post, load initial comments
+    await loadComments(1, true)
   } catch (err: any) {
     if (err.status === 404) {
       error.value = '动态不存在'
@@ -315,6 +343,37 @@ const fetchPost = async () => {
   } finally {
     loading.value = false
   }
+}
+
+const loadComments = async (page: number = 1, reset: boolean = false) => {
+  if (!post.value) return
+
+  loadingComments.value = true
+  try {
+    const response = await postsApi.getPostComments(post.value.id, {
+      page,
+      page_size: pageSize
+    })
+
+    if (reset) {
+      comments.value = response.comments
+    } else {
+      comments.value.push(...response.comments)
+    }
+
+    pagination.value = response.pagination
+    currentPage.value = page
+    commentsLoaded.value = true
+  } catch (err) {
+    console.error('Error loading comments:', err)
+  } finally {
+    loadingComments.value = false
+  }
+}
+
+const loadMoreComments = async () => {
+  if (!pagination.value?.has_next) return
+  await loadComments(currentPage.value + 1, false)
 }
 
 const toggleLike = async () => {
@@ -395,15 +454,16 @@ const submitComment = async () => {
 
     const newCommentData = await postsApi.createComment(post.value.id, commentData)
 
-    // 添加新评论到本地状态
-    if (post.value.comments) {
-      post.value.comments.push(newCommentData)
-    } else {
-      post.value.comments = [newCommentData]
-    }
+    // 添加新评论到本地状态（添加到开头，因为是最新的）
+    comments.value.unshift(newCommentData)
 
     // 更新评论数量
     post.value.comments_count += 1
+
+    // 更新分页信息
+    if (pagination.value) {
+      pagination.value.total_count += 1
+    }
 
     // 清空输入框和选中的图片
     newComment.value = ''
@@ -1057,6 +1117,41 @@ onMounted(() => {
   margin-top: 1rem;
   padding-top: 1rem;
   border-top: 2px solid #e9ecef;
+}
+
+/* Load More Comments */
+.load-more-section {
+  display: flex;
+  justify-content: center;
+  margin-top: 2rem;
+  padding-top: 1.5rem;
+  border-top: 2px solid #e9ecef;
+}
+
+.load-more-btn {
+  background-color: #007bff;
+  color: white;
+  border: 2px solid #000;
+  border-radius: 8px;
+  padding: 0.75rem 2rem;
+  cursor: pointer;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  box-shadow: 4px 4px 0 #000;
+  transition: all 0.2s ease;
+}
+
+.load-more-btn:hover:not(:disabled) {
+  background-color: #0056b3;
+  transform: translate(-1px, -1px);
+  box-shadow: 5px 5px 0 #000;
+}
+
+.load-more-btn:disabled {
+  background-color: #6c757d;
+  cursor: not-allowed;
+  opacity: 0.7;
 }
 
 /* Mobile responsive */

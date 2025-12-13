@@ -11,6 +11,7 @@ import StoreView from '../views/StoreView.vue'
 import InventoryView from '../views/InventoryView.vue'
 import GameView from '../views/GameView.vue'
 import ExploreView from '../views/ExploreView.vue'
+import ClaimView from '../views/ClaimView.vue'
 
 const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
@@ -71,6 +72,12 @@ const router = createRouter({
       path: '/explore',
       name: 'explore',
       component: ExploreView,
+      meta: { requiresAuth: true }
+    },
+    {
+      path: '/claim/:token',
+      name: 'claim',
+      component: ClaimView,
       meta: { requiresAuth: true }
     },
     {

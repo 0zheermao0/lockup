@@ -147,13 +147,15 @@
               👁️ 查看照片
             </button>
 
-            <!-- Create drift bottle -->
+            <!-- Share item -->
             <button
-              v-if="canAddToDriftBottle(selectedItem)"
-              @click="showDriftBottleModal = true"
+              v-if="canShareItem(selectedItem)"
+              @click="shareItem"
               class="action-btn secondary"
+              :disabled="sharingItem"
             >
-              🍾 放入漂流瓶
+              <span v-if="sharingItem">分享中...</span>
+              <span v-else>🔗 分享物品</span>
             </button>
 
             <!-- Bury item -->
@@ -221,44 +223,76 @@
         </div>
       </div>
 
-      <!-- Drift bottle creation modal -->
-      <div v-if="showDriftBottleModal" class="modal-overlay">
-        <div class="action-modal">
-          <div class="modal-header">
-            <h3 class="modal-title">🍾 创建漂流瓶</h3>
-            <button @click="closeDriftBottleModal" class="modal-close">×</button>
+      <!-- Share success modal -->
+      <div v-if="showShareModal" class="modal-overlay">
+        <div class="share-modal">
+          <div class="share-modal-header">
+            <div class="share-success-badge">
+              <span class="success-icon">🎉</span>
+              <h3 class="share-modal-title">分享成功!</h3>
+            </div>
+            <button @click="closeShareModal" class="share-modal-close">×</button>
           </div>
 
-          <div class="modal-body">
-            <div class="form-group">
-              <label class="form-label">留言内容</label>
-              <textarea
-                v-model="driftBottleMessage"
-                placeholder="写下你想说的话..."
-                class="form-textarea"
-                maxlength="1000"
-              ></textarea>
-              <div class="char-counter">{{ driftBottleMessage.length }}/1000</div>
+          <div class="share-modal-body">
+            <!-- Item preview card -->
+            <div class="shared-item-preview">
+              <div class="item-preview-icon">{{ sharedItem?.item_type?.icon }}</div>
+              <div class="item-preview-details">
+                <h4 class="item-preview-name">{{ sharedItem?.item_type?.display_name }}</h4>
+                <p class="item-preview-description">已准备好分享给他人</p>
+              </div>
             </div>
 
-            <div v-if="selectedItem" class="item-info-section">
-              <h4 class="info-title">📦 附带物品</h4>
-              <div class="item-info-card">
-                <span class="item-icon">{{ selectedItem.item_type.icon }}</span>
-                <div class="item-details">
-                  <span class="item-name">{{ selectedItem.item_type.display_name }}</span>
-                  <span class="item-description">{{ selectedItem.item_type.description }}</span>
+            <!-- Success message -->
+            <div class="share-success-message">
+              <h4 class="success-title">🔗 分享链接已生成</h4>
+              <p class="success-description">
+                任何人点击此链接都可以获取您的物品！
+              </p>
+              <div class="success-warning">
+                <span class="warning-icon">⚠️</span>
+                <span class="warning-text">注意：只有第一个点击的人能获得物品</span>
+              </div>
+              <!-- Expiration info -->
+              <div v-if="shareExpiresAt" class="expiration-info">
+                <div class="expiration-badge">
+                  <span class="expiration-icon">⏰</span>
+                  <span class="expiration-text">{{ formatExpireTime(shareExpiresAt) }}</span>
                 </div>
+                <p class="expiration-note">链接将在24小时后失效</p>
+              </div>
+            </div>
+
+            <!-- Share link section -->
+            <div class="share-link-section">
+              <label class="share-link-label">分享链接</label>
+              <div class="share-link-container">
+                <div class="share-link-input-wrapper">
+                  <input
+                    ref="shareLinkInput"
+                    v-model="shareLink"
+                    readonly
+                    class="share-link-input"
+                    @click="selectShareLink"
+                  >
+                </div>
+                <button
+                  @click="copyShareLink"
+                  class="share-copy-btn"
+                  :class="{ 'copying': copyingLink, 'copied': linkCopied }"
+                  :disabled="copyingLink"
+                >
+                  <span v-if="copyingLink">复制中...</span>
+                  <span v-else-if="linkCopied">✅ 已复制!</span>
+                  <span v-else>📋 复制链接</span>
+                </button>
               </div>
             </div>
           </div>
 
-          <div class="modal-footer">
-            <button @click="closeDriftBottleModal" class="modal-btn secondary">取消</button>
-            <button @click="createDriftBottle" class="modal-btn primary" :disabled="!driftBottleMessage.trim() || creatingDriftBottle">
-              <span v-if="creatingDriftBottle">创建中...</span>
-              <span v-else>创建漂流瓶</span>
-            </button>
+          <div class="share-modal-footer">
+            <button @click="closeShareModal" class="share-close-btn">完成</button>
           </div>
         </div>
       </div>
@@ -389,10 +423,15 @@ const photoAutoCloseTimer = ref<number | null>(null)
 const photoTimeRemaining = ref(5)
 const photoInput = ref<HTMLInputElement>()
 
-// Drift bottle
-const showDriftBottleModal = ref(false)
-const driftBottleMessage = ref('')
-const creatingDriftBottle = ref(false)
+// Share item
+const showShareModal = ref(false)
+const shareLink = ref('')
+const shareExpiresAt = ref('')
+const sharingItem = ref(false)
+const copyingLink = ref(false)
+const linkCopied = ref(false)
+const shareLinkInput = ref<HTMLInputElement>()
+const sharedItem = ref<Item | null>(null)
 
 // Bury item
 const showBuryModal = ref(false)
@@ -440,6 +479,25 @@ const getStatusText = (status: string): string => {
 
 const formatDate = (dateString: string): string => {
   return new Date(dateString).toLocaleString('zh-CN')
+}
+
+const formatExpireTime = (dateString: string): string => {
+  if (!dateString) return ''
+  const expireDate = new Date(dateString)
+  const now = new Date()
+  const diffMs = expireDate.getTime() - now.getTime()
+  const diffHours = Math.floor(diffMs / (1000 * 60 * 60))
+  const diffMinutes = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60))
+
+  if (diffMs <= 0) {
+    return '已过期'
+  } else if (diffHours >= 24) {
+    return `${Math.floor(diffHours / 24)}天后过期`
+  } else if (diffHours > 0) {
+    return `${diffHours}小时${diffMinutes}分钟后过期`
+  } else {
+    return `${diffMinutes}分钟后过期`
+  }
 }
 
 const triggerPhotoInput = () => {
@@ -513,7 +571,7 @@ const closePhotoViewer = () => {
   loadInventory()
 }
 
-const canAddToDriftBottle = (item: Item): boolean => {
+const canShareItem = (item: Item): boolean => {
   return item.status === 'available' && ['photo', 'note', 'key'].includes(item.item_type.name)
 }
 
@@ -525,28 +583,57 @@ const canDiscardItem = (item: Item): boolean => {
   return item.status === 'available'
 }
 
-const createDriftBottle = async () => {
-  if (!selectedItem.value || !driftBottleMessage.value.trim()) return
+const shareItem = async () => {
+  if (!selectedItem.value) return
 
   try {
-    creatingDriftBottle.value = true
-    await storeApi.createDriftBottle({
-      message: driftBottleMessage.value,
-      item_ids: [selectedItem.value.id]
-    })
-    await loadInventory()
-    closeDriftBottleModal()
+    sharingItem.value = true
+    // 保存被分享的物品信息
+    sharedItem.value = selectedItem.value
+    const response = await storeApi.createShareLink(selectedItem.value.id)
+    shareLink.value = response.share_url
+    shareExpiresAt.value = response.expires_at
+    showShareModal.value = true
+    selectedItem.value = null
   } catch (err) {
-    error.value = err instanceof Error ? err.message : '创建漂流瓶失败'
+    error.value = err instanceof Error ? err.message : '创建分享链接失败'
+    sharedItem.value = null
   } finally {
-    creatingDriftBottle.value = false
+    sharingItem.value = false
   }
 }
 
-const closeDriftBottleModal = () => {
-  showDriftBottleModal.value = false
-  driftBottleMessage.value = ''
-  selectedItem.value = null
+const closeShareModal = () => {
+  showShareModal.value = false
+  shareLink.value = ''
+  shareExpiresAt.value = ''
+  linkCopied.value = false
+  sharedItem.value = null
+}
+
+const selectShareLink = () => {
+  shareLinkInput.value?.select()
+}
+
+const copyShareLink = async () => {
+  try {
+    copyingLink.value = true
+    await navigator.clipboard.writeText(shareLink.value)
+    linkCopied.value = true
+    setTimeout(() => {
+      linkCopied.value = false
+    }, 2000)
+  } catch (err) {
+    // Fallback for older browsers
+    shareLinkInput.value?.select()
+    document.execCommand('copy')
+    linkCopied.value = true
+    setTimeout(() => {
+      linkCopied.value = false
+    }, 2000)
+  } finally {
+    copyingLink.value = false
+  }
 }
 
 const buryItem = async () => {
@@ -1583,6 +1670,337 @@ onMounted(() => {
   display: none;
 }
 
+/* Share Modal - Neo-Brutalism Style */
+.share-modal {
+  background: white;
+  border: 4px solid #000;
+  box-shadow: 16px 16px 0 #000;
+  max-width: 600px;
+  width: 100%;
+  transform: rotate(-1deg);
+  animation: shareModalEnter 0.3s ease-out;
+}
+
+@keyframes shareModalEnter {
+  0% {
+    transform: rotate(-1deg) scale(0.8);
+    opacity: 0;
+  }
+  100% {
+    transform: rotate(-1deg) scale(1);
+    opacity: 1;
+  }
+}
+
+.share-modal-header {
+  background: #28a745;
+  border-bottom: 4px solid #000;
+  padding: 1.5rem 2rem;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  position: relative;
+}
+
+.share-success-badge {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.success-icon {
+  font-size: 2rem;
+  animation: bounce 0.6s ease-in-out infinite alternate;
+}
+
+@keyframes bounce {
+  0% { transform: translateY(0px); }
+  100% { transform: translateY(-8px); }
+}
+
+.share-modal-title {
+  font-size: 1.75rem;
+  font-weight: 900;
+  text-transform: uppercase;
+  letter-spacing: 2px;
+  margin: 0;
+  color: white;
+  text-shadow: 2px 2px 0 #000;
+}
+
+.share-modal-close {
+  background: #dc3545;
+  color: white;
+  border: 3px solid #000;
+  width: 3rem;
+  height: 3rem;
+  border-radius: 50%;
+  font-size: 1.5rem;
+  font-weight: 900;
+  cursor: pointer;
+  box-shadow: 4px 4px 0 #000;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.share-modal-close:hover {
+  transform: translate(2px, 2px);
+  box-shadow: 2px 2px 0 #000;
+}
+
+.share-modal-body {
+  padding: 2rem;
+  display: flex;
+  flex-direction: column;
+  gap: 2rem;
+}
+
+/* Shared Item Preview */
+.shared-item-preview {
+  background: #e8f4f8;
+  border: 3px solid #17a2b8;
+  padding: 1.5rem;
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  box-shadow: 6px 6px 0 #17a2b8;
+  transform: rotate(1deg);
+}
+
+.item-preview-icon {
+  font-size: 3rem;
+  flex-shrink: 0;
+  background: white;
+  border: 3px solid #000;
+  width: 4rem;
+  height: 4rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 3px 3px 0 #000;
+}
+
+.item-preview-details {
+  flex: 1;
+}
+
+.item-preview-name {
+  font-size: 1.25rem;
+  font-weight: 900;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  margin: 0 0 0.5rem 0;
+  color: #000;
+}
+
+.item-preview-description {
+  font-size: 1rem;
+  font-weight: 700;
+  color: #17a2b8;
+  margin: 0;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+/* Success Message Section */
+.share-success-message {
+  text-align: center;
+}
+
+.success-title {
+  font-size: 1.5rem;
+  font-weight: 900;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  margin: 0 0 1rem 0;
+  color: #000;
+}
+
+.success-description {
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: #666;
+  margin: 0 0 1.5rem 0;
+  line-height: 1.4;
+}
+
+.success-warning {
+  background: #fff3cd;
+  border: 3px solid #ffc107;
+  padding: 1rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.75rem;
+  box-shadow: 4px 4px 0 #ffc107;
+  transform: rotate(-0.5deg);
+}
+
+.warning-icon {
+  font-size: 1.25rem;
+  flex-shrink: 0;
+}
+
+.warning-text {
+  font-weight: 900;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: #856404;
+  font-size: 0.875rem;
+}
+
+/* Expiration Info */
+.expiration-info {
+  margin-top: 1.5rem;
+  text-align: center;
+}
+
+.expiration-badge {
+  background: #e8f5e8;
+  border: 3px solid #28a745;
+  padding: 0.75rem 1.5rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.75rem;
+  box-shadow: 3px 3px 0 #28a745;
+  transform: rotate(0.5deg);
+  margin-bottom: 1rem;
+}
+
+.expiration-icon {
+  font-size: 1.25rem;
+  flex-shrink: 0;
+}
+
+.expiration-text {
+  font-weight: 900;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: #155724;
+  font-size: 0.875rem;
+}
+
+.expiration-note {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: #666;
+  margin: 0;
+  font-style: italic;
+}
+
+/* Share Link Section */
+.share-link-section {
+  background: #f8f9fa;
+  border: 3px solid #6c757d;
+  padding: 1.5rem;
+  box-shadow: 6px 6px 0 #6c757d;
+  transform: rotate(0.5deg);
+}
+
+.share-link-label {
+  display: block;
+  font-weight: 900;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  margin-bottom: 1rem;
+  color: #000;
+  font-size: 1rem;
+}
+
+.share-link-container {
+  display: flex;
+  gap: 1rem;
+  align-items: stretch;
+}
+
+.share-link-input-wrapper {
+  flex: 1;
+  position: relative;
+}
+
+.share-link-input {
+  width: 100%;
+  border: 3px solid #000;
+  padding: 0.875rem 1rem;
+  font-weight: 700;
+  background: white;
+  color: #000;
+  font-family: 'Courier New', monospace;
+  font-size: 0.875rem;
+  box-shadow: inset 2px 2px 0 rgba(0, 0, 0, 0.1);
+}
+
+.share-link-input:focus {
+  outline: none;
+  box-shadow: inset 2px 2px 0 rgba(0, 0, 0, 0.1), 0 0 0 3px #007bff;
+}
+
+.share-copy-btn {
+  background: #007bff;
+  color: white;
+  border: 3px solid #000;
+  padding: 0.875rem 1.5rem;
+  font-weight: 900;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  cursor: pointer;
+  box-shadow: 4px 4px 0 #000;
+  transition: all 0.2s ease;
+  white-space: nowrap;
+  min-width: 140px;
+}
+
+.share-copy-btn:hover:not(:disabled) {
+  transform: translate(2px, 2px);
+  box-shadow: 2px 2px 0 #000;
+}
+
+.share-copy-btn.copying {
+  background: #ffc107;
+  color: #000;
+}
+
+.share-copy-btn.copied {
+  background: #28a745;
+  color: white;
+}
+
+.share-copy-btn:disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
+}
+
+/* Share Modal Footer */
+.share-modal-footer {
+  background: #f8f9fa;
+  border-top: 4px solid #000;
+  padding: 1.5rem 2rem;
+  display: flex;
+  justify-content: center;
+}
+
+.share-close-btn {
+  background: #6c757d;
+  color: white;
+  border: 3px solid #000;
+  padding: 1rem 3rem;
+  font-weight: 900;
+  text-transform: uppercase;
+  letter-spacing: 2px;
+  cursor: pointer;
+  box-shadow: 6px 6px 0 #000;
+  transition: all 0.2s ease;
+  font-size: 1.1rem;
+}
+
+.share-close-btn:hover {
+  transform: translate(3px, 3px);
+  box-shadow: 3px 3px 0 #000;
+  background: #5a6268;
+}
+
 /* Mobile Responsive */
 @media (max-width: 768px) {
   .inventory-header {
@@ -1629,6 +2047,113 @@ onMounted(() => {
   .modal-actions {
     flex-direction: column;
     gap: 0.75rem;
+  }
+
+  /* Share Modal Mobile Styles */
+  .share-modal {
+    margin: 1rem;
+    max-width: calc(100vw - 2rem);
+    box-shadow: 8px 8px 0 #000;
+  }
+
+  .share-modal-header {
+    padding: 1rem 1.5rem;
+    flex-direction: column;
+    gap: 1rem;
+    text-align: center;
+  }
+
+  .share-modal-title {
+    font-size: 1.25rem;
+    letter-spacing: 1px;
+  }
+
+  .share-modal-close {
+    width: 2.5rem;
+    height: 2.5rem;
+    font-size: 1.25rem;
+  }
+
+  .share-modal-body {
+    padding: 1.5rem;
+    gap: 1.5rem;
+  }
+
+  .shared-item-preview {
+    padding: 1rem;
+    flex-direction: column;
+    text-align: center;
+    gap: 1rem;
+  }
+
+  .item-preview-icon {
+    font-size: 2.5rem;
+    width: 3.5rem;
+    height: 3.5rem;
+  }
+
+  .item-preview-name {
+    font-size: 1rem;
+  }
+
+  .success-title {
+    font-size: 1.25rem;
+  }
+
+  .success-description {
+    font-size: 1rem;
+  }
+
+  .success-warning {
+    flex-direction: column;
+    gap: 0.5rem;
+    text-align: center;
+  }
+
+  .share-link-container {
+    flex-direction: column;
+    gap: 0.75rem;
+  }
+
+  .share-copy-btn {
+    width: 100%;
+    min-width: auto;
+    padding: 1rem;
+  }
+
+  .share-modal-footer {
+    padding: 1rem 1.5rem;
+  }
+
+  .share-close-btn {
+    padding: 0.875rem 2rem;
+    font-size: 1rem;
+    letter-spacing: 1px;
+  }
+
+  /* Expiration Info Mobile Styles */
+  .expiration-info {
+    margin-top: 1rem;
+  }
+
+  .expiration-badge {
+    padding: 0.5rem 1rem;
+    margin-bottom: 0.75rem;
+    flex-direction: column;
+    gap: 0.5rem;
+    text-align: center;
+  }
+
+  .expiration-icon {
+    font-size: 1rem;
+  }
+
+  .expiration-text {
+    font-size: 0.75rem;
+  }
+
+  .expiration-note {
+    font-size: 0.75rem;
   }
 }
 </style>

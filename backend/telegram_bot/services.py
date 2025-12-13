@@ -13,6 +13,7 @@ from telegram.ext import Application, CommandHandler, CallbackQueryHandler, Mess
 from tasks.models import LockTask
 from users.models import Notification
 from tasks.utils import add_overtime_to_task
+from store.models import Item, UserInventory
 import logging
 
 User = get_user_model()
@@ -208,6 +209,7 @@ class TelegramBotService:
         self.application.add_handler(CommandHandler("unbind", self._handle_unbind))
         self.application.add_handler(CommandHandler("status", self._handle_status))
         self.application.add_handler(CommandHandler("task", self._handle_task))
+        self.application.add_handler(CommandHandler("share_item", self._handle_share_item))
         self.application.add_handler(CommandHandler("help", self._handle_help))
 
         # 回调查询处理器（处理按钮点击）
@@ -615,11 +617,143 @@ Telegram 通知：{'✅ 已开启' if user.telegram_notifications_enabled else '
 /unbind - 解绑账户
 /status - 查看账户状态
 /task - 查看您的带锁任务
+/share_item - 分享背包中的物品
 /help - 显示此帮助
 通知功能：
 绑定后会自动接收应用内的重要通知"""
 
         await update.message.reply_text(help_text)
+
+    async def _handle_share_item(self, update, context):
+        """处理 /share_item 命令 - 显示用户背包中可分享的物品"""
+        user_id = update.effective_user.id
+        chat_id = update.effective_chat.id
+        chat_type = update.effective_chat.type
+
+        # 安全检查：验证更新和频率限制
+        if not self._validate_update(update) or not self._check_rate_limit(user_id):
+            logger.warning(f"Security check failed for user {user_id} in _handle_share_item")
+            return
+
+        try:
+            # 根据聊天类型确定如何查找用户
+            if chat_type == 'private':
+                # 私聊：使用 chat_id 查找
+                user_query = await sync_to_async(User.objects.filter)(telegram_chat_id=chat_id)
+            else:
+                # 群聊：使用 user_id 查找
+                user_query = await sync_to_async(User.objects.filter)(telegram_user_id=user_id)
+
+            user = await sync_to_async(user_query.first)()
+
+            if not user:
+                if chat_type == 'private':
+                    await self._safe_send_message(
+                        update.message.reply_text,
+                        "❌ 您还没有绑定任何账户\n\n"
+                        "使用 /bind 开始绑定"
+                    )
+                else:
+                    await self._safe_send_message(
+                        update.message.reply_text,
+                        f"❌ @{update.effective_user.username or update.effective_user.first_name} 还没有绑定账户\n\n"
+                        "请私聊机器人使用 /start 进行绑定"
+                    )
+                return
+
+            # 获取用户背包
+            inventory_query = await sync_to_async(UserInventory.objects.filter)(user=user)
+            inventory = await sync_to_async(inventory_query.first)()
+
+            if not inventory:
+                await self._safe_send_message(
+                    update.message.reply_text,
+                    "❌ 您还没有背包，请先前往应用购买物品"
+                )
+                return
+
+            # 获取可分享的物品（photo, note, key 且状态为 available）
+            shareable_items_query = await sync_to_async(Item.objects.filter)(
+                owner=user,
+                inventory=inventory,
+                status='available',
+                item_type__name__in=['photo', 'note', 'key']
+            )
+            shareable_items = await sync_to_async(list)(shareable_items_query.select_related('item_type'))
+
+            if not shareable_items:
+                # 用户没有可分享的物品
+                if chat_type == 'private':
+                    message_text = f"""🎒 **您的背包**
+
+您目前没有可分享的物品。
+
+💡 可分享的物品类型：
+📷 照片 (photo)
+📝 笔记 (note)
+🗝️ 钥匙 (key)
+
+前往应用购买或获得这些物品后，就可以在这里分享给朋友了！"""
+                else:
+                    message_text = f"""🎒 **@{user.username} 的背包**
+
+{user.username} 目前没有可分享的物品。
+
+💡 可分享的物品类型：📷 照片、📝 笔记、🗝️ 钥匙"""
+
+                await self._safe_send_message(
+                    update.message.reply_text,
+                    message_text,
+                    parse_mode='Markdown'
+                )
+                return
+
+            # 构建物品选择界面
+            if chat_type == 'private':
+                items_text = f"""🎒 **您的可分享物品**
+
+请选择要分享的物品：
+
+"""
+            else:
+                items_text = f"""🎒 **@{user.username} 的可分享物品**
+
+@{user.username} 请选择要分享的物品：
+
+"""
+
+            # 添加物品列表信息
+            for i, item in enumerate(shareable_items[:5], 1):  # 最多显示5个物品
+                item_icon = getattr(item.item_type, 'icon', '📦')
+                items_text += f"{i}. {item_icon} {item.item_type.display_name}\n"
+
+            items_text += f"\n💡 选择后将生成分享链接，其他人点击即可获得物品！"
+
+            # 创建物品选择按钮（只有分享者可以点击）
+            keyboard_buttons = []
+            for i, item in enumerate(shareable_items[:5]):  # 最多显示5个物品
+                item_icon = getattr(item.item_type, 'icon', '📦')
+                button_text = f"{item_icon} {item.item_type.display_name}"
+                callback_data = f"share_select_{item.id}_{user.id}"  # 包含用户ID用于权限验证
+                keyboard_buttons.append([InlineKeyboardButton(button_text, callback_data=callback_data)])
+
+            keyboard = InlineKeyboardMarkup(keyboard_buttons)
+
+            await self._safe_send_message(
+                update.message.reply_text,
+                items_text,
+                parse_mode='Markdown',
+                reply_markup=keyboard
+            )
+
+            logger.info(f"Share item command processed successfully for user {user.username} in {chat_type} chat, {len(shareable_items)} shareable items found")
+
+        except Exception as e:
+            logger.error(f"Error in share_item handler for user {user_id}: {e}")
+            await self._safe_send_message(
+                update.message.reply_text,
+                "❌ 获取物品信息时发生错误，请稍后重试"
+            )
 
     async def _handle_callback_query(self, update, context):
         """处理回调查询 - 用于处理分享任务的加时按钮"""
@@ -651,6 +785,13 @@ Telegram 通知：{'✅ 已开启' if user.telegram_notifications_enabled else '
             # 处理任务加时回调（原有的分享任务功能）
             if callback_data.startswith('overtime_'):
                 await self._handle_overtime_callback(query, callback_data, current_user)
+
+            # 处理物品分享回调
+            elif callback_data.startswith('share_select_'):
+                await self._handle_share_select_callback(query, callback_data, current_user)
+
+            elif callback_data.startswith('share_claim_'):
+                await self._handle_share_claim_callback(query, callback_data, current_user)
 
             # 处理游戏参与回调
             elif callback_data.startswith('game_'):
@@ -813,6 +954,230 @@ Telegram 通知：{'✅ 已开启' if user.telegram_notifications_enabled else '
             await query.answer(result['message'], show_alert=True)
         else:
             await query.answer(result['message'], show_alert=True)
+
+    async def _handle_share_select_callback(self, query, callback_data, current_user):
+        """处理物品选择回调 - 只有分享者可以选择物品"""
+        # 解析回调数据：share_select_{item_id}_{sharer_user_id}
+        try:
+            parts = callback_data.replace('share_select_', '').split('_')
+            if len(parts) != 2:
+                await self._safe_callback_response(query, "❌ 无效的操作", show_alert=True)
+                return
+
+            item_id, sharer_user_id = parts
+            sharer_user_id = int(sharer_user_id)
+
+            # 验证只有分享者可以选择物品
+            if current_user.id != sharer_user_id:
+                await self._safe_callback_response(query, "❌ 只有物品分享者才能选择物品", show_alert=True)
+                return
+
+            # 获取物品信息
+            item_query = await sync_to_async(Item.objects.filter)(id=item_id, owner=current_user, status='available')
+            item = await sync_to_async(item_query.select_related('item_type').first)()
+
+            if not item:
+                await self._safe_callback_response(query, "❌ 物品不存在或已被使用", show_alert=True)
+                return
+
+            # 检查物品是否可分享
+            if item.item_type.name not in ['photo', 'note', 'key']:
+                await self._safe_callback_response(query, "❌ 该物品无法分享", show_alert=True)
+                return
+
+            # 创建分享链接
+            try:
+                share_result = await sync_to_async(self._create_telegram_share_link)(item, current_user)
+            except Exception as e:
+                logger.error(f"Failed to create share link for item {item_id}: {e}")
+                await self._safe_callback_response(query, "❌ 创建分享链接失败，请稍后重试", show_alert=True)
+                return
+
+            # 更新消息显示选中的物品和获取按钮
+            chat_type = query.message.chat.type
+            item_icon = getattr(item.item_type, 'icon', '📦')
+
+            if chat_type == 'private':
+                updated_text = f"""🎁 **您选择分享的物品**
+
+{item_icon} **{item.item_type.display_name}**
+📝 描述：{item.item_type.description}
+
+🔗 分享链接已生成，其他人点击下方按钮即可获取此物品！
+
+⚠️ 注意：只有第一个点击的人能获得物品"""
+            else:
+                updated_text = f"""🎁 **@{current_user.username} 分享的物品**
+
+{item_icon} **{item.item_type.display_name}**
+📝 描述：{item.item_type.description}
+
+💡 点击下方按钮即可获取此物品！
+
+⚠️ 注意：只有第一个点击的人能获得物品"""
+
+            # 创建获取按钮（所有人都可以点击）
+            keyboard = InlineKeyboardMarkup([
+                [InlineKeyboardButton("🎁 获取物品", callback_data=f"share_claim_{share_result['share_token']}")]
+            ])
+
+            # 更新消息
+            edit_success = await self._safe_edit_message(
+                query,
+                updated_text,
+                reply_markup=keyboard,
+                parse_mode='Markdown'
+            )
+
+            if edit_success:
+                await self._safe_callback_response(query, f"✅ 已选择分享 {item.item_type.display_name}！", show_alert=True)
+                logger.info(f"User {current_user.username} selected item {item.item_type.display_name} for sharing")
+            else:
+                await self._safe_callback_response(query, "❌ 更新消息失败，请稍后重试", show_alert=True)
+
+        except ValueError:
+            await self._safe_callback_response(query, "❌ 无效的用户ID", show_alert=True)
+        except Exception as e:
+            logger.error(f"Error in share select callback: {e}")
+            await self._safe_callback_response(query, "❌ 操作失败，请稍后重试", show_alert=True)
+
+    async def _handle_share_claim_callback(self, query, callback_data, current_user):
+        """处理物品获取回调 - 任何绑定用户都可以获取物品"""
+        # 解析回调数据：share_claim_{share_token}
+        share_token = callback_data.replace('share_claim_', '')
+        logger.info(f"Processing share claim callback: share_token={share_token}, user_id={current_user.id}")
+
+        try:
+            # 导入必要的模型
+            from store.models import SharedItem
+
+            # 查找分享记录
+            shared_item_query = await sync_to_async(SharedItem.objects.filter)(
+                share_token=share_token,
+                status='active'
+            )
+            shared_item = await sync_to_async(shared_item_query.select_related('sharer', 'item', 'item__item_type').first)()
+
+            if not shared_item:
+                await self._safe_callback_response(query, "❌ 分享链接无效或已过期", show_alert=True)
+                return
+
+            # 检查是否是分享者自己
+            if shared_item.sharer.id == current_user.id:
+                await self._safe_callback_response(query, "❌ 不能获取自己分享的物品", show_alert=True)
+                return
+
+            # 检查是否已被其他人获取
+            if shared_item.claimer:
+                await self._safe_callback_response(query, f"❌ 物品已被 {shared_item.claimer.username} 获取", show_alert=True)
+                return
+
+            # 检查获取者的背包空间
+            claimer_inventory_query = await sync_to_async(UserInventory.objects.filter)(user=current_user)
+            claimer_inventory = await sync_to_async(claimer_inventory_query.first)()
+
+            if not claimer_inventory:
+                await self._safe_callback_response(query, "❌ 您还没有背包，请先前往应用购买背包", show_alert=True)
+                return
+
+            if claimer_inventory.available_slots <= 0:
+                await self._safe_callback_response(query, "❌ 您的背包空间不足，请先清理背包", show_alert=True)
+                return
+
+            # 执行物品转移
+            try:
+                # 更新物品所有者和背包
+                item = shared_item.item
+                item.owner = current_user
+                item.inventory = claimer_inventory
+                await sync_to_async(item.save)()
+
+                # 更新分享记录
+                shared_item.claimer = current_user
+                shared_item.status = 'claimed'
+                shared_item.claimed_at = timezone.now()
+                await sync_to_async(shared_item.save)()
+
+                # 更新背包容量
+                await sync_to_async(claimer_inventory.update_slots)()
+
+                # 创建通知给分享者（与web API保持一致）
+                from users.models import Notification
+                await sync_to_async(Notification.create_notification)(
+                    recipient=shared_item.sharer,
+                    notification_type='item_shared',
+                    actor=current_user,
+                    title='物品被领取',
+                    message=f'{current_user.username} 领取了您分享的 {item.item_type.display_name}',
+                    related_object_type='shared_item',
+                    related_object_id=shared_item.id,
+                    extra_data={
+                        'item_type': item.item_type.name,
+                        'item_display_name': item.item_type.display_name,
+                        'claimer_id': current_user.id,
+                        'claimer_username': current_user.username,
+                        'claimed_at': shared_item.claimed_at.isoformat()
+                    }
+                )
+
+                # 更新消息显示获取成功
+                original_text = query.message.text
+                updated_text = f"{original_text}\n\n🎉 @{current_user.username} 已成功获取此物品！"
+
+                # 移除按钮
+                edit_success = await self._safe_edit_message(
+                    query,
+                    updated_text,
+                    reply_markup=None,
+                    parse_mode='Markdown'
+                )
+
+                # 发送成功消息
+                success_message = f"🎉 成功获取 {item.item_type.icon} {item.item_type.display_name}！\n\n物品已添加到您的背包中。"
+                response_success = await self._safe_callback_response(
+                    query,
+                    success_message,
+                    show_alert=True
+                )
+
+                if edit_success and response_success:
+                    logger.info(f"Item {item.item_type.display_name} successfully transferred from {shared_item.sharer.username} to {current_user.username}")
+                else:
+                    logger.warning(f"Item transfer successful but message update failed: edit={edit_success}, response={response_success}")
+
+            except Exception as e:
+                logger.error(f"Failed to transfer item: {e}")
+                await self._safe_callback_response(query, "❌ 物品转移失败，请稍后重试", show_alert=True)
+
+        except Exception as e:
+            logger.error(f"Error in share claim callback: {e}")
+            import traceback
+            logger.error(f"Traceback: {traceback.format_exc()}")
+            await self._safe_callback_response(query, "❌ 获取物品失败，请稍后重试", show_alert=True)
+
+    def _create_telegram_share_link(self, item, sharer_user):
+        """创建Telegram分享链接（同步方法）"""
+        from store.models import SharedItem
+        import uuid
+        from django.utils import timezone
+        from datetime import timedelta
+
+        # 生成唯一的分享令牌
+        share_token = str(uuid.uuid4())
+
+        # 创建分享记录
+        shared_item = SharedItem.objects.create(
+            sharer=sharer_user,
+            item=item,
+            share_token=share_token,
+            expires_at=timezone.now() + timedelta(hours=24),  # 24小时后过期
+            status='active'
+        )
+
+        return {
+            'share_token': share_token,
+            'expires_at': shared_item.expires_at.isoformat()
+        }
 
     def generate_task_share_message(self, task, share_user):
         """生成任务分享消息"""
