@@ -412,8 +412,10 @@ const parseRegistrationError = (err: any): {
     }
 
     if (allErrors.length > 0) {
-      errorResult.message = allErrors[0]
-      errorResult.secondaryMessage = allErrors.length > 1 ? allErrors.slice(1).join('，') : undefined
+      errorResult.message = allErrors[0]!
+      if (allErrors.length > 1) {
+        errorResult.secondaryMessage = allErrors.slice(1).join('，')
+      }
       errorResult.details['详细错误'] = allErrors.join('；')
       return errorResult
     }
