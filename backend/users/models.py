@@ -502,10 +502,9 @@ class Notification(models.Model):
                 import threading
 
                 def send_notification():
-                    loop = asyncio.new_event_loop()
-                    asyncio.set_event_loop(loop)
                     try:
-                        loop.run_until_complete(
+                        # 使用 asyncio.run() 来安全地运行异步代码
+                        asyncio.run(
                             telegram_service.send_notification(
                                 user_id=notification.recipient.id,
                                 title=notification.title,
@@ -518,8 +517,8 @@ class Notification(models.Model):
                         import logging
                         logger = logging.getLogger(__name__)
                         logger.error(f"Failed to send Telegram notification: {e}")
-                    finally:
-                        loop.close()
+                        import traceback
+                        logger.error(f"Traceback: {traceback.format_exc()}")
 
                 # 在后台线程中发送通知
                 thread = threading.Thread(target=send_notification)

@@ -1096,7 +1096,9 @@ def check_and_complete_expired_tasks(request):
         })
 
     # 同时处理投票结果
-    process_voting_results(request)
+    # 注意：process_voting_results 期望 Django HttpRequest，但这里收到的是 DRF Request
+    # 需要传递原始的 Django HttpRequest 对象
+    process_voting_results(request.request if hasattr(request, 'request') else request)
 
     return Response({
         'message': f'Found {len(expired_task_info)} expired lock task(s) awaiting manual completion',

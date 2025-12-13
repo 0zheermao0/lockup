@@ -1363,7 +1363,9 @@ Telegram 通知：{'✅ 已开启' if user.telegram_notifications_enabled else '
 
     async def send_notification(self, user_id: int, title: str, message: str, extra_data: Dict[Any, Any] = None):
         """发送通知给指定用户"""
-        if not self.bot:
+        # 确保 Bot 已经初始化
+        if not await self._ensure_initialized():
+            logger.warning("Bot not initialized, cannot send notification")
             return False
 
         try:
@@ -1379,16 +1381,25 @@ Telegram 通知：{'✅ 已开启' if user.telegram_notifications_enabled else '
                 # 这里可以添加深度链接到应用
                 pass
 
-            await self.bot.send_message(
+            # 使用安全的消息发送方法
+            result = await self._safe_send_message(
+                self.bot.send_message,
                 chat_id=user.telegram_chat_id,
                 text=notification_text,
                 parse_mode='Markdown'
             )
 
-            return True
+            if result is not None:
+                logger.info(f"Successfully sent Telegram notification to user {user_id}")
+                return True
+            else:
+                logger.warning(f"Failed to send Telegram notification to user {user_id} - message send returned None")
+                return False
 
         except Exception as e:
             logger.error(f"Failed to send Telegram notification to user {user_id}: {e}")
+            import traceback
+            logger.error(f"Traceback: {traceback.format_exc()}")
             return False
 
 
