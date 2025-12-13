@@ -51,9 +51,7 @@ class TelegramBotService:
             self.bot = Bot(token=settings.TELEGRAM_BOT_TOKEN)
             self.application = Application.builder().token(settings.TELEGRAM_BOT_TOKEN).build()
 
-            # 注册处理器
-            self._register_handlers()
-
+            # 不在这里注册处理器，而是在确保初始化完成后注册
             # 延迟初始化：只在第一次使用时初始化
             self._initialized = False
 
@@ -193,6 +191,7 @@ class TelegramBotService:
     def _register_handlers(self):
         """注册命令和消息处理器"""
         if not self.application:
+            logger.warning("Application not available for handler registration")
             return
 
         # 检查是否已经注册过处理器，避免重复注册
@@ -200,27 +199,33 @@ class TelegramBotService:
             logger.info("Handlers already registered, skipping registration")
             return
 
-        # 清除现有的处理器（如果有）
-        self.application.handlers.clear()
+        try:
+            # 清除现有的处理器（如果有）
+            self.application.handlers.clear()
 
-        # 命令处理器
-        self.application.add_handler(CommandHandler("start", self._handle_start))
-        self.application.add_handler(CommandHandler("bind", self._handle_bind))
-        self.application.add_handler(CommandHandler("unbind", self._handle_unbind))
-        self.application.add_handler(CommandHandler("status", self._handle_status))
-        self.application.add_handler(CommandHandler("task", self._handle_task))
-        self.application.add_handler(CommandHandler("share_item", self._handle_share_item))
-        self.application.add_handler(CommandHandler("help", self._handle_help))
+            # 命令处理器
+            self.application.add_handler(CommandHandler("start", self._handle_start))
+            self.application.add_handler(CommandHandler("bind", self._handle_bind))
+            self.application.add_handler(CommandHandler("unbind", self._handle_unbind))
+            self.application.add_handler(CommandHandler("status", self._handle_status))
+            self.application.add_handler(CommandHandler("task", self._handle_task))
+            self.application.add_handler(CommandHandler("share_item", self._handle_share_item))
+            self.application.add_handler(CommandHandler("help", self._handle_help))
 
-        # 回调查询处理器（处理按钮点击）
-        self.application.add_handler(CallbackQueryHandler(self._handle_callback_query))
+            # 回调查询处理器（处理按钮点击）
+            self.application.add_handler(CallbackQueryHandler(self._handle_callback_query))
 
-        # 消息处理器
-        self.application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, self._handle_message))
+            # 消息处理器
+            self.application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, self._handle_message))
 
-        # 标记已注册
-        self._handlers_registered = True
-        logger.info("Telegram bot handlers registered successfully")
+            # 标记已注册
+            self._handlers_registered = True
+            logger.info("Telegram bot handlers registered successfully")
+        except Exception as e:
+            logger.error(f"Failed to register handlers: {e}")
+            import traceback
+            logger.error(f"Traceback: {traceback.format_exc()}")
+            self._handlers_registered = False
 
     async def _handle_start(self, update, context):
         """处理 /start 命令"""
