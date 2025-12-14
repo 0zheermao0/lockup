@@ -179,6 +179,7 @@ class TaskTimelineEvent(models.Model):
         ('deadline_extended', '截止时间延长'),
         ('manual_adjustment', '手动调整'),
         ('hourly_reward', '小时奖励'),
+        ('task_keys_destroyed', '任务钥匙销毁'),
     ]
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)

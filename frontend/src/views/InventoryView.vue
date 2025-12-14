@@ -167,6 +167,17 @@
               ⛏️ 掩埋物品
             </button>
 
+            <!-- Universal Key usage -->
+            <button
+              v-if="canUseUniversalKey(selectedItem)"
+              @click="openUniversalKeyModal"
+              class="action-btn universal-key"
+              :disabled="usingUniversalKey"
+            >
+              <span v-if="usingUniversalKey">使用中...</span>
+              <span v-else>🗝️ 使用万能钥匙</span>
+            </button>
+
             <!-- Discard item -->
             <button
               v-if="canDiscardItem(selectedItem)"
@@ -395,6 +406,85 @@
           </div>
         </div>
       </div>
+
+      <!-- Universal Key modal -->
+      <div v-if="showUniversalKeyModal" class="modal-overlay" @click="closeUniversalKeyModal">
+        <div class="action-modal" @click.stop>
+          <div class="modal-header">
+            <h3 class="modal-title">🗝️ 使用万能钥匙</h3>
+            <button @click="closeUniversalKeyModal" class="modal-close">×</button>
+          </div>
+
+          <div class="modal-body">
+            <div class="warning-section">
+              <div class="warning-icon">⚠️</div>
+              <div class="warning-content">
+                <h4 class="warning-title">重要提醒</h4>
+                <p class="warning-message">
+                  万能钥匙可以直接完成任何状态的带锁任务，并获得正常的完成奖励。
+                </p>
+                <p class="warning-note">
+                  使用后钥匙将被销毁，请谨慎选择！
+                </p>
+              </div>
+            </div>
+
+            <div class="form-group">
+              <label class="form-label">选择要完成的任务</label>
+
+              <div v-if="availableTasks.length === 0" class="no-tasks-message">
+                <p>暂无可完成的带锁任务</p>
+                <p class="hint">只能完成自己的活跃状态或投票状态的带锁任务</p>
+              </div>
+
+              <div v-else class="tasks-list">
+                <div
+                  v-for="task in availableTasks"
+                  :key="task.id"
+                  class="task-item"
+                  :class="{ 'selected': selectedTaskId === task.id }"
+                  @click="selectedTaskId = task.id"
+                >
+                  <div class="task-info">
+                    <h4 class="task-title">{{ task.title }}</h4>
+                    <p class="task-meta">
+                      <span class="task-difficulty">{{ getDifficultyText(task.difficulty) }}</span>
+                      <span class="task-status">{{ getStatusText(task.status) }}</span>
+                    </p>
+                    <p class="task-description">{{ task.description }}</p>
+                  </div>
+                  <div class="task-rewards">
+                    <span class="reward-coins">+{{ getTaskReward(task.difficulty) }} 积分</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div v-if="selectedItem" class="item-info-section">
+              <h4 class="info-title">🗝️ 使用物品</h4>
+              <div class="item-info-card">
+                <span class="item-icon">{{ selectedItem.item_type.icon }}</span>
+                <div class="item-details">
+                  <span class="item-name">{{ selectedItem.item_type.display_name }}</span>
+                  <span class="item-description">{{ selectedItem.item_type.description }}</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="modal-footer">
+            <button @click="closeUniversalKeyModal" class="modal-btn secondary">取消</button>
+            <button
+              @click="useUniversalKey"
+              class="modal-btn primary"
+              :disabled="!selectedTaskId || usingUniversalKey"
+            >
+              <span v-if="usingUniversalKey">使用中...</span>
+              <span v-else>使用万能钥匙</span>
+            </button>
+          </div>
+        </div>
+      </div>
     </div>
   </div>
 </template>
@@ -402,7 +492,7 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
-import { storeApi } from '../lib/api'
+import { storeApi, tasksApi } from '../lib/api'
 import { smartGoBack } from '../utils/navigation'
 import type { UserInventory, Item } from '../types'
 
@@ -444,6 +534,12 @@ const buryData = ref({
 // Discard item
 const showDiscardModal = ref(false)
 const discardingItem = ref(false)
+
+// Universal Key
+const showUniversalKeyModal = ref(false)
+const usingUniversalKey = ref(false)
+const availableTasks = ref<any[]>([])
+const selectedTaskId = ref<string>('')
 
 // Methods
 const goBack = () => {
@@ -498,6 +594,26 @@ const formatExpireTime = (dateString: string): string => {
   } else {
     return `${diffMinutes}分钟后过期`
   }
+}
+
+const getDifficultyText = (difficulty: string): string => {
+  const difficultyMap = {
+    'easy': '简单',
+    'normal': '普通',
+    'hard': '困难',
+    'hell': '地狱'
+  }
+  return difficultyMap[difficulty as keyof typeof difficultyMap] || difficulty
+}
+
+const getTaskReward = (difficulty: string): number => {
+  const rewardMap = {
+    'easy': 10,
+    'normal': 20,
+    'hard': 30,
+    'hell': 50
+  }
+  return rewardMap[difficulty as keyof typeof rewardMap] || 10
 }
 
 const triggerPhotoInput = () => {
@@ -581,6 +697,13 @@ const canBuryItem = (item: Item): boolean => {
 
 const canDiscardItem = (item: Item): boolean => {
   return item.status === 'available'
+}
+
+const canUseUniversalKey = (item: Item): boolean => {
+  // Check if this is a Universal Key using the backend-provided flag
+  return item.item_type.name === 'key' &&
+         item.status === 'available' &&
+         item.is_universal_key === true
 }
 
 const shareItem = async () => {
@@ -681,6 +804,74 @@ const discardItem = async () => {
 
 const closeDiscardModal = () => {
   showDiscardModal.value = false
+  selectedItem.value = null
+}
+
+const loadAvailableTasks = async () => {
+  try {
+    // Clear any previous errors
+    error.value = null
+
+    // Load user's active lock tasks
+    const tasks = await tasksApi.getTasksList({
+      task_type: 'lock',
+      status: 'active',
+      my_tasks: true
+    })
+
+    // Also include voting tasks as they can be completed with universal key
+    const votingTasks = await tasksApi.getTasksList({
+      task_type: 'lock',
+      status: 'voting',
+      my_tasks: true
+    })
+
+    const allTasks = [...tasks, ...votingTasks]
+
+    // For Universal Key, we don't need to check original key ownership
+    // Universal Key can complete any of the user's own tasks regardless of key ownership
+    availableTasks.value = allTasks
+  } catch (err) {
+    error.value = err instanceof Error ? err.message : '加载任务列表失败'
+    availableTasks.value = []
+  }
+}
+
+const useUniversalKey = async () => {
+  if (!selectedItem.value || !selectedTaskId.value) return
+
+  try {
+    usingUniversalKey.value = true
+    const response = await storeApi.useUniversalKey({
+      task_id: selectedTaskId.value,
+      universal_key_id: selectedItem.value.id
+    })
+
+    // Refresh inventory to remove the used key
+    await loadInventory()
+
+    // Show success message
+    alert(`${response.message}\n获得奖励：${response.reward_coins} 积分`)
+
+    // Close modal and reset selection
+    closeUniversalKeyModal()
+  } catch (err) {
+    error.value = err instanceof Error ? err.message : '使用万能钥匙失败'
+  } finally {
+    usingUniversalKey.value = false
+  }
+}
+
+const openUniversalKeyModal = async () => {
+  showUniversalKeyModal.value = true
+  // Auto-load tasks when modal opens
+  await loadAvailableTasks()
+}
+
+const closeUniversalKeyModal = () => {
+  showUniversalKeyModal.value = false
+  selectedTaskId.value = ''
+  availableTasks.value = []
   selectedItem.value = null
 }
 
@@ -1173,6 +1364,17 @@ onMounted(() => {
   color: white;
 }
 
+.action-btn.universal-key {
+  background: #ffc107;
+  color: #000;
+  border-color: #000;
+}
+
+.action-btn.universal-key:hover {
+  background: #e0a800;
+  color: #000;
+}
+
 .action-btn:hover {
   transform: translate(2px, 2px);
   box-shadow: 2px 2px 0 #000;
@@ -1366,6 +1568,38 @@ onMounted(() => {
 .modal-btn.danger {
   background: #dc3545;
   color: white;
+}
+
+/* Modal close button */
+.modal-close {
+  background: #dc3545;
+  color: white;
+  border: 3px solid #000;
+  width: 3rem;
+  height: 3rem;
+  border-radius: 50%;
+  font-size: 1.5rem;
+  font-weight: 900;
+  cursor: pointer;
+  box-shadow: 4px 4px 0 #000;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.modal-close:hover {
+  transform: translate(2px, 2px);
+  box-shadow: 2px 2px 0 #000;
+}
+
+/* Modal header layout */
+.modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1.5rem;
+  position: relative;
 }
 
 /* Warning Section */
@@ -2155,5 +2389,148 @@ onMounted(() => {
   .expiration-note {
     font-size: 0.75rem;
   }
+}
+
+/* Universal Key Modal Specific Styles */
+.form-button {
+  padding: 0.75rem 1.5rem;
+  border: 3px solid #000;
+  font-weight: 900;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  cursor: pointer;
+  box-shadow: 4px 4px 0 #000;
+  transition: all 0.2s ease;
+  background: white;
+  color: #000;
+}
+
+.form-button.secondary {
+  background: #6c757d;
+  color: white;
+}
+
+.form-button:hover {
+  transform: translate(2px, 2px);
+  box-shadow: 2px 2px 0 #000;
+}
+
+.no-tasks-message {
+  text-align: center;
+  padding: 2rem;
+  background: #f8f9fa;
+  border: 3px solid #6c757d;
+  box-shadow: 4px 4px 0 #6c757d;
+}
+
+.no-tasks-message p {
+  margin: 0.5rem 0;
+  font-weight: 700;
+}
+
+.no-tasks-message .hint {
+  font-size: 0.875rem;
+  color: #666;
+  font-weight: 600;
+}
+
+.tasks-list {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+.task-item {
+  border: 3px solid #000;
+  background: white;
+  padding: 1rem;
+  cursor: pointer;
+  box-shadow: 4px 4px 0 #000;
+  transition: all 0.2s ease;
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+}
+
+.task-item:hover {
+  transform: translate(-2px, -2px);
+  box-shadow: 6px 6px 0 #000;
+}
+
+.task-item.selected {
+  background: #007bff;
+  color: white;
+  border-color: #000;
+}
+
+.task-info {
+  flex: 1;
+}
+
+.task-title {
+  font-size: 1rem;
+  font-weight: 900;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  margin: 0 0 0.5rem 0;
+}
+
+.task-meta {
+  display: flex;
+  gap: 1rem;
+  margin: 0 0 0.5rem 0;
+}
+
+.task-difficulty,
+.task-status {
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  padding: 0.25rem 0.5rem;
+  border: 2px solid #000;
+  background: white;
+  color: #000;
+}
+
+.task-item.selected .task-difficulty,
+.task-item.selected .task-status {
+  background: #cce7ff;
+  color: #000;
+}
+
+.task-description {
+  font-size: 0.875rem;
+  line-height: 1.4;
+  margin: 0;
+  font-weight: 600;
+}
+
+.task-item.selected .task-description {
+  color: #cce7ff;
+}
+
+.task-rewards {
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+}
+
+.reward-coins {
+  font-size: 1rem;
+  font-weight: 900;
+  text-transform: uppercase;
+  color: #28a745;
+  background: white;
+  padding: 0.5rem;
+  border: 2px solid #000;
+  box-shadow: 2px 2px 0 #000;
+}
+
+.task-item.selected .reward-coins {
+  background: #cce7ff;
+  color: #28a745;
 }
 </style>

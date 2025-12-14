@@ -11,6 +11,7 @@ import random
 from .models import LockTask, TaskKey, TaskVote, OvertimeAction, TaskTimelineEvent, HourlyReward
 from store.models import ItemType, UserInventory, Item
 from users.models import Notification
+from .utils import destroy_task_keys
 from .pagination import DynamicPageNumberPagination
 from .serializers import (
     LockTaskSerializer, LockTaskCreateSerializer,
@@ -164,6 +165,12 @@ class LockTaskListCreateView(generics.ListCreateAPIView):
             # 如果设置了奖励，需要从发布者的积分中扣除
             if task.reward and task.reward > 0:
                 if task.user.coins < task.reward:
+                    # 销毁任务相关的所有钥匙道具（如果有的话）
+                    destroy_task_keys(task, reason="task_deleted", user=task.user, metadata={
+                        'deletion_reason': 'insufficient_funds',
+                        'required_coins': task.reward,
+                        'available_coins': task.user.coins
+                    })
                     # 删除刚创建的任务，因为积分不足
                     task.delete()
                     raise ValidationError({
@@ -213,6 +220,17 @@ class LockTaskDetailView(generics.RetrieveUpdateDestroyAPIView):
             # 只有任务创建者或超级用户可以编辑和删除
             return [IsAuthenticated(), IsOwnerOrAdmin()]
         return [IsAuthenticated()]
+
+    def perform_destroy(self, instance):
+        """删除任务前销毁相关钥匙"""
+        # 销毁任务相关的所有钥匙道具
+        destroy_result = destroy_task_keys(instance, reason="task_deleted", user=self.request.user, metadata={
+            'deletion_method': 'manual_delete',
+            'deleted_by': self.request.user.username
+        })
+
+        # 执行实际删除
+        super().perform_destroy(instance)
 
 
 class IsOwnerOrAdmin(permissions.BasePermission):
@@ -372,11 +390,11 @@ def complete_task(request, pk):
                 status=status.HTTP_403_FORBIDDEN
             )
 
-        # 销毁钥匙道具
-        task_key_item.status = 'used'
-        task_key_item.used_at = timezone.now()
-        task_key_item.inventory = None  # 从背包中移除
-        task_key_item.save()
+        # 使用通用钥匙销毁函数销毁所有任务相关钥匙
+        destroy_result = destroy_task_keys(task, reason="task_completed", user=request.user, metadata={
+            'completion_method': 'manual',
+            'key_holder': request.user.username
+        })
 
     # 更新任务状态
     task.status = 'completed'
@@ -420,6 +438,13 @@ def complete_task(request, pk):
         'key_destroyed': task.task_type == 'lock'
     }
 
+    # 如果有钥匙被销毁，在元数据中记录详细信息
+    if task.task_type == 'lock' and 'destroy_result' in locals() and destroy_result['success']:
+        completion_metadata.update({
+            'keys_destroyed': destroy_result['keys_destroyed'],
+            'destroyed_key_details': destroy_result['destroyed_keys']
+        })
+
     # 元数据中包含奖励信息
     if task.task_type == 'lock':
         completion_metadata.update({
@@ -447,11 +472,19 @@ def complete_task(request, pk):
                 'vote_agreement_ratio': task.vote_agreement_ratio
             })
 
+    # 构建完成描述
+    completion_description = '任务手动完成 - 满足所有完成条件'
+    if task.task_type == 'lock':
+        if 'destroy_result' in locals() and destroy_result['success'] and destroy_result['keys_destroyed'] > 0:
+            completion_description += f'，已销毁 {destroy_result["keys_destroyed"]} 个相关钥匙'
+        else:
+            completion_description += '，钥匙道具已销毁'
+
     TaskTimelineEvent.objects.create(
         task=task,
         event_type='task_completed',
         user=request.user,
-        description=f'任务手动完成 - 满足所有完成条件{"，钥匙道具已销毁" if task.task_type == "lock" else ""}',
+        description=completion_description,
         metadata=completion_metadata
     )
 
@@ -484,16 +517,31 @@ def stop_task(request, pk):
     task.end_time = timezone.now()
     task.save()
 
+    # 销毁任务相关的所有钥匙道具
+    destroy_result = destroy_task_keys(task, reason="task_stopped", user=request.user, metadata={
+        'stopped_by': 'manual',
+        'stop_time': task.end_time.isoformat()
+    })
+
     # 创建任务停止事件
+    stop_metadata = {
+        'stopped_by': 'manual',
+        'stop_time': task.end_time.isoformat()
+    }
+
+    # 如果有钥匙被销毁，在元数据中记录
+    if destroy_result['success'] and destroy_result['keys_destroyed'] > 0:
+        stop_metadata.update({
+            'keys_destroyed': destroy_result['keys_destroyed'],
+            'destroyed_key_details': destroy_result['destroyed_keys']
+        })
+
     TaskTimelineEvent.objects.create(
         task=task,
         event_type='task_stopped',
         user=request.user,
-        description=f'任务手动停止',
-        metadata={
-            'stopped_by': 'manual',
-            'stop_time': task.end_time.isoformat()
-        }
+        description=f'任务手动停止{"，已销毁 " + str(destroy_result["keys_destroyed"]) + " 个相关钥匙" if destroy_result["success"] and destroy_result["keys_destroyed"] > 0 else ""}',
+        metadata=stop_metadata
     )
 
     serializer = LockTaskSerializer(task)
@@ -849,6 +897,13 @@ def reject_board_task(request, pk):
     # 可以在completion_proof中添加拒绝原因
     if reject_reason:
         task.completion_proof += f"\n\n审核拒绝原因: {reject_reason}"
+
+    # 销毁任务相关的所有钥匙道具（对于带锁任务）
+    destroy_task_keys(task, reason="task_rejected", user=request.user, metadata={
+        'rejection_reason': reject_reason,
+        'rejected_by': request.user.username
+    })
+
     task.save()
 
     # 创建任务审核拒绝通知

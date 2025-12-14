@@ -215,6 +215,7 @@ class CommentCreateSerializer(serializers.ModelSerializer):
             except User.DoesNotExist:
                 pass
 
+
         # 创建评论
         comment = Comment.objects.create(
             user=user,

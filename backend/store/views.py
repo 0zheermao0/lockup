@@ -1498,3 +1498,212 @@ def claim_shared_item(request, share_token):
         return Response({
             'error': f'领取物品失败: {str(e)}'
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def use_universal_key(request):
+    """使用万能钥匙直接完成带锁任务"""
+    try:
+        task_id = request.data.get('task_id')
+        universal_key_id = request.data.get('universal_key_id')
+
+        if not task_id or not universal_key_id:
+            return Response({
+                'error': '缺少必要参数：task_id 和 universal_key_id'
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        with transaction.atomic():
+            user = request.user
+
+            # 验证万能钥匙
+            try:
+                universal_key = Item.objects.get(
+                    id=universal_key_id,
+                    owner=user,
+                    item_type__name='key',
+                    status='available'
+                )
+
+                # 检查是否为万能钥匙（通过商店物品名称判断）
+                purchase_record = Purchase.objects.filter(
+                    item=universal_key,
+                    store_item__name='通用钥匙'
+                ).first()
+
+                if not purchase_record:
+                    return Response({
+                        'error': '指定的物品不是万能钥匙'
+                    }, status=status.HTTP_400_BAD_REQUEST)
+
+            except Item.DoesNotExist:
+                return Response({
+                    'error': '万能钥匙不存在或不可用'
+                }, status=status.HTTP_400_BAD_REQUEST)
+
+            # 验证带锁任务
+            try:
+                lock_task = LockTask.objects.get(
+                    id=task_id,
+                    user=user,
+                    task_type='lock'
+                )
+            except LockTask.DoesNotExist:
+                return Response({
+                    'error': '指定的带锁任务不存在或不属于您'
+                }, status=status.HTTP_400_BAD_REQUEST)
+
+            # 检查任务状态是否可以使用万能钥匙
+            if lock_task.status not in ['active', 'voting']:
+                return Response({
+                    'error': f'任务状态为 {lock_task.status}，只能在活跃或投票状态下使用万能钥匙'
+                }, status=status.HTTP_400_BAD_REQUEST)
+
+            # 记录使用前状态
+            previous_status = lock_task.status
+            previous_end_time = lock_task.end_time
+
+            # 直接完成任务
+            lock_task.status = 'completed'
+            lock_task.completed_at = timezone.now()
+            lock_task.save()
+
+            # 销毁万能钥匙
+            universal_key.status = 'used'
+            universal_key.used_at = timezone.now()
+            universal_key.inventory = None  # 从背包中移除
+            universal_key.save()
+
+            # 销毁任务相关的所有钥匙道具（原始钥匙等）
+            from tasks.utils import destroy_task_keys
+            destroy_result = destroy_task_keys(lock_task, reason="universal_key_used", user=user, metadata={
+                'universal_key_id': str(universal_key.id),
+                'completion_method': 'universal_key'
+            })
+
+            # 使用与正常完成任务相同的奖励机制（时间奖励）
+            # 1. 处理所有未发放的小时奖励
+            from tasks.views import _process_task_hourly_rewards, _calculate_completion_bonus
+            hourly_rewards_processed = _process_task_hourly_rewards(lock_task)
+
+            # 2. 计算并发放完成奖励（基于难度的一次性奖励）
+            completion_bonus = _calculate_completion_bonus(lock_task)
+            total_reward_coins = completion_bonus
+            if completion_bonus > 0:
+                user.coins += completion_bonus
+                user.save()
+
+            # 创建任务完成时间线事件
+            completion_metadata = {
+                'completion_method': 'universal_key',
+                'universal_key_id': str(universal_key.id),
+                'previous_status': previous_status,
+                'hourly_rewards_processed': hourly_rewards_processed,
+                'completion_bonus': completion_bonus,
+                'total_reward_coins': total_reward_coins,
+                'key_used': True,
+                'reward_system': 'hourly_plus_completion_bonus'
+            }
+
+            # 添加钥匙销毁信息到元数据中
+            if destroy_result['success']:
+                completion_metadata.update({
+                    'keys_destroyed': destroy_result['keys_destroyed'],
+                    'destroyed_key_details': destroy_result['destroyed_keys']
+                })
+
+            TaskTimelineEvent.objects.create(
+                task=lock_task,
+                event_type='task_completed',
+                user=user,
+                time_change_minutes=0,
+                previous_end_time=previous_end_time,
+                new_end_time=lock_task.end_time,
+                description=f'使用万能钥匙直接完成任务，获得 {hourly_rewards_processed} 小时奖励积分 + {completion_bonus} 完成奖励积分{"，已销毁 " + str(destroy_result["keys_destroyed"]) + " 个相关钥匙" if destroy_result["success"] and destroy_result["keys_destroyed"] > 0 else ""}',
+                metadata=completion_metadata
+            )
+
+            # 创建万能钥匙使用通知
+            Notification.create_notification(
+                recipient=user,
+                notification_type='coins_earned_task_reward',
+                title='万能钥匙使用成功',
+                message=f'使用万能钥匙完成任务《{lock_task.title}》，获得 {hourly_rewards_processed} 小时奖励积分 + {completion_bonus} 完成奖励积分',
+                related_object_type='lock_task',
+                related_object_id=lock_task.id,
+                extra_data={
+                    'task_title': lock_task.title,
+                    'task_difficulty': lock_task.difficulty,
+                    'completion_method': 'universal_key',
+                    'hourly_rewards_processed': hourly_rewards_processed,
+                    'completion_bonus': completion_bonus,
+                    'total_reward_coins': total_reward_coins,
+                    'previous_status': previous_status
+                },
+                priority='normal'
+            )
+
+            return Response({
+                'message': f'成功使用万能钥匙完成任务《{lock_task.title}》！',
+                'task_id': str(lock_task.id),
+                'task_title': lock_task.title,
+                'previous_status': previous_status,
+                'new_status': 'completed',
+                'reward_coins': total_reward_coins,
+                'remaining_coins': getattr(user, 'coins', 0),
+                'completion_time': lock_task.completed_at.isoformat()
+            }, status=status.HTTP_200_OK)
+
+    except Exception as e:
+        return Response({
+            'error': f'使用万能钥匙失败: {str(e)}'
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def check_task_key_ownership(request):
+    """检查用户是否拥有指定任务的原始钥匙"""
+    try:
+        task_ids = request.data.get('task_ids', [])
+        if not task_ids:
+            return Response({
+                'error': '缺少任务ID列表'
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        user = request.user
+        results = []
+
+        for task_id in task_ids:
+            try:
+                # 查找该任务对应的钥匙
+                task_key_item = Item.objects.filter(
+                    item_type__name='key',
+                    owner=user,  # 当前持有者必须是请求用户
+                    status='available',
+                    properties__task_id=str(task_id)
+                ).first()
+
+                has_original_key = task_key_item is not None
+
+                results.append({
+                    'task_id': task_id,
+                    'has_original_key': has_original_key,
+                    'key_holder': user.username if has_original_key else None
+                })
+
+            except Exception as e:
+                results.append({
+                    'task_id': task_id,
+                    'has_original_key': False,
+                    'error': str(e)
+                })
+
+        return Response({
+            'results': results
+        }, status=status.HTTP_200_OK)
+
+    except Exception as e:
+        return Response({
+            'error': f'检查钥匙所有权失败: {str(e)}'
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)

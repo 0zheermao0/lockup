@@ -4,10 +4,12 @@ Task utilities for reusable business logic
 
 from django.utils import timezone
 from django.shortcuts import get_object_or_404
+from django.db import transaction
 from datetime import timedelta
 import random
 
 from .models import LockTask, OvertimeAction, TaskTimelineEvent
+from store.models import Item
 from users.models import Notification
 
 
@@ -184,4 +186,79 @@ def add_overtime_to_task(task, user, minutes=None):
         'overtime_minutes': overtime_minutes,
         'new_end_time': task.end_time,
         'task': task
+    }
+
+
+def destroy_task_keys(task, reason="task_ended", user=None, metadata=None):
+    """
+    销毁任务相关的所有钥匙道具
+
+    Args:
+        task: LockTask 实例
+        reason: 销毁原因 (task_ended, task_deleted, task_stopped, universal_key_used)
+        user: 执行操作的用户 (可选)
+        metadata: 额外的元数据 (可选)
+
+    Returns:
+        dict: 包含销毁结果的字典
+    """
+    if task.task_type != 'lock':
+        return {
+            'success': False,
+            'message': '非带锁任务无需销毁钥匙',
+            'keys_destroyed': 0
+        }
+
+    destroyed_keys = []
+
+    with transaction.atomic():
+        # 查找所有与此任务相关的钥匙道具（无论在谁手中）
+        task_keys = Item.objects.filter(
+            item_type__name='key',
+            status='available',
+            properties__task_id=str(task.id)
+        )
+
+        for key_item in task_keys:
+            # 记录钥匙信息
+            key_info = {
+                'id': str(key_item.id),
+                'owner': key_item.owner.username,
+                'original_owner': key_item.original_owner.username if key_item.original_owner else None,
+                'is_original_owner': key_item.owner == task.user
+            }
+
+            # 销毁钥匙
+            key_item.status = 'used'
+            key_item.used_at = timezone.now()
+            key_item.inventory = None  # 从背包中移除
+            key_item.save()
+
+            destroyed_keys.append(key_info)
+
+        # 创建时间线事件记录钥匙销毁
+        if destroyed_keys:
+            event_metadata = {
+                'reason': reason,
+                'keys_destroyed': len(destroyed_keys),
+                'key_details': destroyed_keys
+            }
+
+            # 合并额外的元数据
+            if metadata:
+                event_metadata.update(metadata)
+
+            TaskTimelineEvent.objects.create(
+                task=task,
+                event_type='task_keys_destroyed',
+                user=user,
+                description=f'任务钥匙销毁：{reason}，共销毁 {len(destroyed_keys)} 个钥匙',
+                metadata=event_metadata
+            )
+
+    return {
+        'success': True,
+        'message': f'成功销毁 {len(destroyed_keys)} 个任务钥匙',
+        'keys_destroyed': len(destroyed_keys),
+        'destroyed_keys': destroyed_keys
     }

@@ -311,6 +311,7 @@ export interface Item {
   created_at: string
   used_at?: string
   expires_at?: string
+  is_universal_key?: boolean
 }
 
 export interface UserInventory {

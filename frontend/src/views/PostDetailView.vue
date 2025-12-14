@@ -777,9 +777,19 @@ const submitReply = async (parentCommentId: string) => {
 
   submittingReply.value = true
   try {
+    // 确定实际被回复的评论ID
+    let actualReplyToCommentId = null
+    if (activeReplyForm.value?.targetId) {
+      // 回复特定的二层评论
+      actualReplyToCommentId = activeReplyForm.value.targetId
+    } else {
+      // 回复一层评论
+      actualReplyToCommentId = parentCommentId
+    }
+
     const replyData = {
       content: newReply.value.trim(),
-      parent: parentCommentId,
+      parent: actualReplyToCommentId, // 使用实际被回复的评论ID作为parent
       // 传递被回复的用户ID，如果有的话
       reply_to_user_id: replyTargetUser.value?.id || null
     }
@@ -787,15 +797,17 @@ const submitReply = async (parentCommentId: string) => {
     const newReplyData = await postsApi.createComment(post.value!.id, replyData)
 
     // Update local state - add to replies
-    if (!replies.value[parentCommentId]) {
-      replies.value[parentCommentId] = []
+    // 确定应该添加到哪个根评论的回复列表中
+    const rootCommentId = newReplyData.root_reply_id || parentCommentId
+    if (!replies.value[rootCommentId]) {
+      replies.value[rootCommentId] = []
     }
-    replies.value[parentCommentId].unshift(newReplyData)
+    replies.value[rootCommentId].unshift(newReplyData)
 
-    // Update parent comment reply count
-    const parentComment = comments.value.find(c => c.id === parentCommentId)
-    if (parentComment) {
-      parentComment.replies_count = (parentComment.replies_count || 0) + 1
+    // Update root comment reply count
+    const rootComment = comments.value.find(c => c.id === rootCommentId)
+    if (rootComment) {
+      rootComment.replies_count = (rootComment.replies_count || 0) + 1
     }
 
     // Update post comment count

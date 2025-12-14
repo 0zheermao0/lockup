@@ -233,11 +233,11 @@ class Comment(models.Model):
                         # 回复第一层评论
                         self.depth = 1
                         self.root_reply_id = parent_comment.id
-                        # 如果没有明确指定reply_to_user，默认使用parent评论的用户
+                        # 设置reply_to_user：使用parent评论的用户
                         if self.reply_to_user is None:
                             self.reply_to_user = parent_comment.user
                     else:
-                        # 回复第二层评论，强制归属到第一层
+                        # 回复第二层评论，仍然设置为第二层，但找到根评论
                         # 找到根评论
                         if parent_comment.root_reply_id:
                             root_comment = Comment.objects.get(id=parent_comment.root_reply_id)
@@ -249,11 +249,10 @@ class Comment(models.Model):
 
                         self.depth = 1
                         self.root_reply_id = root_comment.id
-                        # 如果没有明确指定reply_to_user，使用parent评论的用户
+                        # 设置reply_to_user：使用parent评论的用户
                         if self.reply_to_user is None:
                             self.reply_to_user = parent_comment.user
-                        # 更新parent指向第一层评论
-                        self.parent = root_comment
+                        # 保持parent指向实际被回复的评论，不强制修改为root_comment
 
                 except Comment.DoesNotExist:
                     # 如果parent不存在，作为第一层评论处理

@@ -17,6 +17,7 @@ class ItemSerializer(serializers.ModelSerializer):
     owner = UserSerializer(read_only=True)
     original_owner = UserSerializer(read_only=True)
     original_creator = serializers.SerializerMethodField()
+    is_universal_key = serializers.SerializerMethodField()
 
     class Meta:
         model = Item
@@ -36,6 +37,21 @@ class ItemSerializer(serializers.ModelSerializer):
             return None
         except:
             return None
+
+    def get_is_universal_key(self, obj):
+        """检查物品是否为万能钥匙（通过购买记录判断）"""
+        # 只有钥匙类型的物品才可能是万能钥匙
+        if obj.item_type.name != 'key':
+            return False
+
+        try:
+            # 查找购买记录，检查是否购买的是"通用钥匙"
+            purchase = obj.purchase.first()
+            if purchase and purchase.store_item and purchase.store_item.name == '通用钥匙':
+                return True
+            return False
+        except:
+            return False
 
 
 class UserInventorySerializer(serializers.ModelSerializer):
