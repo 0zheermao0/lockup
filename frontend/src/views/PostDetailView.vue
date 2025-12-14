@@ -779,7 +779,9 @@ const submitReply = async (parentCommentId: string) => {
   try {
     const replyData = {
       content: newReply.value.trim(),
-      parent: parentCommentId
+      parent: parentCommentId,
+      // 传递被回复的用户ID，如果有的话
+      reply_to_user_id: replyTargetUser.value?.id || null
     }
 
     const newReplyData = await postsApi.createComment(post.value!.id, replyData)

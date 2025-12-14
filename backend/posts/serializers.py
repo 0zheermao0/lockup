@@ -159,10 +159,15 @@ class CommentCreateSerializer(serializers.ModelSerializer):
         allow_empty=True,
         max_length=3  # 最多3张图片
     )
+    reply_to_user_id = serializers.IntegerField(
+        required=False,
+        allow_null=True,
+        help_text="被回复的用户ID"
+    )
 
     class Meta:
         model = Comment
-        fields = ['content', 'parent', 'images']
+        fields = ['content', 'parent', 'images', 'reply_to_user_id']
 
     def validate_content(self, value):
         if len(value.strip()) < 1:
@@ -195,14 +200,26 @@ class CommentCreateSerializer(serializers.ModelSerializer):
 
     def create(self, validated_data):
         images_data = validated_data.pop('images', [])
+        reply_to_user_id = validated_data.pop('reply_to_user_id', None)
         user = self.context['request'].user
         post_id = self.context['post_id']
         post = Post.objects.get(id=post_id)
+
+        # 如果指定了reply_to_user_id，设置reply_to_user
+        reply_to_user = None
+        if reply_to_user_id:
+            try:
+                from django.contrib.auth import get_user_model
+                User = get_user_model()
+                reply_to_user = User.objects.get(id=reply_to_user_id)
+            except User.DoesNotExist:
+                pass
 
         # 创建评论
         comment = Comment.objects.create(
             user=user,
             post=post,
+            reply_to_user=reply_to_user,
             **validated_data
         )
 
