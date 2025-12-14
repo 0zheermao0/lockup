@@ -158,60 +158,236 @@
               </div>
             </form>
 
-            <!-- Comments List -->
+            <!-- Comments List - Two Layer Structure -->
             <div ref="commentsContainer" class="comments-list comments-scroll-container" v-show="comments.length > 0">
               <div
                 v-for="comment in comments"
                 :key="comment.id"
-                class="comment-item"
+                class="comment-floor"
               >
-                <div class="comment-header">
-                  <div class="comment-user">
-                    <div class="avatar-container">
-                      <div class="avatar">
-                        {{ comment.user.username.charAt(0).toUpperCase() }}
+                <!-- First Layer Comment (Floor) -->
+                <div class="comment-item first-layer">
+                  <div class="comment-main">
+                    <div class="comment-header">
+                      <div class="comment-user">
+                        <div class="avatar-container">
+                          <div class="avatar">
+                            {{ comment.user.username.charAt(0).toUpperCase() }}
+                          </div>
+                          <LockIndicator
+                            :user="comment.user"
+                            size="mini"
+                            :show-time="false"
+                            class="avatar-lock-indicator"
+                          />
+                        </div>
+                        <div>
+                          <div
+                            class="username clickable"
+                            @click.stop="openProfileModal(comment.user)"
+                            :title="`查看 ${comment.user.username} 的资料`"
+                          >
+                            {{ comment.user.username }}
+                          </div>
+                          <div class="reply-indicator">回复 主贴</div>
+                          <div class="time">{{ formatDistanceToNow(comment.created_at) }}</div>
+                        </div>
                       </div>
-                      <LockIndicator
-                        :user="comment.user"
-                        size="mini"
-                        :show-time="false"
-                        class="avatar-lock-indicator"
+                    </div>
+                    <div class="comment-content" v-html="comment.content"></div>
+
+                    <!-- Comment Images -->
+                    <div v-if="comment.images && comment.images.length > 0" class="comment-images">
+                      <img
+                        v-for="(image, index) in comment.images"
+                        :key="index"
+                        :src="image.image"
+                        :alt="`评论图片 ${index + 1}`"
+                        class="comment-image"
+                        @click="openImageModal(image.image)"
                       />
                     </div>
-                    <div>
-                      <div
-                        class="username clickable"
-                        @click.stop="openProfileModal(comment.user)"
-                        :title="`查看 ${comment.user.username} 的资料`"
-                      >
-                        {{ comment.user.username }}
-                      </div>
-                      <div class="time">{{ formatDistanceToNow(comment.created_at) }}</div>
-                    </div>
+                  </div>
+
+                  <div class="comment-actions">
+                    <button
+                      @click="toggleCommentLike(comment)"
+                      :class="['like-comment-btn', { liked: comment.is_liked }]"
+                    >
+                      {{ comment.is_liked ? '❤️' : '🤍' }}
+                      {{ comment.likes_count || 0 }}
+                    </button>
+                    <button
+                      @click="toggleReplyForm(comment.id)"
+                      class="reply-comment-btn"
+                    >
+                      💬 回复
+                    </button>
+                    <button
+                      v-if="(comment.replies_count || 0) > 0"
+                      @click="toggleReplies(comment.id)"
+                      class="view-replies-btn"
+                      :class="{ active: expandedReplies[comment.id] }"
+                    >
+                      {{ expandedReplies[comment.id] ? '收起回复' : `查看 ${comment.replies_count || 0} 条回复` }}
+                    </button>
                   </div>
                 </div>
-                <div class="comment-content" v-html="comment.content"></div>
 
-                <!-- Comment Images -->
-                <div v-if="comment.images && comment.images.length > 0" class="comment-images">
-                  <img
-                    v-for="(image, index) in comment.images"
-                    :key="index"
-                    :src="image.image"
-                    :alt="`评论图片 ${index + 1}`"
-                    class="comment-image"
-                    @click="openImageModal(image.image)"
-                  />
+                <!-- Reply Form -->
+                <div v-if="activeReplyForm?.parentId === comment.id && !activeReplyForm?.targetId" class="reply-form">
+                  <form @submit.prevent="submitReply(comment.id)" class="reply-form-inner">
+                    <RichTextEditor
+                      v-model="newReply"
+                      :placeholder="`回复 ${comment.user.username}...`"
+                      :disabled="submittingReply"
+                      :max-length="500"
+                      min-height="80px"
+                      :show-char-count="true"
+                    />
+                    <div class="reply-form-actions">
+                      <button
+                        type="button"
+                        @click="cancelReply"
+                        class="cancel-reply-btn"
+                      >
+                        取消
+                      </button>
+                      <button
+                        type="submit"
+                        :disabled="!newReply.trim() || submittingReply"
+                        class="submit-reply-btn"
+                      >
+                        {{ submittingReply ? '发布中...' : '发布回复' }}
+                      </button>
+                    </div>
+                  </form>
                 </div>
 
-                <div class="comment-actions">
-                  <button
-                    @click="toggleCommentLike(comment)"
-                    :class="['like-comment-btn', { liked: comment.is_liked }]"
-                  >
-                    {{ comment.is_liked ? '❤️' : '🤍' }}
-                    {{ comment.likes_count || 0 }}
-                  </button>
+                <!-- Second Layer Replies -->
+                <div v-if="expandedReplies[comment.id]" class="replies-container">
+                  <div v-if="loadingReplies[comment.id]" class="loading-replies">
+                    正在加载回复...
+                  </div>
+                  <div v-else-if="(replies[comment.id]?.length || 0) > 0" class="replies-list">
+                    <div
+                      v-for="reply in (replies[comment.id] || [])"
+                      :key="reply.id"
+                      class="comment-item second-layer"
+                    >
+                      <div class="comment-main">
+                        <div class="comment-header">
+                          <div class="comment-user">
+                            <div class="avatar-container">
+                              <div class="avatar small">
+                                {{ reply.user.username.charAt(0).toUpperCase() }}
+                              </div>
+                              <LockIndicator
+                                :user="reply.user"
+                                size="mini"
+                                :show-time="false"
+                                class="avatar-lock-indicator"
+                              />
+                            </div>
+                            <div>
+                              <div
+                                class="username clickable"
+                                @click.stop="openProfileModal(reply.user)"
+                                :title="`查看 ${reply.user.username} 的资料`"
+                              >
+                                {{ reply.user.username }}
+                              </div>
+                              <div class="reply-indicator" v-if="reply.reply_to_user">
+                                回复
+                                <span
+                                  class="reply-target clickable"
+                                  @click.stop="openProfileModal(reply.reply_to_user)"
+                                >
+                                  @{{ reply.reply_to_user.username }}
+                                </span>
+                              </div>
+                              <div class="time">{{ formatDistanceToNow(reply.created_at) }}</div>
+                            </div>
+                          </div>
+                        </div>
+                        <div class="comment-content" v-html="reply.content"></div>
+
+                        <!-- Reply Images -->
+                        <div v-if="reply.images && reply.images.length > 0" class="comment-images">
+                          <img
+                            v-for="(image, index) in reply.images"
+                            :key="index"
+                            :src="image.image"
+                            :alt="`回复图片 ${index + 1}`"
+                            class="comment-image"
+                            @click="openImageModal(image.image)"
+                          />
+                        </div>
+                      </div>
+
+                      <div class="comment-actions">
+                        <button
+                          @click="toggleCommentLike(reply)"
+                          :class="['like-comment-btn', { liked: reply.is_liked }]"
+                        >
+                          {{ reply.is_liked ? '❤️' : '🤍' }}
+                          {{ reply.likes_count || 0 }}
+                        </button>
+                        <button
+                          @click="startReplyToReply(comment.id, reply)"
+                          class="reply-comment-btn small"
+                        >
+                          回复
+                        </button>
+                      </div>
+                      <!-- Reply Form for specific reply -->
+                      <div v-if="activeReplyForm?.parentId === comment.id && activeReplyForm?.targetId === reply.id" class="reply-form">
+                        <form @submit.prevent="submitReply(comment.id)" class="reply-form-inner">
+                          <RichTextEditor
+                            v-model="newReply"
+                            :placeholder="`回复 ${reply.user.username}...`"
+                            :disabled="submittingReply"
+                            :max-length="500"
+                            min-height="80px"
+                            :show-char-count="true"
+                          />
+                          <div class="reply-form-actions">
+                            <button
+                              type="button"
+                              @click="cancelReply"
+                              class="cancel-reply-btn"
+                            >
+                              取消
+                            </button>
+                            <button
+                              type="submit"
+                              :disabled="!newReply.trim() || submittingReply"
+                              class="submit-reply-btn"
+                            >
+                              {{ submittingReply ? '发布中...' : '发布回复' }}
+                            </button>
+                          </div>
+                        </form>
+                      </div>
+                    </div>
+
+                    <!-- Load More Replies Button -->
+                    <div
+                      v-if="repliesPagination[comment.id]?.has_next"
+                      class="load-more-replies-container"
+                    >
+                      <button
+                        @click="loadMoreReplies(comment.id)"
+                        :disabled="loadingReplies[comment.id]"
+                        class="load-more-replies-btn"
+                      >
+                        {{ loadingReplies[comment.id] ? '加载中...' : '加载更多回复' }}
+                      </button>
+                    </div>
+                  </div>
+                  <div v-else class="no-replies">
+                    暂无回复
+                  </div>
                 </div>
               </div>
             </div>
@@ -223,6 +399,17 @@
 
             <div v-else-if="!commentsLoaded && comments.length === 0" class="no-comments">
               还没有评论，快来抢沙发吧！
+            </div>
+
+            <!-- Load More Button -->
+            <div v-else-if="commentsLoaded && pagination?.has_next" class="load-more-container">
+              <button
+                @click="loadMoreComments"
+                :disabled="loadingComments"
+                class="load-more-btn"
+              >
+                {{ loadingComments ? '加载中...' : '加载更多评论' }}
+              </button>
             </div>
 
             <div v-else-if="commentsLoaded && !pagination?.has_next && comments.length > 0" class="no-more">
@@ -298,6 +485,16 @@ const pagination = ref<{
 } | null>(null)
 const currentPage = ref(1)
 const pageSize = 5
+
+// Two-layer comment system state
+const replies = ref<Record<string, Comment[]>>({}) // replies[commentId] = Reply[]
+const expandedReplies = ref<Record<string, boolean>>({}) // which replies are expanded
+const loadingReplies = ref<Record<string, boolean>>({}) // which replies are loading
+const repliesPagination = ref<Record<string, any>>({}) // pagination info for each comment's replies
+const activeReplyForm = ref<{ parentId: string; targetId?: string } | null>(null) // which comment has active reply form
+const newReply = ref('')
+const submittingReply = ref(false)
+const replyTargetUser = ref<any>(null) // for second-layer replies
 
 // Comments scroll container ref for auto-loading
 const commentsContainer = ref<HTMLElement>()
@@ -378,34 +575,20 @@ const loadMoreComments = async () => {
   await loadComments(currentPage.value + 1, false)
 }
 
-// Comments scroll event handler
+// Comments scroll event handler - now monitors window scroll
 const handleCommentsScroll = () => {
-  if (!commentsContainer.value || loadingComments.value || !pagination.value?.has_next) {
-    console.log('Scroll handler early return:', {
-      hasContainer: !!commentsContainer.value,
-      isLoading: loadingComments.value,
-      hasNext: pagination.value?.has_next
-    })
+  if (loadingComments.value || !pagination.value?.has_next) {
     return
   }
 
-  const container = commentsContainer.value
-  const scrollHeight = container.scrollHeight
-  const scrollTop = container.scrollTop
-  const clientHeight = container.clientHeight
-  const distanceFromBottom = scrollHeight - scrollTop - clientHeight
+  // Get window scroll position
+  const windowHeight = window.innerHeight
+  const documentHeight = document.documentElement.scrollHeight
+  const scrollTop = window.pageYOffset || document.documentElement.scrollTop
+  const distanceFromBottom = documentHeight - scrollTop - windowHeight
 
-  console.log('Scroll event:', {
-    scrollHeight,
-    scrollTop,
-    clientHeight,
-    distanceFromBottom,
-    threshold: 200
-  })
-
-  // Check if user has scrolled near the bottom (200px threshold)
-  if (distanceFromBottom < 200) {
-    console.log('Near bottom, loading more comments...')
+  // Check if user has scrolled near the bottom (300px threshold)
+  if (distanceFromBottom < 300) {
     // Clear any existing timeout to prevent rapid firing
     if (loadTimeout) {
       clearTimeout(loadTimeout)
@@ -414,22 +597,18 @@ const handleCommentsScroll = () => {
     // Debounce the load more action
     loadTimeout = setTimeout(() => {
       loadMoreComments()
-    }, 100)
+    }, 200)
   }
 }
 
 // Setup scroll listener for comments
 const setupScrollListener = async () => {
   await nextTick()
-  if (commentsContainer.value) {
-    // Remove any existing listener to prevent duplicates
-    commentsContainer.value.removeEventListener('scroll', handleCommentsScroll)
-    // Add the scroll listener
-    commentsContainer.value.addEventListener('scroll', handleCommentsScroll, { passive: true })
-    console.log('Scroll listener attached to comments container')
-  } else {
-    console.warn('Comments container not found when setting up scroll listener')
-  }
+  // Remove any existing listener to prevent duplicates
+  window.removeEventListener('scroll', handleCommentsScroll)
+  // Add the scroll listener to window
+  window.addEventListener('scroll', handleCommentsScroll, { passive: true })
+  console.log('Scroll listener attached to window')
 }
 
 const toggleLike = async () => {
@@ -574,6 +753,122 @@ const closeImageModal = () => {
   selectedImage.value = ''
 }
 
+// Two-layer comment system functions
+const toggleReplyForm = (commentId: string) => {
+  if (activeReplyForm.value?.parentId === commentId && !activeReplyForm.value?.targetId) {
+    activeReplyForm.value = null
+    newReply.value = ''
+    replyTargetUser.value = null
+  } else {
+    activeReplyForm.value = { parentId: commentId }
+    newReply.value = ''
+    replyTargetUser.value = null
+  }
+}
+
+const cancelReply = () => {
+  activeReplyForm.value = null
+  newReply.value = ''
+  replyTargetUser.value = null
+}
+
+const submitReply = async (parentCommentId: string) => {
+  if (!newReply.value.trim() || submittingReply.value) return
+
+  submittingReply.value = true
+  try {
+    const replyData = {
+      content: newReply.value.trim(),
+      parent: parentCommentId
+    }
+
+    const newReplyData = await postsApi.createComment(post.value!.id, replyData)
+
+    // Update local state - add to replies
+    if (!replies.value[parentCommentId]) {
+      replies.value[parentCommentId] = []
+    }
+    replies.value[parentCommentId].unshift(newReplyData)
+
+    // Update parent comment reply count
+    const parentComment = comments.value.find(c => c.id === parentCommentId)
+    if (parentComment) {
+      parentComment.replies_count = (parentComment.replies_count || 0) + 1
+    }
+
+    // Update post comment count
+    if (post.value) {
+      post.value.comments_count += 1
+    }
+
+    // Clear form
+    newReply.value = ''
+    activeReplyForm.value = null
+    replyTargetUser.value = null
+
+    console.log('回复发布成功')
+  } catch (error: any) {
+    console.error('Error submitting reply:', error)
+    alert('回复发布失败，请重试')
+  } finally {
+    submittingReply.value = false
+  }
+}
+
+const startReplyToReply = (parentCommentId: string, targetReply: any) => {
+  activeReplyForm.value = { parentId: parentCommentId, targetId: targetReply.id }
+  replyTargetUser.value = targetReply.user
+  newReply.value = ''
+}
+
+const toggleReplies = async (commentId: string) => {
+  if (expandedReplies.value[commentId]) {
+    // Collapse replies
+    expandedReplies.value[commentId] = false
+  } else {
+    // Expand replies - load if not loaded yet
+    if (!replies.value[commentId]) {
+      await loadReplies(commentId)
+    }
+    expandedReplies.value[commentId] = true
+  }
+}
+
+const loadReplies = async (commentId: string, page: number = 1, append: boolean = false) => {
+  if (loadingReplies.value[commentId]) return
+
+  loadingReplies.value[commentId] = true
+  try {
+    const response = await postsApi.getCommentReplies(commentId, {
+      page,
+      page_size: 5 // 每次加载5条回复
+    })
+
+    if (append && replies.value[commentId]) {
+      // 追加更多回复
+      replies.value[commentId].push(...response.replies)
+    } else {
+      // 初始加载或重置
+      replies.value[commentId] = response.replies
+    }
+
+    // 保存分页信息
+    repliesPagination.value[commentId] = response.pagination
+  } catch (error) {
+    console.error('Error loading replies:', error)
+    alert('加载回复失败，请重试')
+  } finally {
+    loadingReplies.value[commentId] = false
+  }
+}
+
+const loadMoreReplies = async (commentId: string) => {
+  const pagination = repliesPagination.value[commentId]
+  if (!pagination || !pagination.has_next) return
+
+  await loadReplies(commentId, pagination.page + 1, true)
+}
+
 onMounted(async () => {
   await fetchPost()
   // Set up scroll listener after initial load
@@ -589,9 +884,7 @@ watch(commentsLoaded, (newVal) => {
 
 onUnmounted(() => {
   // Clean up scroll listener and timeout
-  if (commentsContainer.value) {
-    commentsContainer.value.removeEventListener('scroll', handleCommentsScroll)
-  }
+  window.removeEventListener('scroll', handleCommentsScroll)
   if (loadTimeout) {
     clearTimeout(loadTimeout)
   }
@@ -669,6 +962,8 @@ onUnmounted(() => {
   border: 2px solid #000;
   box-shadow: 4px 4px 0 #000;
   margin-bottom: 2rem;
+  max-width: 100%;
+  overflow: hidden;
 }
 
 .post-header {
@@ -750,6 +1045,10 @@ onUnmounted(() => {
   white-space: pre-wrap;
   line-height: 1.6;
   font-size: 1.1rem;
+  word-wrap: break-word;
+  word-break: break-word;
+  overflow-wrap: break-word;
+  max-width: 100%;
 }
 
 /* Rich text content styling */
@@ -864,6 +1163,8 @@ onUnmounted(() => {
   border-radius: 8px;
   border: 2px solid #000;
   box-shadow: 4px 4px 0 #000;
+  max-width: 100%;
+  overflow: hidden;
 }
 
 .comments-section h3 {
@@ -899,15 +1200,17 @@ onUnmounted(() => {
 .comments-list {
   display: flex;
   flex-direction: column;
-  gap: 1.5rem;
+  gap: 0.75rem;
 }
 
 /* Comments scroll container for auto-loading */
 .comments-scroll-container {
-  max-height: 600px;
-  overflow-y: auto;
+  /* Remove fixed height to allow natural expansion */
+  overflow-y: visible;
   padding-right: 0.5rem;
   margin-right: -0.5rem;
+  min-height: auto;
+  height: auto;
 }
 
 .comments-scroll-container::-webkit-scrollbar {
@@ -970,6 +1273,10 @@ onUnmounted(() => {
   white-space: pre-wrap;
   line-height: 1.5;
   margin-bottom: 0.75rem;
+  word-wrap: break-word;
+  word-break: break-word;
+  overflow-wrap: break-word;
+  max-width: 100%;
 }
 
 /* Rich text comment styling */
@@ -997,9 +1304,20 @@ onUnmounted(() => {
   font-style: italic;
 }
 
+/* Comment structure styling */
+.comment-main {
+  flex: 1;
+  min-width: 0; /* Allows content to shrink properly */
+  overflow: hidden; /* Prevent overflow */
+  max-width: calc(100% - 120px); /* Reserve space for actions */
+}
+
 .comment-actions {
   display: flex;
-  gap: 0.5rem;
+  flex-direction: column;
+  gap: 0.375rem;
+  flex-shrink: 0;
+  align-items: flex-end;
 }
 
 .like-comment-btn {
@@ -1009,7 +1327,9 @@ onUnmounted(() => {
   padding: 0.25rem 0.5rem;
   border-radius: 4px;
   background-color: #fff;
-  font-size: 0.875rem;
+  font-size: 0.75rem;
+  white-space: nowrap;
+  min-width: fit-content;
 }
 
 .like-comment-btn:hover {
@@ -1241,6 +1561,297 @@ onUnmounted(() => {
   border-top: 2px solid #e9ecef;
 }
 
+/* Two-Layer Comment System Styles */
+.comment-floor {
+  margin-bottom: 0.75rem;
+  border: 1px solid #e9ecef;
+  border-radius: 6px;
+  background: white;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  overflow: hidden;
+  min-height: auto;
+  height: auto;
+  display: flex;
+  flex-direction: column;
+  max-width: 100%;
+}
+
+.comment-item.first-layer {
+  background: white;
+  padding: 0.75rem;
+  border-bottom: 1px solid #e9ecef;
+  min-height: auto;
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 1rem;
+}
+
+.comment-item.second-layer {
+  background: #f8f9fa;
+  padding: 0.5rem 0.75rem;
+  border-bottom: 1px solid #e9ecef;
+  position: relative;
+  min-height: auto;
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 1rem;
+}
+
+.comment-item.second-layer:before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 3px;
+  background: #007bff;
+}
+
+.comment-item.second-layer:last-child {
+  border-bottom: none;
+}
+
+.reply-indicator {
+  font-size: 0.75rem;
+  color: #666;
+  font-weight: 600;
+  margin-top: 0.25rem;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.reply-target {
+  color: #007bff;
+  font-weight: 700;
+  text-decoration: none;
+  transition: all 0.2s ease;
+  padding: 0.125rem 0.25rem;
+  border-radius: 3px;
+}
+
+.reply-target:hover {
+  background: #007bff;
+  color: white;
+  transform: translate(-1px, -1px);
+  box-shadow: 2px 2px 0 #000;
+}
+
+.avatar.small {
+  width: 28px;
+  height: 28px;
+  font-size: 0.75rem;
+}
+
+.reply-comment-btn {
+  background: #28a745;
+  color: white;
+  border: 1px solid #28a745;
+  border-radius: 4px;
+  padding: 0.25rem 0.5rem;
+  cursor: pointer;
+  font-size: 0.75rem;
+  font-weight: 500;
+  transition: all 0.2s ease;
+  white-space: nowrap;
+  min-width: fit-content;
+}
+
+.reply-comment-btn:hover {
+  background: #218838;
+  border-color: #218838;
+}
+
+.reply-comment-btn.small {
+  padding: 0.125rem 0.375rem;
+  font-size: 0.7rem;
+}
+
+.view-replies-btn {
+  background: #6f42c1;
+  color: white;
+  border: 1px solid #6f42c1;
+  border-radius: 4px;
+  padding: 0.25rem 0.5rem;
+  cursor: pointer;
+  font-size: 0.75rem;
+  font-weight: 500;
+  transition: all 0.2s ease;
+  white-space: nowrap;
+  min-width: fit-content;
+}
+
+.view-replies-btn:hover {
+  background: #5a32a3;
+  border-color: #5a32a3;
+}
+
+.view-replies-btn.active {
+  background: #dc3545;
+  border-color: #dc3545;
+}
+
+.view-replies-btn.active:hover {
+  background: #c82333;
+  border-color: #c82333;
+}
+
+.reply-form {
+  background: #f8f9fa;
+  padding: 1rem;
+  border-top: 1px solid #e9ecef;
+}
+
+.reply-form-inner {
+  max-width: 100%;
+}
+
+.reply-form-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  margin-top: 1rem;
+}
+
+.cancel-reply-btn {
+  background: #6c757d;
+  color: white;
+  border: 1px solid #6c757d;
+  border-radius: 4px;
+  padding: 0.375rem 0.75rem;
+  cursor: pointer;
+  font-weight: 500;
+  font-size: 0.875rem;
+  transition: all 0.2s ease;
+}
+
+.cancel-reply-btn:hover {
+  background: #5a6268;
+  border-color: #5a6268;
+}
+
+.submit-reply-btn {
+  background: #007bff;
+  color: white;
+  border: 1px solid #007bff;
+  border-radius: 4px;
+  padding: 0.375rem 0.75rem;
+  cursor: pointer;
+  font-weight: 500;
+  font-size: 0.875rem;
+  transition: all 0.2s ease;
+}
+
+.submit-reply-btn:hover:not(:disabled) {
+  background: #0056b3;
+  border-color: #0056b3;
+}
+
+.submit-reply-btn:disabled {
+  background: #6c757d;
+  border-color: #6c757d;
+  cursor: not-allowed;
+}
+
+.replies-container {
+  background: #f8f9fa;
+  border-top: 1px solid #e9ecef;
+  min-height: auto;
+  height: auto;
+  flex-grow: 1;
+}
+
+.replies-list {
+  display: flex;
+  flex-direction: column;
+  min-height: auto;
+  height: auto;
+  gap: 0;
+}
+
+.loading-replies {
+  text-align: center;
+  color: #666;
+  font-style: italic;
+  padding: 1rem;
+  background: #f8f9fa;
+}
+
+.no-replies {
+  text-align: center;
+  color: #999;
+  font-style: italic;
+  padding: 1rem;
+  background: #f8f9fa;
+}
+
+/* Load More Button */
+.load-more-container {
+  text-align: center;
+  padding: 2rem 0;
+  margin-top: 1rem;
+}
+
+.load-more-btn {
+  background: #007bff;
+  color: white;
+  border: 3px solid #000;
+  border-radius: 8px;
+  padding: 1rem 2rem;
+  cursor: pointer;
+  font-size: 1rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  transition: all 0.2s ease;
+  box-shadow: 4px 4px 0 #000;
+}
+
+.load-more-btn:hover:not(:disabled) {
+  background: #0056b3;
+  transform: translate(-2px, -2px);
+  box-shadow: 6px 6px 0 #000;
+}
+
+.load-more-btn:disabled {
+  background: #6c757d;
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: 4px 4px 0 #000;
+}
+
+/* Load More Replies Button */
+.load-more-replies-container {
+  text-align: center;
+  padding: 0.75rem;
+  background: #f8f9fa;
+  border-top: 1px solid #e9ecef;
+}
+
+.load-more-replies-btn {
+  background: #6c757d;
+  color: white;
+  border: 1px solid #6c757d;
+  border-radius: 4px;
+  padding: 0.375rem 0.75rem;
+  cursor: pointer;
+  font-size: 0.75rem;
+  font-weight: 500;
+  transition: all 0.2s ease;
+}
+
+.load-more-replies-btn:hover:not(:disabled) {
+  background: #5a6268;
+  border-color: #5a6268;
+}
+
+.load-more-replies-btn:disabled {
+  background: #adb5bd;
+  border-color: #adb5bd;
+  cursor: not-allowed;
+}
+
 
 /* Mobile responsive */
 @media (max-width: 768px) {
@@ -1275,6 +1886,37 @@ onUnmounted(() => {
   }
 
   .comment-image-upload .upload-zone {
+    padding: 1rem;
+  }
+
+  /* Mobile optimizations for two-layer comments */
+  .comment-floor {
+    margin-bottom: 1.5rem;
+    box-shadow: 3px 3px 0 #000;
+  }
+
+  .comment-item.first-layer {
+    padding: 1rem;
+    gap: 0.75rem;
+  }
+
+  .comment-item.second-layer {
+    padding: 0.75rem 1rem;
+    gap: 0.5rem;
+  }
+
+  .load-more-btn {
+    padding: 0.75rem 1.5rem;
+    font-size: 0.875rem;
+  }
+
+  .reply-comment-btn,
+  .view-replies-btn {
+    padding: 0.25rem 0.5rem;
+    font-size: 0.75rem;
+  }
+
+  .reply-form {
     padding: 1rem;
   }
 }

@@ -16,5 +16,6 @@ urlpatterns = [
     # 评论相关
     path('<str:post_id>/comments/', views.create_comment, name='create-comment'),
     path('<str:post_id>/comments/list/', views.get_post_comments, name='get-post-comments'),
+    path('comments/<str:comment_id>/replies/', views.get_comment_replies, name='get-comment-replies'),
     path('comments/<str:comment_id>/like/', views.toggle_comment_like, name='toggle-comment-like'),
 ]

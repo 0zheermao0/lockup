@@ -772,6 +772,8 @@ onMounted(() => {
   box-shadow: 4px 4px 0 #000;
   cursor: pointer;
   transition: transform 0.2s ease, box-shadow 0.2s ease;
+  max-width: 100%;
+  overflow: hidden;
 }
 
 .post-card:hover {
@@ -831,6 +833,10 @@ onMounted(() => {
   margin-bottom: 1rem;
   white-space: pre-wrap;
   line-height: 1.5;
+  word-wrap: break-word;
+  word-break: break-word;
+  overflow-wrap: break-word;
+  max-width: 100%;
 }
 
 /* Rich text content styling */

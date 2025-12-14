@@ -80,7 +80,9 @@ export interface Comment {
   content: string
   parent?: string
   likes_count: number
+  replies_count?: number
   replies: Comment[]
+  reply_to_user?: User
   images?: PostImage[]
   created_at: string
   updated_at: string

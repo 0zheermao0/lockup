@@ -22,26 +22,24 @@ class CommentImageSerializer(serializers.ModelSerializer):
 
 
 class CommentSerializer(serializers.ModelSerializer):
-    """评论序列化器"""
+    """评论序列化器 - 支持两层结构"""
 
     user = UserPublicSerializer(read_only=True)
     images = CommentImageSerializer(many=True, read_only=True)
-    replies = serializers.SerializerMethodField()
+    reply_to_user = UserPublicSerializer(read_only=True)
     is_liked = serializers.SerializerMethodField()
 
     class Meta:
         model = Comment
         fields = [
-            'id', 'user', 'content', 'parent', 'likes_count',
-            'images', 'replies', 'is_liked', 'created_at', 'updated_at'
+            'id', 'user', 'content', 'parent', 'root_reply_id', 'path',
+            'depth', 'reply_to_user', 'likes_count', 'replies_count',
+            'images', 'is_liked', 'created_at', 'updated_at'
         ]
-        read_only_fields = ['id', 'user', 'likes_count', 'created_at', 'updated_at']
-
-    def get_replies(self, obj):
-        if obj.parent is None:  # 只对顶级评论返回回复
-            replies = obj.replies.all()[:5]  # 限制回复数量
-            return CommentSerializer(replies, many=True, context=self.context).data
-        return []
+        read_only_fields = [
+            'id', 'user', 'root_reply_id', 'path', 'depth', 'reply_to_user',
+            'likes_count', 'replies_count', 'created_at', 'updated_at'
+        ]
 
     def get_is_liked(self, obj):
         request = self.context.get('request')
@@ -82,8 +80,8 @@ class PostSerializer(serializers.ModelSerializer):
         return False
 
     def get_comments(self, obj):
-        # 只返回顶级评论（前5条）
-        top_comments = obj.comments.filter(parent=None)[:5]
+        # 只返回第一层评论（前5条）
+        top_comments = obj.comments.filter(depth=0).order_by('created_at')[:5]
         return CommentSerializer(
             top_comments, many=True, context=self.context
         ).data
@@ -177,12 +175,21 @@ class CommentCreateSerializer(serializers.ModelSerializer):
         if value:
             # 检查父评论是否属于同一个动态
             post_id = self.context.get('post_id')
-            if value.post.id != post_id:
+            # 确保类型匹配 - 将post_id转换为字符串进行比较
+            if str(value.post.id) != str(post_id):
                 raise serializers.ValidationError("父评论不属于当前动态")
 
-            # 不允许多层嵌套回复
-            if value.parent is not None:
-                raise serializers.ValidationError("不允许多层嵌套回复")
+            # 在两层结构中，只允许回复第一层评论
+            # 如果回复的是第二层评论，会自动转换为回复第一层评论
+            if value.depth > 0:
+                # 这是第二层评论，需要找到它的根评论
+                root_comment = Comment.objects.filter(
+                    id=value.root_reply_id,
+                    post_id=post_id
+                ).first()
+                if not root_comment:
+                    raise serializers.ValidationError("无法找到根评论")
+                # 在create方法中会处理这种情况
 
         return value
 
