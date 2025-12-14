@@ -76,12 +76,15 @@ export interface PostImage {
 export interface Comment {
   id: string
   user: User
-  post_id: string
+  post_id?: string
   content: string
   parent?: string
+  root_reply_id?: string
+  path?: string
+  depth?: number
   likes_count: number
   replies_count?: number
-  replies: Comment[]
+  replies?: Comment[]
   reply_to_user?: User
   images?: PostImage[]
   created_at: string

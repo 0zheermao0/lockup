@@ -251,7 +251,7 @@ import { useRouter } from 'vue-router'
 import { useAuthStore } from '../stores/auth'
 import { usePostsStore } from '../stores/posts'
 import { useNotificationStore } from '../stores/notifications'
-import { useInfiniteScroll } from '../composables/useInfiniteScroll'
+import { useInfiniteScrollWithPosition } from '../composables/useInfiniteScrollWithPosition'
 import { formatDistanceToNow } from '../lib/utils'
 import CreatePostModal from '../components/CreatePostModal.vue'
 import LockStatus from '../components/LockStatus.vue'
@@ -274,7 +274,7 @@ const isCheckinMode = ref(false)
 const showProfileModal = ref(false)
 const selectedUser = ref<any>(null)
 
-// 无限滚动设置
+// 无限滚动设置 - 带位置保持功能
 const {
   items: posts,
   loading,
@@ -284,13 +284,17 @@ const {
   isLoadingMore,
   isInitialLoading,
   initialize,
-  refresh
-} = useInfiniteScroll(
+  refresh,
+  prepareForNavigation,
+  isRestoring,
+  isComingFromDetail
+} = useInfiniteScrollWithPosition(
   postsStore.getPaginatedPosts,
   {
     initialPageSize: 10,
     threshold: 200,
-    loadDelay: 300
+    loadDelay: 300,
+    routeKey: 'home'
   }
 )
 
@@ -365,6 +369,7 @@ const deletePost = async (post: Post) => {
 }
 
 const goToPostDetail = (postId: string) => {
+  prepareForNavigation()
   router.push({ name: 'post-detail', params: { id: postId } })
 }
 

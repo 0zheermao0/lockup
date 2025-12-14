@@ -285,7 +285,7 @@ import { ref, onMounted, computed, onUnmounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '../stores/auth'
 import { useTasksStore } from '../stores/tasks'
-import { useInfiniteScroll } from '../composables/useInfiniteScroll'
+import { useInfiniteScrollWithPosition } from '../composables/useInfiniteScrollWithPosition'
 import { formatDistanceToNow } from '../lib/utils'
 import { tasksApi } from '../lib/api-tasks'
 import { smartGoBack } from '../utils/navigation'
@@ -375,13 +375,17 @@ const {
   isLoadingMore,
   isInitialLoading,
   initialize,
-  refresh
-} = useInfiniteScroll(
+  refresh,
+  prepareForNavigation,
+  isRestoring,
+  isComingFromDetail
+} = useInfiniteScrollWithPosition(
   getFilteredTasks,
   {
     initialPageSize: 12, // 4行 × 3列 = 12个任务
     threshold: 200,
-    loadDelay: 300
+    loadDelay: 300,
+    routeKey: 'tasks'
   }
 )
 
@@ -613,6 +617,7 @@ const deleteTask = async (task: Task) => {
 }
 
 const goToTaskDetail = (taskId: string) => {
+  prepareForNavigation()
   router.push({ name: 'task-detail', params: { id: taskId } })
 }
 

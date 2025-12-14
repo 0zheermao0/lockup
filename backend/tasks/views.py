@@ -1404,7 +1404,13 @@ def manual_time_adjustment(request, pk):
                 new_end_time = task.end_time + timezone.timedelta(minutes=adjustment_minutes)
         else:  # increase
             adjustment_minutes = 20
-            new_end_time = task.end_time + timezone.timedelta(minutes=adjustment_minutes)
+            # 如果倒计时已经结束，从现在开始加时；否则从原结束时间加时
+            if time_remaining_minutes <= 0:
+                # 倒计时已结束，从现在开始延长
+                new_end_time = now + timezone.timedelta(minutes=adjustment_minutes)
+            else:
+                # 倒计时未结束，从原结束时间延长
+                new_end_time = task.end_time + timezone.timedelta(minutes=adjustment_minutes)
 
         task.end_time = new_end_time
     else:
