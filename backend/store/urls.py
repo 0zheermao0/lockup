@@ -38,4 +38,5 @@ urlpatterns = [
     # 万能钥匙相关
     path('use-universal-key/', views.use_universal_key, name='use-universal-key'),
     path('check-task-key-ownership/', views.check_task_key_ownership, name='check-task-key-ownership'),
+    path('task-key-holder/<uuid:task_id>/', views.get_task_key_holder, name='get-task-key-holder'),
 ]

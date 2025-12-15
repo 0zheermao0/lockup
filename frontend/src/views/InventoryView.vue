@@ -454,7 +454,7 @@
                     <p class="task-description">{{ task.description }}</p>
                   </div>
                   <div class="task-rewards">
-                    <span class="reward-coins">+{{ getTaskReward(task.difficulty) }} 积分</span>
+                    <!-- Reward points display removed as requested -->
                   </div>
                 </div>
               </div>
@@ -831,6 +831,11 @@ const loadAvailableTasks = async () => {
     // For Universal Key, we don't need to check original key ownership
     // Universal Key can complete any of the user's own tasks regardless of key ownership
     availableTasks.value = allTasks
+
+    // Auto-select the first available task when modal opens
+    if (allTasks.length > 0) {
+      selectedTaskId.value = allTasks[0].id
+    }
   } catch (err) {
     error.value = err instanceof Error ? err.message : '加载任务列表失败'
     availableTasks.value = []

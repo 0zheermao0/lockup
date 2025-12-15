@@ -1707,3 +1707,45 @@ def check_task_key_ownership(request):
         return Response({
             'error': f'检查钥匙所有权失败: {str(e)}'
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def get_task_key_holder(request, task_id):
+    """获取指定任务的当前钥匙持有者信息"""
+    try:
+        # 查找该任务对应的钥匙
+        task_key_item = Item.objects.filter(
+            item_type__name='key',
+            status='available',
+            properties__task_id=str(task_id)
+        ).first()
+
+        if not task_key_item:
+            return Response({
+                'task_id': task_id,
+                'has_key': False,
+                'key_holder': None,
+                'message': '该任务没有可用的钥匙'
+            }, status=status.HTTP_200_OK)
+
+        # 返回当前钥匙持有者信息
+        key_holder = task_key_item.owner
+        return Response({
+            'task_id': task_id,
+            'has_key': True,
+            'key_holder': {
+                'id': key_holder.id,
+                'username': key_holder.username,
+                'is_current_user': key_holder == request.user
+            },
+            'original_owner': {
+                'id': task_key_item.original_owner.id if task_key_item.original_owner else None,
+                'username': task_key_item.original_owner.username if task_key_item.original_owner else None
+            } if task_key_item.original_owner else None
+        }, status=status.HTTP_200_OK)
+
+    except Exception as e:
+        return Response({
+            'error': f'获取钥匙持有者信息失败: {str(e)}'
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)

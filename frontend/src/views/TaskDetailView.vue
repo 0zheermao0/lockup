@@ -309,7 +309,20 @@
                   🔍 正在检查钥匙持有情况...
                 </div>
                 <div v-else-if="!hasTaskKey && authStore.isAuthenticated" class="hint-no-key">
-                  🔑 您没有持有此任务的钥匙，无法完成任务。只有钥匙的当前持有者才能完成此任务。
+                  <span v-if="!keyHolderInfo || !keyHolderInfo.has_key">
+                    🔑 您没有持有此任务的钥匙，无法完成任务。只有钥匙的当前持有者才能完成此任务。
+                  </span>
+                  <span v-else-if="keyHolderInfo.key_holder">
+                    🔑 您没有持有此任务的钥匙，无法完成任务。只有钥匙的当前持有者
+                    <button
+                      @click="openUserProfile(keyHolderInfo.key_holder.id)"
+                      class="key-holder-link"
+                      :title="`查看 ${keyHolderInfo.key_holder.username} 的资料`"
+                    >
+                      {{ keyHolderInfo.key_holder.username }}
+                    </button>
+                    才能完成此任务。
+                  </span>
                 </div>
                 <div v-else-if="hasTaskKey">
                   <!-- Unlock type specific hints for key holders -->
@@ -640,6 +653,18 @@ const keyCheckLoading = ref(false)
 const taskKey = ref<any>(null)
 const returningKey = ref(false)
 const showShareModal = ref(false)
+const keyHolderInfo = ref<{
+  has_key: boolean
+  key_holder?: {
+    id: number
+    username: string
+    is_current_user: boolean
+  }
+  original_owner?: {
+    id: number
+    username: string
+  }
+} | null>(null)
 
 
 // Toast notification state
@@ -1064,6 +1089,7 @@ const closeShareModal = () => {
 const checkUserHasTaskKey = async () => {
   if (!task.value || !authStore.isAuthenticated) {
     hasTaskKey.value = false
+    keyHolderInfo.value = null
     return
   }
 
@@ -1081,17 +1107,32 @@ const checkUserHasTaskKey = async () => {
     hasTaskKey.value = !!foundTaskKey
     taskKey.value = foundTaskKey || null
 
+    // If user doesn't have the key, fetch key holder information
+    if (!hasTaskKey.value && task.value?.id) {
+      try {
+        keyHolderInfo.value = await storeApi.getTaskKeyHolder(task.value.id)
+        console.log('🔍 Key holder info:', keyHolderInfo.value)
+      } catch (error: any) {
+        console.error('Error fetching key holder info:', error)
+        keyHolderInfo.value = null
+      }
+    } else {
+      keyHolderInfo.value = null
+    }
+
     console.log('🔑 Key ownership check:', {
       taskId: task.value.id,
       hasKey: hasTaskKey.value,
       keyItem: taskKey.value?.id,
       totalItems: userInventory.value.items.length,
-      keyItems: userInventory.value.items.filter((item: any) => item.item_type.name === 'key').length
+      keyItems: userInventory.value.items.filter((item: any) => item.item_type.name === 'key').length,
+      keyHolderInfo: keyHolderInfo.value
     })
 
   } catch (error) {
     console.error('Error checking task key ownership:', error)
     hasTaskKey.value = false
+    keyHolderInfo.value = null
   } finally {
     keyCheckLoading.value = false
   }
@@ -2501,6 +2542,29 @@ onUnmounted(() => {
   border: 1px solid #f5c6cb;
   color: #721c24;
   font-weight: 600;
+}
+
+.key-holder-link {
+  background: #17a2b8;
+  color: white;
+  border: 3px solid #000;
+  padding: 0.25rem 0.75rem;
+  font-weight: 900;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  cursor: pointer;
+  box-shadow: 2px 2px 0 #000;
+  transition: all 0.2s ease;
+  font-size: 0.875rem;
+  margin: 0 0.25rem;
+  display: inline-block;
+  text-decoration: none;
+}
+
+.key-holder-link:hover {
+  transform: translate(1px, 1px);
+  box-shadow: 1px 1px 0 #000;
+  background: #138496;
 }
 
 .key-management {
