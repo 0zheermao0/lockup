@@ -60,8 +60,40 @@ class LockTaskListCreateView(generics.ListCreateAPIView):
         if my_taken == 'true':
             queryset = queryset.filter(taker=self.request.user)
 
-        # Add ordering for consistent pagination results
-        return queryset.order_by('-created_at')
+        # 处理排序参数
+        sort_by = self.request.query_params.get('sort_by', 'created_time')
+        sort_order = self.request.query_params.get('sort_order', 'desc')
+
+        # 定义排序字段映射
+        sort_field_mapping = {
+            'created_time': 'created_at',
+            'end_time': 'end_time',
+            'remaining_time': 'end_time',  # 剩余时间实际上是根据结束时间排序
+            'difficulty': 'difficulty',
+            'user_activity': 'user__last_active'  # 用户活跃度
+        }
+
+        # 获取实际的排序字段
+        sort_field = sort_field_mapping.get(sort_by, 'created_at')
+
+        # 处理排序方向
+        if sort_order == 'desc':
+            sort_field = f'-{sort_field}'
+
+        # 对于剩余时间排序，需要特殊处理（只对活跃任务有意义）
+        if sort_by == 'remaining_time':
+            # 剩余时间排序：先按是否有结束时间排序，再按结束时间排序
+            if sort_order == 'asc':
+                # 升序：剩余时间少的在前（结束时间早的在前）
+                queryset = queryset.order_by('end_time', 'created_at')
+            else:
+                # 降序：剩余时间多的在前（结束时间晚的在前）
+                queryset = queryset.order_by('-end_time', '-created_at')
+        else:
+            # 其他排序方式
+            queryset = queryset.order_by(sort_field, '-created_at')  # 添加创建时间作为次要排序
+
+        return queryset
 
     def perform_create(self, serializer):
         from rest_framework.exceptions import ValidationError

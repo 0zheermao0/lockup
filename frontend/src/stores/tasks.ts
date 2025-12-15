@@ -69,6 +69,8 @@ export const useTasksStore = defineStore('tasks', () => {
       status?: string
       my_tasks?: boolean
       my_taken?: boolean
+      sort_by?: string
+      sort_order?: 'asc' | 'desc'
     } = {}
   ): Promise<PaginatedResponse<Task>> => {
     const response = await tasksApi.getTasks({
@@ -77,7 +79,9 @@ export const useTasksStore = defineStore('tasks', () => {
       my_tasks: extraFilters.my_tasks !== undefined ? extraFilters.my_tasks : filters.value.my_tasks,
       my_taken: extraFilters.my_taken,
       page: page,
-      page_size: pageSize
+      page_size: pageSize,
+      sort_by: extraFilters.sort_by,
+      sort_order: extraFilters.sort_order
     }) as any
     return response as PaginatedResponse<Task>
   }

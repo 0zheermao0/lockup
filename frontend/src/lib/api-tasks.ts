@@ -67,6 +67,8 @@ export const tasksApi = {
     my_taken?: boolean
     page?: number
     page_size?: number
+    sort_by?: string
+    sort_order?: 'asc' | 'desc'
   } = {}) => {
     const searchParams = new URLSearchParams()
 
@@ -76,6 +78,8 @@ export const tasksApi = {
     if (params.my_taken) searchParams.append('my_taken', 'true')
     if (params.page) searchParams.append('page', params.page.toString())
     if (params.page_size) searchParams.append('page_size', params.page_size.toString())
+    if (params.sort_by) searchParams.append('sort_by', params.sort_by)
+    if (params.sort_order) searchParams.append('sort_order', params.sort_order)
 
     const queryString = searchParams.toString()
     const url = queryString ? `/tasks/?${queryString}` : '/tasks/'
@@ -90,6 +94,8 @@ export const tasksApi = {
     my_tasks?: boolean
     my_taken?: boolean
     page_size?: number
+    sort_by?: string
+    sort_order?: 'asc' | 'desc'
   } = {}) => {
     const searchParams = new URLSearchParams()
 
@@ -98,6 +104,8 @@ export const tasksApi = {
     if (params.my_tasks) searchParams.append('my_tasks', 'true')
     if (params.my_taken) searchParams.append('my_taken', 'true')
     if (params.page_size) searchParams.append('page_size', params.page_size.toString())
+    if (params.sort_by) searchParams.append('sort_by', params.sort_by)
+    if (params.sort_order) searchParams.append('sort_order', params.sort_order)
 
     const queryString = searchParams.toString()
     const url = queryString ? `/tasks/?${queryString}` : '/tasks/'

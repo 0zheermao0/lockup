@@ -53,11 +53,13 @@
               <button
                 @click="showSortDropdown = !showSortDropdown"
                 class="sort-btn"
-                :class="{ active: showSortDropdown }"
+                :class="{ active: showSortDropdown, loading: sortingLoading }"
+                :disabled="sortingLoading"
               >
-                <span class="sort-icon">⚡</span>
-                <span class="sort-text">{{ getSortLabel() }}</span>
-                <span class="dropdown-arrow" :class="{ rotated: showSortDropdown }">▼</span>
+                <span v-if="sortingLoading" class="sort-icon">🔄</span>
+                <span v-else class="sort-icon">⚡</span>
+                <span class="sort-text">{{ sortingLoading ? '排序中...' : getSortLabel() }}</span>
+                <span v-if="!sortingLoading" class="dropdown-arrow" :class="{ rotated: showSortDropdown }">▼</span>
               </button>
 
               <div v-if="showSortDropdown" class="sort-options">
@@ -327,11 +329,14 @@ const toastData = ref<{
 const sortBy = ref<'remaining_time' | 'created_time' | 'end_time' | 'user_activity' | 'difficulty'>('created_time')
 const sortOrder = ref<'asc' | 'desc'>('desc')
 const showSortDropdown = ref(false)
+const sortingLoading = ref(false)
 
 // Create a function to get the appropriate API call based on current filters
 const getFilteredTasks = async (page: number, pageSize: number) => {
   const extraFilters: any = {
-    task_type: activeTaskType.value
+    task_type: activeTaskType.value,
+    sort_by: sortBy.value,
+    sort_order: sortOrder.value
   }
 
   // Apply filter based on activeFilter
@@ -439,104 +444,32 @@ const currentFilterTabs = computed(() => {
   return activeTaskType.value === 'lock' ? lockFilterTabs.value : boardFilterTabs.value
 })
 
-// Since we're using server-side filtering, we only need to sort the tasks
+// Tasks are already filtered and sorted server-side, no need for client-side processing
 const filteredTasks = computed(() => {
-  // Tasks are already filtered server-side, just apply sorting
-  return sortTasks(currentTasks.value)
+  return currentTasks.value
 })
 
-// Sorting functions
-const sortTasks = (tasks: Task[]) => {
-  const sorted = [...tasks].sort((a, b) => {
-    let aValue: number
-    let bValue: number
-
-    switch (sortBy.value) {
-      case 'remaining_time':
-        aValue = getTimeRemaining(a)
-        bValue = getTimeRemaining(b)
-        // For tasks with no remaining time (completed/ended), put them at the end
-        if (aValue === 0 && bValue === 0) return 0
-        if (aValue === 0) return 1
-        if (bValue === 0) return -1
-        break
-
-      case 'created_time':
-        aValue = new Date(a.created_at).getTime()
-        bValue = new Date(b.created_at).getTime()
-        break
-
-      case 'end_time':
-        // Handle tasks without end_time
-        const aEndTime = getTaskEndTime(a)
-        const bEndTime = getTaskEndTime(b)
-        if (!aEndTime && !bEndTime) return 0
-        if (!aEndTime) return 1
-        if (!bEndTime) return -1
-        aValue = aEndTime
-        bValue = bEndTime
-        break
-
-      case 'user_activity':
-        // Sort by user activity score
-        aValue = a.user.activity_score || 0
-        bValue = b.user.activity_score || 0
-        break
-
-      case 'difficulty':
-        // Sort by difficulty level
-        aValue = getDifficultyValue(a)
-        bValue = getDifficultyValue(b)
-        break
-
-      default:
-        return 0
-    }
-
-    return sortOrder.value === 'asc' ? aValue - bValue : bValue - aValue
-  })
-
-  return sorted
-}
-
-const getTaskEndTime = (task: Task) => {
-  if (task.task_type === 'lock') {
-    const lockTask = task as any
-    return lockTask.end_time ? new Date(lockTask.end_time).getTime() : null
-  } else if (task.task_type === 'board') {
-    const boardTask = task as any
-    return boardTask.deadline ? new Date(boardTask.deadline).getTime() : null
-  }
-  return null
-}
-
-// Convert difficulty to numerical value for sorting
-const getDifficultyValue = (task: Task) => {
-  if (task.task_type === 'lock') {
-    const lockTask = task as any
-    const difficultyMap: Record<string, number> = {
-      'easy': 1,
-      'normal': 2,
-      'hard': 3,
-      'hell': 4
-    }
-    return difficultyMap[lockTask.difficulty as string] || 0
-  } else if (task.task_type === 'board') {
-    const boardTask = task as any
-    // For board tasks, use reward amount as difficulty indicator
-    // Higher reward = higher difficulty
-    return boardTask.reward || 0
-  }
-  return 0
-}
-
-const toggleSortOrder = () => {
+const toggleSortOrder = async () => {
+  sortingLoading.value = true
   sortOrder.value = sortOrder.value === 'asc' ? 'desc' : 'asc'
+  // Refresh tasks with new sort order
+  try {
+    await refresh()
+  } finally {
+    sortingLoading.value = false
+  }
 }
 
-const setSortBy = (criteria: 'remaining_time' | 'created_time' | 'end_time' | 'user_activity' | 'difficulty') => {
+const setSortBy = async (criteria: 'remaining_time' | 'created_time' | 'end_time' | 'user_activity' | 'difficulty') => {
+  sortingLoading.value = true
   sortBy.value = criteria
   showSortDropdown.value = false
+  // Refresh tasks with new sorting
+  try {
+    await refresh()
+  } finally {
+    sortingLoading.value = false
+  }
 }
 
 const getSortLabel = () => {
@@ -1497,6 +1430,20 @@ onUnmounted(() => {
 .sort-btn.active {
   background-color: #007bff;
   color: white;
+}
+
+.sort-btn.loading {
+  opacity: 0.7;
+  cursor: wait;
+}
+
+.sort-btn.loading .sort-icon {
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
 }
 
 .sort-icon {
