@@ -60,8 +60,31 @@ class LockTaskListCreateView(generics.ListCreateAPIView):
         if my_taken == 'true':
             queryset = queryset.filter(taker=self.request.user)
 
+        # 筛选可以加时的任务（绒布球筛选）
+        can_overtime = self.request.query_params.get('can_overtime')
+        if can_overtime == 'true':
+            from django.utils import timezone
+            from datetime import timedelta
+            from .models import OvertimeAction
+
+            # 基础条件：带锁任务、活跃状态、不是自己的任务
+            queryset = queryset.filter(
+                task_type='lock',
+                status='active'
+            ).exclude(user=self.request.user)
+
+            # 排除两小时内已经对同一发布者加过时的任务
+            two_hours_ago = timezone.now() - timedelta(hours=2)
+            recent_overtime_publishers = OvertimeAction.objects.filter(
+                user=self.request.user,
+                created_at__gte=two_hours_ago
+            ).values_list('task_publisher', flat=True).distinct()
+
+            if recent_overtime_publishers:
+                queryset = queryset.exclude(user__in=recent_overtime_publishers)
+
         # 处理排序参数
-        sort_by = self.request.query_params.get('sort_by', 'created_time')
+        sort_by = self.request.query_params.get('sort_by', 'user_activity')
         sort_order = self.request.query_params.get('sort_order', 'desc')
 
         # 定义排序字段映射
@@ -1183,9 +1206,8 @@ def check_and_complete_expired_tasks(request):
         })
 
     # 同时处理投票结果
-    # 注意：process_voting_results 期望 Django HttpRequest，但这里收到的是 DRF Request
-    # 需要传递原始的 Django HttpRequest 对象
-    process_voting_results(request.request if hasattr(request, 'request') else request)
+    # 直接调用内部函数，不需要传递request参数
+    _process_voting_results_internal()
 
     return Response({
         'message': f'Found {len(expired_task_info)} expired lock task(s) awaiting manual completion',
@@ -1637,6 +1659,24 @@ def get_task_counts(request):
         lock_tasks = base_queryset.filter(task_type='lock')
         board_tasks = base_queryset.filter(task_type='board')
 
+        # 计算可以加时的任务数量
+        can_overtime_queryset = lock_tasks.filter(
+            task_type='lock',
+            status='active'
+        ).exclude(user=request.user)
+
+        # 排除两小时内已经对同一发布者加过时的任务
+        from django.utils import timezone
+        from datetime import timedelta
+        two_hours_ago = timezone.now() - timedelta(hours=2)
+        recent_overtime_publishers = OvertimeAction.objects.filter(
+            user=request.user,
+            created_at__gte=two_hours_ago
+        ).values_list('task_publisher', flat=True).distinct()
+
+        if recent_overtime_publishers:
+            can_overtime_queryset = can_overtime_queryset.exclude(user__in=recent_overtime_publishers)
+
         # 带锁任务统计
         lock_counts = {
             'all': lock_tasks.count(),
@@ -1644,6 +1684,7 @@ def get_task_counts(request):
             'voting': lock_tasks.filter(status='voting').count(),
             'completed': lock_tasks.filter(status='completed').count(),
             'my_tasks': lock_tasks.filter(user=request.user).count(),
+            'can_overtime': can_overtime_queryset.count(),
         }
 
         # 任务板统计

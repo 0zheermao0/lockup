@@ -315,6 +315,7 @@ class Notification(models.Model):
         ('coins_earned_hourly', '小时奖励积分'),
         ('coins_earned_hourly_batch', '批量小时奖励积分'),
         ('coins_earned_daily_login', '每日登录奖励积分'),
+        ('coins_earned_daily_checkin', '每日首次打卡奖励积分'),
         ('coins_earned_task_reward', '任务奖励积分'),
         ('coins_spent_task_creation', '创建任务消耗积分'),
 
@@ -549,6 +550,7 @@ class Notification(models.Model):
             'coins_earned_hourly': "获得小时奖励积分",
             'coins_earned_hourly_batch': "获得批量小时奖励积分",
             'coins_earned_daily_login': "获得每日登录奖励",
+            'coins_earned_daily_checkin': "获得每日首次打卡奖励",
             'coins_earned_task_reward': "获得任务奖励积分",
             'treasure_found': f"{actor_name}发现了你的宝物",
             'photo_viewed': f"{actor_name}查看了你的照片",
@@ -578,6 +580,7 @@ class Notification(models.Model):
             'coins_earned_hourly': "你的任务已运行满一小时，获得1积分奖励",
             'coins_earned_hourly_batch': "你的任务持续进行中，累计获得积分奖励",
             'coins_earned_daily_login': "欢迎回来！获得每日登录奖励积分",
+            'coins_earned_daily_checkin': "带锁任务状态下每日首次打卡，获得1积分奖励",
             'coins_earned_task_reward': "任务完成，获得奖励积分",
             'treasure_found': f"{actor_name}在探索中发现了你埋藏的宝物",
             'photo_viewed': f"{actor_name}查看了你分享的照片",

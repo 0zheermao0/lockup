@@ -14,6 +14,7 @@ from .serializers import (
     PostStatsSerializer, CheckinVerificationSerializer
 )
 from users.models import Notification
+from tasks.models import LockTask
 from tasks.pagination import DynamicPageNumberPagination
 
 logger = logging.getLogger(__name__)
@@ -41,10 +42,71 @@ class PostListCreateView(generics.ListCreateAPIView):
             'images', 'likes', 'comments__images'
         ).get(id=post.id)
 
+        # 处理带锁任务状态下的每日首次打卡奖励
+        self._process_daily_checkin_reward(post)
+
         # 使用PostSerializer序列化响应
         response_serializer = PostSerializer(post, context=self.get_serializer_context())
         headers = self.get_success_headers(response_serializer.data)
         return Response(response_serializer.data, status=status.HTTP_201_CREATED, headers=headers)
+
+    def _process_daily_checkin_reward(self, post):
+        """处理带锁任务状态下的每日首次打卡奖励"""
+        # 只处理打卡类型的动态
+        if post.post_type != 'checkin':
+            return
+
+        user = post.user
+        today = timezone.now().date()
+
+        try:
+            # 检查用户是否有活跃状态的带锁任务
+            has_active_lock_task = LockTask.objects.filter(
+                user=user,
+                task_type='lock',
+                status__in=['active', 'voting']  # 活跃状态或投票状态都算带锁状态
+            ).exists()
+
+            if not has_active_lock_task:
+                logger.info(f"User {user.username} has no active lock tasks, skipping daily checkin reward")
+                return
+
+            # 检查今天是否已经发布过打卡动态
+            today_checkins = Post.objects.filter(
+                user=user,
+                post_type='checkin',
+                created_at__date=today
+            ).exclude(id=post.id)  # 排除当前创建的这条动态
+
+            if today_checkins.exists():
+                logger.info(f"User {user.username} already has checkin posts today, skipping daily reward")
+                return
+
+            # 符合条件：用户有活跃带锁任务且今日首次打卡
+            # 奖励1积分
+            user.coins += 1
+            user.save(update_fields=['coins'])
+
+            # 创建通知
+            Notification.create_notification(
+                recipient=user,
+                notification_type='coins_earned_daily_checkin',
+                actor=None,  # 系统奖励
+                related_object_type='post',
+                related_object_id=post.id,
+                extra_data={
+                    'reward_amount': 1,
+                    'checkin_date': today.isoformat(),
+                    'post_content_preview': post.content[:50] + '...' if len(post.content) > 50 else post.content,
+                    'has_lock_task': True
+                },
+                priority='normal'
+            )
+
+            logger.info(f"Daily checkin reward granted to user {user.username}: +1 coin for first daily checkin with active lock task")
+
+        except Exception as e:
+            logger.error(f"Error processing daily checkin reward for user {user.username}: {e}")
 
     def get_queryset(self):
         queryset = Post.objects.select_related('user').prefetch_related(
