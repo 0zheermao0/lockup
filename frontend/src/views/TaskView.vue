@@ -87,7 +87,7 @@
                     @click="setSortBy('user_activity')"
                     :class="['sort-option', { active: sortBy === 'user_activity' }]"
                   >
-                    ⚡ 用户活跃度
+                    ⚡ 活跃度
                   </button>
                   <button
                     @click="setSortBy('difficulty')"
@@ -304,7 +304,7 @@ const tasksStore = useTasksStore()
 
 // State
 const showCreateModal = ref(false)
-const activeFilter = ref('active')
+const activeFilter = ref('can-overtime')
 const activeTaskType = ref<'lock' | 'board'>('lock')
 const currentTime = ref(Date.now())
 const progressInterval = ref<number>()
@@ -326,7 +326,7 @@ const toastData = ref<{
 })
 
 // Sorting state
-const sortBy = ref<'remaining_time' | 'created_time' | 'end_time' | 'user_activity' | 'difficulty'>('created_time')
+const sortBy = ref<'remaining_time' | 'created_time' | 'end_time' | 'user_activity' | 'difficulty'>('user_activity')
 const sortOrder = ref<'asc' | 'desc'>('desc')
 const showSortDropdown = ref(false)
 const sortingLoading = ref(false)
@@ -348,6 +348,8 @@ const getFilteredTasks = async (page: number, pageSize: number) => {
     extraFilters.status = 'completed'
   } else if (activeFilter.value === 'my-tasks') {
     extraFilters.my_tasks = true
+  } else if (activeFilter.value === 'can-overtime') {
+    extraFilters.can_overtime = true
   } else if (activeFilter.value === 'open') {
     extraFilters.status = 'open'
   } else if (activeFilter.value === 'taken') {
@@ -404,7 +406,8 @@ const lockFilterTabs = computed(() => {
       { key: 'active', label: '进行中', count: 0 },
       { key: 'voting', label: '投票中', count: 0 },
       { key: 'completed', label: '已完成', count: 0 },
-      { key: 'my-tasks', label: '我的任务', count: 0 }
+      { key: 'my-tasks', label: '我的任务', count: 0 },
+      { key: 'can-overtime', label: '可以加时的绒布球', count: 0 }
     ]
   }
   return [
@@ -412,7 +415,8 @@ const lockFilterTabs = computed(() => {
     { key: 'active', label: '进行中', count: taskCounts.value.lock_tasks.active },
     { key: 'voting', label: '投票中', count: taskCounts.value.lock_tasks.voting },
     { key: 'completed', label: '已完成', count: taskCounts.value.lock_tasks.completed },
-    { key: 'my-tasks', label: '我的任务', count: taskCounts.value.lock_tasks.my_tasks }
+    { key: 'my-tasks', label: '我的任务', count: taskCounts.value.lock_tasks.my_tasks },
+    { key: 'can-overtime', label: '可以加时的绒布球', count: taskCounts.value.lock_tasks.can_overtime || 0 }
   ]
 })
 
@@ -477,7 +481,7 @@ const getSortLabel = () => {
     remaining_time: '剩余时间',
     created_time: '创建时间',
     end_time: '结束时间',
-    user_activity: '用户活跃度',
+    user_activity: '活跃度',
     difficulty: '难度等级'
   }
   const orderLabel = sortOrder.value === 'asc' ? '升序' : '降序'
@@ -743,10 +747,22 @@ const addOvertime = async (task: Task, event: Event) => {
   try {
     const result = await tasksApi.addOvertime(task.id)
 
-    // Update the task's end time in the local list
-    const lockTask = task as any
-    if (result.new_end_time && lockTask) {
-      lockTask.end_time = result.new_end_time
+    // Check if we're in the "can-overtime" filter and need to remove the task
+    if (activeFilter.value === 'can-overtime') {
+      // Remove the task from the infinite scroll's local tasks array immediately
+      const taskIndex = tasks.value.findIndex(t => t.id === task.id)
+      if (taskIndex !== -1) {
+        tasks.value.splice(taskIndex, 1)
+      }
+
+      // Also refresh task counts to update the filter badge
+      await fetchTaskCounts()
+    } else {
+      // Update the task's end time in the local list for other filters
+      const lockTask = task as any
+      if (result.new_end_time && lockTask) {
+        lockTask.end_time = result.new_end_time
+      }
     }
 
     // Refresh user data to update lock status
@@ -820,7 +836,7 @@ const handleClickOutside = (event: Event) => {
 // Watch for task type changes and reset filter accordingly
 watch(activeTaskType, (newType) => {
   if (newType === 'lock') {
-    activeFilter.value = 'active'  // 带锁任务默认显示"进行中"
+    activeFilter.value = 'can-overtime'  // 带锁任务默认显示"可以加时的绒布球"
   } else {
     activeFilter.value = 'all'     // 任务板默认显示"全部"
   }

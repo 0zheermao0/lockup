@@ -69,6 +69,7 @@ export const useTasksStore = defineStore('tasks', () => {
       status?: string
       my_tasks?: boolean
       my_taken?: boolean
+      can_overtime?: boolean
       sort_by?: string
       sort_order?: 'asc' | 'desc'
     } = {}
@@ -78,6 +79,7 @@ export const useTasksStore = defineStore('tasks', () => {
       status: extraFilters.status || filters.value.status,
       my_tasks: extraFilters.my_tasks !== undefined ? extraFilters.my_tasks : filters.value.my_tasks,
       my_taken: extraFilters.my_taken,
+      can_overtime: extraFilters.can_overtime,
       page: page,
       page_size: pageSize,
       sort_by: extraFilters.sort_by,
@@ -239,6 +241,15 @@ export const useTasksStore = defineStore('tasks', () => {
     }
   }
 
+  // Remove task from local state without API call (for overtime scenarios)
+  const removeTaskFromList = (taskId: string) => {
+    const taskIndex = tasks.value.findIndex(task => task.id === taskId)
+    if (taskIndex !== -1) {
+      tasks.value.splice(taskIndex, 1)
+      totalCount.value = Math.max(0, totalCount.value - 1)
+    }
+  }
+
   // Utility functions
   const getActiveLockTask = async (): Promise<LockTask | null> => {
     try {
@@ -313,6 +324,7 @@ export const useTasksStore = defineStore('tasks', () => {
     rejectTask,
     voteTask,
     deleteTask,
+    removeTaskFromList,
     getActiveLockTask,
     checkAndCompleteExpiredTasks,
     processVotingResults: async () => {
