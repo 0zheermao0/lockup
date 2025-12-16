@@ -136,6 +136,19 @@
             </div>
           </section>
 
+          <!-- Telegram 联系方式 (对其他用户显示) -->
+          <section v-if="!isOwnProfile && userProfile.telegram_username" class="telegram-contact-section">
+            <h3>📱 Telegram 联系</h3>
+            <div class="telegram-contact-content">
+              <button
+                @click="openTelegramChat(userProfile.telegram_username)"
+                class="telegram-chat-btn"
+              >
+                💬 在 Telegram 中聊天
+              </button>
+            </div>
+          </section>
+
           <!-- Telegram 绑定设置 (只对自己显示) -->
           <section v-if="isOwnProfile" class="telegram-section">
             <h3>🤖 Telegram Bot 绑定</h3>
@@ -169,27 +182,6 @@
                         />
                         <span>展示 Telegram 账号</span>
                       </label>
-                    </div>
-                  </div>
-                  <!-- Telegram Deep Link Display -->
-                  <div v-if="userProfile.show_telegram_account && telegramStatus.telegram_username" class="telegram-deep-link">
-                    <div class="deep-link-section">
-                      <h4>📱 Telegram 账号链接</h4>
-                      <p class="deep-link-description">其他用户可以通过下面的链接直接跳转到你的 Telegram 账号：</p>
-                      <div class="link-copy">
-                        <input
-                          :value="getTelegramDeepLink(telegramStatus.telegram_username)"
-                          readonly
-                          class="link-input"
-                          @click="selectAndCopyLink"
-                        />
-                        <button
-                          @click="copyTelegramLink"
-                          class="copy-btn"
-                        >
-                          复制链接
-                        </button>
-                      </div>
                     </div>
                   </div>
 
@@ -629,6 +621,12 @@ const formatDate = (dateString?: string) => {
     hour: '2-digit',
     minute: '2-digit'
   })
+}
+
+const openTelegramChat = (username: string) => {
+  // 直接跳转到 Telegram 聊天
+  const telegramUrl = `https://t.me/${username}`
+  window.open(telegramUrl, '_blank')
 }
 
 
@@ -1282,6 +1280,84 @@ onMounted(async () => {
   .telegram-bind-btn {
     width: 100%;
     justify-content: center;
+  }
+}
+
+/* Telegram 联系方式样式 */
+.telegram-contact-section {
+  background: white;
+  padding: 2rem;
+  border-radius: 8px;
+  border: 2px solid #000;
+  box-shadow: 4px 4px 0 #000;
+}
+
+.telegram-contact-section h3 {
+  margin: 0 0 1.5rem 0;
+  font-weight: 900;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+.telegram-contact-content {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.telegram-info {
+  text-align: center;
+}
+
+.telegram-info .telegram-username {
+  display: block;
+  font-size: 1.2rem;
+  font-weight: 600;
+  color: #0088cc;
+  font-family: monospace;
+  margin-bottom: 0.5rem;
+}
+
+.telegram-description {
+  color: #666;
+  margin: 0;
+  font-size: 0.875rem;
+  line-height: 1.4;
+}
+
+.telegram-chat-btn {
+  background: linear-gradient(135deg, #0088cc, #0066aa);
+  color: white;
+  border: none;
+  border-radius: 6px;
+  padding: 1rem 2rem;
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 1rem;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  align-self: center;
+  min-width: 200px;
+}
+
+.telegram-chat-btn:hover {
+  background: linear-gradient(135deg, #0066aa, #004488);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 8px rgba(0, 136, 204, 0.3);
+}
+
+/* Mobile 响应式 - Telegram 联系方式 */
+@media (max-width: 768px) {
+  .telegram-contact-section {
+    padding: 1.5rem;
+  }
+
+  .telegram-chat-btn {
+    width: 100%;
+    min-width: auto;
   }
 }
 </style>
