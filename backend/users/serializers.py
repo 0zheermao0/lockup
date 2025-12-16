@@ -47,12 +47,14 @@ class UserSerializer(serializers.ModelSerializer):
             'last_active', 'location_precision', 'coins', 'avatar',
             'bio', 'total_posts', 'total_likes_received',
             'total_tasks_completed', 'total_lock_duration',
-            'created_at', 'updated_at', 'active_lock_task'
+            'created_at', 'updated_at', 'active_lock_task',
+            'telegram_username', 'telegram_notifications_enabled', 'show_telegram_account'
         ]
         read_only_fields = [
             'id', 'level', 'activity_score', 'last_active', 'coins',
             'total_posts', 'total_likes_received', 'total_tasks_completed',
-            'total_lock_duration', 'created_at', 'updated_at', 'active_lock_task'
+            'total_lock_duration', 'created_at', 'updated_at', 'active_lock_task',
+            'telegram_username', 'telegram_notifications_enabled'
         ]
 
     def get_active_lock_task(self, obj):
@@ -102,6 +104,7 @@ class UserPublicSerializer(serializers.ModelSerializer):
 
     active_lock_task = serializers.SerializerMethodField()
     total_lock_duration = serializers.SerializerMethodField()
+    telegram_username = serializers.SerializerMethodField()
 
     class Meta:
         model = User
@@ -109,7 +112,7 @@ class UserPublicSerializer(serializers.ModelSerializer):
             'id', 'username', 'level', 'avatar', 'bio',
             'total_posts', 'total_likes_received', 'total_tasks_completed',
             'created_at', 'coins', 'activity_score', 'last_active', 'updated_at',
-            'active_lock_task', 'total_lock_duration'
+            'active_lock_task', 'total_lock_duration', 'telegram_username'
         ]
 
     def get_active_lock_task(self, obj):
@@ -152,6 +155,12 @@ class UserPublicSerializer(serializers.ModelSerializer):
     def get_total_lock_duration(self, obj):
         """获取用户总带锁时长（分钟）"""
         return obj.get_total_lock_duration()
+
+    def get_telegram_username(self, obj):
+        """只有在用户启用展示账号选项时才返回 Telegram 用户名"""
+        if obj.show_telegram_account and obj.telegram_username:
+            return obj.telegram_username
+        return None
 
 
 class UserRegistrationSerializer(serializers.ModelSerializer):
@@ -212,7 +221,7 @@ class UserProfileUpdateSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = User
-        fields = ['username', 'bio', 'avatar', 'location_precision']
+        fields = ['username', 'bio', 'avatar', 'location_precision', 'show_telegram_account']
 
     def validate_username(self, value):
         """验证用户名是否唯一"""

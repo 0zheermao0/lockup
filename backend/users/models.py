@@ -76,6 +76,10 @@ class User(AbstractUser):
         default=True,
         help_text="是否启用 Telegram 通知"
     )
+    show_telegram_account = models.BooleanField(
+        default=False,
+        help_text="是否在个人资料中展示 Telegram 账号"
+    )
     telegram_binding_token = models.CharField(
         max_length=100,
         null=True,
