@@ -55,6 +55,7 @@ export interface TelegramStatus {
   bound_at?: string;
   notifications_enabled: boolean;
   can_receive_notifications: boolean;
+  show_telegram_account?: boolean;
 }
 
 export interface TelegramGameResult {

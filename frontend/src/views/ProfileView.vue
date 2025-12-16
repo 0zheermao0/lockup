@@ -160,8 +160,39 @@
                         />
                         <span>接收 Telegram 通知</span>
                       </label>
+                      <label class="notification-toggle">
+                        <input
+                          type="checkbox"
+                          :checked="userProfile.show_telegram_account"
+                          @change="toggleShowTelegramAccount"
+                          :disabled="telegramActionLoading"
+                        />
+                        <span>展示 Telegram 账号</span>
+                      </label>
                     </div>
                   </div>
+                  <!-- Telegram Deep Link Display -->
+                  <div v-if="userProfile.show_telegram_account && telegramStatus.telegram_username" class="telegram-deep-link">
+                    <div class="deep-link-section">
+                      <h4>📱 Telegram 账号链接</h4>
+                      <p class="deep-link-description">其他用户可以通过下面的链接直接跳转到你的 Telegram 账号：</p>
+                      <div class="link-copy">
+                        <input
+                          :value="getTelegramDeepLink(telegramStatus.telegram_username)"
+                          readonly
+                          class="link-input"
+                          @click="selectAndCopyLink"
+                        />
+                        <button
+                          @click="copyTelegramLink"
+                          class="copy-btn"
+                        >
+                          复制链接
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+
                   <div class="telegram-actions">
                     <button
                       @click="unbindTelegram"
@@ -282,7 +313,8 @@ const telegramActionLoading = ref(false)
 const editForm = reactive({
   username: '',
   bio: '',
-  location_precision: 1
+  location_precision: 1,
+  show_telegram_account: false
 })
 
 const isOwnProfile = computed(() => {
@@ -331,6 +363,7 @@ const initEditForm = () => {
     editForm.username = userProfile.value.username
     editForm.bio = userProfile.value.bio || ''
     editForm.location_precision = userProfile.value.location_precision
+    editForm.show_telegram_account = userProfile.value.show_telegram_account || false
   }
 }
 
@@ -392,7 +425,8 @@ const saveProfile = async () => {
     const updatedProfile = await authApi.updateProfile({
       username: editForm.username,
       bio: editForm.bio,
-      location_precision: editForm.location_precision
+      location_precision: editForm.location_precision,
+      show_telegram_account: editForm.show_telegram_account
     })
 
     // 更新本地数据
@@ -526,6 +560,62 @@ const unbindTelegram = async () => {
     alert(error.data?.error || '解绑失败，请重试')
   } finally {
     telegramActionLoading.value = false
+  }
+}
+
+const toggleShowTelegramAccount = async () => {
+  if (!userProfile.value) return
+
+  telegramActionLoading.value = true
+
+  try {
+    const newValue = !userProfile.value.show_telegram_account
+    const updatedProfile = await authApi.updateProfile({
+      show_telegram_account: newValue
+    })
+
+    // 更新本地数据
+    userProfile.value = { ...userProfile.value, ...updatedProfile }
+
+    // 更新全局用户状态
+    authStore.user = userProfile.value
+
+    console.log(`Telegram 账号展示已${newValue ? '开启' : '关闭'}`)
+  } catch (error: any) {
+    console.error('Error toggling show telegram account:', error)
+    alert(error.data?.error || '设置失败，请重试')
+  } finally {
+    telegramActionLoading.value = false
+  }
+}
+
+const getTelegramDeepLink = (username: string) => {
+  return `https://t.me/${username}`
+}
+
+const selectAndCopyLink = (event: Event) => {
+  const input = event.target as HTMLInputElement
+  input.select()
+  input.setSelectionRange(0, 99999) // For mobile devices
+}
+
+const copyTelegramLink = async () => {
+  if (!telegramStatus.value?.telegram_username) return
+
+  const link = getTelegramDeepLink(telegramStatus.value.telegram_username)
+
+  try {
+    await navigator.clipboard.writeText(link)
+    console.log('Telegram 链接已复制到剪贴板')
+  } catch (error) {
+    // Fallback for older browsers
+    const textArea = document.createElement('textarea')
+    textArea.value = link
+    document.body.appendChild(textArea)
+    textArea.select()
+    document.execCommand('copy')
+    document.body.removeChild(textArea)
+    console.log('Telegram 链接已复制到剪贴板 (fallback)')
   }
 }
 
@@ -961,6 +1051,12 @@ onMounted(async () => {
   transform: scale(1.2);
 }
 
+.notification-setting {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
 .telegram-actions {
   display: flex;
   gap: 1rem;
@@ -1096,6 +1192,28 @@ onMounted(async () => {
 
 .copy-btn:hover {
   background-color: #218838;
+}
+
+.telegram-deep-link {
+  margin-top: 1rem;
+  padding: 1rem;
+  background-color: #e7f3ff;
+  border: 1px solid #b3d9ff;
+  border-radius: 6px;
+}
+
+.deep-link-section h4 {
+  margin: 0 0 0.5rem 0;
+  font-size: 1rem;
+  font-weight: 600;
+  color: #0066cc;
+}
+
+.deep-link-description {
+  margin: 0 0 1rem 0;
+  font-size: 0.875rem;
+  color: #555;
+  line-height: 1.4;
 }
 
 .loading-status, .error-status {
