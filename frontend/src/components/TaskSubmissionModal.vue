@@ -149,7 +149,7 @@
 
 <script setup lang="ts">
 import { ref, reactive, watch } from 'vue'
-import { tasksApi } from '../lib/api'
+import { tasksApi } from '../lib/api-tasks'
 import RichTextEditor from './RichTextEditor.vue'
 import type { LockTask } from '../types/index'
 
@@ -261,22 +261,27 @@ const handleSubmit = async () => {
 
   try {
     // Convert HTML content to text for API submission
-    // In a real implementation, you might want to send the HTML
-    // or convert to markdown format
     const tempDiv = document.createElement('div')
     tempDiv.innerHTML = form.content
     const textContent = tempDiv.textContent || tempDiv.innerText || ''
 
-    await tasksApi.submitTask(props.task.id, textContent)
+    // Create FormData to handle both text and file uploads
+    const formData = new FormData()
+    formData.append('completion_proof', textContent)
 
-    // TODO: In a real implementation, you would also upload images
-    // This would require additional API endpoints for file upload
-    if (selectedImages.value.length > 0) {
-      // Simulate image upload
-      console.log('Would upload images:', selectedImages.value.map(img => img.file.name))
-    }
+    // Add files to FormData
+    selectedImages.value.forEach((image, index) => {
+      formData.append('files', image.file)
+      // Add file descriptions if needed
+      formData.append(`file_descriptions[${index}]`, `证明图片 ${index + 1}`)
+    })
 
-    successMessage.value = '提交成功！等待审核...'
+    await tasksApi.submitTaskWithFiles(props.task.id, formData)
+
+    successMessage.value = selectedImages.value.length > 0
+      ? `提交成功！已上传${selectedImages.value.length}张图片，等待审核...`
+      : '提交成功！等待审核...'
+
     emit('success')
 
     // Auto-close after delay
@@ -287,6 +292,7 @@ const handleSubmit = async () => {
     }, 2000)
 
   } catch (err: any) {
+    console.error('Submission error:', err)
     error.value = err.response?.data?.error || err.message || '提交失败，请重试'
   } finally {
     isLoading.value = false

@@ -237,6 +237,7 @@ import DurationSelector from './DurationSelector.vue'
 
 interface Props {
   isVisible: boolean
+  initialTaskType?: 'lock' | 'board'
 }
 
 interface Emits {
@@ -277,7 +278,8 @@ watch(() => props.isVisible, (newValue) => {
 })
 
 const resetForm = () => {
-  form.task_type = 'lock'
+  // Use initial task type if provided, otherwise default to 'lock'
+  form.task_type = props.initialTaskType || 'lock'
   form.title = ''
   form.description = ''
   form.autoPost = true

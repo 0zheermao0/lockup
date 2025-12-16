@@ -476,6 +476,122 @@
             </div>
           </section>
 
+          <!-- Board Task Completion Proof Section -->
+          <section v-if="canViewCompletionProof" class="completion-proof-section">
+            <div class="proof-header">
+              <h3>📋 任务完成证明</h3>
+              <div class="proof-meta">
+                <span class="proof-status" :class="getProofStatusClass(task.status)">{{ getProofStatusText(task.status) }}</span>
+                <span class="submitter">提交者: {{ task.taker?.username || '未知' }}</span>
+              </div>
+            </div>
+
+            <div class="proof-content">
+              <div class="proof-label">完成证明内容：</div>
+              <div class="proof-text">{{ task.completion_proof }}</div>
+            </div>
+
+            <!-- Media Files Section -->
+            <div v-if="task.submission_files && task.submission_files.length > 0" class="media-files-section">
+              <div class="media-files-header">
+                <h4>📎 提交的媒体文件 ({{ task.submission_files.length }}个)</h4>
+              </div>
+              <div class="media-files-grid">
+                <div
+                  v-for="file in task.submission_files"
+                  :key="file.id"
+                  class="media-file-item"
+                  :class="{ 'primary-file': file.is_primary }"
+                >
+                  <!-- Image Files -->
+                  <div v-if="file.is_image" class="media-file-image">
+                    <img
+                      :src="file.file_url"
+                      :alt="file.file_name"
+                      @click="openImageModal(file)"
+                      class="media-image"
+                    />
+                    <div class="file-info-static">
+                      <span class="file-name">{{ file.file_name }}</span>
+                      <span class="file-size">{{ formatFileSize(file.file_size) }}</span>
+                      <span v-if="file.is_primary" class="primary-badge">主要文件</span>
+                    </div>
+                  </div>
+
+                  <!-- Video Files -->
+                  <div v-else-if="file.is_video" class="media-file-video">
+                    <video
+                      :src="file.file_url"
+                      controls
+                      preload="metadata"
+                      class="media-video"
+                    >
+                      您的浏览器不支持视频播放
+                    </video>
+                    <div class="file-info">
+                      <span class="file-name">{{ file.file_name }}</span>
+                      <span class="file-size">{{ formatFileSize(file.file_size) }}</span>
+                      <span v-if="file.is_primary" class="primary-badge">主要文件</span>
+                    </div>
+                  </div>
+
+                  <!-- Other Files -->
+                  <div v-else class="media-file-document">
+                    <div class="document-icon">📄</div>
+                    <div class="file-info">
+                      <span class="file-name">{{ file.file_name }}</span>
+                      <span class="file-type">{{ file.file_type }}</span>
+                      <span class="file-size">{{ formatFileSize(file.file_size) }}</span>
+                      <span v-if="file.is_primary" class="primary-badge">主要文件</span>
+                    </div>
+                    <a
+                      :href="file.file_url"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      class="download-btn"
+                      title="下载文件"
+                    >
+                      📥 下载
+                    </a>
+                  </div>
+
+                  <!-- File Description -->
+                  <div v-if="file.description" class="file-description">
+                    {{ file.description }}
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Review actions for task publisher -->
+            <div v-if="canReviewTask" class="proof-review-actions">
+              <div class="review-notice">
+                <span class="notice-icon">⚠️</span>
+                <span class="notice-text">请仔细审核任务完成证明，审核决定一旦做出无法撤销</span>
+              </div>
+              <div class="review-buttons">
+                <button
+                  @click="approveTask"
+                  class="review-btn approve-btn"
+                >
+                  ✅ 审核通过
+                </button>
+                <button
+                  @click="rejectTask"
+                  class="review-btn reject-btn"
+                >
+                  ❌ 审核拒绝
+                </button>
+              </div>
+            </div>
+
+            <!-- Status info for non-reviewers -->
+            <div v-else-if="task.task_type === 'board' && task.status === 'submitted'" class="proof-status-info">
+              <span class="status-icon">⏳</span>
+              <span class="status-text">等待任务发布者审核中...</span>
+            </div>
+          </section>
+
           <!-- Key Holder Actions Section -->
           <section v-if="canManageKeyActions" class="key-holder-section">
             <div class="key-holder-header">
@@ -597,6 +713,22 @@
       @close="closeShareModal"
     />
 
+    <!-- Image Modal -->
+    <div v-if="showImageModal && selectedImage" class="image-modal-overlay" @click="closeImageModal">
+      <div class="image-modal-content" @click.stop>
+        <div class="image-modal-header">
+          <button @click="closeImageModal" class="image-modal-close">×</button>
+        </div>
+        <div class="image-modal-body">
+          <img
+            :src="selectedImage.file_url"
+            :alt="selectedImage.file_name"
+            class="image-modal-img"
+          />
+        </div>
+      </div>
+    </div>
+
 
     <!-- Notification Toast -->
     <NotificationToast
@@ -665,6 +797,10 @@ const keyHolderInfo = ref<{
     username: string
   }
 } | null>(null)
+
+// Image modal state
+const showImageModal = ref(false)
+const selectedImage = ref<any>(null)
 
 
 // Toast notification state
@@ -818,6 +954,31 @@ const canReviewTask = computed(() => {
   return task.value.task_type === 'board' &&
          task.value.status === 'submitted' &&
          task.value.user.id === authStore.user?.id
+})
+
+const canViewCompletionProof = computed(() => {
+  if (!task.value || !authStore.isAuthenticated) return false
+
+  // Only for board tasks with completion proof
+  if (task.value.task_type !== 'board' || !task.value.completion_proof) return false
+
+  // Task publisher (owner) can always view
+  const isTaskPublisher = task.value.user.id === authStore.user?.id
+
+  // Task taker (揭榜者) can always view
+  const isTaskTaker = task.value.taker?.id === authStore.user?.id
+
+  console.log('🔍 canViewCompletionProof check:', {
+    taskId: task.value.id,
+    currentUserId: authStore.user?.id,
+    taskPublisherId: task.value.user.id,
+    taskTakerId: task.value.taker?.id,
+    isTaskPublisher,
+    isTaskTaker,
+    canView: isTaskPublisher || isTaskTaker
+  })
+
+  return isTaskPublisher || isTaskTaker
 })
 
 const canAddOvertime = computed(() => {
@@ -1161,14 +1322,29 @@ const refreshTimeline = async () => {
 
 const fetchTask = async () => {
   const taskId = route.params.id as string
+  console.log('🚀 fetchTask started with taskId:', taskId)
+
   if (!taskId) {
+    console.error('❌ No taskId provided')
     error.value = '无效的任务ID'
     loading.value = false
     return
   }
 
   try {
+    console.log('📡 Calling tasksApi.getTask with taskId:', taskId)
+    console.log('🔍 API Base URL:', import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:8000/api')
+    console.log('🎫 Auth token exists:', !!localStorage.getItem('token'))
+
     const fetchedTask = await tasksApi.getTask(taskId)
+    console.log('✅ API call successful! Received task:', {
+      id: fetchedTask.id,
+      title: fetchedTask.title,
+      task_type: fetchedTask.task_type,
+      status: fetchedTask.status,
+      submission_files_count: (fetchedTask as any).submission_files?.length || 0
+    })
+
     task.value = fetchedTask
 
     // 获取实际投票数据
@@ -1193,6 +1369,13 @@ const fetchTask = async () => {
     }
 
   } catch (err: any) {
+    console.error('❌ API call failed with error:', {
+      message: err.message,
+      status: err.status,
+      statusText: err.statusText,
+      data: err.data,
+      fullError: err
+    })
     // 使用模拟数据作为备用
     const mockTask: Task = {
       id: taskId,
@@ -2061,6 +2244,47 @@ const getEventTypeClass = (eventType: string) => {
     'task_failed': 'failed'
   }
   return classMap[eventType] || 'default'
+}
+
+// Media file helper functions
+const openImageModal = (file: any) => {
+  selectedImage.value = file
+  showImageModal.value = true
+}
+
+const closeImageModal = () => {
+  showImageModal.value = false
+  selectedImage.value = null
+}
+
+const formatFileSize = (bytes: number): string => {
+  if (bytes === 0) return '0 B'
+  const k = 1024
+  const sizes = ['B', 'KB', 'MB', 'GB']
+  const i = Math.floor(Math.log(bytes) / Math.log(k))
+  return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i]
+}
+
+// Get proof status text based on task status
+const getProofStatusText = (status: string) => {
+  const statusTexts = {
+    submitted: '待审核',
+    completed: '审核通过',
+    failed: '审核拒绝',
+    rejected: '审核拒绝'
+  }
+  return statusTexts[status as keyof typeof statusTexts] || '未知状态'
+}
+
+// Get proof status CSS class based on task status
+const getProofStatusClass = (status: string) => {
+  const statusClasses = {
+    submitted: 'proof-status-pending',
+    completed: 'proof-status-approved',
+    failed: 'proof-status-rejected',
+    rejected: 'proof-status-rejected'
+  }
+  return statusClasses[status as keyof typeof statusClasses] || 'proof-status-unknown'
 }
 
 // Watch for route parameter changes (when navigating between different tasks)
@@ -3627,6 +3851,629 @@ onUnmounted(() => {
   .key-action-btn {
     flex: 1;
     min-width: auto;
+  }
+}
+
+/* Board Task Completion Proof Section Styles */
+.completion-proof-section {
+  background: white;
+  border: 4px solid #000;
+  border-radius: 12px;
+  box-shadow: 8px 8px 0 #000;
+  padding: 2rem;
+  margin-top: 2rem;
+}
+
+.proof-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1.5rem;
+  padding-bottom: 1rem;
+  border-bottom: 3px solid #000;
+}
+
+.proof-header h3 {
+  margin: 0;
+  font-size: 1.5rem;
+  font-weight: 900;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: #000;
+}
+
+.proof-meta {
+  display: flex;
+  gap: 1rem;
+  align-items: center;
+}
+
+.proof-status {
+  padding: 0.5rem 1rem;
+  border: 3px solid #000;
+  border-radius: 8px;
+  font-weight: 900;
+  font-size: 0.9rem;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  box-shadow: 3px 3px 0 #000;
+}
+
+/* Proof status specific styles */
+.proof-status-pending {
+  background: linear-gradient(135deg, #ffc107, #fd7e14);
+  color: #000;
+}
+
+.proof-status-approved {
+  background: linear-gradient(135deg, #28a745, #20c997);
+  color: white;
+}
+
+.proof-status-rejected {
+  background: linear-gradient(135deg, #dc3545, #c82333);
+  color: white;
+}
+
+.proof-status-unknown {
+  background: linear-gradient(135deg, #6c757d, #5a6268);
+  color: white;
+}
+
+.submitter {
+  background: linear-gradient(135deg, #17a2b8, #138496);
+  color: white;
+  padding: 0.5rem 1rem;
+  border: 3px solid #000;
+  border-radius: 8px;
+  font-weight: 700;
+  font-size: 0.9rem;
+  box-shadow: 3px 3px 0 #000;
+}
+
+.proof-content {
+  margin-bottom: 2rem;
+}
+
+.proof-label {
+  font-weight: 700;
+  font-size: 1.1rem;
+  color: #333;
+  margin-bottom: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.proof-text {
+  background: linear-gradient(135deg, #f8f9fa, #e9ecef);
+  border: 3px solid #000;
+  border-radius: 8px;
+  padding: 1.5rem;
+  font-size: 1rem;
+  line-height: 1.6;
+  color: #333;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+  box-shadow: 4px 4px 0 #000;
+  min-height: 100px;
+}
+
+.proof-review-actions {
+  background: linear-gradient(135deg, #fff3cd, #ffeaa7);
+  border: 3px solid #ffc107;
+  border-radius: 8px;
+  padding: 1.5rem;
+  box-shadow: 4px 4px 0 #000;
+}
+
+.review-notice {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-bottom: 1.5rem;
+  padding: 1rem;
+  background: white;
+  border: 2px solid #fd7e14;
+  border-radius: 6px;
+  box-shadow: 2px 2px 0 #000;
+}
+
+.notice-icon {
+  font-size: 1.5rem;
+  flex-shrink: 0;
+}
+
+.notice-text {
+  font-weight: 600;
+  color: #856404;
+  font-size: 0.95rem;
+}
+
+.review-buttons {
+  display: flex;
+  gap: 1rem;
+  justify-content: center;
+}
+
+.review-btn {
+  background: linear-gradient(135deg, #28a745, #218838);
+  color: white;
+  border: 3px solid #000;
+  border-radius: 8px;
+  padding: 1rem 2rem;
+  font-weight: 900;
+  font-size: 1rem;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  cursor: pointer;
+  box-shadow: 4px 4px 0 #000;
+  transition: all 0.2s ease;
+  min-width: 140px;
+}
+
+.review-btn:hover {
+  transform: translate(-2px, -2px);
+  box-shadow: 6px 6px 0 #000;
+}
+
+.review-btn.approve-btn {
+  background: linear-gradient(135deg, #28a745, #218838);
+}
+
+.review-btn.approve-btn:hover {
+  background: linear-gradient(135deg, #218838, #1e7e34);
+}
+
+.review-btn.reject-btn {
+  background: linear-gradient(135deg, #dc3545, #c82333);
+}
+
+.review-btn.reject-btn:hover {
+  background: linear-gradient(135deg, #c82333, #bd2130);
+}
+
+.proof-status-info {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.75rem;
+  padding: 1.5rem;
+  background: linear-gradient(135deg, #e2e3e5, #ced4da);
+  border: 3px solid #6c757d;
+  border-radius: 8px;
+  box-shadow: 4px 4px 0 #000;
+}
+
+.status-icon {
+  font-size: 1.5rem;
+  color: #495057;
+}
+
+.status-text {
+  font-weight: 600;
+  color: #495057;
+  font-size: 1rem;
+  text-align: center;
+}
+
+/* Media Files Section Styles */
+.media-files-section {
+  margin-top: 2rem;
+  padding: 1.5rem;
+  background: linear-gradient(135deg, #f8f9fa, #e9ecef);
+  border: 3px solid #000;
+  border-radius: 8px;
+  box-shadow: 6px 6px 0 #000;
+}
+
+.media-files-header {
+  margin-bottom: 1.5rem;
+  padding-bottom: 0.75rem;
+  border-bottom: 2px solid #000;
+}
+
+.media-files-header h4 {
+  margin: 0;
+  font-size: 1.2rem;
+  font-weight: 900;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: #000;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.media-files-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 1.5rem;
+}
+
+.media-file-item {
+  background: white;
+  border: 3px solid #000;
+  border-radius: 8px;
+  overflow: hidden;
+  box-shadow: 4px 4px 0 #000;
+  transition: all 0.2s ease;
+  position: relative;
+}
+
+.media-file-item:hover {
+  transform: translate(-2px, -2px);
+  box-shadow: 6px 6px 0 #000;
+}
+
+.media-file-item.primary-file {
+  border-color: #ffc107;
+  box-shadow: 4px 4px 0 #ffc107;
+}
+
+.media-file-item.primary-file:hover {
+  box-shadow: 6px 6px 0 #ffc107;
+}
+
+/* Image Files */
+.media-file-image {
+  position: relative;
+  aspect-ratio: 16/9;
+  overflow: hidden;
+}
+
+.media-image {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.media-image:hover {
+  transform: scale(1.05);
+}
+
+.file-info-static {
+  position: static;
+  background: white;
+  padding: 0.75rem;
+  border-top: 2px solid #000;
+}
+
+.file-info {
+  color: white;
+}
+
+.file-name {
+  display: block;
+  font-weight: 700;
+  font-size: 0.875rem;
+  margin-bottom: 0.25rem;
+  word-break: break-word;
+}
+
+.file-size {
+  display: block;
+  font-size: 0.75rem;
+  opacity: 0.8;
+  margin-bottom: 0.25rem;
+}
+
+.primary-badge {
+  display: inline-block;
+  background: #ffc107;
+  color: #000;
+  padding: 0.125rem 0.5rem;
+  border: 2px solid #000;
+  border-radius: 4px;
+  font-size: 0.625rem;
+  font-weight: 900;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  box-shadow: 2px 2px 0 #000;
+}
+
+/* Video Files */
+.media-file-video {
+  background: #000;
+}
+
+.media-video {
+  width: 100%;
+  height: auto;
+  max-height: 300px;
+}
+
+.media-file-video .file-info {
+  padding: 1rem;
+  background: white;
+  color: #000;
+}
+
+.media-file-video .file-name {
+  color: #000;
+}
+
+.media-file-video .file-size {
+  color: #666;
+}
+
+.media-file-video .primary-badge {
+  margin-top: 0.5rem;
+}
+
+/* Document Files */
+.media-file-document {
+  padding: 2rem;
+  text-align: center;
+  background: white;
+  min-height: 200px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1rem;
+}
+
+.document-icon {
+  font-size: 3rem;
+  color: #6c757d;
+}
+
+.media-file-document .file-info {
+  text-align: center;
+}
+
+.media-file-document .file-name {
+  color: #000;
+  font-size: 0.875rem;
+  margin-bottom: 0.5rem;
+}
+
+.file-type {
+  display: block;
+  font-size: 0.75rem;
+  color: #666;
+  text-transform: uppercase;
+  font-weight: 700;
+  margin-bottom: 0.25rem;
+}
+
+.media-file-document .file-size {
+  color: #666;
+  margin-bottom: 0.5rem;
+}
+
+.download-btn {
+  background: #17a2b8;
+  color: white;
+  border: 3px solid #000;
+  border-radius: 6px;
+  padding: 0.5rem 1rem;
+  font-weight: 700;
+  font-size: 0.875rem;
+  text-decoration: none;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  box-shadow: 3px 3px 0 #000;
+  transition: all 0.2s ease;
+  display: inline-block;
+}
+
+.download-btn:hover {
+  background: #138496;
+  transform: translate(-1px, -1px);
+  box-shadow: 4px 4px 0 #000;
+  text-decoration: none;
+  color: white;
+}
+
+/* File Description */
+.file-description {
+  padding: 0.75rem;
+  background: #f8f9fa;
+  border-top: 2px solid #000;
+  font-size: 0.875rem;
+  color: #495057;
+  line-height: 1.4;
+}
+
+/* Image Modal Styles */
+.image-modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background-color: rgba(0, 0, 0, 0.9);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 2000;
+  animation: fadeIn 0.2s ease-out;
+}
+
+.image-modal-content {
+  background: white;
+  border: 4px solid #000;
+  max-width: 90vw;
+  max-height: 90vh;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 12px 12px 0 #000;
+  animation: slideInModal 0.3s ease-out;
+}
+
+.image-modal-header {
+  background: #17a2b8;
+  color: white;
+  padding: 0.75rem 1rem;
+  border-bottom: 4px solid #000;
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+}
+
+.image-modal-close {
+  background: #dc3545;
+  color: white;
+  border: 3px solid #000;
+  border-radius: 50%;
+  width: 40px;
+  height: 40px;
+  cursor: pointer;
+  font-size: 1.5rem;
+  font-weight: 900;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 3px 3px 0 #000;
+  transition: all 0.2s ease;
+  flex-shrink: 0;
+}
+
+.image-modal-close:hover {
+  background: #c82333;
+  transform: translate(-1px, -1px);
+  box-shadow: 4px 4px 0 #000;
+}
+
+.image-modal-body {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2rem;
+  background: #000;
+}
+
+.image-modal-img {
+  max-width: 100%;
+  max-height: 80vh;
+  object-fit: contain;
+  box-shadow: 0 0 20px rgba(255, 255, 255, 0.1);
+}
+
+/* Modal Animations */
+@keyframes slideInModal {
+  from {
+    opacity: 0;
+    transform: scale(0.8) translateY(-50px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+/* Mobile responsive for completion proof section */
+@media (max-width: 768px) {
+  .completion-proof-section {
+    padding: 1.5rem;
+    margin-top: 1.5rem;
+    border-width: 3px;
+    box-shadow: 6px 6px 0 #000;
+  }
+
+  .proof-header {
+    flex-direction: column;
+    gap: 1rem;
+    text-align: center;
+    align-items: stretch;
+  }
+
+  .proof-meta {
+    flex-direction: column;
+    gap: 0.75rem;
+  }
+
+  .proof-text {
+    padding: 1rem;
+    font-size: 0.9rem;
+  }
+
+  .review-buttons {
+    flex-direction: column;
+    gap: 0.75rem;
+  }
+
+  .review-btn {
+    width: 100%;
+    min-width: auto;
+    padding: 0.875rem 1.5rem;
+    font-size: 0.9rem;
+  }
+
+  .review-notice {
+    flex-direction: column;
+    text-align: center;
+    gap: 0.5rem;
+  }
+
+  .notice-text {
+    font-size: 0.875rem;
+  }
+
+  /* Mobile responsive for media files */
+  .media-files-section {
+    padding: 1rem;
+    margin-top: 1.5rem;
+  }
+
+  .media-files-grid {
+    grid-template-columns: 1fr;
+    gap: 1rem;
+  }
+
+  .media-file-item {
+    border-width: 2px;
+    box-shadow: 3px 3px 0 #000;
+  }
+
+  .media-file-item:hover {
+    transform: none;
+    box-shadow: 3px 3px 0 #000;
+  }
+
+  .media-file-item.primary-file {
+    box-shadow: 3px 3px 0 #ffc107;
+  }
+
+  .media-file-item.primary-file:hover {
+    box-shadow: 3px 3px 0 #ffc107;
+  }
+
+  .file-info-static {
+    position: static;
+    transform: none;
+    background: white;
+    padding: 0.75rem;
+    border-top: 2px solid #000;
+  }
+
+  .image-modal-content {
+    width: 95%;
+    max-width: none;
+    border-width: 3px;
+    box-shadow: 8px 8px 0 #000;
+  }
+
+  .image-modal-header {
+    padding: 0.5rem;
+    justify-content: flex-end;
+  }
+
+  .image-modal-close {
+    width: 35px;
+    height: 35px;
+    font-size: 1.25rem;
+  }
+
+  .image-modal-body {
+    padding: 1rem;
+  }
+
+  .image-modal-img {
+    max-height: 70vh;
   }
 }
 

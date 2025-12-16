@@ -184,6 +184,22 @@ export const tasksApi = {
     })
   },
 
+  // 提交任务板完成证明（包含文件）
+  submitTaskWithFiles: async (id: string, formData: FormData): Promise<LockTask> => {
+    const token = localStorage.getItem('token');
+
+    const response = await fetch(`${API_BASE_URL}/tasks/${id}/submit/`, {
+      method: 'POST',
+      headers: {
+        ...(token && { Authorization: `Token ${token}` }),
+        // Don't set Content-Type header, let browser set it with boundary for multipart/form-data
+      },
+      body: formData
+    });
+
+    return handleResponse<LockTask>(response);
+  },
+
 
   // 发起投票
   startVoting: async (id: string): Promise<LockTask> => {

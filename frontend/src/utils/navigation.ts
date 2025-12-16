@@ -1,4 +1,5 @@
 import type { Router } from 'vue-router'
+import { useNavigationStore } from '../stores/navigation'
 
 /**
  * 智能返回导航函数 - 应用内安全返回
@@ -15,6 +16,7 @@ export function smartGoBack(
   } = {}
 ) {
   const { defaultRoute = 'home', checkReferrer = true } = options
+  const navigationStore = useNavigationStore()
 
   const referrer = document.referrer
   const currentUrl = window.location.href
@@ -29,10 +31,36 @@ export function smartGoBack(
   // 确定目标返回路由
   let targetRoute = defaultRoute
 
-  // 特殊处理：如果当前在任务详情页面，应该返回任务列表
+  // 特殊处理：如果当前在任务详情页面，应该返回任务列表并恢复状态
   if (currentPath.startsWith('/tasks/')) {
-    console.log('🔙 Current page is task detail, returning to tasks list')
+    console.log('🔙 Current page is task detail, returning to tasks list with state restoration')
     targetRoute = 'tasks'
+
+    // 检查是否有保存的任务视图状态
+    const savedState = navigationStore.getTaskViewState()
+    if (savedState) {
+      console.log('🔙 Found saved task view state, navigating with query parameters')
+
+      // 使用状态参数导航到任务路由
+      try {
+        router.push({
+          name: 'tasks',
+          query: {
+            type: savedState.activeTaskType,
+            filter: savedState.activeFilter,
+            sortBy: savedState.sortBy,
+            sortOrder: savedState.sortOrder
+          }
+        })
+
+        // 使用状态后清除保存的状态
+        navigationStore.clearTaskViewState()
+        return
+      } catch (error) {
+        console.error('🔙 Failed to navigate with saved state:', error)
+        // 失败时继续执行常规导航
+      }
+    }
   }
   // 如果当前在动态详情页面，返回首页
   else if (currentPath.startsWith('/post/') || currentPath.startsWith('/posts/')) {

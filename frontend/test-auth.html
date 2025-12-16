@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Authentication Test</title>
+</head>
+<body>
+    <h1>Authentication Test</h1>
+    <p>Open browser console and run the following script to set authentication:</p>
+
+    <pre id="script">
+// Set authentication token and user data for testing
+const testToken = '890c08301c6234d0b92cd578de308c3b8100ca71';
+const testUser = {
+    "id": 1,
+    "username": "test",
+    "email": "test@example.com",
+    "level": 1,
+    "activity_score": 0,
+    "last_active": "2024-12-16T08:00:00Z",
+    "location_precision": 1,
+    "coins": 100,
+    "bio": "",
+    "total_posts": 0,
+    "total_likes_received": 0,
+    "total_tasks_completed": 0,
+    "total_lock_duration": 0,
+    "created_at": "2024-12-16T08:00:00Z",
+    "updated_at": "2024-12-16T08:00:00Z"
+};
+
+// Set localStorage items
+localStorage.setItem('token', testToken);
+localStorage.setItem('user', JSON.stringify(testUser));
+
+console.log('✅ Authentication set successfully!');
+console.log('🔑 Token:', testToken);
+console.log('👤 User:', testUser);
+console.log('');
+console.log('Now navigate to: http://localhost:5173/tasks/a652ea8e-5d60-4fb6-84d9-0e0afe2eee13');
+console.log('The page should now load real task data instead of mock data!');
+    </pre>
+
+    <button onclick="setAuth()">Set Authentication</button>
+    <button onclick="clearAuth()">Clear Authentication</button>
+    <button onclick="checkAuth()">Check Current Auth</button>
+
+    <div id="output"></div>
+
+    <script>
+        function setAuth() {
+            const testToken = '890c08301c6234d0b92cd578de308c3b8100ca71';
+            const testUser = {
+                "id": 1,
+                "username": "test",
+                "email": "test@example.com",
+                "level": 1,
+                "activity_score": 0,
+                "last_active": "2024-12-16T08:00:00Z",
+                "location_precision": 1,
+                "coins": 100,
+                "bio": "",
+                "total_posts": 0,
+                "total_likes_received": 0,
+                "total_tasks_completed": 0,
+                "total_lock_duration": 0,
+                "created_at": "2024-12-16T08:00:00Z",
+                "updated_at": "2024-12-16T08:00:00Z"
+            };
+
+            localStorage.setItem('token', testToken);
+            localStorage.setItem('user', JSON.stringify(testUser));
+
+            document.getElementById('output').innerHTML = `
+                <p style="color: green;">✅ Authentication set successfully!</p>
+                <p>🔑 Token: ${testToken}</p>
+                <p>👤 User: ${testUser.username}</p>
+                <p><a href="http://localhost:5173/tasks/a652ea8e-5d60-4fb6-84d9-0e0afe2eee13" target="_blank">Open Task Detail Page</a></p>
+            `;
+        }
+
+        function clearAuth() {
+            localStorage.removeItem('token');
+            localStorage.removeItem('user');
+
+            document.getElementById('output').innerHTML = `
+                <p style="color: orange;">🧹 Authentication cleared</p>
+            `;
+        }
+
+        function checkAuth() {
+            const token = localStorage.getItem('token');
+            const user = localStorage.getItem('user');
+
+            if (token && user) {
+                document.getElementById('output').innerHTML = `
+                    <p style="color: green;">✅ Authenticated</p>
+                    <p>🔑 Token: ${token}</p>
+                    <p>👤 User: ${JSON.parse(user).username}</p>
+                `;
+            } else {
+                document.getElementById('output').innerHTML = `
+                    <p style="color: red;">❌ Not authenticated</p>
+                `;
+            }
+        }
+
+        // Check auth on page load
+        checkAuth();
+    </script>
+</body>
+</html>

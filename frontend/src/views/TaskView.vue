@@ -265,6 +265,7 @@
     <!-- Create Task Modal -->
     <CreateTaskModal
       :is-visible="showCreateModal"
+      :initial-task-type="activeTaskType"
       @close="closeCreateModal"
       @success="handleTaskCreated"
     />
@@ -284,13 +285,14 @@
 
 <script setup lang="ts">
 import { ref, onMounted, computed, onUnmounted, watch } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRouter, useRoute } from 'vue-router'
 import { useAuthStore } from '../stores/auth'
 import { useTasksStore } from '../stores/tasks'
 import { useInfiniteScroll } from '../composables/useInfiniteScroll'
 import { formatDistanceToNow } from '../lib/utils'
 import { tasksApi } from '../lib/api-tasks'
 import { smartGoBack } from '../utils/navigation'
+import { useNavigationStore } from '../stores/navigation'
 import CreateTaskModal from '../components/CreateTaskModal.vue'
 import NotificationBell from '../components/NotificationBell.vue'
 import NotificationToast from '../components/NotificationToast.vue'
@@ -299,8 +301,10 @@ import type { Task } from '../types/index'
 import type { LockTask } from '../types'
 
 const router = useRouter()
+const route = useRoute()
 const authStore = useAuthStore()
 const tasksStore = useTasksStore()
+const navigationStore = useNavigationStore()
 
 // State
 const showCreateModal = ref(false)
@@ -310,6 +314,7 @@ const currentTime = ref(Date.now())
 const progressInterval = ref<number>()
 const taskCounts = ref<any>(null)
 const countsLoading = ref(false)
+const isRestoringState = ref(false) // 标志位：是否正在恢复状态
 
 // Toast notification state
 const showToast = ref(false)
@@ -426,9 +431,6 @@ const boardFilterTabs = computed(() => {
     return [
       { key: 'all', label: '全部', count: 0 },
       { key: 'open', label: '开放中', count: 0 },
-      { key: 'taken', label: '已接取', count: 0 },
-      { key: 'submitted', label: '已提交', count: 0 },
-      { key: 'completed', label: '已完成', count: 0 },
       { key: 'my-published', label: '我发布的', count: 0 },
       { key: 'my-taken', label: '我接取的', count: 0 }
     ]
@@ -436,9 +438,6 @@ const boardFilterTabs = computed(() => {
   return [
     { key: 'all', label: '全部', count: taskCounts.value.board_tasks.all },
     { key: 'open', label: '开放中', count: taskCounts.value.board_tasks.open },
-    { key: 'taken', label: '已接取', count: taskCounts.value.board_tasks.taken },
-    { key: 'submitted', label: '已提交', count: taskCounts.value.board_tasks.submitted },
-    { key: 'completed', label: '已完成', count: taskCounts.value.board_tasks.completed },
     { key: 'my-published', label: '我发布的', count: taskCounts.value.board_tasks.my_published },
     { key: 'my-taken', label: '我接取的', count: taskCounts.value.board_tasks.my_taken }
   ]
@@ -550,6 +549,21 @@ const deleteTask = async (task: Task) => {
 }
 
 const goToTaskDetail = (taskId: string) => {
+  // Save current task view state before navigating
+  navigationStore.saveTaskViewState({
+    activeTaskType: activeTaskType.value,
+    activeFilter: activeFilter.value,
+    sortBy: sortBy.value,
+    sortOrder: sortOrder.value
+  })
+
+  console.log('🗂️ Saved task view state before navigating to task detail:', {
+    activeTaskType: activeTaskType.value,
+    activeFilter: activeFilter.value,
+    sortBy: sortBy.value,
+    sortOrder: sortOrder.value
+  })
+
   router.push({ name: 'task-detail', params: { id: taskId } })
 }
 
@@ -835,10 +849,16 @@ const handleClickOutside = (event: Event) => {
 
 // Watch for task type changes and reset filter accordingly
 watch(activeTaskType, (newType) => {
+  // Skip filter reset if we're currently restoring state
+  if (isRestoringState.value) {
+    console.log('🔄 Skipping filter reset during state restoration')
+    return
+  }
+
   if (newType === 'lock') {
     activeFilter.value = 'can-overtime'  // 带锁任务默认显示"可以加时的绒布球"
   } else {
-    activeFilter.value = 'all'     // 任务板默认显示"全部"
+    activeFilter.value = 'open'     // 任务板默认显示"开放中"
   }
   // Refresh tasks when task type changes
   refresh()
@@ -849,7 +869,56 @@ watch(activeFilter, () => {
   refresh()
 })
 
+// Restore state from query parameters
+const restoreStateFromQuery = () => {
+  const query = route.query
+
+  console.log('🔄 Restoring state from query parameters:', query)
+
+  // Set flag to prevent watchers from interfering
+  isRestoringState.value = true
+
+  // Restore task type
+  if (query.type && ['lock', 'board'].includes(query.type as string)) {
+    activeTaskType.value = query.type as 'lock' | 'board'
+    console.log('🔄 Restored activeTaskType:', activeTaskType.value)
+  }
+
+  // Restore filter
+  if (query.filter && typeof query.filter === 'string') {
+    activeFilter.value = query.filter
+    console.log('🔄 Restored activeFilter:', activeFilter.value)
+  }
+
+  // Restore sort by
+  if (query.sortBy && ['remaining_time', 'created_time', 'end_time', 'user_activity', 'difficulty'].includes(query.sortBy as string)) {
+    sortBy.value = query.sortBy as 'remaining_time' | 'created_time' | 'end_time' | 'user_activity' | 'difficulty'
+    console.log('🔄 Restored sortBy:', sortBy.value)
+  }
+
+  // Restore sort order
+  if (query.sortOrder && ['asc', 'desc'].includes(query.sortOrder as string)) {
+    sortOrder.value = query.sortOrder as 'asc' | 'desc'
+    console.log('🔄 Restored sortOrder:', sortOrder.value)
+  }
+
+  // Reset flag after restoration is complete
+  setTimeout(() => {
+    isRestoringState.value = false
+    console.log('🔄 State restoration completed, flag reset')
+  }, 100)
+
+  // Clean up URL by removing query parameters after restoration
+  if (Object.keys(query).length > 0) {
+    router.replace({ name: 'tasks' })
+    console.log('🔄 Cleaned up URL after state restoration')
+  }
+}
+
 onMounted(async () => {
+  // Restore state from query parameters if present
+  restoreStateFromQuery()
+
   // Initialize task list and counts in parallel
   await Promise.all([
     initialize(),

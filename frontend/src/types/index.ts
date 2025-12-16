@@ -130,6 +130,10 @@ export interface LockTask extends BaseLockTask {
   end_time?: string
   // 钥匙玩法字段
   time_display_hidden?: boolean // 是否隐藏时间显示
+  // 任务完成相关字段
+  taker?: User
+  completion_proof?: string
+  submission_files?: TaskSubmissionFile[]
 }
 
 export interface BoardTask extends BaseLockTask {
@@ -143,9 +147,24 @@ export interface BoardTask extends BaseLockTask {
   completion_proof?: string
   completed_at?: string
   reject_reason?: string
+  submission_files?: TaskSubmissionFile[]
 }
 
 export type Task = LockTask | BoardTask
+
+// Task Submission File Types
+export interface TaskSubmissionFile {
+  id: string
+  file_name: string
+  file_url: string
+  file_size: number
+  file_type: string
+  is_image: boolean
+  is_video: boolean
+  is_primary: boolean
+  description?: string
+  created_at: string
+}
 
 export interface TaskBoard {
   id: string
