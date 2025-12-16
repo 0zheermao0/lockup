@@ -7,6 +7,9 @@ from django.utils import timezone
 from django.db.models import Q, Count
 from datetime import timedelta
 import random
+import logging
+
+logger = logging.getLogger(__name__)
 
 from .models import LockTask, TaskKey, TaskVote, OvertimeAction, TaskTimelineEvent, HourlyReward
 from store.models import ItemType, UserInventory, Item
@@ -663,6 +666,8 @@ def take_board_task(request, pk):
 @permission_classes([IsAuthenticated])
 def submit_board_task(request, pk):
     """提交任务板任务完成证明"""
+    from .models import TaskSubmissionFile
+
     task = get_object_or_404(LockTask, pk=pk)
 
     # 检查权限
@@ -693,6 +698,27 @@ def submit_board_task(request, pk):
     # 注意：不设置completed_at，因为任务还未正式完成
     task.save()
 
+    # 处理上传的文件
+    uploaded_files = request.FILES.getlist('files')
+    if uploaded_files:
+        for i, uploaded_file in enumerate(uploaded_files):
+            # 创建文件记录
+            submission_file = TaskSubmissionFile(
+                task=task,
+                uploader=request.user,
+                file=uploaded_file,
+                file_name=uploaded_file.name,
+                file_size=uploaded_file.size,
+                description=request.data.get(f'file_descriptions[{i}]', ''),
+                is_primary=(i == 0)  # 第一个文件设为主要文件
+            )
+
+            # 根据文件扩展名自动设置文件类型
+            submission_file.file_type = submission_file.get_file_type_from_extension(uploaded_file.name)
+            submission_file.save()
+
+            logger.info(f"Uploaded file {uploaded_file.name} for task {task.id} by user {request.user.username}")
+
     # 创建任务提交通知
     Notification.create_notification(
         recipient=task.user,
@@ -703,7 +729,8 @@ def submit_board_task(request, pk):
         extra_data={
             'task_title': task.title,
             'submitter': request.user.username,
-            'completion_proof_preview': completion_proof[:100] + '...' if len(completion_proof) > 100 else completion_proof
+            'completion_proof_preview': completion_proof[:100] + '...' if len(completion_proof) > 100 else completion_proof,
+            'file_count': len(uploaded_files) if uploaded_files else 0
         }
     )
 

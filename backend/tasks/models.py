@@ -232,3 +232,82 @@ class HourlyReward(models.Model):
 
     def __str__(self):
         return f"{self.user.username} received {self.reward_amount} points for hour {self.hour_count} of {self.task.title}"
+
+
+class TaskSubmissionFile(models.Model):
+    """任务提交文件（图片、视频等证明材料）"""
+
+    FILE_TYPE_CHOICES = [
+        ('image', '图片'),
+        ('video', '视频'),
+        ('document', '文档'),
+    ]
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    task = models.ForeignKey(LockTask, on_delete=models.CASCADE, related_name='submission_files')
+    uploader = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='uploaded_submission_files')
+
+    # 文件信息
+    file = models.FileField(upload_to='task_submissions/%Y/%m/%d/', max_length=500)
+    file_type = models.CharField(max_length=10, choices=FILE_TYPE_CHOICES, default='image')
+    file_name = models.CharField(max_length=255, help_text='原始文件名')
+    file_size = models.PositiveIntegerField(help_text='文件大小（字节）')
+
+    # 元数据
+    description = models.CharField(max_length=500, blank=True, help_text='文件描述')
+    is_primary = models.BooleanField(default=False, help_text='是否为主要证明文件')
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['task', '-created_at']),
+            models.Index(fields=['uploader', '-created_at']),
+            models.Index(fields=['file_type', '-created_at']),
+        ]
+
+    def __str__(self):
+        return f"{self.file_name} for {self.task.title} by {self.uploader.username}"
+
+    @property
+    def file_url(self):
+        """获取文件的完整URL"""
+        if self.file:
+            return self.file.url
+        return None
+
+    @property
+    def is_image(self):
+        """判断是否为图片文件"""
+        return self.file_type == 'image'
+
+    @property
+    def is_video(self):
+        """判断是否为视频文件"""
+        return self.file_type == 'video'
+
+    def get_file_type_from_extension(self, filename):
+        """根据文件扩展名判断文件类型"""
+        ext = filename.lower().split('.')[-1] if '.' in filename else ''
+
+        if ext in ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp']:
+            return 'image'
+        elif ext in ['mp4', 'avi', 'mov', 'wmv', 'flv', 'webm']:
+            return 'video'
+        elif ext in ['pdf', 'doc', 'docx', 'txt', 'rtf']:
+            return 'document'
+        else:
+            return 'image'  # 默认为图片
+
+    def save(self, *args, **kwargs):
+        # 如果没有设置file_type，根据文件扩展名自动判断
+        if not self.file_type and self.file:
+            self.file_type = self.get_file_type_from_extension(self.file_name)
+
+        # 如果没有设置file_name，使用原始文件名
+        if not self.file_name and self.file:
+            self.file_name = self.file.name.split('/')[-1]
+
+        super().save(*args, **kwargs)

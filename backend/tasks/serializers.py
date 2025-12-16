@@ -1,6 +1,23 @@
 from rest_framework import serializers
-from .models import LockTask, TaskKey, TaskVote, TaskTimelineEvent
+from .models import LockTask, TaskKey, TaskVote, TaskTimelineEvent, TaskSubmissionFile
 from users.serializers import UserSerializer
+
+
+class TaskSubmissionFileSerializer(serializers.ModelSerializer):
+    """任务提交文件序列化器"""
+    uploader = UserSerializer(read_only=True)
+    file_url = serializers.ReadOnlyField()
+    is_image = serializers.ReadOnlyField()
+    is_video = serializers.ReadOnlyField()
+
+    class Meta:
+        model = TaskSubmissionFile
+        fields = [
+            'id', 'task', 'uploader', 'file', 'file_url', 'file_type',
+            'file_name', 'file_size', 'description', 'is_primary',
+            'is_image', 'is_video', 'created_at', 'updated_at'
+        ]
+        read_only_fields = ['id', 'uploader', 'created_at', 'updated_at']
 
 
 class LockTaskSerializer(serializers.ModelSerializer):
@@ -9,6 +26,7 @@ class LockTaskSerializer(serializers.ModelSerializer):
     key_holder = serializers.SerializerMethodField()
     vote_count = serializers.SerializerMethodField()
     vote_agreement_count = serializers.SerializerMethodField()
+    submission_files = TaskSubmissionFileSerializer(many=True, read_only=True)
 
     class Meta:
         model = LockTask
@@ -28,7 +46,7 @@ class LockTaskSerializer(serializers.ModelSerializer):
             # 钥匙玩法字段
             'time_display_hidden',
             # 计算字段
-            'key_holder', 'vote_count', 'vote_agreement_count'
+            'key_holder', 'vote_count', 'vote_agreement_count', 'submission_files'
         ]
         read_only_fields = ['id', 'user', 'created_at', 'updated_at']
 
