@@ -2412,6 +2412,12 @@ onUnmounted(() => {
   margin: 0;
 }
 
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
 .main-content {
   max-width: 1000px;
   margin: 0 auto;
@@ -3347,7 +3353,68 @@ onUnmounted(() => {
 /* Mobile responsive */
 @media (max-width: 768px) {
   .header-content {
-    padding: 0 1rem;
+    padding: 0 0.75rem;
+    flex-wrap: wrap;
+    gap: 0.75rem;
+  }
+
+  .header h1 {
+    font-size: 1.25rem;
+    margin: 0;
+    flex: 1;
+    text-align: center;
+    order: 2;
+    width: 100%;
+  }
+
+  .back-btn {
+    order: 1;
+    flex-shrink: 0;
+    padding: 0.5rem 0.75rem;
+    font-size: 0.8rem;
+    min-width: auto;
+  }
+
+  .header-actions {
+    order: 3;
+    display: flex;
+    gap: 0.5rem;
+    flex-shrink: 0;
+    width: 100%;
+    justify-content: center;
+    margin-top: 0.5rem;
+  }
+
+  .share-btn, .delete-btn {
+    padding: 0.5rem 0.75rem;
+    font-size: 0.8rem;
+    border-radius: 6px;
+    flex: 1;
+    max-width: 120px;
+    text-align: center;
+    white-space: nowrap;
+  }
+
+  .share-btn {
+    background-color: #17a2b8;
+    color: white;
+    border-color: #17a2b8;
+  }
+
+  .share-btn:hover {
+    background-color: #138496;
+    border-color: #117a8b;
+  }
+
+  .delete-btn {
+    background-color: #dc3545;
+    color: white;
+    border-color: #dc3545;
+  }
+
+  .delete-btn:hover {
+    background-color: #c82333;
+    border-color: #bd2130;
   }
 
   .main-content {
@@ -3374,6 +3441,43 @@ onUnmounted(() => {
 
   .action-btn {
     width: 100%;
+  }
+}
+
+/* Small mobile screens - additional responsive breakpoint */
+@media (max-width: 480px) {
+  .header-content {
+    padding: 0 0.5rem;
+    gap: 0.5rem;
+  }
+
+  .header h1 {
+    font-size: 1.1rem;
+    margin: 0;
+  }
+
+  .back-btn {
+    padding: 0.4rem 0.6rem;
+    font-size: 0.75rem;
+  }
+
+  .header-actions {
+    gap: 0.4rem;
+    margin-top: 0.4rem;
+  }
+
+  .share-btn, .delete-btn {
+    padding: 0.4rem 0.6rem;
+    font-size: 0.75rem;
+    max-width: 100px;
+  }
+
+  .main-content {
+    padding: 0.75rem;
+  }
+
+  .task-card, .actions-section, .voting-section {
+    padding: 0.75rem;
   }
 }
 
