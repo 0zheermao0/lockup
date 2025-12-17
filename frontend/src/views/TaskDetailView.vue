@@ -41,7 +41,7 @@
         <!-- Task Detail -->
         <div v-else-if="task" class="task-detail-content">
           <!-- Quick Actions Bar - 高频操作区域 -->
-          <section v-if="canManageTask || canClaimTask || canSubmitProof || canReviewTask || canAddOvertime || canStartVoting || canVote" class="quick-actions-bar">
+          <section v-if="canManageTask || canClaimTask || canSubmitProof || canReviewTask || canEndTask || canAddOvertime || canStartVoting || canVote" class="quick-actions-bar">
             <div class="quick-actions-content">
               <div class="actions-primary">
                 <!-- Lock task primary actions -->
@@ -95,6 +95,15 @@
                   class="quick-action-btn danger large"
                 >
                   ❌ 审核拒绝
+                </button>
+
+                <!-- End task button -->
+                <button
+                  v-if="canEndTask"
+                  @click="endTask"
+                  class="quick-action-btn danger large"
+                >
+                  🏁 结束任务
                 </button>
 
                 <!-- Voting actions -->
@@ -204,6 +213,176 @@
               <div v-if="taskVoteThreshold" class="detail-item">
                 <span class="label">投票门槛</span>
                 <span class="value">{{ taskVoteThreshold }} 票</span>
+              </div>
+
+              <!-- Board task details -->
+              <div v-if="task.task_type === 'board' && task.reward" class="detail-item">
+                <span class="label">奖励金额</span>
+                <span class="value">{{ task.reward }} 积分</span>
+              </div>
+              <div v-if="task.task_type === 'board' && task.max_duration" class="detail-item">
+                <span class="label">最大完成时间</span>
+                <span class="value">{{ task.max_duration }} 小时</span>
+              </div>
+
+              <!-- Multi-person task details -->
+              <div v-if="task.task_type === 'board' && task.max_participants" class="detail-item">
+                <span class="label">参与人数限制</span>
+                <span class="value">{{ task.max_participants }} 人</span>
+              </div>
+              <div v-if="task.task_type === 'board' && task.participant_count !== undefined" class="detail-item">
+                <span class="label">当前参与人数</span>
+                <span class="value">{{ task.participant_count }}/{{ task.max_participants }} 人</span>
+              </div>
+              <div v-if="task.task_type === 'board' && task.submitted_count !== undefined" class="detail-item">
+                <span class="label">已提交人数</span>
+                <span class="value">{{ task.submitted_count }} 人</span>
+              </div>
+              <div v-if="task.task_type === 'board' && task.approved_count !== undefined" class="detail-item">
+                <span class="label">已通过人数</span>
+                <span class="value">{{ task.approved_count }} 人</span>
+              </div>
+              <div v-if="task.task_type === 'board' && task.max_participants > 1 && task.reward" class="detail-item">
+                <span class="label">奖励分配</span>
+                <span class="value">每人 {{ Math.ceil(task.reward / task.max_participants) }} 积分</span>
+              </div>
+            </div>
+
+            <!-- Multi-person Task Participants Section -->
+            <div v-if="task && task.task_type === 'board' && task.max_participants > 1 && (task as any).participants" class="participants-section">
+              <div class="participants-header">
+                <h3>参与情况</h3>
+                <!-- Multi-person task status indicator -->
+                <div v-if="task.status === 'submitted'" class="multi-task-status-notice">
+                  <span class="notice-icon">ℹ️</span>
+                  <span class="notice-text">任务有人已提交，仍可继续接取参与</span>
+                </div>
+                <div class="participants-stats">
+                  <span class="stat-item">
+                    <span class="stat-label">参与:</span>
+                    <span class="stat-value">{{ task.participant_count || 0 }}/{{ task.max_participants }}</span>
+                  </span>
+                  <span class="stat-item">
+                    <span class="stat-label">提交:</span>
+                    <span class="stat-value">{{ task.submitted_count || 0 }}</span>
+                  </span>
+                  <span class="stat-item">
+                    <span class="stat-label">通过:</span>
+                    <span class="stat-value">{{ task.approved_count || 0 }}</span>
+                  </span>
+                </div>
+              </div>
+
+              <!-- Grid View -->
+              <div class="participants-grid">
+                <div
+                  v-for="participant in (task as any).participants"
+                  :key="participant.id"
+                  class="participant-card"
+                  :class="getParticipantCardClass(participant.status)"
+                >
+                  <div class="participant-header">
+                    <UserAvatar
+                      :user="participant.participant"
+                      size="small"
+                      :clickable="true"
+                      @click="openUserProfile(participant.participant.id)"
+                    />
+                    <div class="participant-info">
+                      <button
+                        @click="openUserProfile(participant.participant.id)"
+                        class="participant-name"
+                        :title="`查看 ${participant.participant.username} 的资料`"
+                      >
+                        {{ participant.participant.username }}
+                      </button>
+                      <div class="participant-join-time">
+                        {{ formatDateTime(participant.joined_at) }} 加入
+                      </div>
+                    </div>
+                    <div class="participant-status-badge" :class="participant.status">
+                      {{ getParticipantStatusText(participant.status) }}
+                    </div>
+                  </div>
+
+                  <div v-if="participant.submission_text" class="participant-submission">
+                    <div class="submission-label">提交内容:</div>
+                    <div class="submission-text">{{ participant.submission_text }}</div>
+                  </div>
+
+                  <div v-if="participant.submission_files && participant.submission_files.length > 0" class="participant-files">
+                    <div class="files-label">提交文件:</div>
+                    <div class="files-grid">
+                      <div
+                        v-for="(file, fileIndex) in participant.submission_files"
+                        :key="file.id"
+                        class="file-item"
+                        :class="{ 'primary-file': file.is_primary, 'image-file': isImageFile(file) }"
+                        @click="handleFileClick(file)"
+                        :title="isImageFile(file) ? '点击查看大图' : '点击下载文件'"
+                      >
+                        <!-- Image preview -->
+                        <div v-if="isImageFile(file)" class="file-preview">
+                          <img
+                            :src="getFileUrl(file)"
+                            :alt="`提交图片 ${fileIndex + 1}`"
+                            class="preview-image"
+                            @error="handleImageError"
+                            loading="lazy"
+                          />
+                          <div class="image-overlay">
+                            <span class="view-icon">👁️</span>
+                          </div>
+                        </div>
+                        <!-- Non-image file -->
+                        <div v-else class="file-icon">
+                          <span class="file-type-icon">📄</span>
+                        </div>
+
+                      </div>
+                    </div>
+                  </div>
+
+                  <div v-if="participant.review_comment" class="participant-review">
+                    <div class="review-label">审核意见:</div>
+                    <div class="review-comment">{{ participant.review_comment }}</div>
+                  </div>
+
+                  <div v-if="participant.reward_amount" class="participant-reward">
+                    <div class="reward-label">分配奖励:</div>
+                    <div class="reward-amount">{{ participant.reward_amount }} 积分</div>
+                  </div>
+
+                  <!-- Review actions for task publisher -->
+                  <div v-if="canReviewParticipant(participant)" class="participant-actions">
+                    <button
+                      @click="approveParticipant(participant)"
+                      class="action-btn approve-btn"
+                    >
+                      ✅ 通过
+                    </button>
+                    <button
+                      @click="rejectParticipant(participant)"
+                      class="action-btn reject-btn"
+                    >
+                      ❌ 拒绝
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Show available spots for open tasks -->
+              <div v-if="task.status === 'open' && task.task_type === 'board' && task.available_spots && task.available_spots > 0" class="available-spots">
+                <div class="spots-message">
+                  🎯 还有 {{ task.available_spots }} 个名额，欢迎参与！
+                </div>
+              </div>
+
+              <!-- Show task full message -->
+              <div v-else-if="task.status === 'open' && task.task_type === 'board' && task.is_full" class="task-full">
+                <div class="full-message">
+                  🔒 任务已满员，无法继续参与
+                </div>
               </div>
             </div>
 
@@ -494,7 +673,7 @@
             <!-- Media Files Section -->
             <div v-if="task.submission_files && task.submission_files.length > 0" class="media-files-section">
               <div class="media-files-header">
-                <h4>📎 提交的媒体文件 ({{ task.submission_files.length }}个)</h4>
+                <h4>📎 提交的媒体文件</h4>
               </div>
               <div class="media-files-grid">
                 <div
@@ -507,13 +686,11 @@
                   <div v-if="file.is_image" class="media-file-image">
                     <img
                       :src="file.file_url"
-                      :alt="file.file_name"
+                      :alt="`提交图片`"
                       @click="openImageModal(file)"
                       class="media-image"
                     />
                     <div class="file-info-static">
-                      <span class="file-name">{{ file.file_name }}</span>
-                      <span class="file-size">{{ formatFileSize(file.file_size) }}</span>
                       <span v-if="file.is_primary" class="primary-badge">主要文件</span>
                     </div>
                   </div>
@@ -529,8 +706,6 @@
                       您的浏览器不支持视频播放
                     </video>
                     <div class="file-info">
-                      <span class="file-name">{{ file.file_name }}</span>
-                      <span class="file-size">{{ formatFileSize(file.file_size) }}</span>
                       <span v-if="file.is_primary" class="primary-badge">主要文件</span>
                     </div>
                   </div>
@@ -539,9 +714,6 @@
                   <div v-else class="media-file-document">
                     <div class="document-icon">📄</div>
                     <div class="file-info">
-                      <span class="file-name">{{ file.file_name }}</span>
-                      <span class="file-type">{{ file.file_type }}</span>
-                      <span class="file-size">{{ formatFileSize(file.file_size) }}</span>
                       <span v-if="file.is_primary" class="primary-badge">主要文件</span>
                     </div>
                     <a
@@ -722,7 +894,7 @@
         <div class="image-modal-body">
           <img
             :src="selectedImage.file_url"
-            :alt="selectedImage.file_name"
+            :alt="`提交图片`"
             class="image-modal-img"
           />
         </div>
@@ -801,6 +973,8 @@ const keyHolderInfo = ref<{
 // Image modal state
 const showImageModal = ref(false)
 const selectedImage = ref<any>(null)
+
+// Multi-person task participants navigation state (removed review mode)
 
 
 // Toast notification state
@@ -932,28 +1106,69 @@ const isOwnTask = computed(() => {
 
 const canClaimTask = computed(() => {
   if (!task.value) return false
-  // Can claim if it's a board task, status is open, and not own task
-  return task.value.task_type === 'board' &&
-         task.value.status === 'open' &&
-         !isOwnTask.value
+
+  // 基本条件：是任务板，不是自己的任务
+  if (task.value.task_type !== 'board' || isOwnTask.value) return false
+
+  // 使用后端返回的 can_take 字段
+  return task.value.can_take === true
 })
 
 const canSubmitProof = computed(() => {
-  if (!task.value) return false
-  // Can submit proof if it's a board task taken by current user
-  if (task.value.task_type === 'board' && task.value.status === 'taken') {
-    const boardTask = task.value as any // Type assertion for board task properties
-    return boardTask.taker?.id === authStore.user?.id
+  if (!task.value || !authStore.user) return false
+
+  // 只有任务板可以提交证明
+  if (task.value.task_type !== 'board') return false
+
+  // 不能提交自己发布的任务
+  if (task.value.user.id === authStore.user.id) return false
+
+  // 判断是单人还是多人任务
+  const isMultiPerson = task.value.max_participants && task.value.max_participants > 1
+
+  if (isMultiPerson) {
+    // 多人任务：检查是否已参与且任务状态允许提交
+    const isParticipant = task.value.participants?.some(p => p.participant.id === authStore.user?.id)
+    const allowedStatuses = ['taken', 'submitted']  // 多人任务在这些状态下都可以提交
+
+    if (!isParticipant || !allowedStatuses.includes(task.value.status)) {
+      return false
+    }
+
+    // 检查当前用户是否已经提交过
+    const currentParticipant = task.value.participants?.find(p => p.participant.id === authStore.user?.id)
+    return currentParticipant?.status !== 'submitted' && currentParticipant?.status !== 'approved'
+  } else {
+    // 单人任务：检查是否是接取者且状态为taken
+    return task.value.status === 'taken' && task.value.taker?.id === authStore.user.id
   }
-  return false
 })
 
 const canReviewTask = computed(() => {
   if (!task.value) return false
   // Can review if it's a board task, submitted status, and user is the publisher
+  // Cannot review if task is completed
   return task.value.task_type === 'board' &&
          task.value.status === 'submitted' &&
          task.value.user.id === authStore.user?.id
+})
+
+const canEndTask = computed(() => {
+  if (!task.value || !isOwnTask.value) return false
+
+  // 只有任务板可以手动结束
+  if (task.value.task_type !== 'board') return false
+
+  // 判断是单人还是多人任务
+  const isMultiPerson = task.value.max_participants && task.value.max_participants > 1
+
+  if (isMultiPerson) {
+    // 多人任务：任何状态下都可以结束（除了已完成和已失败）
+    return !['completed', 'failed'].includes(task.value.status)
+  } else {
+    // 单人任务：只能在开放或已接取状态结束
+    return ['open', 'taken'].includes(task.value.status)
+  }
 })
 
 const canViewCompletionProof = computed(() => {
@@ -1233,6 +1448,8 @@ const canAffordTimeToggle = computed(() => {
   if (!authStore.user || !canManageKeyActions.value) return false
   return authStore.user.coins >= 50 // 时间显示切换需要50积分
 })
+
+// Multi-person task computed properties (review mode removed)
 
 // Methods
 const goBack = () => {
@@ -1835,22 +2052,72 @@ const handleSubmissionSuccess = () => {
 const approveTask = async () => {
   if (!task.value || !canReviewTask.value) return
 
+  // For multi-person tasks, need to approve individual participants
+  if (task.value.task_type === 'board' && task.value.max_participants && task.value.max_participants > 1) {
+    // Check if there are submitted participants to review
+    const submittedParticipants = task.value.participants?.filter(p => p.status === 'submitted') || []
+    if (submittedParticipants.length === 0) {
+      alert('没有待审核的参与者提交')
+      return
+    }
+
+    // Suggest using individual participant review
+    alert('这是多人任务，请在参与者列表中逐个审核每位参与者的提交')
+    return
+  }
+
   if (!confirm('确定要审核通过这个任务吗？')) {
     return
   }
 
   try {
+    // For single-person board tasks, can use approveTask directly
     const updatedTask = await tasksApi.approveTask(task.value.id)
     task.value = updatedTask
+
+    showToast.value = true
+    toastData.value = {
+      type: 'success',
+      title: '审核通过',
+      message: '任务已审核通过',
+      secondaryMessage: '参与者将获得相应奖励'
+    }
+
     console.log('任务审核通过')
-  } catch (error) {
+  } catch (error: any) {
     console.error('Error approving task:', error)
-    alert('审核失败，请重试')
+
+    let errorMessage = '审核失败，请重试'
+    if (error.data?.error) {
+      errorMessage = error.data.error
+    }
+
+    showToast.value = true
+    toastData.value = {
+      type: 'error',
+      title: '审核失败',
+      message: errorMessage,
+      secondaryMessage: '请稍后重试或联系管理员'
+    }
   }
 }
 
 const rejectTask = async () => {
   if (!task.value || !canReviewTask.value) return
+
+  // For multi-person tasks, need to reject individual participants
+  if (task.value.task_type === 'board' && task.value.max_participants && task.value.max_participants > 1) {
+    // Check if there are submitted participants to review
+    const submittedParticipants = task.value.participants?.filter(p => p.status === 'submitted') || []
+    if (submittedParticipants.length === 0) {
+      alert('没有待审核的参与者提交')
+      return
+    }
+
+    // Suggest using individual participant review
+    alert('这是多人任务，请在参与者列表中逐个审核每位参与者的提交')
+    return
+  }
 
   const rejectReason = prompt('请输入拒绝原因（可选）：')
 
@@ -1859,12 +2126,34 @@ const rejectTask = async () => {
   }
 
   try {
+    // For single-person board tasks, can use rejectTask directly
     const updatedTask = await tasksApi.rejectTask(task.value.id, rejectReason || '')
     task.value = updatedTask
+
+    showToast.value = true
+    toastData.value = {
+      type: 'success',
+      title: '审核拒绝',
+      message: '任务已审核拒绝',
+      secondaryMessage: rejectReason ? `拒绝原因：${rejectReason}` : ''
+    }
+
     console.log('任务审核拒绝')
-  } catch (error) {
+  } catch (error: any) {
     console.error('Error rejecting task:', error)
-    alert('审核失败，请重试')
+
+    let errorMessage = '审核失败，请重试'
+    if (error.data?.error) {
+      errorMessage = error.data.error
+    }
+
+    showToast.value = true
+    toastData.value = {
+      type: 'error',
+      title: '审核失败',
+      message: errorMessage,
+      secondaryMessage: '请稍后重试或联系管理员'
+    }
   }
 }
 
@@ -1919,6 +2208,60 @@ const addOvertime = async () => {
     toastData.value = {
       type: 'error',
       title: '随机加时失败',
+      message: errorMessage,
+      secondaryMessage: '请稍后重试或联系管理员'
+    }
+  }
+}
+
+const endTask = async () => {
+  if (!task.value || !canEndTask.value) return
+
+  // 确认对话框
+  if (!confirm('确定要结束这个任务吗？结束后将根据当前情况进行结算。')) {
+    return
+  }
+
+  try {
+    const updatedTask = await tasksApi.endTask(task.value.id)
+    task.value = updatedTask
+    console.log('任务已结束')
+
+    // 刷新用户数据以更新积分等信息
+    await authStore.refreshUser()
+
+    // 显示成功提示
+    showToast.value = true
+    toastData.value = {
+      type: 'success',
+      title: '任务已结束',
+      message: '任务已成功结束并完成结算',
+      secondaryMessage: '奖励已根据实际情况分配'
+    }
+
+  } catch (error: any) {
+    console.error('Error ending task:', error)
+
+    // 处理特定错误消息
+    let errorMessage = '结束任务失败，请重试'
+
+    if (error.data?.error) {
+      errorMessage = error.data.error
+    } else if (error.status === 404) {
+      errorMessage = '任务不存在或已被删除'
+    } else if (error.status === 403) {
+      errorMessage = '您没有权限结束此任务'
+    } else if (error.status === 500) {
+      errorMessage = '服务器内部错误，请稍后重试'
+    } else if (error.message) {
+      errorMessage = `网络错误：${error.message}`
+    }
+
+    // 显示错误提示
+    showToast.value = true
+    toastData.value = {
+      type: 'error',
+      title: '结束任务失败',
       message: errorMessage,
       secondaryMessage: '请稍后重试或联系管理员'
     }
@@ -2162,6 +2505,158 @@ const toggleTimeDisplay = async () => {
   }
 }
 
+// Multi-person task participant management methods (review mode removed)
+
+const canReviewParticipant = (participant: any) => {
+  if (!task.value || !authStore.user) return false
+
+  // Only task publisher can review
+  const isTaskPublisher = authStore.user.id === task.value.user.id
+
+  // Cannot review if task is completed
+  if (task.value.status === 'completed') return false
+
+  // Can only review submitted participants
+  return isTaskPublisher && participant.status === 'submitted'
+}
+
+const approveParticipant = async (participant: any) => {
+  if (!task.value || !canReviewParticipant(participant)) return
+
+  try {
+    await tasksApi.approveParticipant(task.value.id, participant.id)
+
+    // Refresh task data to get updated participant status
+    await fetchTask()
+
+    // Show success message
+    showToast.value = true
+    toastData.value = {
+      type: 'success',
+      title: '审核通过',
+      message: `已审核通过 ${participant.participant.username} 的提交`,
+      secondaryMessage: '参与者将获得相应奖励'
+    }
+
+
+    console.log('参与者审核通过:', participant.participant.username)
+  } catch (error: any) {
+    console.error('Error approving participant:', error)
+
+    let errorMessage = '审核失败，请重试'
+    if (error.data?.error) {
+      errorMessage = error.data.error
+    }
+
+    showToast.value = true
+    toastData.value = {
+      type: 'error',
+      title: '审核失败',
+      message: errorMessage,
+      secondaryMessage: '请稍后重试或联系管理员'
+    }
+  }
+}
+
+const rejectParticipant = async (participant: any) => {
+  if (!task.value || !canReviewParticipant(participant)) return
+
+  const rejectReason = prompt('请输入拒绝原因（可选）：')
+
+  try {
+    await tasksApi.rejectParticipant(task.value.id, participant.id, rejectReason || '')
+
+    // Refresh task data to get updated participant status
+    await fetchTask()
+
+    // Show success message
+    showToast.value = true
+    toastData.value = {
+      type: 'warning',
+      title: '审核拒绝',
+      message: `已拒绝 ${participant.participant.username} 的提交`,
+      secondaryMessage: rejectReason ? `拒绝原因: ${rejectReason}` : '已通知参与者重新提交'
+    }
+
+
+    console.log('参与者审核拒绝:', participant.participant.username)
+  } catch (error: any) {
+    console.error('Error rejecting participant:', error)
+
+    let errorMessage = '审核失败，请重试'
+    if (error.data?.error) {
+      errorMessage = error.data.error
+    }
+
+    showToast.value = true
+    toastData.value = {
+      type: 'error',
+      title: '审核失败',
+      message: errorMessage,
+      secondaryMessage: '请稍后重试或联系管理员'
+    }
+  }
+}
+
+const getParticipantStatusText = (status: string) => {
+  const statusTexts = {
+    joined: '已参与',
+    submitted: '已提交',
+    approved: '已通过',
+    rejected: '已拒绝'
+  }
+  return statusTexts[status as keyof typeof statusTexts] || status
+}
+
+const getParticipantStatusClass = (status: string) => {
+  const statusClasses = {
+    joined: 'participant-joined',
+    submitted: 'participant-submitted',
+    approved: 'participant-approved',
+    rejected: 'participant-rejected'
+  }
+  return statusClasses[status as keyof typeof statusClasses] || 'participant-unknown'
+}
+
+const getParticipantCardClass = (status: string) => {
+  const cardClasses = {
+    joined: 'participant-card-joined',
+    submitted: 'participant-card-submitted',
+    approved: 'participant-card-approved',
+    rejected: 'participant-card-rejected'
+  }
+  return cardClasses[status as keyof typeof cardClasses] || 'participant-card-default'
+}
+
+const getGenericFileName = (file: any, index: number) => {
+  if (file.file_name) {
+    return file.file_name
+  }
+  const extension = file.file_type ? `.${file.file_type.toLowerCase()}` : ''
+  return `文件${index + 1}${extension}`
+}
+
+const getFileUrl = (file: any) => {
+  return file.file_url || file.file
+}
+
+const isImageFile = (file: any) => {
+  return file.is_image || false
+}
+
+const handleFileClick = (file: any) => {
+  if (isImageFile(file)) {
+    openImageModal(file)
+  } else {
+    // Download file
+    window.open(getFileUrl(file), '_blank')
+  }
+}
+
+const handleImageError = (event: Event) => {
+  console.error('Image failed to load:', event)
+}
+
 const getTaskTypeText = (type: string) => {
   const texts = {
     time: '定时解锁',
@@ -2181,17 +2676,37 @@ const getDifficultyText = (difficulty: string) => {
 }
 
 const getStatusText = (status: string) => {
-  const texts = {
-    pending: '待开始',
-    active: '进行中',
-    voting: '投票期',
-    completed: '已完成',
-    failed: '已失败',
-    open: '开放中',
-    taken: '已接取',
-    submitted: '已提交'
+  if (!task.value) return status
+
+  const isMultiPerson = task.value.task_type === 'board' && task.value.max_participants > 1
+
+  if (isMultiPerson) {
+    // 多人任务状态文本
+    const multiPersonTexts = {
+      pending: '待开始',
+      active: '进行中',
+      voting: '投票期',
+      completed: '已完成',
+      failed: '已失败',
+      open: '招募中',
+      taken: `进行中 (${(task.value as any).participant_count || 0}/${(task.value as any).max_participants || 0})`,
+      submitted: `审核中 (${(task.value as any).participant_count || 0}/${(task.value as any).max_participants || 0})`
+    }
+    return multiPersonTexts[status as keyof typeof multiPersonTexts] || status
+  } else {
+    // 单人任务状态文本
+    const singlePersonTexts = {
+      pending: '待开始',
+      active: '进行中',
+      voting: '投票期',
+      completed: '已完成',
+      failed: '已失败',
+      open: '开放中',
+      taken: '已接取',
+      submitted: '已提交'
+    }
+    return singlePersonTexts[status as keyof typeof singlePersonTexts] || status
   }
-  return texts[status as keyof typeof texts] || status
 }
 
 const formatDuration = (task: Task) => {
@@ -2338,6 +2853,8 @@ watch(() => taskEndTime.value, async (newEndTime, oldEndTime) => {
   }
 })
 
+// Keyboard navigation (review mode removed)
+
 onMounted(() => {
   fetchTask()
 })
@@ -2346,6 +2863,7 @@ onUnmounted(() => {
   if (progressInterval.value) {
     clearInterval(progressInterval.value)
   }
+  // Cleanup (review mode navigation removed)
 })
 </script>
 
@@ -4578,6 +5096,675 @@ onUnmounted(() => {
 
   .image-modal-img {
     max-height: 70vh;
+  }
+}
+
+/* Multi-person Task Participants Styles */
+.participants-section {
+  background: white;
+  border: 4px solid #000;
+  border-radius: 12px;
+  box-shadow: 8px 8px 0 #000;
+  padding: 2rem;
+  margin-top: 2rem;
+}
+
+.multi-task-status-notice {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.75rem;
+  margin: 0.5rem 0;
+  background: #e3f2fd;
+  border: 2px solid #2196f3;
+  border-radius: 6px;
+  font-size: 0.875rem;
+  color: #1565c0;
+  font-weight: 600;
+}
+
+.notice-icon {
+  font-size: 1rem;
+}
+
+.notice-text {
+  font-weight: 500;
+}
+
+.participants-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 2rem;
+  padding-bottom: 1rem;
+  border-bottom: 3px solid #000;
+}
+
+.participants-header h3 {
+  margin: 0;
+  font-size: 1.5rem;
+  font-weight: 900;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: #000;
+}
+
+.participants-stats {
+  display: flex;
+  gap: 1rem;
+  align-items: center;
+}
+
+.stat-item {
+  background: linear-gradient(135deg, #17a2b8, #138496);
+  color: white;
+  padding: 0.5rem 1rem;
+  border: 3px solid #000;
+  border-radius: 8px;
+  font-weight: 700;
+  font-size: 0.9rem;
+  box-shadow: 3px 3px 0 #000;
+}
+
+.stat-label {
+  margin-right: 0.25rem;
+}
+
+.stat-value {
+  font-weight: 900;
+}
+
+/* Review Mode Toggle (removed) */
+
+/* Participants Grid View */
+.participants-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
+  gap: 1.5rem;
+}
+
+.participant-card {
+  background: linear-gradient(135deg, #f8f9fa, #e9ecef);
+  border: 3px solid #000;
+  border-radius: 8px;
+  padding: 1.5rem;
+  box-shadow: 4px 4px 0 #000;
+  transition: all 0.2s ease;
+}
+
+.participant-card:hover {
+  transform: translate(-2px, -2px);
+  box-shadow: 6px 6px 0 #000;
+}
+
+.participant-card-joined {
+  border-color: #17a2b8;
+  box-shadow: 4px 4px 0 #17a2b8;
+}
+
+.participant-card-submitted {
+  border-color: #ffc107;
+  box-shadow: 4px 4px 0 #ffc107;
+}
+
+.participant-card-approved {
+  border-color: #28a745;
+  box-shadow: 4px 4px 0 #28a745;
+}
+
+.participant-card-rejected {
+  border-color: #dc3545;
+  box-shadow: 4px 4px 0 #dc3545;
+}
+
+.participant-header {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+
+.participant-info {
+  flex: 1;
+}
+
+.participant-name {
+  background: none;
+  border: none;
+  color: #007bff;
+  font-weight: bold;
+  font-size: 1rem;
+  text-decoration: underline;
+  cursor: pointer;
+  padding: 0;
+  margin: 0 0 0.25rem 0;
+  transition: all 0.2s ease;
+}
+
+.participant-name:hover {
+  color: #0056b3;
+  text-decoration: none;
+  text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.1);
+}
+
+.participant-join-time {
+  font-size: 0.8rem;
+  color: #666;
+}
+
+.participant-status-badge {
+  padding: 0.25rem 0.75rem;
+  border: 2px solid #000;
+  border-radius: 4px;
+  font-weight: 700;
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  box-shadow: 2px 2px 0 #000;
+}
+
+.participant-status-badge.joined {
+  background: #17a2b8;
+  color: white;
+}
+
+.participant-status-badge.submitted {
+  background: #ffc107;
+  color: #000;
+}
+
+.participant-status-badge.approved {
+  background: #28a745;
+  color: white;
+}
+
+.participant-status-badge.rejected {
+  background: #dc3545;
+  color: white;
+}
+
+.participant-submission {
+  margin: 1rem 0;
+  padding: 1rem;
+  background: white;
+  border: 2px solid #000;
+  border-radius: 6px;
+  box-shadow: 2px 2px 0 #000;
+}
+
+.submission-label {
+  font-weight: 700;
+  margin-bottom: 0.5rem;
+  color: #333;
+  font-size: 0.9rem;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.submission-text {
+  font-size: 0.9rem;
+  line-height: 1.4;
+  color: #555;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+}
+
+.participant-files {
+  margin: 1rem 0;
+}
+
+.files-label {
+  font-weight: 700;
+  margin-bottom: 0.75rem;
+  color: #333;
+  font-size: 0.9rem;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.files-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 1rem;
+}
+
+.file-item {
+  display: flex;
+  flex-direction: column;
+  background: white;
+  border: 2px solid #000;
+  border-radius: 6px;
+  box-shadow: 2px 2px 0 #000;
+  transition: all 0.2s ease;
+  cursor: pointer;
+  overflow: hidden;
+}
+
+.file-item:hover {
+  transform: translate(-1px, -1px);
+  box-shadow: 3px 3px 0 #000;
+}
+
+.file-item.primary-file {
+  border-color: #ffc107;
+  box-shadow: 2px 2px 0 #ffc107;
+}
+
+.file-item.primary-file:hover {
+  box-shadow: 3px 3px 0 #ffc107;
+}
+
+.file-preview {
+  position: relative;
+  width: 100%;
+  height: 120px;
+  overflow: hidden;
+}
+
+.preview-image {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transition: transform 0.2s ease;
+}
+
+.file-item:hover .preview-image {
+  transform: scale(1.05);
+}
+
+.image-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.3);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+
+.file-item:hover .image-overlay {
+  opacity: 1;
+}
+
+.view-icon {
+  color: white;
+  font-size: 1.5rem;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
+}
+
+.file-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 120px;
+  background: linear-gradient(135deg, #f8f9fa, #e9ecef);
+}
+
+.file-type-icon {
+  font-size: 2.5rem;
+  opacity: 0.6;
+}
+
+.file-info {
+  padding: 0.75rem;
+  border-top: 1px solid #e9ecef;
+}
+
+.file-name {
+  font-weight: 600;
+  font-size: 0.875rem;
+  color: #333;
+  margin-right: 1rem;
+  flex: 1;
+  word-break: break-word;
+}
+
+.file-size {
+  font-size: 0.75rem;
+  color: #666;
+  margin-right: 0.5rem;
+}
+
+.file-click-hint {
+  font-size: 1rem;
+  opacity: 0.7;
+}
+
+.participant-review {
+  margin: 1rem 0;
+  padding: 1rem;
+  background: linear-gradient(135deg, #fff3cd, #ffeaa7);
+  border: 2px solid #ffc107;
+  border-radius: 6px;
+  box-shadow: 2px 2px 0 #000;
+}
+
+.review-label {
+  font-weight: 700;
+  margin-bottom: 0.5rem;
+  color: #856404;
+  font-size: 0.9rem;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.review-comment {
+  font-size: 0.9rem;
+  line-height: 1.4;
+  color: #856404;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+}
+
+.participant-reward {
+  margin: 1rem 0;
+  padding: 1rem;
+  background: linear-gradient(135deg, #d4edda, #c3e6cb);
+  border: 2px solid #28a745;
+  border-radius: 6px;
+  box-shadow: 2px 2px 0 #000;
+}
+
+.reward-label {
+  font-weight: 700;
+  margin-bottom: 0.5rem;
+  color: #155724;
+  font-size: 0.9rem;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.reward-amount {
+  font-size: 1.1rem;
+  font-weight: 900;
+  color: #155724;
+}
+
+.participant-actions {
+  display: flex;
+  gap: 0.75rem;
+  margin-top: 1rem;
+}
+
+.action-btn {
+  background: linear-gradient(135deg, #28a745, #218838);
+  color: white;
+  border: 3px solid #000;
+  border-radius: 6px;
+  padding: 0.5rem 1rem;
+  font-weight: 700;
+  font-size: 0.875rem;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  cursor: pointer;
+  box-shadow: 3px 3px 0 #000;
+  transition: all 0.2s ease;
+  flex: 1;
+}
+
+.action-btn:hover {
+  transform: translate(-1px, -1px);
+  box-shadow: 4px 4px 0 #000;
+}
+
+.action-btn.approve-btn {
+  background: linear-gradient(135deg, #28a745, #218838);
+}
+
+.action-btn.approve-btn:hover {
+  background: linear-gradient(135deg, #218838, #1e7e34);
+}
+
+.action-btn.reject-btn {
+  background: linear-gradient(135deg, #dc3545, #c82333);
+}
+
+.action-btn.reject-btn:hover {
+  background: linear-gradient(135deg, #c82333, #bd2130);
+}
+
+.action-btn.large {
+  padding: 0.75rem 1.5rem;
+  font-size: 1rem;
+  min-width: 140px;
+}
+
+/* Review Navigation Container (removed) */
+
+/* Review Mode Completion Proof Section (removed) */
+
+.media-file-card {
+  background: white;
+  border: 2px solid #000;
+  border-radius: 6px;
+  overflow: hidden;
+  box-shadow: 3px 3px 0 #000;
+  transition: all 0.2s ease;
+}
+
+.media-file-card:hover {
+  transform: translate(-1px, -1px);
+  box-shadow: 4px 4px 0 #000;
+}
+
+.media-file-card.primary-file {
+  border-color: #ffc107;
+  box-shadow: 3px 3px 0 #ffc107;
+}
+
+.media-file-card.primary-file:hover {
+  box-shadow: 4px 4px 0 #ffc107;
+}
+
+.media-preview {
+  position: relative;
+  aspect-ratio: 16/9;
+  overflow: hidden;
+}
+
+.image-preview {
+  background: #000;
+}
+
+.preview-image {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.preview-image.clickable-image:hover {
+  transform: scale(1.05);
+}
+
+.file-preview {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, #f8f9fa, #e9ecef);
+}
+
+.file-icon {
+  font-size: 3rem;
+  color: #6c757d;
+}
+
+.media-info {
+  padding: 1rem;
+}
+
+.media-name {
+  font-weight: 700;
+  font-size: 0.875rem;
+  margin-bottom: 0.5rem;
+  color: #333;
+  word-break: break-word;
+}
+
+.media-size {
+  font-size: 0.75rem;
+  color: #666;
+  margin-bottom: 0.25rem;
+}
+
+.media-description {
+  font-size: 0.8rem;
+  color: #555;
+  line-height: 1.4;
+  margin-top: 0.5rem;
+}
+
+.primary-badge {
+  position: absolute;
+  top: 0.5rem;
+  right: 0.5rem;
+  background: #ffc107;
+  color: #000;
+  padding: 0.125rem 0.5rem;
+  border: 2px solid #000;
+  border-radius: 4px;
+  font-size: 0.625rem;
+  font-weight: 900;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  box-shadow: 2px 2px 0 #000;
+}
+
+/* Review Actions (removed) */
+
+/* Available Spots and Task Full Messages */
+.available-spots, .task-full {
+  text-align: center;
+  padding: 1.5rem;
+  margin-top: 1.5rem;
+  border: 3px solid #000;
+  border-radius: 8px;
+  box-shadow: 4px 4px 0 #000;
+}
+
+.available-spots {
+  background: linear-gradient(135deg, #d4edda, #c3e6cb);
+  border-color: #28a745;
+}
+
+.spots-message {
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: #155724;
+}
+
+.task-full {
+  background: linear-gradient(135deg, #f8d7da, #f5c6cb);
+  border-color: #dc3545;
+}
+
+.full-message {
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: #721c24;
+}
+
+/* No reviewable participants message (removed) */
+
+/* Mobile responsive for participants section */
+@media (max-width: 768px) {
+  .participants-section {
+    padding: 1.5rem;
+    margin-top: 1.5rem;
+    border-width: 3px;
+    box-shadow: 6px 6px 0 #000;
+  }
+
+  .participants-header {
+    flex-direction: column;
+    gap: 1rem;
+    text-align: center;
+    align-items: stretch;
+  }
+
+  .participants-stats {
+    flex-direction: column;
+    gap: 0.75rem;
+  }
+
+  .participants-grid {
+    grid-template-columns: 1fr;
+    gap: 1rem;
+  }
+
+  .participant-card {
+    padding: 1rem;
+    border-width: 2px;
+    box-shadow: 3px 3px 0 #000;
+  }
+
+  .participant-card:hover {
+    transform: none;
+    box-shadow: 3px 3px 0 #000;
+  }
+
+  .participant-header {
+    flex-direction: column;
+    gap: 0.75rem;
+    text-align: center;
+    align-items: stretch;
+  }
+
+  .participant-actions {
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+
+  .navigation-header {
+    flex-direction: column;
+    gap: 1rem;
+    text-align: center;
+  }
+
+
+  .media-file-card {
+    border-width: 2px;
+    box-shadow: 2px 2px 0 #000;
+  }
+
+  .media-file-card:hover {
+    transform: none;
+    box-shadow: 2px 2px 0 #000;
+  }
+
+  .media-file-card.primary-file {
+    box-shadow: 2px 2px 0 #ffc107;
+  }
+
+  .media-file-card.primary-file:hover {
+    box-shadow: 2px 2px 0 #ffc107;
+  }
+
+  /* Mobile responsive for participant files */
+  .files-grid {
+    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+    gap: 0.75rem;
+  }
+
+  .file-preview {
+    height: 100px;
+  }
+
+  .file-info {
+    padding: 0.5rem;
+  }
+
+  .file-name {
+    font-size: 0.8rem;
+  }
+
+  .file-size {
+    font-size: 0.7rem;
   }
 }
 

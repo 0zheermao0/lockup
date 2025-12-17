@@ -184,7 +184,7 @@ export const tasksApi = {
     })
   },
 
-  // 提交任务板完成证明（包含文件）
+  // 提交任务板完成证明（包含文件）- 支持多人任务
   submitTaskWithFiles: async (id: string, formData: FormData): Promise<LockTask> => {
     const token = localStorage.getItem('token');
 
@@ -216,19 +216,56 @@ export const tasksApi = {
     })
   },
 
-  // 审核通过任务板任务
-  approveTask: async (id: string): Promise<LockTask> => {
+  // 审核通过任务板任务 - 支持多人任务
+  approveTask: async (id: string, participantId?: string, reviewComment?: string): Promise<LockTask> => {
     return apiRequest(`/tasks/${id}/approve/`, {
-      method: 'POST'
+      method: 'POST',
+      body: JSON.stringify({
+        participant_id: participantId,
+        review_comment: reviewComment || ''
+      })
     })
   },
 
-  // 审核拒绝任务板任务
-  rejectTask: async (id: string, rejectReason?: string): Promise<LockTask> => {
+  // 审核拒绝任务板任务 - 支持多人任务
+  rejectTask: async (id: string, rejectReason?: string, participantId?: string): Promise<LockTask> => {
     return apiRequest(`/tasks/${id}/reject/`, {
       method: 'POST',
       body: JSON.stringify({
-        reject_reason: rejectReason || ''
+        reject_reason: rejectReason || '',
+        participant_id: participantId
+      })
+    })
+  },
+
+  // 审核通过单个参与者（多人任务专用）
+  approveParticipant: async (id: string, participantId: string, reviewComment?: string): Promise<any> => {
+    return apiRequest(`/tasks/${id}/approve/`, {
+      method: 'POST',
+      body: JSON.stringify({
+        participant_id: participantId,
+        review_comment: reviewComment || ''
+      })
+    })
+  },
+
+  // 审核拒绝单个参与者（多人任务专用）
+  rejectParticipant: async (id: string, participantId: string, reviewComment?: string): Promise<any> => {
+    return apiRequest(`/tasks/${id}/reject/`, {
+      method: 'POST',
+      body: JSON.stringify({
+        participant_id: participantId,
+        review_comment: reviewComment || ''
+      })
+    })
+  },
+
+  // 结束任务板任务
+  endTask: async (id: string, endReason?: string): Promise<LockTask> => {
+    return apiRequest(`/tasks/${id}/end/`, {
+      method: 'POST',
+      body: JSON.stringify({
+        end_reason: endReason || '发布者手动结束任务'
       })
     })
   },

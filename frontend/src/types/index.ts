@@ -139,18 +139,41 @@ export interface LockTask extends BaseLockTask {
   submission_files?: TaskSubmissionFile[]
 }
 
+export interface TaskParticipant {
+  id: string
+  participant: User
+  status: 'joined' | 'submitted' | 'approved' | 'rejected'
+  submission_text?: string
+  submitted_at?: string
+  reviewed_at?: string
+  review_comment?: string
+  reward_amount?: number
+  joined_at: string
+  updated_at: string
+  submission_files?: TaskSubmissionFile[]
+}
+
 export interface BoardTask extends BaseLockTask {
   task_type: 'board'
   // 任务板字段
   reward: number
   deadline?: string
   max_duration: number // 任务最大完成时间 (小时)
+  max_participants: number // 最大参与人数
   taker?: User
   taken_at?: string
   completion_proof?: string
   completed_at?: string
   reject_reason?: string
   submission_files?: TaskSubmissionFile[]
+  // 多人任务字段
+  participants?: TaskParticipant[]
+  participant_count?: number
+  available_spots?: number
+  is_full?: boolean
+  submitted_count?: number
+  approved_count?: number
+  can_take?: boolean
 }
 
 export type Task = LockTask | BoardTask
@@ -167,6 +190,8 @@ export interface TaskSubmissionFile {
   is_primary: boolean
   description?: string
   created_at: string
+  uploader?: User
+  participant?: TaskParticipant
 }
 
 export interface TaskBoard {
@@ -297,6 +322,7 @@ export interface TaskCreateRequest {
   reward?: number
   deadline?: string
   max_duration?: number
+  max_participants?: number
 }
 
 // Store Types (Pinia stores)
@@ -500,4 +526,24 @@ export interface LocationData {
 export interface GeolocationError {
   code: number
   message: string
+}
+
+// Multi-person Task API Request Types
+export interface ParticipantReviewRequest {
+  review_comment?: string
+  reward_amount?: number
+}
+
+export interface TaskParticipantResponse {
+  id: string
+  username: string
+  status: 'joined' | 'submitted' | 'approved' | 'rejected'
+  reward_amount?: number
+  review_comment?: string
+}
+
+export interface TaskSubmissionRequest {
+  submission_text: string
+  files?: File[]
+  file_descriptions?: string[]
 }

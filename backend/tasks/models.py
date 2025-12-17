@@ -90,6 +90,9 @@ class LockTask(models.Model):
     # 钥匙玩法字段
     time_display_hidden = models.BooleanField(default=False, help_text='是否隐藏时间显示')
 
+    # 多人任务字段
+    max_participants = models.IntegerField(blank=True, null=True, help_text='最大参与人数（仅任务板）')
+
     class Meta:
         ordering = ['-created_at']
 
@@ -246,6 +249,9 @@ class TaskSubmissionFile(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     task = models.ForeignKey(LockTask, on_delete=models.CASCADE, related_name='submission_files')
     uploader = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='uploaded_submission_files')
+    participant = models.ForeignKey('TaskParticipant', on_delete=models.CASCADE,
+                                   blank=True, null=True, related_name='submission_files',
+                                   help_text='关联的参与者（多人任务）')
 
     # 文件信息
     file = models.FileField(upload_to='task_submissions/%Y/%m/%d/', max_length=500)
@@ -311,3 +317,45 @@ class TaskSubmissionFile(models.Model):
             self.file_name = self.file.name.split('/')[-1]
 
         super().save(*args, **kwargs)
+
+
+class TaskParticipant(models.Model):
+    """任务参与者（多人任务支持）"""
+
+    PARTICIPANT_STATUS_CHOICES = [
+        ('joined', '已加入'),
+        ('submitted', '已提交'),
+        ('approved', '已通过'),
+        ('rejected', '已拒绝'),
+    ]
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    task = models.ForeignKey(LockTask, on_delete=models.CASCADE, related_name='participants')
+    participant = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='task_participations')
+
+    # 参与状态
+    status = models.CharField(max_length=20, choices=PARTICIPANT_STATUS_CHOICES, default='joined')
+
+    # 提交相关
+    submission_text = models.TextField(blank=True, help_text='文字提交内容')
+    submitted_at = models.DateTimeField(blank=True, null=True)
+
+    # 审核相关
+    reviewed_at = models.DateTimeField(blank=True, null=True)
+    review_comment = models.TextField(blank=True, help_text='审核意见')
+    reward_amount = models.IntegerField(blank=True, null=True, help_text='分配的奖励金额')
+
+    # 时间字段
+    joined_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        unique_together = ['task', 'participant']
+        ordering = ['joined_at']
+        indexes = [
+            models.Index(fields=['task', 'status']),
+            models.Index(fields=['participant', 'status']),
+        ]
+
+    def __str__(self):
+        return f"{self.participant.username} - {self.task.title} ({self.get_status_display()})"

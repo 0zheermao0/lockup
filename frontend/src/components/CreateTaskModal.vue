@@ -211,6 +211,21 @@
             </div>
           </div>
 
+          <div class="form-group">
+            <label for="max_participants">最大参与人数 <span class="optional">(默认1为单人任务)</span></label>
+            <input
+              id="max_participants"
+              v-model.number="form.max_participants"
+              type="number"
+              min="1"
+              max="50"
+              placeholder="多人任务的最大参与人数"
+            />
+            <small class="form-hint">
+              设置为空或1为单人任务，设置为2或以上为多人任务。多人任务允许多人同时参与并提交作品。
+            </small>
+          </div>
+
         </template>
 
         <div class="modal-footer">
@@ -267,7 +282,8 @@ const form = reactive<TaskCreateRequest & { autoPost?: boolean }>({
   unlock_type: 'time',
   // Board task fields
   reward: undefined,
-  max_duration: 24 // 默认24小时
+  max_duration: 24, // 默认24小时
+  max_participants: 1 // 默认单人任务
 })
 
 // Watch for modal visibility changes
@@ -293,6 +309,7 @@ const resetForm = () => {
   // Board task fields
   form.reward = undefined
   form.max_duration = 24
+  form.max_participants = 1
   // Reset image
   imagePreview.value = ''
   imageFile.value = null
@@ -525,6 +542,7 @@ watch(() => form.task_type, (newValue) => {
     // Reset board fields
     form.reward = undefined
     form.max_duration = 24
+    form.max_participants = 1
     // Initialize lock fields
     form.duration_type = 'fixed'
     form.duration_value = 60

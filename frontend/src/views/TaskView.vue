@@ -213,6 +213,18 @@
                     <span class="hidden-time-indicator">🔒 时间已隐藏</span>
                   </span>
                 </div>
+
+                <!-- Multi-person Task Participant Information - Simplified -->
+                <div v-if="task.task_type === 'board' && task.max_participants && task.max_participants > 1" class="task-participants-compact">
+                  <div class="participants-summary">
+                    <span class="participants-count">👥 {{ task.participant_count || 0 }}/{{ task.max_participants }}</span>
+                    <span v-if="task.submitted_count && task.submitted_count > 0" class="submitted-count">📤 {{ task.submitted_count }}</span>
+                    <span v-if="task.approved_count && task.approved_count > 0" class="approved-count">✅ {{ task.approved_count }}</span>
+                  </div>
+                  <div v-if="task.reward && task.max_participants > 1" class="reward-compact">
+                    💰 {{ Math.ceil(task.reward / task.max_participants) }}/人
+                  </div>
+                </div>
               </div>
 
               <div class="task-progress">
@@ -355,6 +367,8 @@ const getFilteredTasks = async (page: number, pageSize: number) => {
     extraFilters.my_tasks = true
   } else if (activeFilter.value === 'can-overtime') {
     extraFilters.can_overtime = true
+  } else if (activeFilter.value === 'available') {
+    extraFilters.status = 'available'
   } else if (activeFilter.value === 'open') {
     extraFilters.status = 'open'
   } else if (activeFilter.value === 'taken') {
@@ -430,14 +444,14 @@ const boardFilterTabs = computed(() => {
     // Fallback to showing counts without numbers when API data is not available
     return [
       { key: 'all', label: '全部', count: 0 },
-      { key: 'open', label: '开放中', count: 0 },
+      { key: 'available', label: '可接取', count: 0 },
       { key: 'my-published', label: '我发布的', count: 0 },
       { key: 'my-taken', label: '我接取的', count: 0 }
     ]
   }
   return [
     { key: 'all', label: '全部', count: taskCounts.value.board_tasks.all },
-    { key: 'open', label: '开放中', count: taskCounts.value.board_tasks.open },
+    { key: 'available', label: '可接取', count: taskCounts.value.board_tasks.open },
     { key: 'my-published', label: '我发布的', count: taskCounts.value.board_tasks.my_published },
     { key: 'my-taken', label: '我接取的', count: taskCounts.value.board_tasks.my_taken }
   ]
@@ -858,7 +872,7 @@ watch(activeTaskType, (newType) => {
   if (newType === 'lock') {
     activeFilter.value = 'can-overtime'  // 带锁任务默认显示"可以加时的绒布球"
   } else {
-    activeFilter.value = 'open'     // 任务板默认显示"开放中"
+    activeFilter.value = 'available'     // 任务板默认显示"可接取"
   }
   // Refresh tasks when task type changes
   refresh()
@@ -1646,7 +1660,7 @@ onUnmounted(() => {
 
   .task-card {
     padding: 0.75rem;
-    min-height: 240px; /* 减少最小高度 */
+    min-height: 220px; /* 进一步减少最小高度，为紧凑布局预留空间 */
   }
 
   .task-header {
@@ -1817,7 +1831,7 @@ onUnmounted(() => {
   }
 
   .task-card {
-    min-height: 240px;
+    min-height: 200px; /* 小屏幕进一步减少高度 */
   }
 
   /* 小屏幕专用进度条 - 优化高度 */
@@ -1917,6 +1931,203 @@ onUnmounted(() => {
   50% {
     opacity: 0.8;
     transform: scale(1.02);
+  }
+}
+
+/* Multi-person Task Participants Styles - Compact */
+.task-participants-compact {
+  margin: 0.5rem 0;
+  padding: 0.5rem;
+  background: #f8f9fa;
+  border-radius: 4px;
+  border: 1px solid #dee2e6;
+}
+
+.participants-summary {
+  display: flex;
+  gap: 0.75rem;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.participants-count,
+.submitted-count,
+.approved-count {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: #495057;
+  white-space: nowrap;
+}
+
+.reward-compact {
+  margin-top: 0.25rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: #28a745;
+}
+
+.participants-stats {
+  display: flex;
+  gap: 1rem;
+  margin-bottom: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.participant-stat {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  background: white;
+  padding: 0.25rem 0.75rem;
+  border: 2px solid #000;
+  border-radius: 4px;
+  box-shadow: 2px 2px 0 #000;
+  font-size: 0.875rem;
+}
+
+.stat-icon {
+  font-size: 1rem;
+}
+
+.stat-label {
+  font-weight: 600;
+  color: #333;
+}
+
+.stat-value {
+  font-weight: 900;
+  color: #007bff;
+}
+
+.participants-status {
+  margin-bottom: 0.75rem;
+}
+
+.status-indicator {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 1rem;
+  border: 2px solid #000;
+  border-radius: 6px;
+  box-shadow: 2px 2px 0 #000;
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+
+.status-indicator.available {
+  background: linear-gradient(135deg, #d4edda, #c3e6cb);
+  border-color: #28a745;
+  color: #155724;
+}
+
+.status-indicator.full {
+  background: linear-gradient(135deg, #f8d7da, #f5c6cb);
+  border-color: #dc3545;
+  color: #721c24;
+}
+
+.status-indicator.reviewing {
+  background: linear-gradient(135deg, #fff3cd, #ffeaa7);
+  border-color: #ffc107;
+  color: #856404;
+}
+
+.status-icon {
+  font-size: 1.1rem;
+  flex-shrink: 0;
+}
+
+.status-text {
+  font-weight: 700;
+}
+
+.reward-distribution {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 1rem;
+  background: linear-gradient(135deg, #e7f3ff, #b3d9ff);
+  border: 2px solid #007bff;
+  border-radius: 6px;
+  box-shadow: 2px 2px 0 #000;
+  font-size: 0.875rem;
+}
+
+.reward-label {
+  font-weight: 600;
+  color: #0066cc;
+}
+
+.reward-per-person {
+  font-weight: 900;
+  color: #004085;
+  background: white;
+  padding: 0.125rem 0.5rem;
+  border: 1px solid #007bff;
+  border-radius: 4px;
+}
+
+/* Mobile responsive for participants info */
+@media (max-width: 768px) {
+  .task-participants-compact {
+    padding: 0.375rem;
+    margin: 0.375rem 0;
+  }
+
+  .participants-summary {
+    gap: 0.5rem;
+  }
+
+  .participants-count,
+  .submitted-count,
+  .approved-count {
+    font-size: 0.7rem;
+  }
+
+  .reward-compact {
+    font-size: 0.7rem;
+  }
+
+  .task-participants-info {
+    padding: 0.75rem;
+    margin: 0.75rem 0;
+    border-width: 2px;
+    box-shadow: 2px 2px 0 #000;
+  }
+
+  .participants-stats {
+    flex-direction: column;
+    gap: 0.5rem;
+    margin-bottom: 0.5rem;
+  }
+
+  .participant-stat {
+    justify-content: space-between;
+    padding: 0.5rem 0.75rem;
+    border-width: 1px;
+    box-shadow: 1px 1px 0 #000;
+  }
+
+  .status-indicator {
+    padding: 0.375rem 0.75rem;
+    border-width: 1px;
+    box-shadow: 1px 1px 0 #000;
+    font-size: 0.8rem;
+  }
+
+  .reward-distribution {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.25rem;
+    padding: 0.5rem 0.75rem;
+    border-width: 1px;
+    box-shadow: 1px 1px 0 #000;
+    text-align: center;
+  }
+
+  .reward-per-person {
+    align-self: center;
   }
 }
 </style>

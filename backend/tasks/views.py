@@ -4,14 +4,14 @@ from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
-from django.db.models import Q, Count
+from django.db.models import Q, Count, F
 from datetime import timedelta
 import random
 import logging
 
 logger = logging.getLogger(__name__)
 
-from .models import LockTask, TaskKey, TaskVote, OvertimeAction, TaskTimelineEvent, HourlyReward
+from .models import LockTask, TaskKey, TaskVote, OvertimeAction, TaskTimelineEvent, HourlyReward, TaskParticipant
 from store.models import ItemType, UserInventory, Item
 from users.models import Notification
 from .utils import destroy_task_keys
@@ -51,7 +51,39 @@ class LockTaskListCreateView(generics.ListCreateAPIView):
         # 按状态筛选
         status = self.request.query_params.get('status')
         if status:
-            queryset = queryset.filter(status=status)
+            if status == 'available':  # "可接取" - 新的筛选逻辑
+                # 只包括开放中的单人任务和未满员未到期的多人任务
+                from django.utils import timezone
+
+                # 筛选任务板类型
+                queryset = queryset.filter(task_type='board')
+
+                # 添加参与者数量注释
+                queryset = queryset.annotate(
+                    current_participants=Count('participants')
+                )
+
+                # 时间条件：未过期
+                time_condition = Q(deadline__isnull=True) | Q(deadline__gt=timezone.now())
+
+                # 分别处理单人和多人任务的状态条件
+                single_person_condition = (
+                    (Q(max_participants__isnull=True) | Q(max_participants=1)) &
+                    Q(status='open')  # 单人任务只能是开放状态
+                )
+
+                multi_person_condition = (
+                    Q(max_participants__gt=1) &
+                    Q(status__in=['open', 'taken', 'submitted']) &  # 多人任务允许这些状态
+                    Q(current_participants__lt=F('max_participants'))  # 且未满员
+                )
+
+                # 组合所有条件
+                queryset = queryset.filter(
+                    time_condition & (single_person_condition | multi_person_condition)
+                )
+            else:
+                queryset = queryset.filter(status=status)
 
         # 按用户筛选（我的任务）
         my_tasks = self.request.query_params.get('my_tasks')
@@ -61,7 +93,11 @@ class LockTaskListCreateView(generics.ListCreateAPIView):
         # 按接取者筛选（我接取的任务）
         my_taken = self.request.query_params.get('my_taken')
         if my_taken == 'true':
-            queryset = queryset.filter(taker=self.request.user)
+            # 支持单人任务和多人任务
+            queryset = queryset.filter(
+                Q(taker=self.request.user) |  # 单人任务：我是taker
+                Q(participants__participant=self.request.user)  # 多人任务：我是参与者
+            ).distinct()
 
         # 筛选可以加时的任务（绒布球筛选）
         can_overtime = self.request.query_params.get('can_overtime')
@@ -609,20 +645,13 @@ def stop_task(request, pk):
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
 def take_board_task(request, pk):
-    """接取任务板任务"""
+    """接取任务板任务 - 支持单人和多人任务"""
     task = get_object_or_404(LockTask, pk=pk)
 
     # 检查是否是任务板
     if task.task_type != 'board':
         return Response(
             {'error': '只能接取任务板任务'},
-            status=status.HTTP_400_BAD_REQUEST
-        )
-
-    # 检查任务状态
-    if task.status != 'open':
-        return Response(
-            {'error': '任务不是开放状态'},
             status=status.HTTP_400_BAD_REQUEST
         )
 
@@ -633,29 +662,99 @@ def take_board_task(request, pk):
             status=status.HTTP_400_BAD_REQUEST
         )
 
-    # 更新任务状态
-    task.status = 'taken'
-    task.taker = request.user
-    task.taken_at = timezone.now()
+    # 检查是否已经参与过
+    if TaskParticipant.objects.filter(task=task, participant=request.user).exists():
+        return Response(
+            {'error': '您已经参与了这个任务'},
+            status=status.HTTP_400_BAD_REQUEST
+        )
 
-    # 设置任务截止时间（基于max_duration）
-    if task.max_duration:
-        task.deadline = task.taken_at + timezone.timedelta(hours=task.max_duration)
+    # 判断是单人还是多人任务
+    is_multi_person = task.max_participants and task.max_participants > 1
 
-    task.save()
+    if is_multi_person:
+        # 多人任务逻辑
+        # 检查任务状态：可以是'open'、'taken'或'submitted'（已有人提交但未满员）
+        if task.status not in ['open', 'taken', 'submitted']:
+            return Response(
+                {'error': '任务不可接取'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
 
-    # 创建任务接取通知
-    Notification.create_notification(
-        recipient=task.user,
-        notification_type='task_board_taken',
-        actor=request.user,
-        related_object_type='task',
-        related_object_id=task.id,
-        extra_data={
+        # 检查是否已满员
+        current_participants = TaskParticipant.objects.filter(task=task).count()
+        if current_participants >= task.max_participants:
+            return Response(
+                {'error': '任务已满员'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # 创建参与记录
+        participant = TaskParticipant.objects.create(
+            task=task,
+            participant=request.user
+        )
+
+        # 如果是第一个参与者，更新任务状态为taken
+        if current_participants == 0 and task.status == 'open':
+            task.status = 'taken'
+            task.taker = request.user  # 保留第一个接取者信息
+            task.taken_at = timezone.now()
+
+            # 设置任务截止时间
+            if task.max_duration:
+                task.deadline = task.taken_at + timezone.timedelta(hours=task.max_duration)
+
+            task.save()
+
+        notification_type = 'task_board_taken'
+        extra_data = {
+            'task_title': task.title,
+            'participant': request.user.username,
+            'current_participants': current_participants + 1,
+            'max_participants': task.max_participants
+        }
+
+    else:
+        # 单人任务逻辑（保持原有逻辑）
+        if task.status != 'open':
+            return Response(
+                {'error': '任务不是开放状态'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # 更新任务状态
+        task.status = 'taken'
+        task.taker = request.user
+        task.taken_at = timezone.now()
+
+        # 设置任务截止时间
+        if task.max_duration:
+            task.deadline = task.taken_at + timezone.timedelta(hours=task.max_duration)
+
+        task.save()
+
+        # 为单人任务也创建参与记录（统一管理）
+        TaskParticipant.objects.create(
+            task=task,
+            participant=request.user
+        )
+
+        notification_type = 'task_board_taken'
+        extra_data = {
             'task_title': task.title,
             'taker': request.user.username,
             'deadline': task.deadline.isoformat() if task.deadline else None
         }
+
+    # 创建任务接取通知
+    Notification.create_notification(
+        recipient=task.user,
+        notification_type=notification_type,
+        actor=request.user,
+        related_object_type='task',
+        related_object_id=task.id,
+        extra_data=extra_data
     )
 
     serializer = LockTaskSerializer(task)
@@ -665,22 +764,31 @@ def take_board_task(request, pk):
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
 def submit_board_task(request, pk):
-    """提交任务板任务完成证明"""
+    """提交任务板任务完成证明 - 支持单人和多人任务"""
     from .models import TaskSubmissionFile
 
     task = get_object_or_404(LockTask, pk=pk)
 
-    # 检查权限
-    if task.taker != request.user:
+    # 检查是否是参与者
+    try:
+        participant = TaskParticipant.objects.get(task=task, participant=request.user)
+    except TaskParticipant.DoesNotExist:
         return Response(
-            {'error': '只有接取者可以提交任务'},
+            {'error': '您不是此任务的参与者'},
             status=status.HTTP_403_FORBIDDEN
         )
 
-    # 检查任务状态
-    if task.status != 'taken':
+    # 检查是否已经提交过
+    if participant.status == 'submitted':
         return Response(
-            {'error': '任务不是已接取状态'},
+            {'error': '您已经提交过了'},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+
+    # 检查任务状态
+    if task.status not in ['taken', 'submitted']:
+        return Response(
+            {'error': '任务状态不允许提交'},
             status=status.HTTP_400_BAD_REQUEST
         )
 
@@ -692,11 +800,31 @@ def submit_board_task(request, pk):
             status=status.HTTP_400_BAD_REQUEST
         )
 
-    # 更新任务状态为已提交，等待发布者审核
-    task.status = 'submitted'
-    task.completion_proof = completion_proof
-    # 注意：不设置completed_at，因为任务还未正式完成
-    task.save()
+    # 更新参与者状态
+    participant.status = 'submitted'
+    participant.submission_text = completion_proof
+    participant.submitted_at = timezone.now()
+    participant.save()
+
+    # 判断是单人还是多人任务
+    is_multi_person = task.max_participants and task.max_participants > 1
+
+    if not is_multi_person:
+        # 单人任务：直接更新任务状态
+        task.status = 'submitted'
+        task.completion_proof = completion_proof
+        task.save()
+    else:
+        # 多人任务：更智能的状态转换逻辑
+        if task.status == 'open':
+            # 如果还是开放状态，第一个人提交时改为taken（表示有人开始工作）
+            task.status = 'taken'
+            task.save()
+        elif task.status == 'taken':
+            # 如果已经有人接取，第一个人提交时改为submitted
+            task.status = 'submitted'
+            task.save()
+        # 如果已经是submitted状态，保持不变，允许其他人继续参与和提交
 
     # 处理上传的文件
     uploaded_files = request.FILES.getlist('files')
@@ -706,6 +834,7 @@ def submit_board_task(request, pk):
             submission_file = TaskSubmissionFile(
                 task=task,
                 uploader=request.user,
+                participant=participant,  # 关联到参与者
                 file=uploaded_file,
                 file_name=uploaded_file.name,
                 file_size=uploaded_file.size,
@@ -720,18 +849,33 @@ def submit_board_task(request, pk):
             logger.info(f"Uploaded file {uploaded_file.name} for task {task.id} by user {request.user.username}")
 
     # 创建任务提交通知
+    if is_multi_person:
+        # 多人任务：显示参与者信息
+        submitted_count = TaskParticipant.objects.filter(task=task, status='submitted').count()
+        extra_data = {
+            'task_title': task.title,
+            'submitter': request.user.username,
+            'completion_proof_preview': completion_proof[:100] + '...' if len(completion_proof) > 100 else completion_proof,
+            'file_count': len(uploaded_files) if uploaded_files else 0,
+            'submitted_count': submitted_count,
+            'max_participants': task.max_participants
+        }
+    else:
+        # 单人任务：保持原有格式
+        extra_data = {
+            'task_title': task.title,
+            'submitter': request.user.username,
+            'completion_proof_preview': completion_proof[:100] + '...' if len(completion_proof) > 100 else completion_proof,
+            'file_count': len(uploaded_files) if uploaded_files else 0
+        }
+
     Notification.create_notification(
         recipient=task.user,
         notification_type='task_board_submitted',
         actor=request.user,
         related_object_type='task',
         related_object_id=task.id,
-        extra_data={
-            'task_title': task.title,
-            'submitter': request.user.username,
-            'completion_proof_preview': completion_proof[:100] + '...' if len(completion_proof) > 100 else completion_proof,
-            'file_count': len(uploaded_files) if uploaded_files else 0
-        }
+        extra_data=extra_data
     )
 
     serializer = LockTaskSerializer(task)
@@ -876,7 +1020,7 @@ def vote_task(request, pk):
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
 def approve_board_task(request, pk):
-    """发布者审核通过任务板任务"""
+    """发布者审核通过任务板任务 - 支持多人任务，不自动结算"""
     task = get_object_or_404(LockTask, pk=pk)
 
     # 检查权限 - 只有任务发布者可以审核
@@ -893,59 +1037,138 @@ def approve_board_task(request, pk):
             status=status.HTTP_400_BAD_REQUEST
         )
 
-    # 审核通过，标记任务为已完成
-    task.status = 'completed'
-    task.completed_at = timezone.now()
+    # 获取要审核的参与者ID（多人任务）或使用默认的taker（单人任务）
+    participant_id = request.data.get('participant_id')
 
-    # 处理奖励积分转移
-    if task.reward and task.reward > 0 and task.taker:
-        # 给接取者奖励积分
-        task.taker.coins += task.reward
-        task.taker.save()
+    # 判断是单人还是多人任务
+    is_multi_person = task.max_participants and task.max_participants > 1
 
-        # 创建奖励转移事件
+    if is_multi_person:
+        # 多人任务：审核特定参与者
+        if not participant_id:
+            return Response(
+                {'error': '多人任务需要指定参与者ID'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        try:
+            participant = TaskParticipant.objects.get(id=participant_id, task=task)
+        except TaskParticipant.DoesNotExist:
+            return Response(
+                {'error': '参与者不存在'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        if participant.status != 'submitted':
+            return Response(
+                {'error': '该参与者未提交作品或已被审核'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # 更新参与者状态
+        participant.status = 'approved'
+        participant.reviewed_at = timezone.now()
+        participant.review_comment = request.data.get('review_comment', '')
+        participant.save()
+
+        # 创建审核事件
         TaskTimelineEvent.objects.create(
             task=task,
-            event_type='task_completed',
+            event_type='participant_approved',
             user=request.user,
-            description=f'任务审核通过，{task.taker.username}获得{task.reward}积分奖励',
+            description=f'参与者 {participant.participant.username} 的提交被审核通过',
             metadata={
                 'approved_by': request.user.username,
-                'reward_amount': task.reward,
-                'reward_recipient': task.taker.username,
-                'taker_total_coins': task.taker.coins
+                'participant_id': str(participant.id),
+                'participant_username': participant.participant.username,
+                'review_comment': participant.review_comment
             }
         )
 
-        # 创建任务奖励积分通知
+        # 通知参与者
         Notification.create_notification(
-            recipient=task.taker,
-            notification_type='coins_earned_task_reward',
+            recipient=participant.participant,
+            notification_type='task_board_approved',
             actor=request.user,
             related_object_type='task',
             related_object_id=task.id,
             extra_data={
                 'task_title': task.title,
-                'reward_amount': task.reward,
-                'approver': request.user.username
+                'approver': request.user.username,
+                'review_comment': participant.review_comment
             }
         )
 
-    # 创建任务审核通过通知
-    Notification.create_notification(
-        recipient=task.taker,
-        notification_type='task_board_approved',
-        actor=request.user,
-        related_object_type='task',
-        related_object_id=task.id,
-        extra_data={
-            'task_title': task.title,
-            'approver': request.user.username,
-            'reward_amount': task.reward if task.reward else 0
-        }
-    )
+        # 多人任务不自动结算，需要发布者手动结束任务
 
-    task.save()
+    else:
+        # 单人任务：直接审核通过并完成任务
+        try:
+            participant = TaskParticipant.objects.get(task=task, participant=task.taker)
+        except TaskParticipant.DoesNotExist:
+            return Response(
+                {'error': '找不到参与者记录'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        # 更新参与者状态
+        participant.status = 'approved'
+        participant.reviewed_at = timezone.now()
+        participant.review_comment = request.data.get('review_comment', '')
+        participant.save()
+
+        # 单人任务立即完成
+        task.status = 'completed'
+        task.completed_at = timezone.now()
+
+        # 处理奖励积分转移
+        if task.reward and task.reward > 0:
+            task.taker.coins += task.reward
+            task.taker.save()
+
+            # 创建奖励转移事件
+            TaskTimelineEvent.objects.create(
+                task=task,
+                event_type='task_completed',
+                user=request.user,
+                description=f'任务审核通过，{task.taker.username}获得{task.reward}积分奖励',
+                metadata={
+                    'approved_by': request.user.username,
+                    'reward_amount': task.reward,
+                    'reward_recipient': task.taker.username,
+                    'taker_total_coins': task.taker.coins
+                }
+            )
+
+            # 创建任务奖励积分通知
+            Notification.create_notification(
+                recipient=task.taker,
+                notification_type='coins_earned_task_reward',
+                actor=request.user,
+                related_object_type='task',
+                related_object_id=task.id,
+                extra_data={
+                    'task_title': task.title,
+                    'reward_amount': task.reward,
+                    'approver': request.user.username
+                }
+            )
+
+        # 创建任务审核通过通知
+        Notification.create_notification(
+            recipient=task.taker,
+            notification_type='task_board_approved',
+            actor=request.user,
+            related_object_type='task',
+            related_object_id=task.id,
+            extra_data={
+                'task_title': task.title,
+                'approver': request.user.username,
+                'reward_amount': task.reward if task.reward else 0
+            }
+        )
+
+        task.save()
 
     serializer = LockTaskSerializer(task)
     return Response(serializer.data)
@@ -954,7 +1177,7 @@ def approve_board_task(request, pk):
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
 def reject_board_task(request, pk):
-    """发布者审核拒绝任务板任务"""
+    """发布者审核拒绝任务板任务 - 支持多人任务"""
     task = get_object_or_404(LockTask, pk=pk)
 
     # 检查权限 - 只有任务发布者可以审核
@@ -971,36 +1194,111 @@ def reject_board_task(request, pk):
             status=status.HTTP_400_BAD_REQUEST
         )
 
-    # 获取拒绝原因
+    # 获取拒绝原因和参与者ID
     reject_reason = request.data.get('reject_reason', '')
+    participant_id = request.data.get('participant_id')
 
-    # 审核拒绝，标记任务为失败
-    task.status = 'failed'
-    # 可以在completion_proof中添加拒绝原因
-    if reject_reason:
-        task.completion_proof += f"\n\n审核拒绝原因: {reject_reason}"
+    # 判断是单人还是多人任务
+    is_multi_person = task.max_participants and task.max_participants > 1
 
-    # 销毁任务相关的所有钥匙道具（对于带锁任务）
-    destroy_task_keys(task, reason="task_rejected", user=request.user, metadata={
-        'rejection_reason': reject_reason,
-        'rejected_by': request.user.username
-    })
+    if is_multi_person:
+        # 多人任务：拒绝特定参与者
+        if not participant_id:
+            return Response(
+                {'error': '多人任务需要指定参与者ID'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
 
-    task.save()
+        try:
+            participant = TaskParticipant.objects.get(id=participant_id, task=task)
+        except TaskParticipant.DoesNotExist:
+            return Response(
+                {'error': '参与者不存在'},
+                status=status.HTTP_404_NOT_FOUND
+            )
 
-    # 创建任务审核拒绝通知
-    Notification.create_notification(
-        recipient=task.taker,
-        notification_type='task_board_rejected',
-        actor=request.user,
-        related_object_type='task',
-        related_object_id=task.id,
-        extra_data={
-            'task_title': task.title,
-            'rejector': request.user.username,
-            'reject_reason': reject_reason or '未提供原因'
-        }
-    )
+        if participant.status != 'submitted':
+            return Response(
+                {'error': '该参与者未提交作品或已被审核'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # 更新参与者状态
+        participant.status = 'rejected'
+        participant.reviewed_at = timezone.now()
+        participant.review_comment = reject_reason
+        participant.save()
+
+        # 创建拒绝事件
+        TaskTimelineEvent.objects.create(
+            task=task,
+            event_type='participant_rejected',
+            user=request.user,
+            description=f'参与者 {participant.participant.username} 的提交被审核拒绝：{reject_reason}',
+            metadata={
+                'rejected_by': request.user.username,
+                'participant_id': str(participant.id),
+                'participant_username': participant.participant.username,
+                'reject_reason': reject_reason
+            }
+        )
+
+        # 通知参与者
+        Notification.create_notification(
+            recipient=participant.participant,
+            notification_type='task_board_rejected',
+            actor=request.user,
+            related_object_type='task',
+            related_object_id=task.id,
+            extra_data={
+                'task_title': task.title,
+                'rejector': request.user.username,
+                'reject_reason': reject_reason or '未提供原因'
+            }
+        )
+
+    else:
+        # 单人任务：直接拒绝并失败任务
+        try:
+            participant = TaskParticipant.objects.get(task=task, participant=task.taker)
+        except TaskParticipant.DoesNotExist:
+            return Response(
+                {'error': '找不到参与者记录'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        # 更新参与者状态
+        participant.status = 'rejected'
+        participant.reviewed_at = timezone.now()
+        participant.review_comment = reject_reason
+        participant.save()
+
+        # 审核拒绝，标记任务为失败
+        task.status = 'failed'
+        if reject_reason:
+            task.completion_proof += f"\n\n审核拒绝原因: {reject_reason}"
+
+        # 销毁任务相关的所有钥匙道具（对于带锁任务）
+        destroy_task_keys(task, reason="task_rejected", user=request.user, metadata={
+            'rejection_reason': reject_reason,
+            'rejected_by': request.user.username
+        })
+
+        task.save()
+
+        # 创建任务审核拒绝通知
+        Notification.create_notification(
+            recipient=task.taker,
+            notification_type='task_board_rejected',
+            actor=request.user,
+            related_object_type='task',
+            related_object_id=task.id,
+            extra_data={
+                'task_title': task.title,
+                'rejector': request.user.username,
+                'reject_reason': reject_reason or '未提供原因'
+            }
+        )
 
     serializer = LockTaskSerializer(task)
     return Response(serializer.data)
@@ -1722,7 +2020,10 @@ def get_task_counts(request):
             'submitted': board_tasks.filter(status='submitted').count(),
             'completed': board_tasks.filter(status='completed').count(),
             'my_published': board_tasks.filter(user=request.user).count(),
-            'my_taken': board_tasks.filter(taker=request.user).count(),
+            'my_taken': board_tasks.filter(
+                Q(taker=request.user) |  # 单人任务：我是taker
+                Q(participants__participant=request.user)  # 多人任务：我是参与者
+            ).distinct().count(),
         }
 
         return Response({
@@ -1735,3 +2036,204 @@ def get_task_counts(request):
             {'error': f'获取任务统计失败: {str(e)}'},
             status=status.HTTP_500_INTERNAL_SERVER_ERROR
         )
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def end_board_task(request, pk):
+    """结束任务板任务 - 支持单人和多人任务的不同结算逻辑"""
+    task = get_object_or_404(LockTask, pk=pk)
+
+    # 检查是否是任务板
+    if task.task_type != 'board':
+        return Response(
+            {'error': '只能结束任务板任务'},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+
+    # 检查权限：只有发布者可以结束任务
+    if task.user != request.user:
+        return Response(
+            {'error': '只有任务发布者可以结束任务'},
+            status=status.HTTP_403_FORBIDDEN
+        )
+
+    # 获取结束原因
+    end_reason = request.data.get('end_reason', '发布者手动结束任务')
+
+    # 判断是单人还是多人任务
+    is_multi_person = task.max_participants and task.max_participants > 1
+
+    if not is_multi_person:
+        # 单人任务结束逻辑
+        return _end_single_person_task(task, end_reason, request.user)
+    else:
+        # 多人任务结束逻辑
+        return _end_multi_person_task(task, end_reason, request.user)
+
+
+def _end_single_person_task(task, end_reason, publisher):
+    """结束单人任务"""
+    # 单人任务只能在未提交状态结束，直接标记为失败
+    if task.status not in ['open', 'taken']:
+        return Response(
+            {'error': '单人任务只能在开放或已接取状态下结束'},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+
+    # 标记为失败
+    task.status = 'failed'
+    task.completed_at = timezone.now()
+    task.save()
+
+    # 返还奖励给发布者
+    if task.reward:
+        _refund_task_reward(task, publisher, end_reason)
+
+    # 创建时间线事件
+    TaskTimelineEvent.objects.create(
+        task=task,
+        event_type='task_ended',
+        user=publisher,
+        description=f'任务被发布者结束：{end_reason}',
+        metadata={'end_reason': end_reason, 'refunded_amount': task.reward or 0}
+    )
+
+    # 通知接取者（如果有）
+    if task.taker:
+        Notification.create_notification(
+            recipient=task.taker,
+            notification_type='task_board_ended',
+            actor=publisher,
+            related_object_type='task',
+            related_object_id=task.id,
+            extra_data={
+                'task_title': task.title,
+                'end_reason': end_reason,
+                'task_status': 'failed'
+            }
+        )
+
+    serializer = LockTaskSerializer(task)
+    return Response(serializer.data)
+
+
+def _end_multi_person_task(task, end_reason, publisher):
+    """结束多人任务"""
+    # 多人任务可以在任何状态下结束
+    participants = TaskParticipant.objects.filter(task=task)
+    submitted_participants = participants.filter(status='submitted')
+    approved_participants = participants.filter(status='approved')
+
+    if approved_participants.count() == 0:
+        # 没有审核通过的参与者，标记为失败
+        task.status = 'failed'
+        task.completed_at = timezone.now()
+        task.save()
+
+        # 返还奖励给发布者
+        if task.reward:
+            if submitted_participants.count() == 0:
+                _refund_task_reward(task, publisher, f'{end_reason}（无人提交）')
+                result_message = '任务失败：无人提交'
+            else:
+                _refund_task_reward(task, publisher, f'{end_reason}（无人通过审核）')
+                result_message = f'任务失败：有 {submitted_participants.count()} 人提交但无人通过审核'
+        else:
+            if submitted_participants.count() == 0:
+                result_message = '任务失败：无人提交'
+            else:
+                result_message = f'任务失败：有 {submitted_participants.count()} 人提交但无人通过审核'
+    else:
+        # 有审核通过的参与者，根据审核情况结算
+        total_participants = participants.count()
+
+        # 标记任务为完成
+        task.status = 'completed'
+        task.completed_at = timezone.now()
+        task.save()
+
+        # 分发奖励给通过审核的参与者（向上取整）
+        if task.reward and approved_participants.count() > 0:
+            import math
+            reward_per_person = math.ceil(task.reward / approved_participants.count())
+
+            for participant in approved_participants:
+                # 给参与者发放奖励
+                from users.models import User
+                participant.participant.coins += reward_per_person
+                participant.participant.save()
+
+                # 创建通知
+                Notification.create_notification(
+                    recipient=participant.participant,
+                    notification_type='task_board_reward',
+                    actor=publisher,
+                    related_object_type='task',
+                    related_object_id=task.id,
+                    extra_data={
+                        'task_title': task.title,
+                        'reward_amount': reward_per_person
+                    }
+                )
+
+        result_message = f'任务完成：{approved_participants.count()}/{total_participants} 人通过审核，积分已分配'
+
+    # 创建时间线事件
+    TaskTimelineEvent.objects.create(
+        task=task,
+        event_type='task_ended',
+        user=publisher,
+        description=f'任务被发布者结束：{end_reason}。{result_message}',
+        metadata={
+            'end_reason': end_reason,
+            'total_participants': participants.count(),
+            'submitted_participants': submitted_participants.count(),
+            'approved_participants': participants.filter(status='approved').count(),
+            'final_status': task.status
+        }
+    )
+
+    # 通知所有参与者
+    for participant in participants:
+        Notification.create_notification(
+            recipient=participant.participant,
+            notification_type='task_board_ended',
+            actor=publisher,
+            related_object_type='task',
+            related_object_id=task.id,
+            extra_data={
+                'task_title': task.title,
+                'end_reason': end_reason,
+                'task_status': task.status,
+                'participant_status': participant.status
+            }
+        )
+
+    serializer = LockTaskSerializer(task)
+    return Response(serializer.data)
+
+
+def _refund_task_reward(task, publisher, reason):
+    """返还任务奖励给发布者"""
+    if not task.reward:
+        return
+
+    # 返还coins给发布者
+    publisher.coins += task.reward
+    publisher.save()
+
+    # 创建通知
+    Notification.create_notification(
+        recipient=publisher,
+        notification_type='task_board_refund',
+        related_object_type='task',
+        related_object_id=task.id,
+        extra_data={
+            'task_title': task.title,
+            'refund_amount': task.reward,
+            'reason': reason
+        }
+    )
+
+    logger.info(f"Refunded {task.reward} coins to {publisher.username} for task {task.id}: {reason}")
