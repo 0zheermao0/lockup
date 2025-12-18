@@ -1,0 +1,8 @@
+# Runtime files
+run/*.pid
+run/*.log
+run/celerybeat-schedule*
+logs/*.log
+*.rdb
+dump.rdb
+.DS_Store

@@ -17,7 +17,7 @@ sqlparse==0.5.3            # SQL parsing utilities
 # DATABASE SUPPORT
 # =============================================================================
 dj-database-url==2.3.0     # Database URL parsing for production (used in settings.py)
-psycopg2-binary==2.10.1    # PostgreSQL adapter for production deployment
+psycopg2-binary==2.9.11    # PostgreSQL adapter for production deployment (compatible version)
 
 # =============================================================================
 # TELEGRAM BOT INTEGRATION
@@ -59,6 +59,15 @@ httpcore==1.0.9            # HTTP core library
 h11==0.16.0                # HTTP/1.1 implementation
 anyio==4.12.0              # Async I/O support
 certifi==2025.11.12        # SSL certificate verification
+
+# =============================================================================
+# CELERY TASK QUEUE & SCHEDULING
+# =============================================================================
+celery==5.3.4              # Distributed task queue for async processing
+redis==5.0.1               # Redis client for Celery message broker
+django-celery-beat==2.8.1  # Database-backed periodic tasks for Celery (latest version)
+django-celery-results==2.5.0 # Store Celery task results in Django database
+flower==2.0.1              # Web-based monitoring tool for Celery
 
 # =============================================================================
 # UTILITIES & HELPERS

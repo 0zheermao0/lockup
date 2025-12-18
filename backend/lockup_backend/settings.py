@@ -45,6 +45,9 @@ INSTALLED_APPS = [
     'rest_framework',
     'rest_framework.authtoken',
     'corsheaders',
+    # Celery apps
+    'django_celery_beat',
+    'django_celery_results',
     # Custom apps
     'users',
     'posts',
@@ -281,3 +284,117 @@ if not DEBUG:
     SECURE_CONTENT_TYPE_NOSNIFF = True
     SECURE_BROWSER_XSS_FILTER = True
     X_FRAME_OPTIONS = 'DENY'
+
+# =============================================================================
+# CELERY CONFIGURATION
+# =============================================================================
+
+# Celery Broker settings (Redis)
+CELERY_BROKER_URL = os.getenv('CELERY_BROKER_URL', 'redis://localhost:6379/0')
+CELERY_RESULT_BACKEND = os.getenv('CELERY_RESULT_BACKEND', 'redis://localhost:6379/0')
+
+# Celery Task settings
+CELERY_TASK_ALWAYS_EAGER = os.getenv('CELERY_ALWAYS_EAGER', 'False').lower() == 'true'
+CELERY_TASK_EAGER_PROPAGATES = True
+
+# Celery Security settings
+CELERY_ACCEPT_CONTENT = ['json']
+CELERY_TASK_SERIALIZER = 'json'
+CELERY_RESULT_SERIALIZER = 'json'
+
+# Celery Timezone settings
+CELERY_TIMEZONE = TIME_ZONE
+CELERY_ENABLE_UTC = True
+
+# Celery Worker settings
+CELERY_WORKER_CONCURRENCY = int(os.getenv('CELERY_WORKER_CONCURRENCY', '2'))
+CELERY_WORKER_PREFETCH_MULTIPLIER = 1
+CELERY_WORKER_MAX_TASKS_PER_CHILD = 1000
+
+# Celery Task execution settings
+CELERY_TASK_SOFT_TIME_LIMIT = 300  # 5 minutes
+CELERY_TASK_TIME_LIMIT = 600       # 10 minutes
+CELERY_TASK_ACKS_LATE = True
+CELERY_TASK_REJECT_ON_WORKER_LOST = True
+
+# Celery Result settings
+CELERY_RESULT_EXPIRES = 3600  # 1 hour
+
+# Celery Logging settings
+CELERY_WORKER_LOG_FORMAT = '[%(asctime)s: %(levelname)s/%(processName)s] %(message)s'
+CELERY_WORKER_TASK_LOG_FORMAT = '[%(asctime)s: %(levelname)s/%(processName)s][%(task_name)s(%(task_id)s)] %(message)s'
+
+# Celery Beat settings (for periodic tasks)
+CELERY_BEAT_SCHEDULER = 'django_celery_beat.schedulers:DatabaseScheduler'
+
+# Celery Monitoring settings
+CELERY_SEND_TASK_EVENTS = True
+CELERY_WORKER_SEND_TASK_EVENTS = True
+
+# =============================================================================
+# CELERY LOGGING CONFIGURATION
+# =============================================================================
+
+# Update LOGGING configuration to include Celery
+LOGGING = {
+    'version': 1,
+    'disable_existing_loggers': False,
+    'formatters': {
+        'verbose': {
+            'format': '{levelname} {asctime} {module} {process:d} {thread:d} {message}',
+            'style': '{',
+        },
+        'celery': {
+            'format': '[%(asctime)s: %(levelname)s/%(processName)s] %(message)s',
+        },
+    },
+    'handlers': {
+        'console': {
+            'level': 'INFO',
+            'class': 'logging.StreamHandler',
+            'formatter': 'verbose',
+        },
+        'file': {
+            'level': 'INFO',
+            'class': 'logging.handlers.RotatingFileHandler',
+            'filename': BASE_DIR / 'logs' / 'django.log',
+            'maxBytes': 1024*1024*15,  # 15MB
+            'backupCount': 10,
+            'formatter': 'verbose',
+        },
+        'celery_file': {
+            'level': 'INFO',
+            'class': 'logging.handlers.RotatingFileHandler',
+            'filename': BASE_DIR / 'logs' / 'celery.log',
+            'maxBytes': 1024*1024*15,  # 15MB
+            'backupCount': 10,
+            'formatter': 'celery',
+        },
+    },
+    'root': {
+        'level': 'INFO',
+        'handlers': ['console'] if DEBUG else ['console', 'file'],
+    },
+    'loggers': {
+        'django': {
+            'handlers': ['console', 'file'] if not DEBUG else ['console'],
+            'level': 'INFO',
+            'propagate': False,
+        },
+        'celery': {
+            'handlers': ['console', 'celery_file'] if not DEBUG else ['console'],
+            'level': 'INFO',
+            'propagate': False,
+        },
+        'celery.task': {
+            'handlers': ['console', 'celery_file'] if not DEBUG else ['console'],
+            'level': 'INFO',
+            'propagate': False,
+        },
+        'tasks.celery_tasks': {
+            'handlers': ['console', 'celery_file'] if not DEBUG else ['console'],
+            'level': 'INFO',
+            'propagate': False,
+        },
+    },
+}
