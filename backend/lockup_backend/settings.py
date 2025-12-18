@@ -254,6 +254,17 @@ TELEGRAM_APP_CONFIG = {
     'FRONTEND_URL': os.getenv('FRONTEND_URL', 'https://lock-up.zheermao.top'),
 }
 
+# Frontend URL for sharing links and external references
+# Automatically choose URL based on environment:
+# - Local development (DEBUG=True): localhost:5173
+# - Production (DEBUG=False): production domain
+if DEBUG:
+    # Development environment - use localhost with frontend dev server port
+    FRONTEND_URL = os.getenv('FRONTEND_URL', 'http://localhost:5173')
+else:
+    # Production environment - automatically use production domain
+    FRONTEND_URL = os.getenv('FRONTEND_URL', 'https://lock-up.zheermao.top')
+
 # Production Security Settings (only if not in DEBUG mode)
 if not DEBUG:
     # SSL/HTTPS Settings
