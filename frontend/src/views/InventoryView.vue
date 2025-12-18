@@ -1449,6 +1449,7 @@ onMounted(() => {
   justify-content: center;
   z-index: 1000;
   padding: 1rem;
+  overflow-y: auto;
 }
 
 /* Loading Modal */
@@ -2292,7 +2293,9 @@ onMounted(() => {
   .share-modal {
     margin: 1rem;
     max-width: calc(100vw - 2rem);
+    max-height: calc(100vh - 2rem);
     box-shadow: 8px 8px 0 #000;
+    overflow-y: auto;
   }
 
   .share-modal-header {

@@ -15,6 +15,14 @@ export default defineConfig({
       '@': fileURLToPath(new URL('./src', import.meta.url))
     },
   },
+  build: {
+    rollupOptions: {
+      output: {
+        // 更稳定的文件名策略
+        manualChunks: undefined,
+      }
+    }
+  },
   server: {
     // 配置开发服务器
     host: 'localhost',
