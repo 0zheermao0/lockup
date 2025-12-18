@@ -53,21 +53,46 @@
           ></textarea>
         </div>
 
-        <!-- Auto-post Option -->
+        <!-- Auto-post Option and Duration Type (for lock tasks) -->
         <div class="form-group">
-          <div class="form-row-inline">
-            <label class="inline-label">发布选项</label>
-            <label class="checkbox-label-compact">
-              <input
-                type="checkbox"
-                v-model="form.autoPost"
-                class="checkbox-input-compact"
-              />
-              <span class="checkbox-text-compact">
-                自动发布动态
-                <small class="checkbox-desc-compact">创建任务后自动分享到动态</small>
-              </span>
-            </label>
+          <div class="form-row-inline-combined">
+            <!-- Publish Option -->
+            <div class="form-section-compact">
+              <label class="inline-label">发布选项</label>
+              <label class="checkbox-label-compact">
+                <input
+                  type="checkbox"
+                  v-model="form.autoPost"
+                  class="checkbox-input-compact"
+                />
+                <span class="checkbox-text-compact">
+                  自动发布动态
+                  <small class="checkbox-desc-compact">创建任务后自动分享到动态</small>
+                </span>
+              </label>
+            </div>
+            <!-- Duration Type for lock tasks -->
+            <div v-if="form.task_type === 'lock'" class="form-section-compact">
+              <label class="inline-label">持续类型</label>
+              <div class="radio-group-compact">
+                <label class="radio-option-compact">
+                  <input
+                    type="radio"
+                    v-model="form.duration_type"
+                    value="fixed"
+                  />
+                  <span>固定时间</span>
+                </label>
+                <label class="radio-option-compact">
+                  <input
+                    type="radio"
+                    v-model="form.duration_type"
+                    value="random"
+                  />
+                  <span>随机时间</span>
+                </label>
+              </div>
+            </div>
           </div>
         </div>
 
@@ -128,27 +153,6 @@
             </div>
           </div>
 
-          <div class="form-group">
-            <label for="duration_type">持续时间类型</label>
-            <div class="radio-group">
-              <label class="radio-option">
-                <input
-                  type="radio"
-                  v-model="form.duration_type"
-                  value="fixed"
-                />
-                <span>固定时间</span>
-              </label>
-              <label class="radio-option">
-                <input
-                  type="radio"
-                  v-model="form.duration_type"
-                  value="random"
-                />
-                <span>随机时间</span>
-              </label>
-            </div>
-          </div>
 
           <div class="duration-section">
             <DurationSelector
@@ -963,6 +967,21 @@ watch(() => form.duration_type, (newValue) => {
   gap: 1rem;
 }
 
+.form-row-inline-combined {
+  display: flex;
+  align-items: flex-start;
+  gap: 1.5rem;
+  flex-wrap: wrap;
+}
+
+.form-section-compact {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  flex: 1;
+  min-width: 250px;
+}
+
 .inline-label {
   font-weight: 600;
   color: #333;
@@ -1033,6 +1052,29 @@ watch(() => form.duration_type, (newValue) => {
   color: #666;
   font-weight: normal;
   font-style: italic;
+}
+
+/* Compact Radio Group */
+.radio-group-compact {
+  display: flex;
+  gap: 0.75rem;
+  flex: 1;
+}
+
+.radio-option-compact {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  cursor: pointer;
+  font-weight: 500;
+  font-size: 0.85rem;
+  white-space: nowrap;
+}
+
+.radio-option-compact input[type="radio"] {
+  width: auto !important;
+  margin: 0;
+  transform: scale(1.1);
 }
 
 /* Compact Image Upload */
@@ -1157,6 +1199,19 @@ watch(() => form.duration_type, (newValue) => {
     gap: 0.5rem;
   }
 
+  .form-row-inline-combined {
+    flex-direction: column;
+    gap: 1rem;
+  }
+
+  .form-section-compact {
+    min-width: auto;
+    width: 100%;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.5rem;
+  }
+
   .inline-label {
     min-width: auto;
     margin-bottom: 0.25rem;
@@ -1181,6 +1236,15 @@ watch(() => form.duration_type, (newValue) => {
 
   .checkbox-desc-compact {
     font-size: 0.65rem;
+  }
+
+  .radio-group-compact {
+    width: 100%;
+    gap: 0.75rem;
+  }
+
+  .radio-option-compact {
+    font-size: 0.85rem;
   }
 }
 </style>
