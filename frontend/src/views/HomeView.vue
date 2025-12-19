@@ -135,39 +135,19 @@
               <button @click="openCreateModal(true)" class="mobile-btn success" title="打卡任务">✅</button>
               <button @click="goToTasks" class="mobile-btn info" title="任务管理">📋</button>
 
-              <!-- More buttons when no lock status -->
-              <template v-if="!authStore.user?.active_lock_task">
-                <button @click="goToStore" class="mobile-btn warning" title="商店">🛍️</button>
-                <button @click="goToGames" class="mobile-btn purple" title="小游戏">🎮</button>
-                <button @click="showMoreActions = !showMoreActions" class="mobile-btn secondary" title="更多">
-                  {{ showMoreActions ? '▲' : '▼' }}
-                </button>
-              </template>
-
-              <!-- Compact more button when with lock -->
-              <template v-else>
-                <button @click="showMoreActions = !showMoreActions" class="mobile-btn secondary" title="更多">
-                  {{ showMoreActions ? '▲' : '▼' }}
-                </button>
-              </template>
+              <!-- Always show more button to prevent overflow -->
+              <button @click="showMoreActions = !showMoreActions" class="mobile-btn secondary" title="更多">
+                {{ showMoreActions ? '▲' : '▼' }}
+              </button>
             </div>
           </div>
 
-          <!-- Expandable More Actions (only secondary actions) -->
+          <!-- Expandable More Actions (all secondary actions) -->
           <div v-if="showMoreActions" class="mobile-actions-more">
-            <!-- When with lock, show all secondary actions -->
-            <template v-if="authStore.user?.active_lock_task">
-              <button @click="goToStore" class="mobile-action-btn-small" title="商店">🛍️ 商店</button>
-              <button @click="goToGames" class="mobile-action-btn-small" title="小游戏">🎮 游戏</button>
-              <button @click="goToInventory" class="mobile-action-btn-small" title="背包">🎒 背包</button>
-              <button @click="goToExplore" class="mobile-action-btn-small" title="探索">🗺️ 探索</button>
-            </template>
-
-            <!-- When without lock, show only remaining actions -->
-            <template v-else>
-              <button @click="goToInventory" class="mobile-action-btn-small" title="背包">🎒 背包</button>
-              <button @click="goToExplore" class="mobile-action-btn-small" title="探索">🗺️ 探索</button>
-            </template>
+            <button @click="goToStore" class="mobile-action-btn-small" title="商店">🛍️ 商店</button>
+            <button @click="goToGames" class="mobile-action-btn-small" title="小游戏">🎮 游戏</button>
+            <button @click="goToInventory" class="mobile-action-btn-small" title="背包">🎒 背包</button>
+            <button @click="goToExplore" class="mobile-action-btn-small" title="探索">🗺️ 探索</button>
           </div>
         </div>
 
@@ -1181,6 +1161,18 @@ onMounted(() => {
   justify-content: flex-end;
 }
 
+/* Prevent button overflow by ensuring flex-shrink */
+.mobile-actions-inline {
+  flex-shrink: 0;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.mobile-user-stats-inline {
+  flex-shrink: 1;
+  min-width: 0;
+}
+
 .mobile-btn {
   height: 36px;
   min-width: 36px;
@@ -1389,25 +1381,59 @@ onMounted(() => {
 /* Extra small screens - additional optimizations */
 @media (max-width: 380px) {
   .mobile-lock-status-inline {
-    max-width: 60%;
+    max-width: 55%;
     padding: 0.25rem;
   }
 
-  .mobile-actions-inline.with-lock {
+  .mobile-user-stats-inline {
+    max-width: 45%;
+    gap: 0.5rem;
+  }
+
+  .mobile-actions-inline {
+    gap: 0.25rem;
+    flex: 1;
+    justify-content: flex-end;
+  }
+
+  .mobile-actions-inline.with-lock,
+  .mobile-actions-inline.without-lock {
     gap: 0.25rem;
     flex: 1;
   }
 
   .mobile-btn {
-    min-width: 26px;
-    height: 28px;
-    font-size: 0.85rem;
-    padding: 0 0.2rem;
+    min-width: 28px;
+    height: 30px;
+    font-size: 0.9rem;
+    padding: 0 0.25rem;
   }
 
   .mobile-btn.secondary {
-    min-width: 22px;
-    font-size: 0.7rem;
+    min-width: 24px;
+    font-size: 0.75rem;
+  }
+
+  .mobile-main-row {
+    gap: 0.25rem;
+  }
+}
+
+/* Extra small screens */
+@media (max-width: 320px) {
+  .mobile-user-stats-inline {
+    display: none; /* Hide stats on very small screens to save space */
+  }
+
+  .mobile-lock-status-inline {
+    max-width: 65%;
+  }
+
+  .mobile-btn {
+    min-width: 26px;
+    height: 28px;
+    font-size: 0.8rem;
+    padding: 0 0.2rem;
   }
 }
 </style>
