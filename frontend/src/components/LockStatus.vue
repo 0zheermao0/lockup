@@ -4,7 +4,10 @@
     class="lock-status-link"
     @click="handleClick"
   >
-    <div class="lock-status" :class="{ 'is-expired': lockTask.is_expired }">
+    <div class="lock-status" :class="{
+      'is-expired': lockTask.is_expired && !lockTask.time_display_hidden,
+      'time-hidden': lockTask.time_display_hidden
+    }">
       <div class="lock-icon">
         🔒
       </div>
@@ -16,7 +19,7 @@
           </span>
           <span class="separator">•</span>
           <span class="countdown" :class="{ 'expired': lockTask.is_expired }">
-            <span v-if="lockTask.time_display_hidden" class="time-hidden">
+            <span v-if="lockTask.time_display_hidden" class="hidden-time-placeholder">
               🔒 时间已隐藏
             </span>
             <span v-else>
@@ -309,9 +312,26 @@ watch(
   animation: pulse-danger 1s infinite;
 }
 
-.time-hidden {
-  color: rgba(255, 255, 255, 0.9);
-  font-style: italic;
+/* 时间隐藏状态样式 */
+.lock-status.time-hidden {
+  background: linear-gradient(135deg, #343a40, #495057);
+  animation: none; /* 移除脉冲动画 */
+}
+
+.hidden-time-placeholder {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.25rem 0.5rem;
+  background: linear-gradient(135deg, #343a40, #495057);
+  color: white;
+  border: 1px solid #000;
+  border-radius: 4px;
+  font-weight: 600;
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  box-shadow: 1px 1px 0 #000;
 }
 
 .duration-info {

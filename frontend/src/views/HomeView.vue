@@ -93,7 +93,10 @@
             <div
               v-if="authStore.user?.active_lock_task"
               class="mobile-lock-status-inline"
-              :class="{ 'ready': authStore.user.active_lock_task.is_expired }"
+              :class="{
+                'ready': authStore.user.active_lock_task.is_expired && !authStore.user.active_lock_task.time_display_hidden,
+                'time-hidden': authStore.user.active_lock_task.time_display_hidden
+              }"
               @click="goToTaskDetail(authStore.user.active_lock_task.id)"
               :title="authStore.user.active_lock_task.is_expired ? '点击完成任务' : '点击查看任务详情'"
             >
@@ -1065,6 +1068,16 @@ onMounted(() => {
 
 .mobile-lock-status-inline.ready:hover {
   background: linear-gradient(135deg, #25a244, #1dc5a0);
+}
+
+/* 移动端时间隐藏状态样式 */
+.mobile-lock-status-inline.time-hidden {
+  background: linear-gradient(135deg, #343a40, #495057);
+  animation: none; /* 移除脉冲动画 */
+}
+
+.mobile-lock-status-inline.time-hidden:hover {
+  background: linear-gradient(135deg, #495057, #6c757d);
 }
 
 .lock-inline-icon {
