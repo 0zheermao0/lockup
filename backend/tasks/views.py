@@ -299,6 +299,19 @@ class LockTaskListCreateView(generics.ListCreateAPIView):
                     }
                 )
 
+            # 如果任务创建时就设置了deadline，立即调度自动结算
+            if task.deadline:
+                try:
+                    from celery_app import app as celery_app
+                    deadline_timestamp = task.deadline.timestamp()
+                    celery_app.send_task(
+                        'tasks.celery_tasks.schedule_board_task_auto_settlement',
+                        args=[str(task.id), deadline_timestamp]
+                    )
+                    logger.info(f"Scheduled auto-settlement for board task {task.id} created with deadline at {task.deadline}")
+                except Exception as e:
+                    logger.error(f"Failed to schedule auto-settlement for newly created task {task.id}: {e}")
+
             task.save()
 
 
@@ -710,6 +723,18 @@ def take_board_task(request, pk):
             if task.max_duration:
                 task.deadline = task.taken_at + timezone.timedelta(hours=task.max_duration)
 
+                # 调度自动结算任务（使用Celery延时执行）
+                try:
+                    from celery_app import app as celery_app
+                    deadline_timestamp = task.deadline.timestamp()
+                    celery_app.send_task(
+                        'tasks.celery_tasks.schedule_board_task_auto_settlement',
+                        args=[str(task.id), deadline_timestamp]
+                    )
+                    logger.info(f"Scheduled auto-settlement for multi-person task {task.id} at {task.deadline}")
+                except Exception as e:
+                    logger.error(f"Failed to schedule auto-settlement for multi-person task {task.id}: {e}")
+
             task.save()
 
         notification_type = 'task_board_taken'
@@ -736,6 +761,18 @@ def take_board_task(request, pk):
         # 设置任务截止时间
         if task.max_duration:
             task.deadline = task.taken_at + timezone.timedelta(hours=task.max_duration)
+
+            # 调度自动结算任务（使用Celery延时执行）
+            try:
+                from celery_app import app as celery_app
+                deadline_timestamp = task.deadline.timestamp()
+                celery_app.send_task(
+                    'tasks.celery_tasks.schedule_board_task_auto_settlement',
+                    args=[str(task.id), deadline_timestamp]
+                )
+                logger.info(f"Scheduled auto-settlement for task {task.id} at {task.deadline}")
+            except Exception as e:
+                logger.error(f"Failed to schedule auto-settlement for task {task.id}: {e}")
 
         task.save()
 
@@ -2242,3 +2279,321 @@ def _refund_task_reward(task, publisher, reason):
     )
 
     logger.info(f"Refunded {task.reward} coins to {publisher.username} for task {task.id}: {reason}")
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def auto_settle_expired_board_tasks(request):
+    """自动结算过期的任务板任务"""
+    try:
+        current_time = timezone.now()
+
+        # 查找所有已过期但未结算的任务板任务
+        expired_tasks = LockTask.objects.filter(
+            task_type='board',
+            deadline__isnull=False,
+            deadline__lt=current_time,
+            status__in=['taken', 'submitted']  # 只结算进行中或已提交的任务
+        )
+
+        results = []
+
+        for task in expired_tasks:
+            try:
+                result = _auto_settle_expired_task(task)
+                results.append(result)
+                logger.info(f"Auto-settled expired task {task.id}: {result['action']}")
+            except Exception as e:
+                error_msg = f"Failed to auto-settle task {task.id}: {str(e)}"
+                logger.error(error_msg)
+                results.append({
+                    'task_id': str(task.id),
+                    'action': 'error',
+                    'error': str(e)
+                })
+
+        return Response({
+            'settled_count': len([r for r in results if r.get('action') != 'error']),
+            'error_count': len([r for r in results if r.get('action') == 'error']),
+            'results': results
+        })
+
+    except Exception as e:
+        logger.error(f"Error in auto_settle_expired_board_tasks: {str(e)}")
+        return Response(
+            {'error': f'自动结算失败: {str(e)}'},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+
+def _auto_settle_expired_task(task):
+    """自动结算单个过期任务"""
+    # 检查是否为多人任务
+    is_multi_person = task.max_participants and task.max_participants > 1
+
+    if is_multi_person:
+        return _auto_settle_multi_person_expired_task(task)
+    else:
+        return _auto_settle_single_person_expired_task(task)
+
+
+def _auto_settle_single_person_expired_task(task):
+    """自动结算单人过期任务"""
+    current_time = timezone.now()
+
+    if task.status == 'submitted':
+        # 已提交证明但未审核，自动通过
+        task.status = 'completed'
+        task.completed_at = current_time
+        task.save()
+
+        # 给接取者发放奖励
+        if task.taker and task.reward:
+            task.taker.coins += task.reward
+            task.taker.save()
+
+            # 通知接取者
+            Notification.create_notification(
+                recipient=task.taker,
+                notification_type='task_board_approved',
+                related_object_type='task',
+                related_object_id=task.id,
+                extra_data={
+                    'task_title': task.title,
+                    'reward_amount': task.reward,
+                    'auto_approved': True,
+                    'reason': 'deadline_expired'
+                }
+            )
+
+        # 通知发布者
+        Notification.create_notification(
+            recipient=task.user,
+            notification_type='task_board_ended',
+            related_object_type='task',
+            related_object_id=task.id,
+            extra_data={
+                'task_title': task.title,
+                'auto_settled': True,
+                'final_status': 'completed',
+                'taker_username': task.taker.username if task.taker else None
+            }
+        )
+
+        # 记录时间线事件
+        TaskTimelineEvent.objects.create(
+            task=task,
+            event_type='task_completed',
+            description=f'任务已到期，已提交证明自动审核通过',
+            metadata={
+                'auto_settled': True,
+                'deadline_expired': True,
+                'reward_amount': task.reward
+            }
+        )
+
+        return {
+            'task_id': str(task.id),
+            'action': 'auto_approved',
+            'reward_given': task.reward or 0,
+            'recipient': task.taker.username if task.taker else None
+        }
+
+    elif task.status == 'taken':
+        # 已接取但未提交证明，任务失败
+        task.status = 'failed'
+        task.completed_at = current_time
+        task.save()
+
+        # 退还奖励给发布者
+        if task.reward:
+            task.user.coins += task.reward
+            task.user.save()
+
+            # 通知发布者
+            Notification.create_notification(
+                recipient=task.user,
+                notification_type='task_board_ended',
+                related_object_type='task',
+                related_object_id=task.id,
+                extra_data={
+                    'task_title': task.title,
+                    'auto_settled': True,
+                    'final_status': 'failed',
+                    'refund_amount': task.reward,
+                    'reason': '无人提交完成证明'
+                }
+            )
+
+        # 通知接取者
+        if task.taker:
+            Notification.create_notification(
+                recipient=task.taker,
+                notification_type='task_board_ended',
+                related_object_type='task',
+                related_object_id=task.id,
+                extra_data={
+                    'task_title': task.title,
+                    'auto_settled': True,
+                    'final_status': 'failed',
+                    'reason': '未在截止时间前提交完成证明'
+                }
+            )
+
+        # 记录时间线事件
+        TaskTimelineEvent.objects.create(
+            task=task,
+            event_type='task_failed',
+            description=f'任务已到期，无人提交完成证明，自动标记为失败',
+            metadata={
+                'auto_settled': True,
+                'deadline_expired': True,
+                'refund_amount': task.reward
+            }
+        )
+
+        return {
+            'task_id': str(task.id),
+            'action': 'failed_no_submission',
+            'refund_amount': task.reward or 0
+        }
+
+    return {
+        'task_id': str(task.id),
+        'action': 'no_action_needed',
+        'status': task.status
+    }
+
+
+def _auto_settle_multi_person_expired_task(task):
+    """自动结算多人过期任务"""
+    import math
+    current_time = timezone.now()
+
+    # 获取所有参与者
+    participants = task.participants.all()
+    approved_participants = participants.filter(status='approved')
+    submitted_participants = participants.filter(status='submitted')
+
+    # 自动审核通过所有已提交的参与者
+    auto_approved_count = 0
+    for participant in submitted_participants:
+        participant.status = 'approved'
+        participant.reviewed_at = current_time
+        participant.review_comment = '任务到期自动审核通过'
+        participant.save()
+        auto_approved_count += 1
+
+    # 重新获取已通过审核的参与者（包括新自动通过的）
+    all_approved_participants = participants.filter(status='approved')
+
+    if all_approved_participants.count() > 0:
+        # 有通过审核的参与者，任务完成
+        task.status = 'completed'
+        task.completed_at = current_time
+
+        # 分配奖励
+        if task.reward:
+            reward_per_person = math.ceil(task.reward / all_approved_participants.count())
+
+            for participant in all_approved_participants:
+                participant.reward_amount = reward_per_person
+                participant.save()
+
+                # 给参与者分配积分
+                participant.participant.coins += reward_per_person
+                participant.participant.save()
+
+                # 通知参与者
+                Notification.create_notification(
+                    recipient=participant.participant,
+                    notification_type='task_board_approved',
+                    related_object_type='task',
+                    related_object_id=task.id,
+                    extra_data={
+                        'task_title': task.title,
+                        'reward_amount': reward_per_person,
+                        'auto_approved': participant.status == 'approved' and participant.review_comment == '任务到期自动审核通过'
+                    }
+                )
+
+        action_msg = f'completed_with_{all_approved_participants.count()}_participants'
+
+        # 记录时间线事件
+        TaskTimelineEvent.objects.create(
+            task=task,
+            event_type='task_completed',
+            description=f'任务已到期，{auto_approved_count}位参与者自动审核通过，任务完成',
+            metadata={
+                'auto_settled': True,
+                'deadline_expired': True,
+                'auto_approved_count': auto_approved_count,
+                'total_approved': all_approved_participants.count(),
+                'reward_distributed': task.reward or 0
+            }
+        )
+
+    else:
+        # 无人通过审核，任务失败
+        task.status = 'failed'
+        task.completed_at = current_time
+
+        # 退还奖励给发布者
+        if task.reward:
+            task.user.coins += task.reward
+            task.user.save()
+
+        action_msg = 'failed_no_approved_participants'
+
+        # 记录时间线事件
+        TaskTimelineEvent.objects.create(
+            task=task,
+            event_type='task_failed',
+            description=f'任务已到期，无人通过审核，自动标记为失败',
+            metadata={
+                'auto_settled': True,
+                'deadline_expired': True,
+                'refund_amount': task.reward
+            }
+        )
+
+    task.save()
+
+    # 通知发布者
+    Notification.create_notification(
+        recipient=task.user,
+        notification_type='task_board_ended',
+        related_object_type='task',
+        related_object_id=task.id,
+        extra_data={
+            'task_title': task.title,
+            'auto_settled': True,
+            'final_status': task.status,
+            'approved_count': all_approved_participants.count(),
+            'total_participants': participants.count()
+        }
+    )
+
+    # 通知所有未通过审核的参与者
+    for participant in participants.exclude(status='approved'):
+        Notification.create_notification(
+            recipient=participant.participant,
+            notification_type='task_board_ended',
+            related_object_type='task',
+            related_object_id=task.id,
+            extra_data={
+                'task_title': task.title,
+                'auto_settled': True,
+                'final_status': task.status,
+                'participant_status': participant.status
+            }
+        )
+
+    return {
+        'task_id': str(task.id),
+        'action': action_msg,
+        'auto_approved_count': auto_approved_count,
+        'total_approved': all_approved_participants.count(),
+        'reward_distributed': task.reward if task.status == 'completed' else 0,
+        'refund_amount': task.reward if task.status == 'failed' else 0
+    }

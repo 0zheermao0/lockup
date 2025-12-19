@@ -44,4 +44,7 @@ urlpatterns = [
 
     # 任务统计
     path('counts/', views.get_task_counts, name='task-counts'),
+
+    # 任务板自动结算
+    path('auto-settle-expired/', views.auto_settle_expired_board_tasks, name='auto-settle-expired-board-tasks'),
 ]
