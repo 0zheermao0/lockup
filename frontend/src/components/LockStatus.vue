@@ -16,7 +16,12 @@
           </span>
           <span class="separator">•</span>
           <span class="countdown" :class="{ 'expired': lockTask.is_expired }">
-            {{ lockTask.is_expired ? '时间已到' : formatTimeRemaining(timeRemaining) }}
+            <span v-if="lockTask.time_display_hidden" class="time-hidden">
+              🔒 时间已隐藏
+            </span>
+            <span v-else>
+              {{ lockTask.is_expired ? '时间已到' : formatTimeRemaining(timeRemaining) }}
+            </span>
           </span>
         </div>
         <div v-if="lockTask.duration_value" class="duration-info">
@@ -302,6 +307,11 @@ watch(
 
 .countdown.expired {
   animation: pulse-danger 1s infinite;
+}
+
+.time-hidden {
+  color: rgba(255, 255, 255, 0.9);
+  font-style: italic;
 }
 
 .duration-info {

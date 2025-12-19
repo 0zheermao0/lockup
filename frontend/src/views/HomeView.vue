@@ -101,7 +101,12 @@
               <div class="lock-inline-info">
                 <div class="lock-inline-title">{{ authStore.user.active_lock_task.title }}</div>
                 <div class="lock-inline-time">
-                  {{ authStore.user.active_lock_task.is_expired ? '可完成' : formatTimeRemaining(authStore.user.active_lock_task.time_remaining_ms || 0) }}
+                  <span v-if="authStore.user.active_lock_task.time_display_hidden">
+                    🔒 时间已隐藏
+                  </span>
+                  <span v-else>
+                    {{ authStore.user.active_lock_task.is_expired ? '可完成' : formatTimeRemaining(authStore.user.active_lock_task.time_remaining_ms || 0) }}
+                  </span>
                 </div>
               </div>
               <div class="lock-inline-btn" :class="{ 'ready': authStore.user.active_lock_task.is_expired }">

@@ -92,7 +92,8 @@ class UserSerializer(serializers.ModelSerializer):
             'can_complete': is_expired,  # Can only complete after time expires
             'duration_value': active_task.duration_value,
             'duration_type': active_task.duration_type,
-            'duration_max': active_task.duration_max
+            'duration_max': active_task.duration_max,
+            'time_display_hidden': active_task.time_display_hidden  # 时间显示控制状态
         }
 
     def get_total_lock_duration(self, obj):
@@ -150,7 +151,8 @@ class UserPublicSerializer(serializers.ModelSerializer):
             'can_complete': is_expired,  # Can only complete after time expires
             'duration_value': active_task.duration_value,
             'duration_type': active_task.duration_type,
-            'duration_max': active_task.duration_max
+            'duration_max': active_task.duration_max,
+            'time_display_hidden': active_task.time_display_hidden  # 时间显示控制状态
         }
 
     def get_total_lock_duration(self, obj):

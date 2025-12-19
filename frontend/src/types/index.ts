@@ -12,6 +12,7 @@ export interface ActiveLockTask {
   duration_value?: number
   duration_type?: 'fixed' | 'random'
   duration_max?: number
+  time_display_hidden?: boolean // 时间显示控制状态
 }
 
 // User Types
