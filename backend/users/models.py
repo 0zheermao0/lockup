@@ -165,6 +165,62 @@ class User(AbstractUser):
 
         return total_duration
 
+    def get_task_completion_rate(self):
+        """计算任务完成率：(已完成带锁任务+已完成任务板) / (参与带锁、任务板任务的已完成+失败数)"""
+        from tasks.models import LockTask, TaskParticipant
+
+        # 1. 计算用户创建的已完成带锁任务数
+        completed_lock_tasks = LockTask.objects.filter(
+            user=self,
+            task_type='lock',
+            status='completed'
+        ).count()
+
+        # 2. 计算用户创建的已完成任务板数
+        completed_board_tasks = LockTask.objects.filter(
+            user=self,
+            task_type='board',
+            status='completed'
+        ).count()
+
+        # 3. 计算用户参与的任务板任务中已通过审核的数量
+        approved_participations = TaskParticipant.objects.filter(
+            participant=self,
+            status='approved'
+        ).count()
+
+        # 4. 计算分母：参与带锁、任务板任务的已完成+失败数
+        # 用户创建的已完成+失败的带锁任务数
+        finished_lock_tasks = LockTask.objects.filter(
+            user=self,
+            task_type='lock',
+            status__in=['completed', 'failed']
+        ).count()
+
+        # 用户创建的已完成+失败的任务板数
+        finished_board_tasks = LockTask.objects.filter(
+            user=self,
+            task_type='board',
+            status__in=['completed', 'failed']
+        ).count()
+
+        # 用户参与的任务板任务中已完成的数量（通过审核和被拒绝的）
+        finished_participations = TaskParticipant.objects.filter(
+            participant=self,
+            status__in=['approved', 'rejected']
+        ).count()
+
+        total_finished_tasks = finished_lock_tasks + finished_board_tasks + finished_participations
+
+        # 5. 计算完成率
+        if total_finished_tasks == 0:
+            return 0.0  # 没有已完成或失败的任务，完成率为0%
+
+        completed_tasks = completed_lock_tasks + completed_board_tasks + approved_participations
+        completion_rate = (completed_tasks / total_finished_tasks) * 100
+
+        return round(completion_rate, 1)  # 保留一位小数
+
     def bind_telegram(self, telegram_user_id, telegram_username=None, telegram_chat_id=None):
         """绑定 Telegram 账户"""
         self.telegram_user_id = telegram_user_id

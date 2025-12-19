@@ -67,6 +67,10 @@
               <span class="label">获得点赞</span>
               <span class="value">{{ authStore.user?.total_likes_received || 0 }}</span>
             </div>
+            <div class="info-item">
+              <span class="label">任务完成率</span>
+              <span class="value">{{ authStore.user?.task_completion_rate || 0 }}%</span>
+            </div>
           </div>
 
           <div class="actions-card">

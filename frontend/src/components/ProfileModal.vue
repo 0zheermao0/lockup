@@ -92,6 +92,10 @@
                 <span class="stat-label">总带锁时长</span>
                 <span class="stat-value">{{ formatTotalLockDuration(userProfile.total_lock_duration || 0) }}</span>
               </div>
+              <div class="stat-item">
+                <span class="stat-label">任务完成率</span>
+                <span class="stat-value">{{ userProfile.task_completion_rate || 0 }}%</span>
+              </div>
             </div>
           </div>
 

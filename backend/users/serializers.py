@@ -39,6 +39,7 @@ class UserSerializer(serializers.ModelSerializer):
 
     active_lock_task = serializers.SerializerMethodField()
     total_lock_duration = serializers.SerializerMethodField()
+    task_completion_rate = serializers.SerializerMethodField()
 
     class Meta:
         model = User
@@ -46,7 +47,7 @@ class UserSerializer(serializers.ModelSerializer):
             'id', 'username', 'email', 'level', 'activity_score',
             'last_active', 'location_precision', 'coins', 'avatar',
             'bio', 'total_posts', 'total_likes_received',
-            'total_tasks_completed', 'total_lock_duration',
+            'total_tasks_completed', 'total_lock_duration', 'task_completion_rate',
             'created_at', 'updated_at', 'active_lock_task',
             'telegram_username', 'telegram_notifications_enabled', 'show_telegram_account',
             'is_staff', 'is_superuser'
@@ -54,7 +55,7 @@ class UserSerializer(serializers.ModelSerializer):
         read_only_fields = [
             'id', 'level', 'activity_score', 'last_active', 'coins',
             'total_posts', 'total_likes_received', 'total_tasks_completed',
-            'total_lock_duration', 'created_at', 'updated_at', 'active_lock_task',
+            'total_lock_duration', 'task_completion_rate', 'created_at', 'updated_at', 'active_lock_task',
             'telegram_username', 'telegram_notifications_enabled', 'is_staff', 'is_superuser'
         ]
 
@@ -100,12 +101,17 @@ class UserSerializer(serializers.ModelSerializer):
         """获取用户总带锁时长（分钟）"""
         return obj.get_total_lock_duration()
 
+    def get_task_completion_rate(self, obj):
+        """获取用户任务完成率（%）"""
+        return obj.get_task_completion_rate()
+
 
 class UserPublicSerializer(serializers.ModelSerializer):
     """用户公开信息序列化器（用于显示给其他用户）"""
 
     active_lock_task = serializers.SerializerMethodField()
     total_lock_duration = serializers.SerializerMethodField()
+    task_completion_rate = serializers.SerializerMethodField()
     telegram_username = serializers.SerializerMethodField()
 
     class Meta:
@@ -114,7 +120,7 @@ class UserPublicSerializer(serializers.ModelSerializer):
             'id', 'username', 'level', 'avatar', 'bio',
             'total_posts', 'total_likes_received', 'total_tasks_completed',
             'created_at', 'coins', 'activity_score', 'last_active', 'updated_at',
-            'active_lock_task', 'total_lock_duration', 'telegram_username'
+            'active_lock_task', 'total_lock_duration', 'task_completion_rate', 'telegram_username'
         ]
 
     def get_active_lock_task(self, obj):
@@ -158,6 +164,10 @@ class UserPublicSerializer(serializers.ModelSerializer):
     def get_total_lock_duration(self, obj):
         """获取用户总带锁时长（分钟）"""
         return obj.get_total_lock_duration()
+
+    def get_task_completion_rate(self, obj):
+        """获取用户任务完成率（%）"""
+        return obj.get_task_completion_rate()
 
     def get_telegram_username(self, obj):
         """只有在用户启用展示账号选项时才返回 Telegram 用户名"""

@@ -31,6 +31,7 @@ export interface User {
   total_likes_received: number
   total_tasks_completed: number
   total_lock_duration: number // 总带锁任务时长（分钟）
+  task_completion_rate: number // 任务完成率（%）
   created_at: string
   updated_at: string
   active_lock_task?: ActiveLockTask | null

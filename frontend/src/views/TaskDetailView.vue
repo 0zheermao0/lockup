@@ -1610,6 +1610,7 @@ const fetchTask = async () => {
         total_likes_received: 25,
         total_tasks_completed: 5,
         total_lock_duration: 0,
+        task_completion_rate: 75.0,
         created_at: '2023-12-01',
         updated_at: '2024-01-01'
       },
