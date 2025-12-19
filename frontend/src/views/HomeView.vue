@@ -87,41 +87,79 @@
 
         <!-- Mobile Quick Access Bar -->
         <div class="mobile-quick-access">
-          <!-- Lock Status Mobile -->
-          <div v-if="authStore.user?.active_lock_task" class="mobile-lock-status">
-            <LockStatus
-              :lockTask="authStore.user?.active_lock_task"
-              :showActions="false"
-              :showWhenFree="false"
-              size="small"
-            />
+          <!-- Single Row Layout -->
+          <div class="mobile-main-row">
+            <!-- Lock Status (if exists) -->
+            <div
+              v-if="authStore.user?.active_lock_task"
+              class="mobile-lock-status-inline"
+              :class="{ 'ready': authStore.user.active_lock_task.is_expired }"
+              @click="goToTaskDetail(authStore.user.active_lock_task.id)"
+              :title="authStore.user.active_lock_task.is_expired ? '点击完成任务' : '点击查看任务详情'"
+            >
+              <div class="lock-inline-icon">🔒</div>
+              <div class="lock-inline-info">
+                <div class="lock-inline-title">{{ authStore.user.active_lock_task.title }}</div>
+                <div class="lock-inline-time">
+                  {{ authStore.user.active_lock_task.is_expired ? '可完成' : formatTimeRemaining(authStore.user.active_lock_task.time_remaining_ms || 0) }}
+                </div>
+              </div>
+              <div class="lock-inline-btn" :class="{ 'ready': authStore.user.active_lock_task.is_expired }">
+                {{ authStore.user.active_lock_task.is_expired ? '✅' : '👁️' }}
+              </div>
+            </div>
+
+            <!-- User Stats (only when no lock) -->
+            <div v-if="!authStore.user?.active_lock_task" class="mobile-user-stats-inline">
+              <div class="stat-inline">
+                <span class="stat-emoji">⚡</span>
+                <span class="stat-value">{{ authStore.user?.activity_score || 0 }}</span>
+              </div>
+              <div class="stat-inline">
+                <span class="stat-emoji">🪙</span>
+                <span class="stat-value">{{ authStore.user?.coins || 0 }}</span>
+              </div>
+            </div>
+
+            <!-- Action Buttons -->
+            <div class="mobile-actions-inline" :class="{ 'with-lock': authStore.user?.active_lock_task, 'without-lock': !authStore.user?.active_lock_task }">
+              <button @click="openCreateModal(false)" class="mobile-btn primary" title="发布动态">📝</button>
+              <button @click="openCreateModal(true)" class="mobile-btn success" title="打卡任务">✅</button>
+              <button @click="goToTasks" class="mobile-btn info" title="任务管理">📋</button>
+
+              <!-- More buttons when no lock status -->
+              <template v-if="!authStore.user?.active_lock_task">
+                <button @click="goToStore" class="mobile-btn warning" title="商店">🛍️</button>
+                <button @click="goToGames" class="mobile-btn purple" title="小游戏">🎮</button>
+                <button @click="showMoreActions = !showMoreActions" class="mobile-btn secondary" title="更多">
+                  {{ showMoreActions ? '▲' : '▼' }}
+                </button>
+              </template>
+
+              <!-- Compact more button when with lock -->
+              <template v-else>
+                <button @click="showMoreActions = !showMoreActions" class="mobile-btn secondary" title="更多">
+                  {{ showMoreActions ? '▲' : '▼' }}
+                </button>
+              </template>
+            </div>
           </div>
 
-          <!-- User Stats Mobile -->
-          <div class="mobile-user-stats">
-            <div class="stat-item">
-              <span class="stat-emoji">⚡</span>
-              <span class="stat-value">{{ authStore.user?.activity_score || 0 }}</span>
-            </div>
-            <div class="stat-item">
-              <span class="stat-emoji">📝</span>
-              <span class="stat-value">{{ authStore.user?.total_posts || 0 }}</span>
-            </div>
-            <div class="stat-item">
-              <span class="stat-emoji">❤️</span>
-              <span class="stat-value">{{ authStore.user?.total_likes_received || 0 }}</span>
-            </div>
-          </div>
+          <!-- Expandable More Actions (only secondary actions) -->
+          <div v-if="showMoreActions" class="mobile-actions-more">
+            <!-- When with lock, show all secondary actions -->
+            <template v-if="authStore.user?.active_lock_task">
+              <button @click="goToStore" class="mobile-action-btn-small" title="商店">🛍️ 商店</button>
+              <button @click="goToGames" class="mobile-action-btn-small" title="小游戏">🎮 游戏</button>
+              <button @click="goToInventory" class="mobile-action-btn-small" title="背包">🎒 背包</button>
+              <button @click="goToExplore" class="mobile-action-btn-small" title="探索">🗺️ 探索</button>
+            </template>
 
-          <!-- Quick Actions Mobile -->
-          <div class="mobile-actions">
-            <button @click="openCreateModal(false)" class="mobile-action-btn" title="发布动态">📝</button>
-            <button @click="openCreateModal(true)" class="mobile-action-btn" title="打卡任务">✅</button>
-            <button @click="goToTasks" class="mobile-action-btn" title="任务管理">📋</button>
-            <button @click="goToGames" class="mobile-action-btn" title="小游戏">🎮</button>
-            <button @click="goToStore" class="mobile-action-btn" title="商店">🛍️</button>
-            <button @click="goToInventory" class="mobile-action-btn" title="背包">🎒</button>
-            <button @click="goToExplore" class="mobile-action-btn" title="探索">🗺️</button>
+            <!-- When without lock, show only remaining actions -->
+            <template v-else>
+              <button @click="goToInventory" class="mobile-action-btn-small" title="背包">🎒 背包</button>
+              <button @click="goToExplore" class="mobile-action-btn-small" title="探索">🗺️ 探索</button>
+            </template>
           </div>
         </div>
 
@@ -274,6 +312,9 @@ const isCheckinMode = ref(false)
 const showProfileModal = ref(false)
 const selectedUser = ref<any>(null)
 
+// 移动端更多操作展开状态
+const showMoreActions = ref(false)
+
 // 无限滚动设置
 const {
   items: posts,
@@ -400,6 +441,26 @@ const openProfileModal = (user: any) => {
 const closeProfileModal = () => {
   showProfileModal.value = false
   selectedUser.value = null
+}
+
+const goToTaskDetail = (taskId: string) => {
+  router.push({ name: 'task-detail', params: { id: taskId } })
+}
+
+// 时间格式化函数（与LockStatus组件保持一致）
+const formatTimeRemaining = (milliseconds: number) => {
+  if (milliseconds <= 0) return '已结束'
+
+  const hours = Math.floor(milliseconds / (1000 * 60 * 60))
+  const minutes = Math.floor((milliseconds % (1000 * 60 * 60)) / (1000 * 60))
+
+  if (hours > 0) {
+    return `${hours}h${minutes}m`
+  } else if (minutes > 0) {
+    return `${minutes}m`
+  } else {
+    return '<1m'
+  }
 }
 
 onMounted(() => {
@@ -937,16 +998,14 @@ onMounted(() => {
 /* Mobile Quick Access Bar */
 .mobile-quick-access {
   display: none;
+  flex-direction: column;
   background: white;
   border: 3px solid #000;
   border-radius: 8px;
   box-shadow: 6px 6px 0 #000;
   margin-bottom: 1.5rem;
-  padding: 1rem;
-  gap: 1rem;
-  align-items: center;
-  overflow-x: auto;
-  white-space: nowrap;
+  padding: 0.5rem;
+  gap: 0.5rem;
   position: sticky;
   top: 1rem;
   z-index: 10;
@@ -955,92 +1014,227 @@ onMounted(() => {
   transition: all 0.3s cubic-bezier(0.4, 0.0, 0.2, 1);
 }
 
-.mobile-lock-status {
-  flex-shrink: 0;
-  margin-right: 1rem;
-}
-
-.mobile-user-stats {
+/* Main Row Layout */
+.mobile-main-row {
   display: flex;
-  gap: 1rem;
-  flex-shrink: 0;
-  padding: 0 1rem;
-  border-left: 2px solid #e9ecef;
-  border-right: 2px solid #e9ecef;
-}
-
-.stat-item {
-  display: flex;
-  flex-direction: column;
   align-items: center;
-  gap: 0.25rem;
-  min-width: 40px;
+  gap: 0.5rem;
+  width: 100%;
+  min-height: 40px;
 }
 
-.stat-emoji {
-  font-size: 1.2rem;
-  line-height: 1;
-}
-
-.stat-value {
-  font-size: 0.875rem;
-  font-weight: 600;
-  color: #333;
-}
-
-.mobile-actions {
+/* Inline Lock Status */
+.mobile-lock-status-inline {
   display: flex;
-  gap: 0.75rem;
-  flex-shrink: 0;
-  padding-left: 1rem;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.375rem 0.5rem;
+  background: linear-gradient(135deg, #ff6b6b, #ee5a24);
+  border-radius: 6px;
+  border: 2px solid #000;
+  color: white;
+  font-size: 0.8rem;
+  flex: 1;
+  min-width: 0;
+  max-width: 50%;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  user-select: none;
 }
 
-.mobile-action-btn {
-  width: 48px;
-  height: 48px;
-  border: 3px solid #000;
+.mobile-lock-status-inline:hover {
+  background: linear-gradient(135deg, #ff5252, #e64a19);
+  transform: translate(-1px, -1px);
+  box-shadow: 3px 3px 0 #000;
+}
+
+.mobile-lock-status-inline:active {
+  transform: translate(0, 0);
+  box-shadow: 1px 1px 0 #000;
+}
+
+.mobile-lock-status-inline.ready {
+  background: linear-gradient(135deg, #28a745, #20c997);
+  animation: pulse-ready 2s infinite;
+}
+
+.mobile-lock-status-inline.ready:hover {
+  background: linear-gradient(135deg, #25a244, #1dc5a0);
+}
+
+.lock-inline-icon {
+  font-size: 1rem;
+  flex-shrink: 0;
+}
+
+.lock-inline-info {
+  flex: 1;
+  min-width: 0;
+  line-height: 1.1;
+}
+
+.lock-inline-title {
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: 0.8rem;
+}
+
+.lock-inline-time {
+  font-size: 0.7rem;
+  opacity: 0.9;
+  font-family: 'Courier New', monospace;
+}
+
+.lock-inline-btn {
+  width: 28px;
+  height: 28px;
+  border: 2px solid rgba(255, 255, 255, 0.3);
   border-radius: 50%;
-  background: linear-gradient(135deg, #667eea, #764ba2);
+  background: rgba(255, 255, 255, 0.2);
   color: white;
-  font-size: 1.2rem;
-  cursor: pointer;
-  transition: all 0.2s cubic-bezier(0.4, 0.0, 0.2, 1);
+  font-size: 0.9rem;
+  transition: all 0.2s ease;
   display: flex;
   align-items: center;
   justify-content: center;
-  box-shadow: 4px 4px 0 #000;
   flex-shrink: 0;
-  position: relative;
-  overflow: hidden;
+  pointer-events: none;
+}
+
+.mobile-lock-status-inline:hover .lock-inline-btn {
+  background: rgba(255, 255, 255, 0.3);
+  border-color: rgba(255, 255, 255, 0.5);
+  transform: scale(1.05);
+}
+
+.lock-inline-btn.ready {
+  background: rgba(255, 255, 255, 0.9);
+  color: #28a745;
+  border-color: rgba(255, 255, 255, 0.9);
   font-weight: 600;
 }
 
-.mobile-action-btn::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background: linear-gradient(135deg, rgba(255,255,255,0.2), transparent);
-  border-radius: inherit;
-  opacity: 0;
-  transition: opacity 0.3s ease;
+/* Inline User Stats */
+.mobile-user-stats-inline {
+  display: flex;
+  gap: 0.75rem;
+  align-items: center;
+  flex: 1;
+  padding: 0 0.5rem;
 }
 
-.mobile-action-btn:hover::before {
-  opacity: 1;
+.stat-inline {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.25rem 0.5rem;
+  background: linear-gradient(135deg, #f8f9fa, #e9ecef);
+  border: 1px solid #dee2e6;
+  border-radius: 12px;
+  font-size: 0.8rem;
 }
 
-.mobile-action-btn:hover {
-  transform: translate(-2px, -2px);
-  box-shadow: 6px 6px 0 #000;
-  background: linear-gradient(135deg, #f093fb, #f5576c);
+.stat-emoji {
+  font-size: 1rem;
 }
 
-.mobile-action-btn:active {
-  transform: translate(0, 0);
+.stat-value {
+  font-weight: 600;
+  color: #333;
+  font-size: 0.8rem;
+}
+
+/* Inline Actions */
+.mobile-actions-inline {
+  display: flex;
+  gap: 0.375rem;
+  align-items: center;
+}
+
+.mobile-actions-inline.with-lock {
+  flex: 1;
+  justify-content: flex-end;
+}
+
+.mobile-actions-inline.without-lock {
+  flex: 1;
+  justify-content: flex-end;
+}
+
+.mobile-btn {
+  height: 36px;
+  min-width: 36px;
+  border: 2px solid #000;
+  border-radius: 6px;
+  color: white;
+  font-size: 1rem;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   box-shadow: 2px 2px 0 #000;
+  font-weight: 600;
+  padding: 0 0.5rem;
+  flex: 0 1 auto;
+}
+
+.mobile-btn.primary { background: linear-gradient(135deg, #007bff, #0056b3); }
+.mobile-btn.success { background: linear-gradient(135deg, #28a745, #1e7e34); }
+.mobile-btn.info { background: linear-gradient(135deg, #17a2b8, #138496); }
+.mobile-btn.warning { background: linear-gradient(135deg, #ffc107, #e0a800); color: #212529; }
+.mobile-btn.purple { background: linear-gradient(135deg, #6f42c1, #5a2d91); }
+.mobile-btn.secondary {
+  background: linear-gradient(135deg, #6c757d, #545b62);
+  font-size: 0.8rem;
+  min-width: 32px;
+}
+
+.mobile-btn:hover {
+  transform: translate(-1px, -1px);
+  box-shadow: 3px 3px 0 #000;
+}
+
+.mobile-btn:active {
+  transform: translate(0, 0);
+  box-shadow: 1px 1px 0 #000;
+}
+
+/* Expandable More Actions */
+.mobile-actions-more {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 0.5rem;
+  padding-top: 0.5rem;
+  border-top: 2px solid #e9ecef;
+}
+
+/* Small action buttons in expandable area */
+
+.mobile-action-btn-small {
+  padding: 0.5rem 0.75rem;
+  border: 2px solid #000;
+  border-radius: 4px;
+  background: linear-gradient(135deg, #667eea, #764ba2);
+  color: white;
+  font-size: 0.8rem;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.25rem;
+  box-shadow: 2px 2px 0 #000;
+  font-weight: 600;
+  text-align: center;
+}
+
+.mobile-action-btn-small:hover {
+  transform: translate(-1px, -1px);
+  box-shadow: 3px 3px 0 #000;
+  background: linear-gradient(135deg, #f093fb, #f5576c);
 }
 
 /* Mobile responsive */
@@ -1110,7 +1304,6 @@ onMounted(() => {
     gap: 0.6rem;
   }
 
-
   .logout-circle {
     width: 30px;
     height: 30px;
@@ -1118,6 +1311,85 @@ onMounted(() => {
 
   .logout-icon {
     font-size: 0.875rem;
+  }
+
+  .mobile-quick-access {
+    margin-bottom: 1rem;
+    padding: 0.375rem;
+  }
+
+  .mobile-main-row {
+    gap: 0.375rem;
+  }
+
+  .mobile-lock-status-inline {
+    padding: 0.25rem 0.375rem;
+    font-size: 0.75rem;
+    max-width: 55%;
+  }
+
+  .lock-inline-title {
+    font-size: 0.75rem;
+  }
+
+  .lock-inline-time {
+    font-size: 0.65rem;
+  }
+
+  .lock-inline-btn {
+    width: 24px;
+    height: 24px;
+    font-size: 0.8rem;
+  }
+
+  .mobile-btn {
+    height: 32px;
+    min-width: 32px;
+    font-size: 0.9rem;
+    padding: 0 0.375rem;
+  }
+
+  .mobile-btn.secondary {
+    min-width: 28px;
+    font-size: 0.75rem;
+  }
+
+  .stat-inline {
+    padding: 0.2rem 0.375rem;
+    font-size: 0.75rem;
+  }
+
+  .stat-emoji {
+    font-size: 0.9rem;
+  }
+
+  .stat-value {
+    font-size: 0.75rem;
+  }
+}
+
+/* Extra small screens - additional optimizations */
+@media (max-width: 380px) {
+  .mobile-lock-status-inline {
+    max-width: 60%;
+    padding: 0.25rem;
+  }
+
+  .mobile-actions-inline.with-lock {
+    gap: 0.25rem;
+    flex: 1;
+  }
+
+  .mobile-btn {
+    min-width: 26px;
+    height: 28px;
+    font-size: 0.85rem;
+    padding: 0 0.2rem;
+  }
+
+  .mobile-btn.secondary {
+    min-width: 22px;
+    font-size: 0.7rem;
   }
 }
 </style>

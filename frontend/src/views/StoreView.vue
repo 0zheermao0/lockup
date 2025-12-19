@@ -698,40 +698,218 @@ onMounted(() => {
 /* Mobile Responsive */
 @media (max-width: 768px) {
   .store-header {
-    padding: 1rem 0;
+    padding: 0.75rem 0;
+    border-bottom: 2px solid #000;
   }
 
   .header-content {
     flex-direction: column;
-    gap: 1rem;
+    gap: 0.75rem;
+    padding: 0 0.75rem;
   }
 
   .store-title {
-    font-size: 1.5rem;
+    font-size: 1.25rem;
+    letter-spacing: 1px;
+    order: 2;
+  }
+
+  .user-stats {
+    order: 1;
+    width: 100%;
+    justify-content: space-between;
+    gap: 0.5rem;
+  }
+
+  .back-btn {
+    order: 3;
+    align-self: flex-start;
+    padding: 0.5rem 1rem;
+    font-size: 0.875rem;
+  }
+
+  .coins-display {
+    padding: 0.5rem 1rem;
+    font-size: 0.875rem;
+  }
+
+  .coins-icon,
+  .coins-amount {
+    font-size: 1rem;
+  }
+
+  .inventory-btn {
+    padding: 0.5rem 1rem;
+    font-size: 0.875rem;
+  }
+
+  .container {
+    padding: 1rem 0.75rem;
   }
 
   .store-grid {
     grid-template-columns: 1fr;
-    gap: 1.5rem;
+    gap: 1rem;
   }
 
   .store-item {
-    padding: 1.5rem;
+    padding: 1rem;
+    border-width: 2px;
+    box-shadow: 4px 4px 0 #000;
+  }
+
+  .store-item:hover {
+    transform: translate(-1px, -1px);
+    box-shadow: 6px 6px 0 #000;
   }
 
   .item-header {
     flex-direction: column;
-    gap: 1rem;
+    gap: 0.75rem;
+    margin-bottom: 1rem;
+  }
+
+  .item-info {
+    gap: 0.75rem;
+  }
+
+  .item-icon {
+    font-size: 2rem;
+  }
+
+  .item-name {
+    font-size: 1rem;
+  }
+
+  .item-type {
+    font-size: 0.875rem;
   }
 
   .item-price {
     text-align: left;
+    align-self: flex-start;
+  }
+
+  .price-tag {
+    padding: 0.375rem 0.75rem;
+    font-size: 0.9rem;
+    margin-bottom: 0.25rem;
+  }
+
+  .stock-info {
+    font-size: 0.75rem;
+  }
+
+  .item-description {
+    font-size: 0.875rem;
+    margin-bottom: 1rem;
+  }
+
+  .item-restrictions {
+    margin-bottom: 1rem;
+  }
+
+  .restriction-badge {
+    padding: 0.2rem 0.5rem;
+    font-size: 0.7rem;
   }
 
   .purchase-controls {
     flex-direction: column;
-    gap: 1rem;
+    gap: 0.75rem;
     align-items: stretch;
+  }
+
+  .quantity-selector {
+    justify-content: space-between;
+  }
+
+  .quantity-select {
+    border-width: 2px;
+    padding: 0.375rem;
+    font-size: 0.875rem;
+  }
+
+  .purchase-btn {
+    border-width: 2px;
+    padding: 0.625rem 1rem;
+    font-size: 0.875rem;
+    box-shadow: 3px 3px 0 #000;
+  }
+
+  .purchase-btn:hover:not(.disabled) {
+    transform: translate(1px, 1px);
+    box-shadow: 2px 2px 0 #000;
+  }
+
+  .purchase-warning {
+    padding: 0.5rem;
+    border-width: 2px;
+    margin-top: 0.75rem;
+  }
+
+  .warning-text {
+    font-size: 0.75rem;
+  }
+
+  .success-modal {
+    border-width: 2px;
+    padding: 2rem;
+    box-shadow: 6px 6px 0 #000;
+    margin: 1rem;
+  }
+
+  .modal-title {
+    font-size: 1.25rem;
+  }
+
+  .modal-btn {
+    border-width: 2px;
+    padding: 0.625rem 1.5rem;
+    font-size: 0.875rem;
+    box-shadow: 3px 3px 0 #000;
+  }
+
+  .modal-btn:hover {
+    transform: translate(1px, 1px);
+    box-shadow: 2px 2px 0 #000;
+  }
+}
+
+/* Extra small screens */
+@media (max-width: 480px) {
+  .header-content {
+    padding: 0 0.5rem;
+  }
+
+  .container {
+    padding: 0.75rem 0.5rem;
+  }
+
+  .store-item {
+    padding: 0.75rem;
+  }
+
+  .item-icon {
+    font-size: 1.75rem;
+  }
+
+  .item-name {
+    font-size: 0.9rem;
+  }
+
+  .price-tag {
+    font-size: 0.8rem;
+    padding: 0.3rem 0.6rem;
+  }
+
+  .purchase-controls {
+    gap: 0.5rem;
+  }
+
+  .purchase-btn {
+    padding: 0.5rem 0.75rem;
+    font-size: 0.8rem;
   }
 }
 </style>

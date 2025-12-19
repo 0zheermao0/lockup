@@ -9,6 +9,9 @@
       </div>
     </div>
 
+    <!-- 移动端遮罩层 -->
+    <div v-if="showDropdown" class="mobile-overlay" @click="showDropdown = false"></div>
+
     <!-- 通知下拉列表 -->
     <div v-if="showDropdown" class="notification-dropdown" @click.stop>
       <div class="dropdown-header">
@@ -463,6 +466,10 @@ onUnmounted(() => {
   letter-spacing: 0.2px;
 }
 
+.mobile-overlay {
+  display: none;
+}
+
 .notification-dropdown {
   position: absolute;
   top: 100%;
@@ -735,6 +742,17 @@ onUnmounted(() => {
   }
 }
 
+@keyframes slideDown {
+  from {
+    opacity: 0;
+    transform: translateY(-20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
 /* Game result notification styles */
 .game-result-content {
   margin-top: 0.5rem;
@@ -878,24 +896,55 @@ onUnmounted(() => {
 
 /* 移动端响应式 */
 @media (max-width: 768px) {
+  .notification-bell {
+    position: static;
+  }
+
+  .mobile-overlay {
+    display: block;
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.3);
+    z-index: 9998;
+    backdrop-filter: blur(2px);
+    -webkit-backdrop-filter: blur(2px);
+  }
+
   .notification-dropdown {
-    min-width: 300px;
-    max-width: 90vw;
-    right: -50vw;
-    left: 50vw;
-    transform: translateX(-50%);
+    position: fixed;
+    top: 60px;
+    right: 0.5rem;
+    left: 0.5rem;
+    width: auto;
+    min-width: unset;
+    max-width: unset;
+    transform: none;
+    margin-top: 0;
+    max-height: calc(100vh - 80px);
+    z-index: 9999;
+    animation: slideDown 0.3s ease-out;
+  }
+
+  .notification-list {
+    max-height: calc(100vh - 140px);
   }
 
   .notification-item {
     padding: 0.75rem;
+    gap: 0.5rem;
   }
 
   .notification-title {
     font-size: 0.875rem;
+    line-height: 1.3;
   }
 
   .notification-message {
     font-size: 0.8rem;
+    line-height: 1.4;
   }
 
   .header-actions {
@@ -906,6 +955,105 @@ onUnmounted(() => {
   .mark-all-btn, .clear-btn {
     font-size: 0.625rem;
     padding: 0.25rem 0.5rem;
+  }
+
+  .dropdown-header {
+    padding: 0.75rem;
+  }
+
+  .dropdown-header h3 {
+    font-size: 1rem;
+  }
+
+  .game-choices {
+    flex-direction: column;
+    gap: 0.5rem;
+    align-items: flex-start;
+  }
+
+  .choice-item {
+    padding: 0.25rem 0.5rem;
+    font-size: 0.75rem;
+  }
+
+  .vs-text {
+    align-self: center;
+    font-size: 0.8rem;
+  }
+
+  .notification-actions {
+    flex-direction: column;
+    gap: 0.25rem;
+  }
+
+  .action-btn {
+    width: 28px;
+    height: 28px;
+    font-size: 0.8rem;
+  }
+}
+
+/* 超小屏幕优化 */
+@media (max-width: 480px) {
+  .notification-dropdown {
+    top: 55px;
+    right: 0.25rem;
+    left: 0.25rem;
+    max-height: calc(100vh - 75px);
+  }
+
+  .notification-list {
+    max-height: calc(100vh - 135px);
+  }
+
+  .dropdown-header {
+    padding: 0.5rem;
+  }
+
+  .dropdown-header h3 {
+    font-size: 0.9rem;
+  }
+
+  .notification-item {
+    padding: 0.5rem;
+    gap: 0.375rem;
+  }
+
+  .notification-icon {
+    font-size: 1rem;
+  }
+
+  .notification-title {
+    font-size: 0.8rem;
+  }
+
+  .notification-message {
+    font-size: 0.75rem;
+  }
+
+  .notification-meta {
+    font-size: 0.7rem;
+    gap: 0.25rem;
+  }
+
+  .mark-all-btn, .clear-btn {
+    font-size: 0.6rem;
+    padding: 0.2rem 0.4rem;
+  }
+
+  .game-details {
+    padding: 0.5rem;
+    font-size: 0.75rem;
+  }
+
+  .choice-item {
+    padding: 0.2rem 0.4rem;
+    font-size: 0.7rem;
+  }
+
+  .clickable-username {
+    padding: 0.2rem 0.4rem;
+    font-size: 0.75rem;
   }
 }
 </style>
