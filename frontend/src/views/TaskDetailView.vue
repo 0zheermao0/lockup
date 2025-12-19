@@ -825,6 +825,27 @@
                 </div>
               </div>
 
+              <!-- Pin Task Owner -->
+              <div class="key-action-card">
+                <div class="action-header">
+                  <h4>📌 置顶惩罚</h4>
+                  <span class="action-cost">消耗 60 积分</span>
+                </div>
+                <p class="action-description">
+                  置顶任务创建者 <strong>{{ task?.user?.username }}</strong> 30分钟，置顶期间他人加时效果×10
+                </p>
+                <div class="action-buttons">
+                  <button
+                    @click="pinTaskOwner"
+                    :disabled="!canAffordPinning || pinningInProgress"
+                    class="key-action-btn pin"
+                    :class="{ 'disabled': !canAffordPinning || pinningInProgress }"
+                  >
+                    {{ pinningInProgress ? '置顶中...' : '📌 置顶惩罚' }}
+                  </button>
+                </div>
+              </div>
+
               <!-- Key Return Option -->
               <div v-if="taskKey && taskKey.original_owner && taskKey.original_owner.id !== authStore.user?.id" class="key-action-card">
                 <div class="action-header">
@@ -969,6 +990,9 @@ const keyHolderInfo = ref<{
     username: string
   }
 } | null>(null)
+
+// Pinning state
+const pinningInProgress = ref(false)
 
 // Image modal state
 const showImageModal = ref(false)
@@ -1447,6 +1471,11 @@ const canAffordTimeAdjustment = computed(() => {
 const canAffordTimeToggle = computed(() => {
   if (!authStore.user || !canManageKeyActions.value) return false
   return authStore.user.coins >= 50 // 时间显示切换需要50积分
+})
+
+const canAffordPinning = computed(() => {
+  if (!authStore.user || !canManageKeyActions.value) return false
+  return authStore.user.coins >= 60 // 置顶惩罚需要60积分
 })
 
 // Multi-person task computed properties (review mode removed)
@@ -2503,6 +2532,80 @@ const toggleTimeDisplay = async () => {
       message: errorMessage,
       secondaryMessage: secondaryMessage
     }
+  }
+}
+
+const pinTaskOwner = async () => {
+  if (!task.value || !canAffordPinning.value) {
+    showToast.value = true
+    toastData.value = {
+      type: 'error',
+      title: '操作失败',
+      message: '积分不足或无权限进行置顶操作',
+      secondaryMessage: '置顶惩罚需要60积分，请检查您的余额'
+    }
+    return
+  }
+
+  pinningInProgress.value = true
+
+  try {
+    const result = await tasksApi.pinTaskOwner(task.value.id, 60, 30)
+
+    // 刷新用户数据以更新积分
+    await authStore.refreshUser()
+
+    // 刷新任务时间线
+    await fetchTimeline()
+
+    // 显示成功消息
+    showToast.value = true
+    toastData.value = {
+      type: 'success',
+      title: '置顶惩罚成功',
+      message: `📌 ${task.value.user.username} 已被置顶30分钟`,
+      secondaryMessage: '置顶期间他人加时效果×10',
+      details: {
+        '置顶用户': task.value.user.username,
+        '置顶时长': '30分钟',
+        '消耗积分': '60积分',
+        '剩余积分': `${result.coins_remaining}积分`,
+        '队列位置': result.position ? `第${result.position}位` : '排队中'
+      }
+    }
+
+    console.log('置顶惩罚成功:', result)
+  } catch (error: any) {
+    console.error('Error pinning task owner:', error)
+
+    // 处理特定错误消息
+    let errorMessage = '置顶操作失败，请重试'
+    let secondaryMessage = '请稍后重试或联系管理员'
+
+    if (error.data?.error) {
+      errorMessage = error.data.error
+    } else if (error.status === 404) {
+      errorMessage = '任务不存在或已被删除'
+    } else if (error.status === 403) {
+      errorMessage = '您没有权限置顶此任务的创建者'
+    } else if (error.status === 400) {
+      errorMessage = '积分不足或操作无效'
+      secondaryMessage = '请检查您的积分余额'
+    } else if (error.status === 500) {
+      errorMessage = '服务器内部错误，请稍后重试'
+    } else if (error.message) {
+      errorMessage = `网络错误：${error.message}`
+    }
+
+    showToast.value = true
+    toastData.value = {
+      type: 'error',
+      title: '置顶失败',
+      message: errorMessage,
+      secondaryMessage: secondaryMessage
+    }
+  } finally {
+    pinningInProgress.value = false
   }
 }
 
@@ -4433,6 +4536,15 @@ onUnmounted(() => {
 .key-action-btn.time-toggle.hidden-mode {
   background: linear-gradient(135deg, #17a2b8, #138496);
   animation: pulse-hidden-mode 2s ease-in-out infinite;
+}
+
+.key-action-btn.pin {
+  background: linear-gradient(135deg, #ff6b6b, #ee5a52);
+  min-width: 140px;
+}
+
+.key-action-btn.pin:hover:not(.disabled) {
+  background: linear-gradient(135deg, #ee5a52, #e74c3c);
 }
 
 .key-action-btn.return {

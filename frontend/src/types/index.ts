@@ -223,6 +223,65 @@ export interface TaskKey {
   status: 'active' | 'used'
 }
 
+// Pinning System Types - 置顶惩罚系统
+export interface PinnedUser {
+  id: string
+  task: {
+    id: string
+    title: string
+    status: string
+    difficulty: string
+    task_type: string
+  }
+  pinned_user: {
+    id: string
+    username: string
+  }
+  key_holder: {
+    id: string
+    username: string
+  }
+  coins_spent: number
+  duration_minutes: number
+  is_active: boolean
+  position: number | null // 1-3 or null for queue
+  created_at: string
+  expires_at: string
+  activated_at?: string
+  time_remaining?: number // calculated field in seconds
+}
+
+export interface PinningQueueStatus {
+  active_pins: PinnedUser[]
+  queued_pins: PinnedUser[]
+  active_count: number
+  queue_count: number
+  max_positions: number
+}
+
+export interface PinningCarouselData {
+  id: string
+  position: number
+  task: {
+    id: string
+    title: string
+    status: string
+    difficulty: string
+    task_type: string
+  }
+  pinned_user: {
+    id: string
+    username: string
+  }
+  key_holder: {
+    id: string
+    username: string
+  }
+  time_remaining: number
+  expires_at: string
+  created_at: string
+}
+
 // Game Types
 export interface GameItem {
   id: string

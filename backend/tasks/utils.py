@@ -8,7 +8,7 @@ from django.db import transaction
 from datetime import timedelta
 import random
 
-from .models import LockTask, OvertimeAction, TaskTimelineEvent
+from .models import LockTask, OvertimeAction, TaskTimelineEvent, PinnedUser
 from store.models import Item
 from users.models import Notification
 
@@ -123,6 +123,17 @@ def add_overtime_to_task(task, user, minutes=None):
         # 使用指定的分钟数
         overtime_minutes = max(1, int(minutes))  # 确保至少1分钟
 
+    # 检查任务创建者是否被置顶，如果是则应用10倍加时效果
+    is_pinned = PinnedUser.objects.filter(
+        pinned_user=task.user,  # 任务创建者被置顶
+        is_active=True,
+        position__isnull=False  # 必须在活跃位置（不是排队中）
+    ).exists()
+
+    original_overtime = overtime_minutes
+    if is_pinned:
+        overtime_minutes *= 10  # 10倍惩罚效果
+
     # 记录时间变化前的状态
     previous_end_time = task.end_time
 
@@ -151,6 +162,10 @@ def add_overtime_to_task(task, user, minutes=None):
     )
 
     # 创建时间线事件
+    description = f'{user.username} 为任务随机加时 {overtime_minutes} 分钟'
+    if is_pinned:
+        description += f'（置顶惩罚：{original_overtime}×10）'
+
     TaskTimelineEvent.objects.create(
         task=task,
         event_type='overtime_added',
@@ -158,26 +173,38 @@ def add_overtime_to_task(task, user, minutes=None):
         time_change_minutes=overtime_minutes,
         previous_end_time=previous_end_time,
         new_end_time=task.end_time,
-        description=f'{user.username} 为任务随机加时 {overtime_minutes} 分钟',
+        description=description,
         metadata={
             'difficulty': task.difficulty,
             'overtime_minutes': overtime_minutes,
+            'original_overtime': original_overtime,
+            'is_pinned': is_pinned,
+            'pinning_multiplier': 10 if is_pinned else 1,
             'source': 'telegram_bot' if hasattr(user, '_telegram_bot_source') else 'web'
         }
     )
 
     # 创建加时通知
+    notification_extra_data = {
+        'overtime_minutes': overtime_minutes,
+        'difficulty': task.difficulty,
+        'new_end_time': task.end_time.isoformat() if task.end_time else None
+    }
+
+    if is_pinned:
+        notification_extra_data.update({
+            'is_pinned': True,
+            'original_overtime': original_overtime,
+            'pinning_multiplier': 10
+        })
+
     Notification.create_notification(
         recipient=task.user,
         notification_type='task_overtime_added',
         actor=user,
         related_object_type='task',
         related_object_id=task.id,
-        extra_data={
-            'overtime_minutes': overtime_minutes,
-            'difficulty': task.difficulty,
-            'new_end_time': task.end_time.isoformat() if task.end_time else None
-        }
+        extra_data=notification_extra_data
     )
 
     return {

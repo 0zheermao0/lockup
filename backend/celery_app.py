@@ -73,6 +73,22 @@ app.conf.beat_schedule = {
             'routing_key': 'rewards',
         },
     },
+    'process-pinning-queue': {
+        'task': 'tasks.celery_tasks.process_pinning_queue',
+        'schedule': 60.0,  # Execute every minute (60 seconds)
+        'options': {
+            'queue': 'default',
+            'routing_key': 'default',
+        },
+    },
+    'pinning-health-check': {
+        'task': 'tasks.celery_tasks.pinning_health_check',
+        'schedule': 60.0 * 5,  # Execute every 5 minutes (300 seconds)
+        'options': {
+            'queue': 'default',
+            'routing_key': 'default',
+        },
+    },
 }
 
 # Set default queue for beat scheduler

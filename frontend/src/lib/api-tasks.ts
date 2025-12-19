@@ -1,4 +1,4 @@
-import type { LockTask, TaskCreateRequest } from '../types/index'
+import type { LockTask, TaskCreateRequest, PinningQueueStatus, PinningCarouselData } from '../types/index'
 import { API_BASE_URL } from '../config/index.js';
 
 class ApiError extends Error {
@@ -368,5 +368,44 @@ export const tasksApi = {
     return apiRequest(`/tasks/${id}/toggle-time-display/`, {
       method: 'POST'
     })
+  },
+
+  // 置顶任务创建者（钥匙持有者专属）
+  pinTaskOwner: async (id: string, coinsSpent: number = 60, durationMinutes: number = 30): Promise<{
+    message: string
+    position?: number
+    queue_status?: any
+    coins_remaining: number
+  }> => {
+    return apiRequest(`/tasks/${id}/pin/`, {
+      method: 'POST',
+      body: JSON.stringify({
+        coins_spent: coinsSpent,
+        duration_minutes: durationMinutes
+      })
+    })
+  },
+
+  // 取消置顶任务创建者（管理员专用）
+  unpinTaskOwner: async (id: string): Promise<{
+    message: string
+    queue_status?: any
+  }> => {
+    return apiRequest(`/tasks/${id}/unpin/`, {
+      method: 'DELETE'
+    })
+  },
+
+  // 获取置顶状态和队列信息
+  getPinningStatus: async (): Promise<PinningQueueStatus> => {
+    return apiRequest('/tasks/pinning-status/')
+  },
+
+  // 获取置顶任务轮播数据
+  getPinnedTasksForCarousel: async (): Promise<{
+    pinned_tasks: PinningCarouselData[]
+    count: number
+  }> => {
+    return apiRequest('/tasks/pinned-carousel/')
   }
 }

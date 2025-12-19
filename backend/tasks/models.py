@@ -183,11 +183,14 @@ class TaskTimelineEvent(models.Model):
         ('manual_adjustment', '手动调整'),
         ('hourly_reward', '小时奖励'),
         ('task_keys_destroyed', '任务钥匙销毁'),
+        ('user_pinned', '用户被置顶'),
+        ('user_unpinned', '用户置顶结束'),
+        ('pinning_queue_updated', '置顶队列更新'),
     ]
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     task = models.ForeignKey(LockTask, on_delete=models.CASCADE, related_name='timeline_events')
-    event_type = models.CharField(max_length=20, choices=EVENT_TYPE_CHOICES)
+    event_type = models.CharField(max_length=30, choices=EVENT_TYPE_CHOICES)
 
     # 事件相关用户（可能为空，如系统事件）
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE,
@@ -359,3 +362,48 @@ class TaskParticipant(models.Model):
 
     def __str__(self):
         return f"{self.participant.username} - {self.task.title} ({self.get_status_display()})"
+
+
+class PinnedUser(models.Model):
+    """置顶用户记录 - 钥匙持有者置顶惩罚系统"""
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    task = models.ForeignKey(LockTask, on_delete=models.CASCADE, related_name='pinned_records',
+                            help_text='被置顶的任务（钥匙对应的任务）')
+    pinned_user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE,
+                                   related_name='pinned_records', help_text='被置顶的用户（任务创建者）')
+    key_holder = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE,
+                                  related_name='pinning_actions', help_text='执行置顶的钥匙持有者')
+
+    # 置顶详情
+    coins_spent = models.IntegerField(default=60, help_text='消费的金币数')
+    duration_minutes = models.IntegerField(default=30, help_text='置顶持续时间（分钟）')
+
+    # 状态和位置
+    is_active = models.BooleanField(default=True, help_text='是否处于置顶状态')
+    position = models.IntegerField(null=True, blank=True,
+                                  help_text='置顶位置（1-3，null表示排队中）')
+
+    # 时间追踪
+    created_at = models.DateTimeField(auto_now_add=True, help_text='创建时间（排队时间）')
+    expires_at = models.DateTimeField(help_text='置顶过期时间')
+    activated_at = models.DateTimeField(null=True, blank=True, help_text='开始置顶的时间')
+
+    class Meta:
+        ordering = ['created_at']  # 按操作时间排队
+        indexes = [
+            models.Index(fields=['is_active', 'position']),
+            models.Index(fields=['expires_at']),
+            models.Index(fields=['created_at']),
+            models.Index(fields=['pinned_user', 'is_active']),
+        ]
+
+    def __str__(self):
+        status = f"位置{self.position}" if self.position else "排队中"
+        return f"{self.key_holder.username} 置顶 {self.pinned_user.username} ({status})"
+
+    def save(self, *args, **kwargs):
+        # 确保 pinned_user 是 task 的创建者
+        if self.pinned_user != self.task.user:
+            raise ValueError("被置顶用户必须是任务的创建者")
+        super().save(*args, **kwargs)

@@ -11,10 +11,11 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-from .models import LockTask, TaskKey, TaskVote, OvertimeAction, TaskTimelineEvent, HourlyReward, TaskParticipant
+from .models import LockTask, TaskKey, TaskVote, OvertimeAction, TaskTimelineEvent, HourlyReward, TaskParticipant, PinnedUser
 from store.models import ItemType, UserInventory, Item
 from users.models import Notification
 from .utils import destroy_task_keys
+from .pinning_service import PinningQueueManager
 from .pagination import DynamicPageNumberPagination
 from .serializers import (
     LockTaskSerializer, LockTaskCreateSerializer,
@@ -2597,3 +2598,220 @@ def _auto_settle_multi_person_expired_task(task):
         'reward_distributed': task.reward if task.status == 'completed' else 0,
         'refund_amount': task.reward if task.status == 'failed' else 0
     }
+
+
+# ============================================================================
+# 置顶惩罚系统 API - Pinning Penalty System
+# ============================================================================
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def pin_task_owner(request, pk):
+    """钥匙持有者置顶任务创建者"""
+    task = get_object_or_404(LockTask, pk=pk)
+
+    # 检查任务类型
+    if task.task_type != 'lock':
+        return Response(
+            {'error': '只能置顶带锁任务的创建者'},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+
+    # 检查任务状态
+    if task.status not in ['active', 'voting']:
+        return Response(
+            {'error': '任务不在可置顶状态'},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+
+    # 获取置顶参数
+    coins_spent = request.data.get('coins_spent', 60)
+    duration_minutes = request.data.get('duration_minutes', 30)
+
+    # 使用队列管理器处理置顶逻辑
+    result = PinningQueueManager.add_to_queue(
+        task=task,
+        key_holder=request.user,
+        coins_spent=coins_spent,
+        duration_minutes=duration_minutes
+    )
+
+    if result['success']:
+        # 发送通知给被置顶的用户
+        Notification.create_notification(
+            recipient=task.user,
+            notification_type='user_pinned',
+            actor=request.user,
+            related_object_type='task',
+            related_object_id=task.id,
+            extra_data={
+                'task_title': task.title,
+                'key_holder': request.user.username,
+                'coins_spent': coins_spent,
+                'duration_minutes': duration_minutes,
+                'position': result.get('position')
+            },
+            priority='high'
+        )
+
+        return Response({
+            'message': result['message'],
+            'position': result.get('position'),
+            'queue_status': result.get('queue_status'),
+            'coins_remaining': request.user.coins
+        }, status=status.HTTP_200_OK)
+    else:
+        return Response(
+            {'error': result['message']},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def get_pinning_status(request):
+    """获取当前置顶状态和队列信息"""
+    try:
+        # 先更新队列状态
+        PinningQueueManager.update_queue()
+
+        # 获取队列状态
+        queue_status = PinningQueueManager.get_queue_status()
+
+        return Response(queue_status, status=status.HTTP_200_OK)
+
+    except Exception as e:
+        logger.error(f"Failed to get pinning status: {e}")
+        return Response(
+            {'error': '获取置顶状态失败'},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+
+@api_view(['DELETE'])
+@permission_classes([IsAuthenticated])
+def unpin_task_owner(request, pk):
+    """取消置顶任务创建者（仅管理员或自动过期）"""
+    task = get_object_or_404(LockTask, pk=pk)
+
+    # 检查权限：只有管理员可以手动取消置顶
+    if not (request.user.is_staff or request.user.is_superuser):
+        return Response(
+            {'error': '只有管理员可以手动取消置顶'},
+            status=status.HTTP_403_FORBIDDEN
+        )
+
+    try:
+        # 查找活跃的置顶记录
+        pinned_record = PinnedUser.objects.filter(
+            task=task,
+            pinned_user=task.user,
+            is_active=True
+        ).first()
+
+        if not pinned_record:
+            return Response(
+                {'error': '该用户当前未被置顶'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        # 取消置顶
+        pinned_record.is_active = False
+        pinned_record.position = None
+        pinned_record.save()
+
+        # 更新队列状态
+        queue_result = PinningQueueManager.update_queue()
+
+        # 创建时间线事件
+        TaskTimelineEvent.objects.create(
+            task=task,
+            event_type='user_unpinned',
+            user=request.user,
+            description=f'{request.user.username} 手动取消了 {task.user.username} 的置顶',
+            metadata={
+                'manual_unpin': True,
+                'admin_action': True,
+                'pinned_user_id': str(task.user.id),
+                'admin_id': str(request.user.id)
+            }
+        )
+
+        # 发送通知
+        Notification.create_notification(
+            recipient=task.user,
+            notification_type='user_unpinned',
+            actor=request.user,
+            related_object_type='task',
+            related_object_id=task.id,
+            extra_data={
+                'task_title': task.title,
+                'admin': request.user.username,
+                'manual_unpin': True
+            }
+        )
+
+        return Response({
+            'message': f'已取消 {task.user.username} 的置顶',
+            'queue_status': queue_result
+        }, status=status.HTTP_200_OK)
+
+    except Exception as e:
+        logger.error(f"Failed to unpin user: {e}")
+        return Response(
+            {'error': '取消置顶失败'},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def get_pinned_tasks_for_carousel(request):
+    """获取置顶任务信息用于社区轮播组件"""
+    try:
+        # 获取活跃的置顶用户
+        active_pins = PinningQueueManager.get_active_pinned_users()
+
+        carousel_data = []
+        for pin in active_pins:
+            task = pin.task
+            pinned_user = pin.pinned_user
+
+            # 计算剩余时间
+            now = timezone.now()
+            time_remaining = max(0, (pin.expires_at - now).total_seconds())
+
+            carousel_data.append({
+                'id': str(pin.id),
+                'position': pin.position,
+                'task': {
+                    'id': str(task.id),
+                    'title': task.title,
+                    'status': task.status,
+                    'difficulty': task.difficulty,
+                    'task_type': task.task_type
+                },
+                'pinned_user': {
+                    'id': str(pinned_user.id),
+                    'username': pinned_user.username
+                },
+                'key_holder': {
+                    'id': str(pin.key_holder.id),
+                    'username': pin.key_holder.username
+                },
+                'time_remaining': time_remaining,
+                'expires_at': pin.expires_at.isoformat(),
+                'created_at': pin.created_at.isoformat()
+            })
+
+        return Response({
+            'pinned_tasks': carousel_data,
+            'count': len(carousel_data)
+        }, status=status.HTTP_200_OK)
+
+    except Exception as e:
+        logger.error(f"Failed to get pinned tasks for carousel: {e}")
+        return Response(
+            {'error': '获取置顶任务失败'},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )

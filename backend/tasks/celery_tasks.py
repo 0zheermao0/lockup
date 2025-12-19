@@ -14,7 +14,7 @@ import math
 from celery import shared_task
 from django.utils import timezone
 from django.db import transaction
-from .models import LockTask, HourlyReward, TaskTimelineEvent, TaskParticipant
+from .models import LockTask, HourlyReward, TaskTimelineEvent, TaskParticipant, PinnedUser
 from users.models import Notification
 
 # Configure logger for Celery tasks
@@ -693,3 +693,229 @@ def _auto_settle_multi_person_expired_task_internal(task, current_time):
         'reward_distributed': task.reward if task.status == 'completed' else 0,
         'refund_amount': task.reward if task.status == 'failed' else 0
     }
+
+
+# ============================================================================
+# 置顶队列管理 Celery 任务 - Pinning Queue Management Tasks
+# ============================================================================
+
+@shared_task(bind=True)
+def process_pinning_queue(self):
+    """
+    定期处理置顶队列，移除过期用户，激活等待中的用户
+
+    This task should be run every minute to ensure timely queue processing
+    """
+    try:
+        logger.info("Starting pinning queue processing...")
+
+        from .pinning_service import PinningQueueManager
+
+        # 更新队列状态
+        result = PinningQueueManager.update_queue()
+
+        if result['success']:
+            logger.info(f"Pinning queue processed successfully: "
+                       f"{result['expired_count']} expired, "
+                       f"{len(result['position_changes'])} position changes, "
+                       f"{result['active_positions']} active positions, "
+                       f"{result['queue_count']} in queue")
+
+            return {
+                'status': 'success',
+                'expired_count': result['expired_count'],
+                'position_changes': result['position_changes'],
+                'active_positions': result['active_positions'],
+                'queue_count': result['queue_count'],
+                'timestamp': timezone.now().isoformat()
+            }
+        else:
+            logger.error(f"Pinning queue processing failed: {result.get('error', 'Unknown error')}")
+            return {
+                'status': 'error',
+                'error': result.get('error', 'Unknown error'),
+                'timestamp': timezone.now().isoformat()
+            }
+
+    except Exception as exc:
+        logger.error(f"Pinning queue processing failed: {exc}", exc_info=True)
+        return {
+            'status': 'error',
+            'error': str(exc),
+            'timestamp': timezone.now().isoformat()
+        }
+
+
+@shared_task(bind=True)
+def expire_pinned_users(self):
+    """
+    处理过期的置顶用户（备用任务，主要处理在 process_pinning_queue 中完成）
+
+    This is a backup task that specifically handles expiration
+    """
+    try:
+        logger.info("Starting pinned users expiration check...")
+
+        now = timezone.now()
+
+        with transaction.atomic():
+            # 查找过期的置顶记录
+            expired_pins = PinnedUser.objects.select_for_update().filter(
+                is_active=True,
+                expires_at__lt=now
+            )
+
+            expired_count = 0
+            for pin in expired_pins:
+                # 设置为非活跃状态
+                pin.is_active = False
+                pin.position = None
+                pin.save()
+
+                # 创建过期事件
+                TaskTimelineEvent.objects.create(
+                    task=pin.task,
+                    event_type='user_unpinned',
+                    user=None,  # 系统事件
+                    description=f'{pin.pinned_user.username} 的置顶时间已到期',
+                    metadata={
+                        'expired': True,
+                        'duration_minutes': pin.duration_minutes,
+                        'pinned_user_id': str(pin.pinned_user.id),
+                        'key_holder_id': str(pin.key_holder.id),
+                        'expired_at': now.isoformat()
+                    }
+                )
+
+                # 发送过期通知
+                Notification.create_notification(
+                    recipient=pin.pinned_user,
+                    notification_type='user_unpinned',
+                    actor=None,
+                    related_object_type='task',
+                    related_object_id=pin.task.id,
+                    extra_data={
+                        'task_title': pin.task.title,
+                        'expired': True,
+                        'duration_minutes': pin.duration_minutes
+                    },
+                    priority='low'
+                )
+
+                expired_count += 1
+
+        logger.info(f"Expired {expired_count} pinned users")
+
+        return {
+            'status': 'success',
+            'expired_count': expired_count,
+            'timestamp': now.isoformat()
+        }
+
+    except Exception as exc:
+        logger.error(f"Pinned users expiration failed: {exc}", exc_info=True)
+        return {
+            'status': 'error',
+            'error': str(exc),
+            'timestamp': timezone.now().isoformat()
+        }
+
+
+@shared_task(bind=True)
+def pinning_health_check(self):
+    """
+    置顶系统健康检查任务
+
+    Checks the health of the pinning system and reports any issues
+    """
+    try:
+        logger.info("Starting pinning system health check...")
+
+        now = timezone.now()
+
+        # 统计当前状态
+        active_pins_count = PinnedUser.objects.filter(
+            is_active=True,
+            position__isnull=False
+        ).count()
+
+        queued_pins_count = PinnedUser.objects.filter(
+            is_active=True,
+            position__isnull=True
+        ).count()
+
+        # 检查是否有过期但仍活跃的记录
+        overdue_pins = PinnedUser.objects.filter(
+            is_active=True,
+            expires_at__lt=now - timezone.timedelta(minutes=5)  # 超过5分钟还未处理
+        )
+
+        overdue_count = overdue_pins.count()
+
+        # 检查位置分配是否正确
+        position_issues = []
+        expected_positions = set(range(1, min(active_pins_count + 1, 4)))  # 1, 2, 3
+        actual_positions = set(
+            PinnedUser.objects.filter(
+                is_active=True,
+                position__isnull=False
+            ).values_list('position', flat=True)
+        )
+
+        if expected_positions != actual_positions:
+            position_issues.append({
+                'issue': 'position_mismatch',
+                'expected': list(expected_positions),
+                'actual': list(actual_positions)
+            })
+
+        # 检查是否有重复位置
+        position_counts = {}
+        for pin in PinnedUser.objects.filter(is_active=True, position__isnull=False):
+            position_counts[pin.position] = position_counts.get(pin.position, 0) + 1
+
+        duplicate_positions = {pos: count for pos, count in position_counts.items() if count > 1}
+
+        if duplicate_positions:
+            position_issues.append({
+                'issue': 'duplicate_positions',
+                'duplicates': duplicate_positions
+            })
+
+        # 确定健康状态
+        health_status = 'healthy'
+        if overdue_count > 0 or position_issues:
+            health_status = 'warning'
+
+        health_report = {
+            'status': health_status,
+            'timestamp': now.isoformat(),
+            'active_pins_count': active_pins_count,
+            'queued_pins_count': queued_pins_count,
+            'overdue_pins_count': overdue_count,
+            'position_issues': position_issues,
+            'overdue_pins': [
+                {
+                    'id': str(pin.id),
+                    'pinned_user': pin.pinned_user.username,
+                    'expires_at': pin.expires_at.isoformat(),
+                    'overdue_minutes': (now - pin.expires_at).total_seconds() / 60
+                }
+                for pin in overdue_pins[:5]  # 只返回前5个
+            ]
+        }
+
+        if health_status == 'warning':
+            logger.warning(f"Pinning system health issues detected: {health_report}")
+        else:
+            logger.info("Pinning system is healthy")
+
+        return health_report
+
+    except Exception as exc:
+        logger.error(f"Pinning health check failed: {exc}", exc_info=True)
+        return {
+            'status': 'error',
+            'timestamp': timezone.now().isoformat(),
+            'error': str(exc)
+        }

@@ -157,11 +157,20 @@
 
         <!-- Posts Feed -->
         <section class="posts-feed">
-          <!-- Header with title and broadcast -->
+          <!-- Header with title and carousels in single row -->
           <div class="posts-feed-header">
             <h2>社区动态</h2>
-            <!-- Task Broadcast Component -->
-            <TaskBroadcast />
+            <!-- Carousels container that stays in row on mobile -->
+            <div class="carousels-row">
+              <!-- Pinned Users Carousel - only show when there are pinned users -->
+              <div v-if="showPinnedCarousel" class="carousel-pinned">
+                <PinnedUserCarousel :compact="true" ref="pinnedCarouselRef" />
+              </div>
+              <!-- Task Broadcast - takes full width when pinned carousel is hidden -->
+              <div class="carousel-tasks" :class="{ 'full-width': !showPinnedCarousel }">
+                <TaskBroadcast />
+              </div>
+            </div>
           </div>
 
           <div v-if="isInitialLoading" class="loading">
@@ -276,18 +285,20 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { onMounted, ref, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '../stores/auth'
 import { usePostsStore } from '../stores/posts'
 import { useNotificationStore } from '../stores/notifications'
 import { useInfiniteScroll } from '../composables/useInfiniteScroll'
 import { formatDistanceToNow } from '../lib/utils'
+import { tasksApi } from '../lib/api-tasks'
 import CreatePostModal from '../components/CreatePostModal.vue'
 import LockStatus from '../components/LockStatus.vue'
 import ProfileModal from '../components/ProfileModal.vue'
 import NotificationBell from '../components/NotificationBell.vue'
 import TaskBroadcast from '../components/TaskBroadcast.vue'
+import PinnedUserCarousel from '../components/PinnedUserCarousel.vue'
 import UserAvatar from '../components/UserAvatar.vue'
 import type { Post } from '../types/index'
 
@@ -306,6 +317,15 @@ const selectedUser = ref<any>(null)
 
 // 移动端更多操作展开状态
 const showMoreActions = ref(false)
+
+// 置顶轮播组件引用和状态
+const pinnedCarouselRef = ref(null)
+const hasPinnedUsers = ref(false)
+
+// 计算是否显示置顶轮播组件
+const showPinnedCarousel = computed(() => {
+  return hasPinnedUsers.value
+})
 
 // 无限滚动设置
 const {
@@ -439,6 +459,17 @@ const goToTaskDetail = (taskId: string) => {
   router.push({ name: 'task-detail', params: { id: taskId } })
 }
 
+// 检查是否有置顶用户
+const checkPinnedUsers = async () => {
+  try {
+    const response = await tasksApi.getPinnedTasksForCarousel()
+    hasPinnedUsers.value = (response.pinned_tasks && response.pinned_tasks.length > 0) || false
+  } catch (error) {
+    console.error('Failed to check pinned users:', error)
+    hasPinnedUsers.value = false
+  }
+}
+
 // 时间格式化函数（与LockStatus组件保持一致）
 const formatTimeRemaining = (milliseconds: number) => {
   if (milliseconds <= 0) return '已结束'
@@ -455,8 +486,15 @@ const formatTimeRemaining = (milliseconds: number) => {
   }
 }
 
-onMounted(() => {
-  initialize()
+onMounted(async () => {
+  // Initialize posts and pinned users check
+  await Promise.all([
+    initialize(),
+    checkPinnedUsers()
+  ])
+
+  // Set up periodic checking for pinned users (every 30 seconds)
+  setInterval(checkPinnedUsers, 30000)
 })
 </script>
 
@@ -759,7 +797,7 @@ onMounted(() => {
   display: flex;
   align-items: center;
   margin-bottom: 1.5rem;
-  gap: 1.5rem;
+  gap: 1rem;
 }
 
 .posts-feed h2 {
@@ -768,11 +806,28 @@ onMounted(() => {
   letter-spacing: 1px;
   margin: 0;
   flex-shrink: 0;
+  min-width: 120px;
 }
 
-.posts-feed-header .task-broadcast {
+/* Carousels row container */
+.carousels-row {
+  display: flex;
+  gap: 1rem;
   flex: 1;
-  max-width: calc(100% - 120px); /* 减去标题宽度和间距 */
+  min-width: 0;
+}
+
+/* Carousel containers in single row */
+.carousel-pinned,
+.carousel-tasks {
+  flex: 1;
+  min-width: 0; /* Allow flex items to shrink */
+}
+
+/* Full width task broadcast when pinned carousel is hidden */
+.carousel-tasks.full-width {
+  flex: 1;
+  width: 100%;
 }
 
 .loading,
@@ -1277,8 +1332,25 @@ onMounted(() => {
     margin-bottom: 1rem;
   }
 
-  .posts-feed-header .task-broadcast {
-    max-width: 100%;
+  .posts-feed h2 {
+    min-width: auto;
+  }
+
+  /* Mobile: Keep carousels in single row with tighter spacing */
+  .carousels-row {
+    gap: 0.5rem;
+    width: 100%;
+  }
+
+  .carousel-pinned,
+  .carousel-tasks {
+    flex: 1;
+    min-width: 0;
+  }
+
+  /* Full width task broadcast on mobile when pinned carousel is hidden */
+  .carousel-tasks.full-width {
+    flex: 1;
     width: 100%;
   }
 

@@ -35,6 +35,7 @@
           </div>
         </section>
 
+
         <!-- Task Filters -->
         <section class="filters-section">
           <div class="filter-tabs">
@@ -131,134 +132,165 @@
           </div>
 
           <div v-else class="tasks-list">
-            <div
-              v-for="task in filteredTasks"
-              :key="task.id"
-              class="task-card"
-              @click="goToTaskDetail(task.id)"
-            >
-              <div class="task-header">
-                <div class="task-info">
-                  <h3 class="task-title">{{ task.title }}</h3>
-                  <div class="task-meta">
-                    <span v-if="task.task_type === 'lock' && task.unlock_type" class="task-type">
-                      {{ getTaskTypeText(task.unlock_type) }}
-                    </span>
-                    <span v-if="task.task_type === 'board'" class="task-type">
-                      悬赏任务
-                    </span>
-                    <span v-if="task.task_type === 'lock' && task.difficulty" class="task-difficulty" :class="task.difficulty">
-                      {{ getDifficultyText(task.difficulty) }}
-                    </span>
-                    <span v-if="task.task_type === 'board' && task.reward" class="task-reward">
-                      {{ task.reward }} 积分
-                    </span>
-                    <span class="task-status" :class="task.status">
-                      {{ getStatusText(task.status) }}
-                    </span>
+            <!-- Integrated pinned and regular tasks -->
+            <template v-for="(task, index) in integratedTasksList" :key="task.id + (task.isPinned ? '-pinned' : '')">
+              <!-- Task card (both pinned and regular use same structure) -->
+              <div
+                class="task-card"
+                :class="{ 'pinned-task-card': task.isPinned }"
+                :data-position="task.isPinned ? task.position : undefined"
+                @click="goToTaskDetail(task.id)"
+              >
+                <!-- Position Badge for Pinned Cards -->
+                <div v-if="task.isPinned && task.position" class="position-badge" :class="`position-${task.position}`">
+                  <span class="position-number">{{ task.position }}</span>
+                  <span class="position-crown">👑</span>
+                </div>
+
+                <!-- Pinning Time Info for Pinned Cards - Compact Single Line -->
+                <div v-if="task.isPinned && task.pinningInfo" class="pinning-time-info">
+                  <div class="pinning-compact-display">
+                    <span class="pin-icon">📌</span>
+                    <span class="pin-label">置顶剩余:</span>
+                    <span class="pin-time-value">{{ formatPinTimeRemaining(task.pinningInfo) }}</span>
+                    <span class="key-icon">🔑</span>
+                    <span class="key-holder-name">{{ task.pinningInfo.key_holder.username }}</span>
                   </div>
                 </div>
-                <div class="task-actions">
+                <div class="task-header">
+                  <div class="task-info">
+                    <h3 class="task-title">{{ task.title }}</h3>
+                    <div class="task-meta">
+                      <span v-if="task.task_type === 'lock' && task.unlock_type" class="task-type">
+                        {{ getTaskTypeText(task.unlock_type) }}
+                      </span>
+                      <span v-if="task.task_type === 'board'" class="task-type">
+                        悬赏任务
+                      </span>
+                      <span v-if="task.task_type === 'lock' && task.difficulty" class="task-difficulty" :class="task.difficulty">
+                        {{ getDifficultyText(task.difficulty) }}
+                      </span>
+                      <span v-if="task.task_type === 'board' && task.reward" class="task-reward">
+                        {{ task.reward }} 积分
+                      </span>
+                      <span class="task-status" :class="task.status">
+                        {{ getStatusText(task.status) }}
+                      </span>
+                    </div>
+                  </div>
+                  <div class="task-actions">
+                    <button
+                      v-if="canDeleteTask(task)"
+                      @click.stop="deleteTask(task)"
+                      class="action-btn delete-btn"
+                      title="删除任务"
+                    >
+                      🗑️ 删除
+                    </button>
+                  </div>
+                </div>
+
+                <!-- Quick Actions for Task Card -->
+                <div v-if="canAddOvertime(task)" class="task-quick-actions">
+                  <!-- Pinned task overtime button (10x effect) -->
                   <button
-                    v-if="canDeleteTask(task)"
-                    @click.stop="deleteTask(task)"
-                    class="action-btn delete-btn"
-                    title="删除任务"
+                    v-if="task.isPinned"
+                    @click="addOvertimeForPinnedTask(task, $event)"
+                    class="task-quick-btn overtime-btn pinned-overtime"
+                    title="为置顶任务加时 (10倍效果)"
                   >
-                    🗑️ 删除
+                    ⚡ 10倍加时
+                  </button>
+                  <!-- Regular task overtime button -->
+                  <button
+                    v-else
+                    @click="addOvertime(task, $event)"
+                    class="task-quick-btn overtime-btn"
+                    title="随机加时"
+                  >
+                    ⏰ 随机加时
                   </button>
                 </div>
-              </div>
 
-              <!-- Quick Actions for Task Card -->
-              <div v-if="canAddOvertime(task)" class="task-quick-actions">
-                <button
-                  @click="addOvertime(task, $event)"
-                  class="task-quick-btn overtime-btn"
-                  title="随机加时"
-                >
-                  ⏰ 随机加时
-                </button>
-              </div>
-
-              <div class="task-content">
-                <p class="task-description">{{ task.description }}</p>
-              </div>
-
-              <div class="task-details">
-                <div class="task-duration">
-                  <span class="label">持续时间:</span>
-                  <span class="value">{{ formatDuration(task) }}</span>
-                </div>
-                <!-- 隐藏时间相关信息当 time_display_hidden 为 true 时 -->
-                <div v-if="task.task_type === 'lock' && (task as any).started_at && !isTaskTimeHidden(task)" class="task-time">
-                  <span class="label">开始时间:</span>
-                  <span class="value">{{ formatDateTime((task as any).started_at) }}</span>
-                </div>
-                <div v-if="task.task_type === 'lock' && (task as any).end_time && !isTaskTimeHidden(task)" class="task-time">
-                  <span class="label">结束时间:</span>
-                  <span class="value">{{ formatDateTime((task as any).end_time) }}</span>
-                </div>
-                <!-- 剩余时间显示 - 隐藏时间时不显示 -->
-                <div v-if="getTimeRemaining(task) > 0 && !isTaskTimeHidden(task)" class="task-time-remaining">
-                  <span class="label">剩余时间:</span>
-                  <span class="value countdown" :class="{ 'overtime': getTimeRemaining(task) <= 0 }">
-                    {{ formatTimeRemaining(getTimeRemaining(task)) }}
-                  </span>
-                </div>
-                <div v-else-if="(task.status === 'active' && task.task_type === 'lock') || (task.status === 'taken' && task.task_type === 'board')" class="task-time-remaining">
-                  <span class="label">状态:</span>
-                  <span v-if="!isTaskTimeHidden(task)" class="value overtime">倒计时已结束</span>
-                  <span v-else class="value time-hidden-placeholder">
-                    <span class="hidden-time-indicator">🔒 时间已隐藏</span>
-                  </span>
+                <div class="task-content">
+                  <p class="task-description">{{ task.description }}</p>
                 </div>
 
-                <!-- Multi-person Task Participant Information - Simplified -->
-                <div v-if="task.task_type === 'board' && task.max_participants && task.max_participants > 1" class="task-participants-compact">
-                  <div class="participants-summary">
-                    <span class="participants-count">👥 {{ task.participant_count || 0 }}/{{ task.max_participants }}</span>
-                    <span v-if="task.submitted_count && task.submitted_count > 0" class="submitted-count">📤 {{ task.submitted_count }}</span>
-                    <span v-if="task.approved_count && task.approved_count > 0" class="approved-count">✅ {{ task.approved_count }}</span>
+                <div class="task-details">
+                  <div class="task-duration">
+                    <span class="label">持续时间:</span>
+                    <span class="value">{{ formatDuration(task) }}</span>
                   </div>
-                  <div v-if="task.reward && task.max_participants > 1" class="reward-compact">
-                    💰 {{ Math.ceil(task.reward / task.max_participants) }}/人
+                  <!-- 隐藏时间相关信息当 time_display_hidden 为 true 时 -->
+                  <div v-if="task.task_type === 'lock' && (task as any).started_at && !isTaskTimeHidden(task)" class="task-time">
+                    <span class="label">开始时间:</span>
+                    <span class="value">{{ formatDateTime((task as any).started_at) }}</span>
+                  </div>
+                  <div v-if="task.task_type === 'lock' && (task as any).end_time && !isTaskTimeHidden(task)" class="task-time">
+                    <span class="label">结束时间:</span>
+                    <span class="value">{{ formatDateTime((task as any).end_time) }}</span>
+                  </div>
+                  <!-- 剩余时间显示 - 隐藏时间时不显示 -->
+                  <div v-if="getTimeRemaining(task) > 0 && !isTaskTimeHidden(task)" class="task-time-remaining">
+                    <span class="label">剩余时间:</span>
+                    <span class="value countdown" :class="{ 'overtime': getTimeRemaining(task) <= 0 }">
+                      {{ formatTimeRemaining(getTimeRemaining(task)) }}
+                    </span>
+                  </div>
+                  <div v-else-if="(task.status === 'active' && task.task_type === 'lock') || (task.status === 'taken' && task.task_type === 'board')" class="task-time-remaining">
+                    <span class="label">状态:</span>
+                    <span v-if="!isTaskTimeHidden(task)" class="value overtime">倒计时已结束</span>
+                    <span v-else class="value time-hidden-placeholder">
+                      <span class="hidden-time-indicator">🔒 时间已隐藏</span>
+                    </span>
+                  </div>
+
+                  <!-- Multi-person Task Participant Information - Simplified -->
+                  <div v-if="task.task_type === 'board' && task.max_participants && task.max_participants > 1" class="task-participants-compact">
+                    <div class="participants-summary">
+                      <span class="participants-count">👥 {{ task.participant_count || 0 }}/{{ task.max_participants }}</span>
+                      <span v-if="task.submitted_count && task.submitted_count > 0" class="submitted-count">📤 {{ task.submitted_count }}</span>
+                      <span v-if="task.approved_count && task.approved_count > 0" class="approved-count">✅ {{ task.approved_count }}</span>
+                    </div>
+                    <div v-if="task.reward && task.max_participants > 1" class="reward-compact">
+                      💰 {{ Math.ceil(task.reward / task.max_participants) }}/人
+                    </div>
                   </div>
                 </div>
-              </div>
 
-              <div class="task-progress">
-                <!-- 隐藏进度条当时间被隐藏时 -->
-                <div v-if="((task.task_type === 'lock' && task.status === 'active') || (task.task_type === 'board' && task.status === 'taken')) && !isTaskTimeHidden(task)" class="progress-bar mobile-progress-container">
-                  <div
-                    class="progress-fill mobile-progress-fill"
-                    :class="getProgressColorClass(task)"
-                    :style="{
-                      width: Math.max(10, getProgressPercent(task)) + '%',
-                      '--mobile-progress': Math.max(10, getProgressPercent(task)) + '%'
-                    }"
-                    :title="`进度: ${getProgressPercent(task).toFixed(1)}% - ${getProgressColorClass(task)}`"
-                  ></div>
-                  <!-- 移动端调试显示 -->
-                  <div class="mobile-debug-info">
-                    {{ getProgressPercent(task).toFixed(1) }}% {{ getProgressColorClass(task) }}
+                <div class="task-progress">
+                  <!-- 隐藏进度条当时间被隐藏时 -->
+                  <div v-if="((task.task_type === 'lock' && task.status === 'active') || (task.task_type === 'board' && task.status === 'taken')) && !isTaskTimeHidden(task)" class="progress-bar mobile-progress-container">
+                    <div
+                      class="progress-fill mobile-progress-fill"
+                      :class="getProgressColorClass(task)"
+                      :style="{
+                        width: Math.max(10, getProgressPercent(task)) + '%',
+                        '--mobile-progress': Math.max(10, getProgressPercent(task)) + '%'
+                      }"
+                      :title="`进度: ${getProgressPercent(task).toFixed(1)}% - ${getProgressColorClass(task)}`"
+                    ></div>
+                    <!-- 移动端调试显示 -->
+                    <div class="mobile-debug-info">
+                      {{ getProgressPercent(task).toFixed(1) }}% {{ getProgressColorClass(task) }}
+                    </div>
+                  </div>
+                  <!-- 时间隐藏时显示占位符 -->
+                  <div v-else-if="((task.task_type === 'lock' && task.status === 'active') || (task.task_type === 'board' && task.status === 'taken')) && isTaskTimeHidden(task)" class="progress-hidden-placeholder">
+                    <span class="hidden-time-indicator">🔒 进度已隐藏</span>
+                  </div>
+                  <div class="task-user">
+                    <UserAvatar
+                      :user="task.user"
+                      size="small"
+                      :clickable="false"
+                      :show-lock-indicator="true"
+                    />
+                    <span class="username">{{ task.user.username }}</span>
                   </div>
                 </div>
-                <!-- 时间隐藏时显示占位符 -->
-                <div v-else-if="((task.task_type === 'lock' && task.status === 'active') || (task.task_type === 'board' && task.status === 'taken')) && isTaskTimeHidden(task)" class="progress-hidden-placeholder">
-                  <span class="hidden-time-indicator">🔒 进度已隐藏</span>
-                </div>
-                <div class="task-user">
-                  <UserAvatar
-                    :user="task.user"
-                    size="small"
-                    :clickable="false"
-                    :show-lock-indicator="true"
-                  />
-                  <span class="username">{{ task.user.username }}</span>
-                </div>
               </div>
-            </div>
+            </template>
 
             <!-- 加载更多指示器 -->
             <div v-if="isLoadingMore" class="loading-more">
@@ -296,7 +328,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, computed, onUnmounted, watch } from 'vue'
+import { ref, onMounted, computed, onUnmounted, watch, onActivated } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useAuthStore } from '../stores/auth'
 import { useTasksStore } from '../stores/tasks'
@@ -309,7 +341,7 @@ import CreateTaskModal from '../components/CreateTaskModal.vue'
 import NotificationBell from '../components/NotificationBell.vue'
 import NotificationToast from '../components/NotificationToast.vue'
 import UserAvatar from '../components/UserAvatar.vue'
-import type { Task } from '../types/index'
+import type { Task, PinningQueueStatus, PinnedUser, User } from '../types/index'
 import type { LockTask } from '../types'
 
 const router = useRouter()
@@ -327,6 +359,12 @@ const progressInterval = ref<number>()
 const taskCounts = ref<any>(null)
 const countsLoading = ref(false)
 const isRestoringState = ref(false) // 标志位：是否正在恢复状态
+
+// Pinning state
+const pinnedStatus = ref<PinningQueueStatus | null>(null)
+const pinnedUsers = ref<PinnedUser[]>([])
+const pinningLoading = ref(false)
+const pinningInterval = ref<number>()
 
 // Toast notification state
 const showToast = ref(false)
@@ -461,9 +499,48 @@ const currentFilterTabs = computed(() => {
   return activeTaskType.value === 'lock' ? lockFilterTabs.value : boardFilterTabs.value
 })
 
+
 // Tasks are already filtered and sorted server-side, no need for client-side processing
 const filteredTasks = computed(() => {
   return currentTasks.value
+})
+
+// Integrated tasks list - pinned users first (up to 3 positions), then regular tasks
+const integratedTasksList = computed(() => {
+  const integrated: any[] = []
+
+  // Only add pinned tasks for lock task type
+  if (activeTaskType.value === 'lock' && pinnedStatus.value && pinnedStatus.value.active_count > 0) {
+    // Add pinned tasks to the first 3 positions
+    for (let position = 1; position <= 3; position++) {
+      const pinnedUser = getPinnedUserAtPosition(position)
+      if (pinnedUser) {
+        const pinnedTask = createTaskForPinnedUser(pinnedUser)
+        if (pinnedTask) {
+          integrated.push({
+            ...pinnedTask,
+            isPinned: true,
+            position: position,
+            pinningInfo: {
+              expires_at: pinnedUser.expires_at,
+              time_remaining: pinnedUser.time_remaining || 0,
+              key_holder: pinnedUser.key_holder || { username: '未知' }
+            }
+          })
+        }
+      }
+    }
+  }
+
+  // Add regular tasks
+  for (const task of filteredTasks.value) {
+    integrated.push({
+      ...task,
+      isPinned: false
+    })
+  }
+
+  return integrated
 })
 
 const toggleSortOrder = async () => {
@@ -525,6 +602,113 @@ const fetchTaskCounts = async () => {
   } finally {
     countsLoading.value = false
   }
+}
+
+// Fetch pinning status
+const fetchPinningStatus = async () => {
+  if (pinningLoading.value) return
+
+  pinningLoading.value = true
+  try {
+    const status = await tasksApi.getPinningStatus()
+    pinnedStatus.value = status
+    pinnedUsers.value = status.active_pins || []
+    console.log('📌 Pinning status updated:', {
+      active_count: status.active_count,
+      queue_count: status.queue_count,
+      active_pins: status.active_pins?.length || 0,
+      positions: status.active_pins?.map(pin => pin.position) || []
+    })
+  } catch (error) {
+    console.error('Failed to fetch pinning status:', error)
+  } finally {
+    pinningLoading.value = false
+  }
+}
+
+// Get pinned user at specific position
+const getPinnedUserAtPosition = (position: number): PinnedUser | null => {
+  return pinnedUsers.value.find(user => user.position === position) || null
+}
+
+// Create a proper Task object for pinned users
+const createTaskForPinnedUser = (pinnedUser: PinnedUser | null): Task | null => {
+  if (!pinnedUser) return null
+
+  // Create a minimal User object from pinned_user data
+  const user = {
+    id: parseInt(pinnedUser.pinned_user.id),
+    username: pinnedUser.pinned_user.username,
+    email: '',
+    level: 1 as const,
+    activity_score: 0,
+    last_active: pinnedUser.created_at,
+    location_precision: 0,
+    coins: 0,
+    avatar: undefined,
+    bio: '',
+    total_posts: 0,
+    total_likes_received: 0,
+    total_tasks_completed: 0,
+    total_lock_duration: 0,
+    task_completion_rate: 0,
+    created_at: pinnedUser.created_at,
+    updated_at: pinnedUser.created_at,
+    active_lock_task: null,
+    is_superuser: false,
+    is_staff: false
+  } as User
+
+  return {
+    ...pinnedUser.task,
+    user,
+    // Keep original task timestamps, don't override with pinning timestamps
+    // created_at: pinnedUser.created_at,
+    // updated_at: pinnedUser.created_at,
+    // Keep original task properties, don't override
+    // duration_type: 'fixed' as const,
+    // duration_value: pinnedUser.duration_minutes,
+    // Keep original description, don't override
+    // description: `置顶任务 - ${pinnedUser.pinned_user.username}`
+  } as unknown as Task
+}
+
+// Format pinning time remaining - real-time calculation
+const formatPinTimeRemaining = (pinningInfo: any): string => {
+  if (!pinningInfo || !pinningInfo.expires_at) return '已过期'
+
+  // Calculate remaining time in real-time using current time
+  const expiresAt = new Date(pinningInfo.expires_at).getTime()
+  const now = currentTime.value
+  const timeRemainingMs = Math.max(0, expiresAt - now)
+
+  if (timeRemainingMs <= 0) return '已过期'
+
+  // Convert milliseconds to minutes and seconds
+  const totalSeconds = Math.floor(timeRemainingMs / 1000)
+  const minutes = Math.floor(totalSeconds / 60)
+  const seconds = totalSeconds % 60
+
+  if (minutes > 0) {
+    return `${minutes}分${seconds}秒`
+  } else {
+    return `${seconds}秒`
+  }
+}
+
+// Start pinning status update timer
+const startPinningUpdate = () => {
+  // Clear any existing interval
+  if (pinningInterval.value) {
+    clearInterval(pinningInterval.value)
+  }
+
+  // Update every 5 seconds for more responsive pinning updates
+  pinningInterval.value = window.setInterval(() => {
+    if (activeTaskType.value === 'lock') {
+      fetchPinningStatus()
+    }
+  }, 5000)
 }
 
 const handleTaskCreated = async () => {
@@ -841,6 +1025,71 @@ const addOvertime = async (task: Task, event: Event) => {
   }
 }
 
+// Add overtime for pinned task with 10x effect
+const addOvertimeForPinnedTask = async (task: Task, event: Event) => {
+  event.stopPropagation() // Prevent card click
+
+  if (!task || !canAddOvertime(task)) return
+
+  try {
+    const result = await tasksApi.addOvertime(task.id)
+
+    // Show success notification with 10x effect emphasis
+    showToast.value = true
+    toastData.value = {
+      type: 'success',
+      title: '🔥 置顶任务10倍加时成功！',
+      message: `成功为置顶任务加时 ${result.overtime_minutes} 分钟！`,
+      secondaryMessage: '置顶用户享受10倍加时效果！',
+      details: {
+        '加时时长': `${result.overtime_minutes} 分钟`,
+        '10倍效果': '置顶用户专享',
+        '新的结束时间': formatDateTime(result.new_end_time)
+      }
+    }
+    console.log('置顶任务加时成功:', result)
+
+    // Refresh pinning status and task counts
+    await Promise.all([
+      fetchPinningStatus(),
+      fetchTaskCounts()
+    ])
+
+    // Refresh user data to update lock status
+    authStore.refreshUser()
+
+  } catch (error: any) {
+    console.error('Error adding overtime to pinned task:', error)
+
+    // Handle specific error messages
+    let errorMessage = '置顶任务加时失败，请重试'
+
+    // Check for specific error messages in the response data
+    if (error.data?.error) {
+      errorMessage = error.data.error
+    } else if (error.status === 404) {
+      errorMessage = '任务不存在或已被删除'
+    } else if (error.status === 403) {
+      errorMessage = '您没有权限为此任务加时'
+    } else if (error.status === 500) {
+      errorMessage = '服务器内部错误，请稍后重试'
+    } else if (error.message && !error.message.includes('HTTP')) {
+      errorMessage = error.message
+    } else if (error.message) {
+      errorMessage = `网络错误：${error.message}`
+    }
+
+    // Show error notification
+    showToast.value = true
+    toastData.value = {
+      type: 'error',
+      title: '置顶任务加时失败',
+      message: errorMessage,
+      secondaryMessage: '请稍后重试或联系管理员'
+    }
+  }
+}
+
 // Start progress update timer
 const startProgressUpdate = () => {
   // Clear any existing interval
@@ -871,6 +1120,8 @@ watch(activeTaskType, (newType) => {
 
   if (newType === 'lock') {
     activeFilter.value = 'can-overtime'  // 带锁任务默认显示"可以加时的绒布球"
+    // Fetch pinning status for lock tasks
+    fetchPinningStatus()
   } else {
     activeFilter.value = 'available'     // 任务板默认显示"可接取"
   }
@@ -933,21 +1184,46 @@ onMounted(async () => {
   // Restore state from query parameters if present
   restoreStateFromQuery()
 
-  // Initialize task list and counts in parallel
+  // Initialize task list, counts, and pinning status in parallel
   await Promise.all([
     initialize(),
-    fetchTaskCounts()
+    fetchTaskCounts(),
+    activeTaskType.value === 'lock' ? fetchPinningStatus() : Promise.resolve()
   ])
 
   startProgressUpdate()
+  startPinningUpdate()
   document.addEventListener('click', handleClickOutside)
+
+  // Add visibility change listener to refresh pinning status when user returns
+  document.addEventListener('visibilitychange', handleVisibilityChange)
 })
+
+// Handle component activation (when navigating back from other routes)
+onActivated(() => {
+  if (activeTaskType.value === 'lock') {
+    // Refresh pinning status when component is activated
+    fetchPinningStatus()
+  }
+})
+
+// Handle visibility change to refresh pinning status when user returns to tab
+const handleVisibilityChange = () => {
+  if (!document.hidden && activeTaskType.value === 'lock') {
+    // Refresh pinning status when user returns to tab
+    fetchPinningStatus()
+  }
+}
 
 onUnmounted(() => {
   if (progressInterval.value) {
     clearInterval(progressInterval.value)
   }
+  if (pinningInterval.value) {
+    clearInterval(pinningInterval.value)
+  }
   document.removeEventListener('click', handleClickOutside)
+  document.removeEventListener('visibilitychange', handleVisibilityChange)
 })
 </script>
 
@@ -1934,6 +2210,127 @@ onUnmounted(() => {
   }
 }
 
+
+/* Pinned task cards within the main grid */
+.task-card.pinned-task-card {
+  position: relative;
+  overflow: visible;
+}
+
+/* Pinned task cards use normal styling - no special background colors */
+.task-card.pinned-task-card[data-position="1"],
+.task-card.pinned-task-card[data-position="2"],
+.task-card.pinned-task-card[data-position="3"] {
+  /* Use default task card styling - no special background or border colors */
+}
+
+/* Position Badge - 右上角排名小图标 */
+.position-badge {
+  position: absolute;
+  top: -8px;
+  right: -8px;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  border: 2px solid #000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 900;
+  font-size: 0.875rem;
+  z-index: 2;
+  box-shadow: 2px 2px 0 rgba(0, 0, 0, 0.3);
+}
+
+.position-badge.position-1 {
+  background: linear-gradient(135deg, #ffd700, #ffed4e);
+  color: #000;
+}
+
+.position-badge.position-2 {
+  background: linear-gradient(135deg, #c0c0c0, #e8e8e8);
+  color: #000;
+}
+
+.position-badge.position-3 {
+  background: linear-gradient(135deg, #cd7f32, #daa520);
+  color: #000;
+}
+
+.position-number {
+  font-size: 0.75rem;
+  font-weight: 900;
+}
+
+.position-crown {
+  position: absolute;
+  top: -8px;
+  right: -8px;
+  font-size: 1rem;
+  z-index: 3;
+}
+
+/* Pinning Time Info - 置顶剩余时间信息 */
+.pinning-time-info {
+  background: linear-gradient(135deg, #ff6b6b, #ee5a52);
+  border: 2px solid #000;
+  border-radius: 6px;
+  padding: 0.5rem;
+  margin-bottom: 0.75rem;
+  box-shadow: 2px 2px 0 #000;
+}
+
+.pinning-compact-display {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+  flex-wrap: wrap;
+}
+
+.pin-icon,
+.key-icon {
+  font-size: 0.875rem;
+}
+
+.pin-label {
+  font-weight: 700;
+  color: white;
+  font-size: 0.75rem;
+}
+
+.pin-time-value {
+  font-weight: 900;
+  color: white;
+  font-size: 0.75rem;
+  background: rgba(0, 0, 0, 0.2);
+  padding: 0.125rem 0.375rem;
+  border-radius: 3px;
+  border: 1px solid rgba(0, 0, 0, 0.3);
+}
+
+.key-holder-name {
+  font-weight: 700;
+  color: white;
+  font-size: 0.75rem;
+  background: rgba(0, 0, 0, 0.2);
+  padding: 0.125rem 0.375rem;
+  border-radius: 3px;
+  border: 1px solid rgba(0, 0, 0, 0.3);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 120px;
+}
+
+/* Pinned overtime button styling */
+.task-quick-btn.pinned-overtime {
+  background: linear-gradient(135deg, #fd7e14, #ff6b35);
+}
+
+.task-quick-btn.pinned-overtime:hover {
+  background: linear-gradient(135deg, #e76500, #e55a2b);
+}
+
 /* Multi-person Task Participants Styles - Compact */
 .task-participants-compact {
   margin: 0.5rem 0;
@@ -2128,6 +2525,49 @@ onUnmounted(() => {
 
   .reward-per-person {
     align-self: center;
+  }
+
+}
+
+/* Small mobile - single column */
+@media (max-width: 480px) {
+
+  /* Mobile responsive for pinned task elements */
+  .position-badge {
+    width: 28px;
+    height: 28px;
+    font-size: 0.75rem;
+    top: -6px;
+    right: -6px;
+  }
+
+  .position-crown {
+    font-size: 0.875rem;
+    top: -6px;
+    right: -6px;
+  }
+
+  .pinning-time-info {
+    padding: 0.375rem;
+    margin-bottom: 0.5rem;
+    border-width: 1px;
+    box-shadow: 1px 1px 0 #000;
+  }
+
+  .pinning-time-display {
+    gap: 0.25rem;
+    margin-bottom: 0.25rem;
+  }
+
+  .pin-label,
+  .pin-time-value,
+  .key-holder-name {
+    font-size: 0.65rem;
+    padding: 0.1rem 0.25rem;
+  }
+
+  .key-holder-name {
+    max-width: 80px;
   }
 }
 </style>

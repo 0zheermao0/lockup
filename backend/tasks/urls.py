@@ -47,4 +47,10 @@ urlpatterns = [
 
     # 任务板自动结算
     path('auto-settle-expired/', views.auto_settle_expired_board_tasks, name='auto-settle-expired-board-tasks'),
+
+    # 置顶惩罚系统 - Pinning Penalty System
+    path('<uuid:pk>/pin/', views.pin_task_owner, name='pin-task-owner'),
+    path('<uuid:pk>/unpin/', views.unpin_task_owner, name='unpin-task-owner'),
+    path('pinning-status/', views.get_pinning_status, name='get-pinning-status'),
+    path('pinned-carousel/', views.get_pinned_tasks_for_carousel, name='get-pinned-tasks-carousel'),
 ]
