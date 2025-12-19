@@ -34,6 +34,7 @@ export interface User {
   updated_at: string
   active_lock_task?: ActiveLockTask | null
   is_superuser?: boolean
+  is_staff?: boolean
   telegram_username?: string
   telegram_notifications_enabled?: boolean
   show_telegram_account?: boolean

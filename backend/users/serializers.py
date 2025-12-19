@@ -48,13 +48,14 @@ class UserSerializer(serializers.ModelSerializer):
             'bio', 'total_posts', 'total_likes_received',
             'total_tasks_completed', 'total_lock_duration',
             'created_at', 'updated_at', 'active_lock_task',
-            'telegram_username', 'telegram_notifications_enabled', 'show_telegram_account'
+            'telegram_username', 'telegram_notifications_enabled', 'show_telegram_account',
+            'is_staff', 'is_superuser'
         ]
         read_only_fields = [
             'id', 'level', 'activity_score', 'last_active', 'coins',
             'total_posts', 'total_likes_received', 'total_tasks_completed',
             'total_lock_duration', 'created_at', 'updated_at', 'active_lock_task',
-            'telegram_username', 'telegram_notifications_enabled'
+            'telegram_username', 'telegram_notifications_enabled', 'is_staff', 'is_superuser'
         ]
 
     def get_active_lock_task(self, obj):

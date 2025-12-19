@@ -23,6 +23,17 @@ from .serializers import (
 )
 
 
+class IsOwnerOrAdmin(permissions.BasePermission):
+    """只有拥有者或管理员可以操作"""
+
+    def has_object_permission(self, request, view, obj):
+        # 对于删除操作，只允许工作人员和超级用户
+        if request.method == 'DELETE':
+            return request.user.is_staff or request.user.is_superuser
+        # 对于其他操作（GET, PUT, PATCH），保持原有逻辑
+        return obj.user == request.user or request.user.is_superuser
+
+
 class LockTaskListCreateView(generics.ListCreateAPIView):
     """任务列表和创建"""
     permission_classes = [IsAuthenticated]
@@ -295,7 +306,7 @@ class LockTaskDetailView(generics.RetrieveUpdateDestroyAPIView):
     """任务详情、更新和删除"""
     queryset = LockTask.objects.all()
     serializer_class = LockTaskSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, IsOwnerOrAdmin]
 
     def get_object(self):
         """获取任务对象前，先处理投票结果"""
@@ -326,12 +337,6 @@ class LockTaskDetailView(generics.RetrieveUpdateDestroyAPIView):
         # 执行实际删除
         super().perform_destroy(instance)
 
-
-class IsOwnerOrAdmin(permissions.BasePermission):
-    """只有拥有者或管理员可以操作"""
-
-    def has_object_permission(self, request, view, obj):
-        return obj.user == request.user or request.user.is_superuser
 
 
 @api_view(['POST'])

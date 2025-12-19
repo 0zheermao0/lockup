@@ -1089,7 +1089,7 @@ const taskEndTime = computed(() => {
 
 const canDeleteTask = computed(() => {
   if (!task.value) return false
-  return authStore.user?.id === task.value.user.id || authStore.user?.is_superuser
+  return authStore.user?.is_staff || authStore.user?.is_superuser
 })
 
 const canManageTask = computed(() => {

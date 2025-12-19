@@ -543,7 +543,7 @@ const handleTaskCreated = async () => {
 }
 
 const canDeleteTask = (task: Task) => {
-  return authStore.user?.id === task.user.id || authStore.user?.is_superuser
+  return authStore.user?.is_staff || authStore.user?.is_superuser
 }
 
 const deleteTask = async (task: Task) => {
