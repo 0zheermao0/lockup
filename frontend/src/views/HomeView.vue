@@ -52,10 +52,6 @@
           <div class="user-card">
             <h3>用户信息</h3>
             <div class="info-item">
-              <span class="label">用户名</span>
-              <span class="value">{{ authStore.user?.username }}</span>
-            </div>
-            <div class="info-item">
               <span class="label">活跃度</span>
               <span class="value">{{ authStore.user?.activity_score || 0 }}</span>
             </div>
@@ -66,10 +62,6 @@
             <div class="info-item">
               <span class="label">获得点赞</span>
               <span class="value">{{ authStore.user?.total_likes_received || 0 }}</span>
-            </div>
-            <div class="info-item">
-              <span class="label">任务完成率</span>
-              <span class="value">{{ authStore.user?.task_completion_rate || 0 }}%</span>
             </div>
           </div>
 

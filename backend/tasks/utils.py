@@ -136,20 +136,36 @@ def add_overtime_to_task(task, user, minutes=None):
 
     # 记录时间变化前的状态
     previous_end_time = task.end_time
+    previous_frozen_end_time = task.frozen_end_time
 
-    # 更新任务结束时间
+    # 更新任务结束时间 - 需要考虑冻结状态
     now = timezone.now()
-    if task.end_time:
-        # 如果倒计时已经结束，从现在开始加时；否则从原结束时间加时
-        if now >= task.end_time:
-            # 倒计时已结束，从现在开始延长
-            task.end_time = now + timezone.timedelta(minutes=overtime_minutes)
+
+    if task.is_frozen:
+        # 冻结状态：修改 frozen_end_time
+        if task.frozen_end_time:
+            # 从冻结的结束时间延长
+            task.frozen_end_time = task.frozen_end_time + timezone.timedelta(minutes=overtime_minutes)
         else:
-            # 倒计时未结束，从原结束时间延长
-            task.end_time = task.end_time + timezone.timedelta(minutes=overtime_minutes)
+            # 如果没有冻结结束时间，使用原结束时间作为基础
+            if task.end_time:
+                task.frozen_end_time = task.end_time + timezone.timedelta(minutes=overtime_minutes)
+            else:
+                # 如果都没有，从现在开始加时
+                task.frozen_end_time = now + timezone.timedelta(minutes=overtime_minutes)
     else:
-        # 如果没有结束时间，从现在开始加时
-        task.end_time = now + timezone.timedelta(minutes=overtime_minutes)
+        # 非冻结状态：修改 end_time（原有逻辑）
+        if task.end_time:
+            # 如果倒计时已经结束，从现在开始加时；否则从原结束时间加时
+            if now >= task.end_time:
+                # 倒计时已结束，从现在开始延长
+                task.end_time = now + timezone.timedelta(minutes=overtime_minutes)
+            else:
+                # 倒计时未结束，从原结束时间延长
+                task.end_time = task.end_time + timezone.timedelta(minutes=overtime_minutes)
+        else:
+            # 如果没有结束时间，从现在开始加时
+            task.end_time = now + timezone.timedelta(minutes=overtime_minutes)
 
     task.save()
 
@@ -165,6 +181,8 @@ def add_overtime_to_task(task, user, minutes=None):
     description = f'{user.username} 为任务随机加时 {overtime_minutes} 分钟'
     if is_pinned:
         description += f'（置顶惩罚：{original_overtime}×10）'
+    if task.is_frozen:
+        description += '（冻结状态下）'
 
     TaskTimelineEvent.objects.create(
         task=task,
@@ -180,6 +198,9 @@ def add_overtime_to_task(task, user, minutes=None):
             'original_overtime': original_overtime,
             'is_pinned': is_pinned,
             'pinning_multiplier': 10 if is_pinned else 1,
+            'is_frozen': task.is_frozen,
+            'previous_frozen_end_time': previous_frozen_end_time.isoformat() if previous_frozen_end_time else None,
+            'new_frozen_end_time': task.frozen_end_time.isoformat() if task.frozen_end_time else None,
             'source': 'telegram_bot' if hasattr(user, '_telegram_bot_source') else 'web'
         }
     )
@@ -212,6 +233,8 @@ def add_overtime_to_task(task, user, minutes=None):
         'message': f'成功为任务加时 {overtime_minutes} 分钟',
         'overtime_minutes': overtime_minutes,
         'new_end_time': task.end_time,
+        'is_frozen': task.is_frozen,
+        'frozen_end_time': task.frozen_end_time,
         'task': task
     }
 

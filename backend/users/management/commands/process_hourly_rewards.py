@@ -10,10 +10,11 @@ class Command(BaseCommand):
     def handle(self, *args, **options):
         now = timezone.now()
 
-        # 找到所有活跃状态的带锁任务
+        # 找到所有活跃状态的带锁任务（排除冻结状态的任务）
         active_lock_tasks = LockTask.objects.filter(
             task_type='lock',
-            status__in=['active', 'voting']  # 活跃状态和投票期都算活跃
+            status__in=['active', 'voting'],  # 活跃状态和投票期都算活跃
+            is_frozen=False  # 排除冻结状态的任务
         )
 
         processed_rewards = []

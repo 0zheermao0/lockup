@@ -280,8 +280,8 @@ export const tasksApi = {
     message: string
     overtime_minutes: number
     new_end_time: string
-    is_frozen?: boolean
-    frozen_end_time?: string | null
+    is_frozen: boolean
+    frozen_end_time: string | null
   }> => {
     return apiRequest(`/tasks/${id}/overtime/`, {
       method: 'POST'
