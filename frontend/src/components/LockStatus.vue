@@ -5,8 +5,9 @@
     @click="handleClick"
   >
     <div class="lock-status" :class="{
-      'is-expired': lockTask.is_expired && !lockTask.time_display_hidden,
-      'time-hidden': lockTask.time_display_hidden
+      'is-expired': lockTask.is_expired && !lockTask.time_display_hidden && !lockTask.is_frozen,
+      'time-hidden': lockTask.time_display_hidden,
+      'frozen': lockTask.is_frozen
     }">
       <div class="lock-icon">
         🔒
@@ -18,8 +19,11 @@
             {{ getDifficultyText(lockTask.difficulty) }}
           </span>
           <span class="separator">•</span>
-          <span class="countdown" :class="{ 'expired': lockTask.is_expired }">
-            <span v-if="lockTask.time_display_hidden" class="hidden-time-placeholder">
+          <span class="countdown" :class="{ 'expired': lockTask.is_expired && !lockTask.is_frozen }">
+            <span v-if="lockTask.is_frozen" class="frozen-time-placeholder">
+              ❄️ 已冻结 ({{ formatTimeRemaining(timeRemaining) }})
+            </span>
+            <span v-else-if="lockTask.time_display_hidden" class="hidden-time-placeholder">
               🔒 时间已隐藏
             </span>
             <span v-else>
@@ -76,7 +80,16 @@ const currentTime = ref(Date.now())
 const updateInterval = ref<number>()
 
 const timeRemaining = computed(() => {
-  if (!props.lockTask?.time_remaining_ms || props.lockTask.is_expired) {
+  if (!props.lockTask) return 0
+
+  // If task is frozen, show the frozen time remaining
+  if (props.lockTask.is_frozen && props.lockTask.frozen_end_time && props.lockTask.frozen_at) {
+    const frozenEndTime = new Date(props.lockTask.frozen_end_time).getTime()
+    const frozenAt = new Date(props.lockTask.frozen_at).getTime()
+    return Math.max(0, frozenEndTime - frozenAt)
+  }
+
+  if (!props.lockTask.time_remaining_ms || props.lockTask.is_expired) {
     return 0
   }
 
@@ -168,7 +181,7 @@ const startCountdown = () => {
 }
 
 onMounted(() => {
-  if (props.lockTask && !props.lockTask.is_expired) {
+  if (props.lockTask && !props.lockTask.is_expired && !props.lockTask.is_frozen) {
     startCountdown()
   }
 })
@@ -184,24 +197,27 @@ watch(
   () => props.lockTask,
   (newTask, oldTask) => {
     // If task changed or end_time changed, restart countdown
-    if (newTask && !newTask.is_expired) {
-      // Check if this is a new task or if the end_time has changed
+    if (newTask && !newTask.is_expired && !newTask.is_frozen) {
+      // Check if this is a new task or if the end_time has changed or freeze state changed
       const hasChanged = !oldTask ||
                         newTask.id !== oldTask.id ||
-                        newTask.end_time !== oldTask.end_time
+                        newTask.end_time !== oldTask.end_time ||
+                        newTask.is_frozen !== oldTask.is_frozen
 
       if (hasChanged) {
         console.log('LockStatus: Task data changed, restarting countdown', {
           oldEndTime: oldTask?.end_time,
           newEndTime: newTask.end_time,
+          oldFrozen: oldTask?.is_frozen,
+          newFrozen: newTask.is_frozen,
           taskId: newTask.id
         })
         // Update current time immediately to reflect new countdown
         currentTime.value = Date.now()
         startCountdown()
       }
-    } else if (!newTask || newTask.is_expired) {
-      // Stop countdown if no task or task expired
+    } else if (!newTask || newTask.is_expired || newTask.is_frozen) {
+      // Stop countdown if no task, task expired, or task is frozen
       if (updateInterval.value) {
         clearInterval(updateInterval.value)
         updateInterval.value = undefined
@@ -334,6 +350,28 @@ watch(
   box-shadow: 1px 1px 0 #000;
 }
 
+/* 冻结状态样式 */
+.lock-status.frozen {
+  background: linear-gradient(135deg, #17a2b8, #20c3aa);
+  animation: pulse-frozen 2s infinite;
+}
+
+.frozen-time-placeholder {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.25rem 0.5rem;
+  background: linear-gradient(135deg, #17a2b8, #20c3aa);
+  color: white;
+  border: 2px solid #000;
+  border-radius: 4px;
+  font-weight: 600;
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  box-shadow: 2px 2px 0 #000;
+}
+
 .duration-info {
   font-size: 0.75rem;
   color: rgba(255, 255, 255, 0.8);
@@ -416,6 +454,15 @@ watch(
   }
   100% {
     opacity: 1;
+  }
+}
+
+@keyframes pulse-frozen {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.7;
   }
 }
 

@@ -98,17 +98,21 @@
               v-if="authStore.user?.active_lock_task"
               class="mobile-lock-status-inline"
               :class="{
-                'ready': authStore.user.active_lock_task.is_expired && !authStore.user.active_lock_task.time_display_hidden,
-                'time-hidden': authStore.user.active_lock_task.time_display_hidden
+                'ready': authStore.user.active_lock_task.is_expired && !authStore.user.active_lock_task.time_display_hidden && !authStore.user.active_lock_task.is_frozen,
+                'time-hidden': authStore.user.active_lock_task.time_display_hidden,
+                'frozen': authStore.user.active_lock_task.is_frozen
               }"
               @click="goToTaskDetail(authStore.user.active_lock_task.id)"
-              :title="authStore.user.active_lock_task.is_expired ? '点击完成任务' : '点击查看任务详情'"
+              :title="authStore.user.active_lock_task.is_frozen ? '点击查看冻结任务详情' : (authStore.user.active_lock_task.is_expired ? '点击完成任务' : '点击查看任务详情')"
             >
               <div class="lock-inline-icon">🔒</div>
               <div class="lock-inline-info">
                 <div class="lock-inline-title">{{ authStore.user.active_lock_task.title }}</div>
                 <div class="lock-inline-time">
-                  <span v-if="authStore.user.active_lock_task.time_display_hidden">
+                  <span v-if="authStore.user.active_lock_task.is_frozen">
+                    ❄️ 已冻结
+                  </span>
+                  <span v-else-if="authStore.user.active_lock_task.time_display_hidden">
                     🔒 时间已隐藏
                   </span>
                   <span v-else>
@@ -116,8 +120,8 @@
                   </span>
                 </div>
               </div>
-              <div class="lock-inline-btn" :class="{ 'ready': authStore.user.active_lock_task.is_expired }">
-                {{ authStore.user.active_lock_task.is_expired ? '✅' : '👁️' }}
+              <div class="lock-inline-btn" :class="{ 'ready': authStore.user.active_lock_task.is_expired && !authStore.user.active_lock_task.is_frozen }">
+                {{ authStore.user.active_lock_task.is_frozen ? '❄️' : (authStore.user.active_lock_task.is_expired ? '✅' : '👁️') }}
               </div>
             </div>
 

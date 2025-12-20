@@ -276,8 +276,28 @@ export const tasksApi = {
   },
 
   // 为带锁任务随机加时
-  addOvertime: async (id: string): Promise<any> => {
+  addOvertime: async (id: string): Promise<{
+    message: string
+    overtime_minutes: number
+    new_end_time: string
+    is_frozen?: boolean
+    frozen_end_time?: string | null
+  }> => {
     return apiRequest(`/tasks/${id}/overtime/`, {
+      method: 'POST'
+    })
+  },
+
+  // 冻结任务倒计时
+  freezeTask: async (id: string): Promise<any> => {
+    return apiRequest(`/tasks/${id}/freeze/`, {
+      method: 'POST'
+    })
+  },
+
+  // 解冻任务倒计时
+  unfreezeTask: async (id: string): Promise<any> => {
+    return apiRequest(`/tasks/${id}/unfreeze/`, {
       method: 'POST'
     })
   },
@@ -349,6 +369,8 @@ export const tasksApi = {
     message: string
     adjustment_minutes: number
     new_end_time: string
+    is_frozen: boolean
+    frozen_end_time: string | null
     cost: number
     remaining_coins: number
   }> => {

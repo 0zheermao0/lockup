@@ -78,9 +78,13 @@ class UserSerializer(serializers.ModelSerializer):
         is_expired = False
 
         if active_task.end_time:
-            time_remaining_ms = (active_task.end_time - now).total_seconds() * 1000
+            # For frozen tasks, calculate time remaining using frozen_end_time and frozen_at
+            if active_task.is_frozen and active_task.frozen_end_time and active_task.frozen_at:
+                time_remaining_ms = (active_task.frozen_end_time - active_task.frozen_at).total_seconds() * 1000
+            else:
+                time_remaining_ms = (active_task.end_time - now).total_seconds() * 1000
             time_remaining = max(0, int(time_remaining_ms))
-            is_expired = time_remaining <= 0
+            is_expired = time_remaining <= 0 and not active_task.is_frozen
 
         return {
             'id': str(active_task.id),
@@ -94,7 +98,10 @@ class UserSerializer(serializers.ModelSerializer):
             'duration_value': active_task.duration_value,
             'duration_type': active_task.duration_type,
             'duration_max': active_task.duration_max,
-            'time_display_hidden': active_task.time_display_hidden  # 时间显示控制状态
+            'time_display_hidden': active_task.time_display_hidden,  # 时间显示控制状态
+            'is_frozen': active_task.is_frozen,  # 冻结状态
+            'frozen_at': active_task.frozen_at.isoformat() if active_task.frozen_at else None,  # 冻结时间
+            'frozen_end_time': active_task.frozen_end_time.isoformat() if active_task.frozen_end_time else None  # 冻结时保存的结束时间
         }
 
     def get_total_lock_duration(self, obj):
@@ -142,9 +149,13 @@ class UserPublicSerializer(serializers.ModelSerializer):
         is_expired = False
 
         if active_task.end_time:
-            time_remaining_ms = (active_task.end_time - now).total_seconds() * 1000
+            # For frozen tasks, calculate time remaining using frozen_end_time and frozen_at
+            if active_task.is_frozen and active_task.frozen_end_time and active_task.frozen_at:
+                time_remaining_ms = (active_task.frozen_end_time - active_task.frozen_at).total_seconds() * 1000
+            else:
+                time_remaining_ms = (active_task.end_time - now).total_seconds() * 1000
             time_remaining = max(0, int(time_remaining_ms))
-            is_expired = time_remaining <= 0
+            is_expired = time_remaining <= 0 and not active_task.is_frozen
 
         return {
             'id': str(active_task.id),
@@ -158,7 +169,10 @@ class UserPublicSerializer(serializers.ModelSerializer):
             'duration_value': active_task.duration_value,
             'duration_type': active_task.duration_type,
             'duration_max': active_task.duration_max,
-            'time_display_hidden': active_task.time_display_hidden  # 时间显示控制状态
+            'time_display_hidden': active_task.time_display_hidden,  # 时间显示控制状态
+            'is_frozen': active_task.is_frozen,  # 冻结状态
+            'frozen_at': active_task.frozen_at.isoformat() if active_task.frozen_at else None,  # 冻结时间
+            'frozen_end_time': active_task.frozen_end_time.isoformat() if active_task.frozen_end_time else None  # 冻结时保存的结束时间
         }
 
     def get_total_lock_duration(self, obj):

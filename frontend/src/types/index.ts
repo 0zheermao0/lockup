@@ -13,6 +13,11 @@ export interface ActiveLockTask {
   duration_type?: 'fixed' | 'random'
   duration_max?: number
   time_display_hidden?: boolean // 时间显示控制状态
+  // 冻结/解冻字段
+  is_frozen?: boolean // 是否冻结倒计时
+  frozen_at?: string | null // 冻结时间
+  frozen_end_time?: string | null // 冻结时保存的原始结束时间
+  total_frozen_duration?: number // 总冻结时长（秒）
 }
 
 // User Types
@@ -136,6 +141,11 @@ export interface LockTask extends BaseLockTask {
   end_time?: string
   // 钥匙玩法字段
   time_display_hidden?: boolean // 是否隐藏时间显示
+  // 冻结/解冻字段
+  is_frozen?: boolean // 是否冻结倒计时
+  frozen_at?: string | null // 冻结时间
+  frozen_end_time?: string | null // 冻结时保存的原始结束时间
+  total_frozen_duration?: number // 总冻结时长（秒）
   // 任务完成相关字段
   taker?: User
   completion_proof?: string

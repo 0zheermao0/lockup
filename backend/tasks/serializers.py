@@ -120,6 +120,8 @@ class LockTaskSerializer(serializers.ModelSerializer):
             'start_time', 'end_time', 'created_at', 'updated_at',
             # 钥匙玩法字段
             'time_display_hidden',
+            # 冻结/解冻字段
+            'is_frozen', 'frozen_at', 'frozen_end_time', 'total_frozen_duration',
             # 计算字段
             'key_holder', 'vote_count', 'vote_agreement_count', 'submission_files',
             'participants', 'participant_count', 'submitted_count', 'approved_count', 'can_take'

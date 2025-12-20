@@ -29,6 +29,10 @@ urlpatterns = [
     path('<uuid:pk>/manual-time-adjustment/', views.manual_time_adjustment, name='task-manual-time-adjustment'),
     path('<uuid:pk>/toggle-time-display/', views.toggle_time_display, name='task-toggle-time-display'),
 
+    # 冻结/解冻功能
+    path('<uuid:pk>/freeze/', views.freeze_task, name='task-freeze'),
+    path('<uuid:pk>/unfreeze/', views.unfreeze_task, name='task-unfreeze'),
+
     # 钥匙管理
     path('keys/my/', views.my_keys, name='my-keys'),
 

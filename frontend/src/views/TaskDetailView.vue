@@ -182,7 +182,10 @@
             <div class="task-details-grid">
               <div v-if="task.task_type === 'lock' && task.status === 'active'" class="detail-item">
                 <span class="label">剩余时间</span>
-                <span v-if="!taskTimeDisplayHidden" class="value countdown-display" :class="{ 'overtime': timeRemaining <= 0 }">
+                <span v-if="taskFrozen" class="value">
+                  <span class="frozen-time-placeholder">❄️ 已冻结 ({{ formatTimeRemaining(timeRemaining) }})</span>
+                </span>
+                <span v-else-if="!taskTimeDisplayHidden" class="value countdown-display" :class="{ 'overtime': timeRemaining <= 0 }">
                   {{ timeRemaining > 0 ? formatTimeRemaining(timeRemaining) : '倒计时已结束' }}
                 </span>
                 <span v-else class="value">
@@ -464,7 +467,10 @@
             <!-- Progress Bar for Active Lock Tasks or Taken Board Tasks -->
             <div v-if="(task.task_type === 'lock' && task.status === 'active') || (task.task_type === 'board' && task.status === 'taken')" class="task-progress-section">
               <h3>进度</h3>
-              <div v-if="!taskTimeDisplayHidden" class="progress-container">
+              <div v-if="taskFrozen" class="progress-frozen-section">
+                <span class="frozen-time-placeholder">❄️ 进度已冻结</span>
+              </div>
+              <div v-else-if="!taskTimeDisplayHidden" class="progress-container">
                 <div class="progress-bar">
                   <div class="progress-fill" :style="{ width: progressPercent + '%' }"></div>
                 </div>
@@ -474,7 +480,10 @@
                 <span class="hidden-time-placeholder">🔒 进度已隐藏</span>
               </div>
               <div class="time-remaining">
-                <span v-if="!taskTimeDisplayHidden">
+                <span v-if="taskFrozen" class="frozen-time-placeholder">
+                  ❄️ 已冻结 (剩余: {{ formatTimeRemaining(timeRemaining) }})
+                </span>
+                <span v-else-if="!taskTimeDisplayHidden">
                   <span v-if="timeRemaining > 0">剩余时间: {{ formatTimeRemaining(timeRemaining) }}</span>
                   <span v-else class="overtime">倒计时已结束</span>
                 </span>
@@ -825,6 +834,37 @@
                 </div>
               </div>
 
+              <!-- Freeze/Unfreeze Task -->
+              <div class="key-action-card">
+                <div class="action-header">
+                  <h4>❄️ 冻结/解冻控制</h4>
+                  <span class="action-cost">消耗 25 积分</span>
+                </div>
+                <p class="action-description">
+                  当前状态: {{ taskFrozen ? '❄️ 任务已冻结' : '🔥 任务进行中' }}
+                </p>
+                <div class="action-buttons">
+                  <button
+                    v-if="!taskFrozen"
+                    @click="freezeTask"
+                    :disabled="!canAffordFreeze || freezingInProgress"
+                    class="key-action-btn freeze"
+                    :class="{ 'disabled': !canAffordFreeze || freezingInProgress }"
+                  >
+                    {{ freezingInProgress ? '冻结中...' : '❄️ 冻结任务' }}
+                  </button>
+                  <button
+                    v-else
+                    @click="unfreezeTask"
+                    :disabled="!canAffordFreeze || freezingInProgress"
+                    class="key-action-btn unfreeze"
+                    :class="{ 'disabled': !canAffordFreeze || freezingInProgress }"
+                  >
+                    {{ freezingInProgress ? '解冻中...' : '🔥 解冻任务' }}
+                  </button>
+                </div>
+              </div>
+
               <!-- Pin Task Owner -->
               <div class="key-action-card">
                 <div class="action-header">
@@ -937,7 +977,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, computed, onUnmounted, watch } from 'vue'
+import { ref, onMounted, computed, onUnmounted, watch, nextTick } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '../stores/auth'
 import { useTasksStore } from '../stores/tasks'
@@ -993,6 +1033,9 @@ const keyHolderInfo = ref<{
 
 // Pinning state
 const pinningInProgress = ref(false)
+
+// Freeze state
+const freezingInProgress = ref(false)
 
 // Image modal state
 const showImageModal = ref(false)
@@ -1351,6 +1394,13 @@ const timeRemaining = computed(() => {
 
   // Lock tasks time remaining
   if (task.value.task_type === 'lock' && task.value.status === 'active' && task.value.end_time) {
+    // If task is frozen, return the frozen remaining time
+    if (taskFrozen.value && (task.value as any).frozen_end_time && (task.value as any).frozen_at) {
+      const frozenEndTime = new Date((task.value as any).frozen_end_time).getTime()
+      const frozenAtTime = new Date((task.value as any).frozen_at).getTime()
+      return Math.max(0, frozenEndTime - frozenAtTime)
+    }
+
     const end = new Date(task.value.end_time).getTime()
     const now = currentTime.value
     return Math.max(0, end - now)
@@ -1447,6 +1497,11 @@ const taskTimeDisplayHidden = computed(() => {
   return (task.value as any).time_display_hidden || false
 })
 
+const taskFrozen = computed(() => {
+  if (!task.value || task.value.task_type !== 'lock') return false
+  return (task.value as any).is_frozen || false
+})
+
 const canManageKeyActions = computed(() => {
   if (!task.value || task.value.task_type !== 'lock') return false
 
@@ -1476,6 +1531,11 @@ const canAffordTimeToggle = computed(() => {
 const canAffordPinning = computed(() => {
   if (!authStore.user || !canManageKeyActions.value) return false
   return authStore.user.coins >= 60 // 置顶惩罚需要60积分
+})
+
+const canAffordFreeze = computed(() => {
+  if (!authStore.user || !canManageKeyActions.value) return false
+  return authStore.user.coins >= 25 // 冻结/解冻需要25积分
 })
 
 // Multi-person task computed properties (review mode removed)
@@ -2193,9 +2253,26 @@ const addOvertime = async () => {
   try {
     const result = await tasksApi.addOvertime(task.value.id)
 
-    // 更新任务结束时间
-    if (result.new_end_time && task.value && task.value.task_type === 'lock') {
-      (task.value as any).end_time = result.new_end_time
+    // 更新任务结束时间 - 根据冻结状态更新相应字段
+    if (task.value && task.value.task_type === 'lock') {
+      if (result.is_frozen && result.frozen_end_time) {
+        // 冻结状态下更新frozen_end_time
+        await nextTick()
+        const updatedTask = {
+          ...task.value,
+          frozen_end_time: String(result.frozen_end_time),
+          is_frozen: Boolean(result.is_frozen)
+        }
+        task.value = updatedTask
+      } else if (result.new_end_time) {
+        // 非冻结状态下更新end_time
+        await nextTick()
+        const updatedTask = {
+          ...task.value,
+          end_time: String(result.new_end_time)
+        }
+        task.value = updatedTask
+      }
     }
 
     // 刷新用户数据以更新lock status
@@ -2210,7 +2287,7 @@ const addOvertime = async () => {
       secondaryMessage: '任务时间已延长，继续加油吧！',
       details: {
         '加时时长': `${result.overtime_minutes} 分钟`,
-        '新的结束时间': formatDateTime(result.new_end_time)
+        '新的结束时间': formatDateTime(result.is_frozen && result.frozen_end_time ? result.frozen_end_time : result.new_end_time)
       }
     }
     console.log('任务加时成功:', result)
@@ -2397,9 +2474,37 @@ const manualTimeAdjustment = async (type: 'increase' | 'decrease') => {
   try {
     const result = await tasksApi.manualTimeAdjustment(task.value.id, type)
 
-    // 更新任务结束时间
-    if (result.new_end_time && task.value && task.value.task_type === 'lock') {
-      (task.value as any).end_time = result.new_end_time
+    console.log('Manual time adjustment result:', result)
+    console.log('result.frozen_end_time type:', typeof result.frozen_end_time)
+    console.log('result.frozen_end_time value:', result.frozen_end_time)
+
+    // 更新任务时间 - 根据冻结状态更新相应字段
+    if (task.value && task.value.task_type === 'lock') {
+      if (result.is_frozen && result.frozen_end_time) {
+        // 冻结状态下更新frozen_end_time
+        console.log('Updating frozen_end_time (safe):', String(result.frozen_end_time))
+        console.log('Result object keys:', Object.keys(result))
+        console.log('frozen_end_time type check:', typeof result.frozen_end_time)
+
+        // 使用 nextTick 确保 Vue 反应系统正确处理更新
+        await nextTick()
+
+        // 创建新的任务对象避免引用问题
+        const updatedTask = {
+          ...task.value,
+          frozen_end_time: String(result.frozen_end_time),
+          is_frozen: Boolean(result.is_frozen)
+        }
+        task.value = updatedTask
+      } else if (result.new_end_time) {
+        // 非冻结状态下更新end_time
+        await nextTick()
+        const updatedTask = {
+          ...task.value,
+          end_time: String(result.new_end_time)
+        }
+        task.value = updatedTask
+      }
     }
 
     // 刷新用户数据以更新积分
@@ -2422,7 +2527,7 @@ const manualTimeAdjustment = async (type: 'increase' | 'decrease') => {
         '调整时间': `${result.adjustment_minutes > 0 ? '+' : ''}${result.adjustment_minutes} 分钟`,
         '消耗积分': `${result.cost} 积分`,
         '剩余积分': `${result.remaining_coins} 积分`,
-        '新的结束时间': formatDateTime(result.new_end_time)
+        '新的结束时间': formatDateTime(result.is_frozen && result.frozen_end_time ? result.frozen_end_time : result.new_end_time)
       }
     }
 
@@ -2606,6 +2711,141 @@ const pinTaskOwner = async () => {
     }
   } finally {
     pinningInProgress.value = false
+  }
+}
+
+// Freeze/Unfreeze methods
+const freezeTask = async () => {
+  if (!task.value || !canAffordFreeze.value) {
+    showToast.value = true
+    toastData.value = {
+      type: 'error',
+      title: '冻结失败',
+      message: '积分不足或无权限冻结任务',
+      secondaryMessage: '冻结任务需要25积分，请检查您的余额'
+    }
+    return
+  }
+
+  freezingInProgress.value = true
+
+  try {
+    const result = await tasksApi.freezeTask(task.value.id)
+
+    // 刷新用户数据以更新积分
+    await authStore.refreshUser()
+
+    // 刷新任务数据
+    await fetchTask()
+
+    showToast.value = true
+    toastData.value = {
+      type: 'success',
+      title: '冻结成功',
+      message: `❄️ 任务已成功冻结`,
+      secondaryMessage: '任务倒计时已停止，您可以随时解冻恢复',
+      details: {
+        '消耗积分': '25',
+        '剩余积分': result.remaining_coins || 0,
+        '操作时间': formatDateTime(new Date().toISOString()),
+        '状态变化': '进行中 → 已冻结'
+      }
+    }
+
+    console.log('任务冻结成功:', result)
+
+  } catch (error: any) {
+    console.error('Error freezing task:', error)
+
+    let errorMessage = '冻结任务失败，请重试'
+    let secondaryMessage = '请稍后重试或联系管理员'
+
+    if (error.data?.error) {
+      errorMessage = error.data.error
+    } else if (error.status === 400) {
+      errorMessage = '任务状态不允许冻结或积分不足'
+    } else if (error.status === 403) {
+      errorMessage = '您没有权限冻结此任务'
+    } else if (error.status === 500) {
+      errorMessage = '服务器内部错误，请稍后重试'
+    }
+
+    showToast.value = true
+    toastData.value = {
+      type: 'error',
+      title: '冻结失败',
+      message: errorMessage,
+      secondaryMessage: secondaryMessage
+    }
+  } finally {
+    freezingInProgress.value = false
+  }
+}
+
+const unfreezeTask = async () => {
+  if (!task.value || !canAffordFreeze.value) {
+    showToast.value = true
+    toastData.value = {
+      type: 'error',
+      title: '解冻失败',
+      message: '积分不足或无权限解冻任务',
+      secondaryMessage: '解冻任务需要25积分，请检查您的余额'
+    }
+    return
+  }
+
+  freezingInProgress.value = true
+
+  try {
+    const result = await tasksApi.unfreezeTask(task.value.id)
+
+    // 刷新用户数据以更新积分
+    await authStore.refreshUser()
+
+    // 刷新任务数据
+    await fetchTask()
+
+    showToast.value = true
+    toastData.value = {
+      type: 'success',
+      title: '解冻成功',
+      message: `🔥 任务已成功解冻`,
+      secondaryMessage: '任务倒计时已恢复，从剩余时间继续',
+      details: {
+        '消耗积分': '25',
+        '剩余积分': result.remaining_coins || 0,
+        '操作时间': formatDateTime(new Date().toISOString()),
+        '状态变化': '已冻结 → 进行中'
+      }
+    }
+
+    console.log('任务解冻成功:', result)
+
+  } catch (error: any) {
+    console.error('Error unfreezing task:', error)
+
+    let errorMessage = '解冻任务失败，请重试'
+    let secondaryMessage = '请稍后重试或联系管理员'
+
+    if (error.data?.error) {
+      errorMessage = error.data.error
+    } else if (error.status === 400) {
+      errorMessage = '任务状态不允许解冻或积分不足'
+    } else if (error.status === 403) {
+      errorMessage = '您没有权限解冻此任务'
+    } else if (error.status === 500) {
+      errorMessage = '服务器内部错误，请稍后重试'
+    }
+
+    showToast.value = true
+    toastData.value = {
+      type: 'error',
+      title: '解冻失败',
+      message: errorMessage,
+      secondaryMessage: secondaryMessage
+    }
+  } finally {
+    freezingInProgress.value = false
   }
 }
 
@@ -4343,6 +4583,19 @@ onUnmounted(() => {
   margin-bottom: 1rem;
 }
 
+/* 进度冻结占位符样式 */
+.progress-frozen-section {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+  background: linear-gradient(135deg, #e3f2fd, #bbdefb);
+  border: 2px dashed #17a2b8;
+  border-radius: 8px;
+  margin-bottom: 1rem;
+  animation: pulse-frozen 2s infinite;
+}
+
 .hidden-time-placeholder {
   display: inline-flex;
   align-items: center;
@@ -4358,6 +4611,35 @@ onUnmounted(() => {
   letter-spacing: 0.5px;
   box-shadow: 2px 2px 0 #000;
   animation: gentle-pulse 2s ease-in-out infinite;
+}
+
+/* Frozen time placeholder style */
+.frozen-time-placeholder {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 1rem;
+  background: linear-gradient(135deg, #17a2b8, #20c3aa);
+  color: white;
+  border: 2px solid #000;
+  border-radius: 6px;
+  font-weight: 700;
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  box-shadow: 2px 2px 0 #000;
+  animation: pulse-frozen 2s ease-in-out infinite;
+}
+
+@keyframes pulse-frozen {
+  0%, 100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.7;
+    transform: scale(0.98);
+  }
 }
 
 @keyframes gentle-pulse {
@@ -4553,6 +4835,24 @@ onUnmounted(() => {
 
 .key-action-btn.return:hover:not(:disabled) {
   background: linear-gradient(135deg, #5a2d91, #4c2a85);
+}
+
+.key-action-btn.freeze {
+  background: linear-gradient(135deg, #17a2b8, #20c3aa);
+  min-width: 140px;
+}
+
+.key-action-btn.freeze:hover:not(.disabled) {
+  background: linear-gradient(135deg, #138496, #1aa085);
+}
+
+.key-action-btn.unfreeze {
+  background: linear-gradient(135deg, #ff6b6b, #ee5a24);
+  min-width: 140px;
+}
+
+.key-action-btn.unfreeze:hover:not(.disabled) {
+  background: linear-gradient(135deg, #ee5a24, #e74c3c);
 }
 
 @keyframes pulse-hidden-mode {

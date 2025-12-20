@@ -1859,42 +1859,78 @@ def manual_time_adjustment(request, pk):
     # 记录原始结束时间
     original_end_time = task.end_time
 
-    # 调整任务结束时间
-    if task.end_time:
-        now = timezone.now()
-        time_remaining_minutes = (task.end_time - now).total_seconds() / 60
+    # 处理冻结状态的时间调整
+    if task.is_frozen:
+        # 如果任务已冻结，调整冻结时保存的结束时间
+        if not task.frozen_end_time or not task.frozen_at:
+            return Response(
+                {'error': '冻结任务缺少必要的时间信息，无法调整'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # 计算冻结时的剩余时间
+        frozen_remaining_minutes = (task.frozen_end_time - task.frozen_at).total_seconds() / 60
 
         if adjustment_type == 'decrease':
-            # 如果倒计时已结束，返回错误
-            if time_remaining_minutes <= 0:
+            # 如果冻结时已经没有剩余时间，返回错误
+            if frozen_remaining_minutes <= 0:
                 return Response(
-                    {'error': '倒计时已结束，无法进行减时操作'},
+                    {'error': '任务在冻结时已无剩余时间，无法进行减时操作'},
                     status=status.HTTP_400_BAD_REQUEST
                 )
 
-            # 如果剩余时间不足20分钟，直接减到倒计时结束
-            if time_remaining_minutes < 20:
-                adjustment_minutes = -int(time_remaining_minutes)
-                new_end_time = now
+            # 如果剩余时间不足20分钟，减到冻结时刻
+            if frozen_remaining_minutes < 20:
+                adjustment_minutes = -int(frozen_remaining_minutes)
+                task.frozen_end_time = task.frozen_at
             else:
                 adjustment_minutes = -20
-                new_end_time = task.end_time + timezone.timedelta(minutes=adjustment_minutes)
+                task.frozen_end_time = task.frozen_end_time + timezone.timedelta(minutes=adjustment_minutes)
         else:  # increase
             adjustment_minutes = 20
-            # 如果倒计时已经结束，从现在开始加时；否则从原结束时间加时
-            if time_remaining_minutes <= 0:
-                # 倒计时已结束，从现在开始延长
-                new_end_time = now + timezone.timedelta(minutes=adjustment_minutes)
-            else:
-                # 倒计时未结束，从原结束时间延长
-                new_end_time = task.end_time + timezone.timedelta(minutes=adjustment_minutes)
+            # 对于冻结的任务，直接在frozen_end_time基础上加时
+            task.frozen_end_time = task.frozen_end_time + timezone.timedelta(minutes=adjustment_minutes)
 
-        task.end_time = new_end_time
+        # 记录新的结束时间用于响应（实际上是frozen_end_time）
+        new_end_time = task.frozen_end_time
+
     else:
-        return Response(
-            {'error': '任务没有设置结束时间，无法调整'},
-            status=status.HTTP_400_BAD_REQUEST
-        )
+        # 正常情况下的时间调整逻辑（任务未冻结）
+        if task.end_time:
+            now = timezone.now()
+            time_remaining_minutes = (task.end_time - now).total_seconds() / 60
+
+            if adjustment_type == 'decrease':
+                # 如果倒计时已结束，返回错误
+                if time_remaining_minutes <= 0:
+                    return Response(
+                        {'error': '倒计时已结束，无法进行减时操作'},
+                        status=status.HTTP_400_BAD_REQUEST
+                    )
+
+                # 如果剩余时间不足20分钟，直接减到倒计时结束
+                if time_remaining_minutes < 20:
+                    adjustment_minutes = -int(time_remaining_minutes)
+                    new_end_time = now
+                else:
+                    adjustment_minutes = -20
+                    new_end_time = task.end_time + timezone.timedelta(minutes=adjustment_minutes)
+            else:  # increase
+                adjustment_minutes = 20
+                # 如果倒计时已经结束，从现在开始加时；否则从原结束时间加时
+                if time_remaining_minutes <= 0:
+                    # 倒计时已结束，从现在开始延长
+                    new_end_time = now + timezone.timedelta(minutes=adjustment_minutes)
+                else:
+                    # 倒计时未结束，从原结束时间延长
+                    new_end_time = task.end_time + timezone.timedelta(minutes=adjustment_minutes)
+
+            task.end_time = new_end_time
+        else:
+            return Response(
+                {'error': '任务没有设置结束时间，无法调整'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
 
     task.save()
 
@@ -1904,7 +1940,8 @@ def manual_time_adjustment(request, pk):
 
     # 创建时间线事件
     event_type = 'time_wheel_increase' if adjustment_type == 'increase' else 'time_wheel_decrease'
-    description = f'钥匙持有者手动{"加时" if adjustment_type == "increase" else "减时"}{abs(adjustment_minutes)}分钟（消耗{cost}积分）'
+    frozen_status = '（冻结状态）' if task.is_frozen else ''
+    description = f'钥匙持有者手动{"加时" if adjustment_type == "increase" else "减时"}{abs(adjustment_minutes)}分钟{frozen_status}（消耗{cost}积分）'
 
     TaskTimelineEvent.objects.create(
         task=task,
@@ -1912,7 +1949,7 @@ def manual_time_adjustment(request, pk):
         user=request.user,
         time_change_minutes=adjustment_minutes,
         previous_end_time=original_end_time,
-        new_end_time=task.end_time,
+        new_end_time=new_end_time,
         description=description,
         metadata={
             'adjustment_type': adjustment_type,
@@ -1920,14 +1957,18 @@ def manual_time_adjustment(request, pk):
             'cost': cost,
             'user_remaining_coins': request.user.coins,
             'manual_adjustment': True,
-            'key_holder_action': True
+            'key_holder_action': True,
+            'is_frozen': task.is_frozen,
+            'frozen_end_time': task.frozen_end_time.isoformat() if task.frozen_end_time else None
         }
     )
 
     return Response({
-        'message': f'成功{"加时" if adjustment_type == "increase" else "减时"}{abs(adjustment_minutes)}分钟',
+        'message': f'成功{"加时" if adjustment_type == "increase" else "减时"}{abs(adjustment_minutes)}分钟{frozen_status}',
         'adjustment_minutes': adjustment_minutes,
-        'new_end_time': task.end_time.isoformat(),
+        'new_end_time': new_end_time.isoformat(),
+        'is_frozen': task.is_frozen,
+        'frozen_end_time': task.frozen_end_time.isoformat() if task.frozen_end_time else None,
         'cost': cost,
         'remaining_coins': request.user.coins
     })
@@ -2004,6 +2045,188 @@ def toggle_time_display(request, pk):
     return Response({
         'message': f'成功{action}时间显示',
         'time_display_hidden': task.time_display_hidden,
+        'cost': cost,
+        'remaining_coins': request.user.coins
+    })
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def freeze_task(request, pk):
+    """冻结任务倒计时 - 需要钥匙持有者权限"""
+    task = get_object_or_404(LockTask, pk=pk)
+
+    # 检查任务类型
+    if task.task_type != 'lock':
+        return Response(
+            {'error': '只能冻结带锁任务'},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+
+    # 检查任务状态
+    if task.status != 'active':
+        return Response(
+            {'error': '只能冻结进行中的任务'},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+
+    # 检查任务是否已经冻结
+    if task.is_frozen:
+        return Response(
+            {'error': '任务已经处于冻结状态'},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+
+    # 检查用户是否持有对应的钥匙道具
+    task_key_item = Item.objects.filter(
+        item_type__name='key',
+        owner=request.user,
+        status='available',
+        properties__task_id=str(task.id)
+    ).first()
+
+    if not task_key_item:
+        return Response(
+            {'error': '只有钥匙持有者可以冻结任务'},
+            status=status.HTTP_403_FORBIDDEN
+        )
+
+    # 检查用户积分是否足够（每次操作消耗25积分）
+    cost = 25
+    if request.user.coins < cost:
+        return Response(
+            {'error': f'积分不足，需要{cost}积分，当前{request.user.coins}积分'},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+
+    # 冻结任务
+    task.is_frozen = True
+    task.frozen_at = timezone.now()
+    task.frozen_end_time = task.end_time  # 保存当前的结束时间
+    task.save()
+
+    # 扣除用户积分
+    request.user.coins -= cost
+    request.user.save()
+
+    # 创建时间线事件
+    description = f'钥匙持有者冻结任务（消耗{cost}积分）'
+
+    TaskTimelineEvent.objects.create(
+        task=task,
+        event_type='task_frozen',
+        user=request.user,
+        description=description,
+        metadata={
+            'action': 'freeze',
+            'cost': cost,
+            'user_remaining_coins': request.user.coins,
+            'key_holder_action': True,
+            'frozen_at': task.frozen_at.isoformat(),
+            'frozen_end_time': task.frozen_end_time.isoformat() if task.frozen_end_time else None
+        }
+    )
+
+    return Response({
+        'message': '成功冻结任务',
+        'is_frozen': task.is_frozen,
+        'frozen_at': task.frozen_at,
+        'cost': cost,
+        'remaining_coins': request.user.coins
+    })
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def unfreeze_task(request, pk):
+    """解冻任务倒计时 - 需要钥匙持有者权限"""
+    task = get_object_or_404(LockTask, pk=pk)
+
+    # 检查任务类型
+    if task.task_type != 'lock':
+        return Response(
+            {'error': '只能解冻带锁任务'},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+
+    # 检查任务状态
+    if task.status != 'active':
+        return Response(
+            {'error': '只能解冻进行中的任务'},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+
+    # 检查任务是否处于冻结状态
+    if not task.is_frozen:
+        return Response(
+            {'error': '任务未处于冻结状态'},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+
+    # 检查用户是否持有对应的钥匙道具
+    task_key_item = Item.objects.filter(
+        item_type__name='key',
+        owner=request.user,
+        status='available',
+        properties__task_id=str(task.id)
+    ).first()
+
+    if not task_key_item:
+        return Response(
+            {'error': '只有钥匙持有者可以解冻任务'},
+            status=status.HTTP_403_FORBIDDEN
+        )
+
+    # 检查用户积分是否足够（每次操作消耗25积分）
+    cost = 25
+    if request.user.coins < cost:
+        return Response(
+            {'error': f'积分不足，需要{cost}积分，当前{request.user.coins}积分'},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+
+    # 计算剩余时间并解冻任务
+    now = timezone.now()
+    if task.frozen_end_time and task.frozen_at:
+        # 计算冻结时剩余的时间
+        remaining_time = task.frozen_end_time - task.frozen_at
+        # 设置新的结束时间
+        task.end_time = now + remaining_time
+
+        # 更新总冻结时长
+        frozen_duration = now - task.frozen_at
+        task.total_frozen_duration += frozen_duration
+
+    task.is_frozen = False
+    task.frozen_at = None
+    task.frozen_end_time = None
+    task.save()
+
+    # 扣除用户积分
+    request.user.coins -= cost
+    request.user.save()
+
+    # 创建时间线事件
+    description = f'钥匙持有者解冻任务（消耗{cost}积分）'
+
+    TaskTimelineEvent.objects.create(
+        task=task,
+        event_type='task_unfrozen',
+        user=request.user,
+        description=description,
+        metadata={
+            'action': 'unfreeze',
+            'cost': cost,
+            'user_remaining_coins': request.user.coins,
+            'key_holder_action': True,
+            'new_end_time': task.end_time.isoformat() if task.end_time else None
+        }
+    )
+
+    return Response({
+        'message': '成功解冻任务',
+        'is_frozen': task.is_frozen,
+        'end_time': task.end_time,
         'cost': cost,
         'remaining_coins': request.user.coins
     })

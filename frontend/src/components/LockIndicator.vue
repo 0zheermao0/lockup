@@ -76,6 +76,10 @@ const indicatorType = computed(() => {
                    (userLockTask.value.hasOwnProperty('is_expired') && !userLockTask.value.is_expired)
 
   if (isLocked) {
+    // Check if task is frozen
+    if (userLockTask.value.is_frozen) {
+      return 'frozen'
+    }
     // Check if time is running out (less than 30 minutes)
     if (timeRemaining.value > 0 && timeRemaining.value < 30 * 60 * 1000) {
       return 'locked-urgent'
@@ -89,6 +93,13 @@ const indicatorType = computed(() => {
 const timeRemaining = computed(() => {
   if (!userLockTask.value || !userLockTask.value.end_time) return 0
 
+  // If task is frozen, don't calculate remaining time from current time
+  if (userLockTask.value.is_frozen) {
+    // For frozen tasks, we could show the frozen remaining time
+    // but for the indicator, we'll just return 0 to not show countdown
+    return 0
+  }
+
   const endTime = new Date(userLockTask.value.end_time).getTime()
   const now = currentTime.value
   return Math.max(0, endTime - now)
@@ -100,6 +111,8 @@ const lockIcon = computed(() => {
       return '🔒'
     case 'locked-urgent':
       return '⏰'
+    case 'frozen':
+      return '❄️'
     default:
       return ''
   }
@@ -114,6 +127,11 @@ const tooltipText = computed(() => {
                    (userLockTask.value.hasOwnProperty('is_expired') && !userLockTask.value.is_expired)
 
   if (isLocked) {
+    // Check if task is frozen
+    if (userLockTask.value.is_frozen) {
+      return `${userLockTask.value.title} - 已冻结`
+    }
+
     const timeText = timeRemaining.value > 0
       ? `剩余 ${formatTimeShort(timeRemaining.value)}`
       : '时间已到'
@@ -320,6 +338,12 @@ watch(() => props.user, () => {
   animation: pulse-urgent 1s infinite;
 }
 
+.lock-indicator.frozen {
+  background: linear-gradient(135deg, #17a2b8, #20c3aa);
+  color: white;
+  animation: pulse-frozen 2s infinite;
+}
+
 .lock-indicator.unlocked {
   background: linear-gradient(135deg, #28a745, #218838);
   color: white;
@@ -372,6 +396,17 @@ watch(() => props.user, () => {
     opacity: 0.9;
     transform: scale(1.05);
     box-shadow: 3px 3px 0 #000;
+  }
+}
+
+@keyframes pulse-frozen {
+  0%, 100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.7;
+    transform: scale(0.98);
   }
 }
 

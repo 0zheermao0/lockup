@@ -1,5 +1,6 @@
 from django.db import models
 from django.conf import settings
+from datetime import timedelta
 import uuid
 
 # Create your models here.
@@ -89,6 +90,12 @@ class LockTask(models.Model):
 
     # 钥匙玩法字段
     time_display_hidden = models.BooleanField(default=False, help_text='是否隐藏时间显示')
+
+    # 冻结/解冻字段
+    is_frozen = models.BooleanField(default=False, help_text='是否冻结倒计时')
+    frozen_at = models.DateTimeField(blank=True, null=True, help_text='冻结时间')
+    frozen_end_time = models.DateTimeField(blank=True, null=True, help_text='冻结时保存的原始结束时间')
+    total_frozen_duration = models.DurationField(default=timedelta(0), help_text='总冻结时长')
 
     # 多人任务字段
     max_participants = models.IntegerField(blank=True, null=True, help_text='最大参与人数（仅任务板）')
@@ -186,6 +193,8 @@ class TaskTimelineEvent(models.Model):
         ('user_pinned', '用户被置顶'),
         ('user_unpinned', '用户置顶结束'),
         ('pinning_queue_updated', '置顶队列更新'),
+        ('task_frozen', '任务冻结'),
+        ('task_unfrozen', '任务解冻'),
     ]
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)

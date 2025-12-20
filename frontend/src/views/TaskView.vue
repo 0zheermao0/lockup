@@ -230,8 +230,8 @@
                     <span class="label">结束时间:</span>
                     <span class="value">{{ formatDateTime((task as any).end_time) }}</span>
                   </div>
-                  <!-- 剩余时间显示 - 隐藏时间时不显示 -->
-                  <div v-if="getTimeRemaining(task) > 0 && !isTaskTimeHidden(task)" class="task-time-remaining">
+                  <!-- 剩余时间显示 - 优先检查冻结，然后时间隐藏 -->
+                  <div v-if="getTimeRemaining(task) > 0 && !isTaskFrozen(task) && !isTaskTimeHidden(task)" class="task-time-remaining">
                     <span class="label">剩余时间:</span>
                     <span class="value countdown" :class="{ 'overtime': getTimeRemaining(task) <= 0 }">
                       {{ formatTimeRemaining(getTimeRemaining(task)) }}
@@ -239,10 +239,13 @@
                   </div>
                   <div v-else-if="(task.status === 'active' && task.task_type === 'lock') || (task.status === 'taken' && task.task_type === 'board')" class="task-time-remaining">
                     <span class="label">状态:</span>
-                    <span v-if="!isTaskTimeHidden(task)" class="value overtime">倒计时已结束</span>
-                    <span v-else class="value time-hidden-placeholder">
+                    <span v-if="isTaskFrozen(task)" class="value frozen-time-placeholder">
+                      <span class="frozen-time-indicator">❄️ 已冻结</span>
+                    </span>
+                    <span v-else-if="isTaskTimeHidden(task)" class="value time-hidden-placeholder">
                       <span class="hidden-time-indicator">🔒 时间已隐藏</span>
                     </span>
+                    <span v-else class="value overtime">倒计时已结束</span>
                   </div>
 
                   <!-- Multi-person Task Participant Information - Simplified -->
@@ -259,8 +262,8 @@
                 </div>
 
                 <div class="task-progress">
-                  <!-- 隐藏进度条当时间被隐藏时 -->
-                  <div v-if="((task.task_type === 'lock' && task.status === 'active') || (task.task_type === 'board' && task.status === 'taken')) && !isTaskTimeHidden(task)" class="progress-bar mobile-progress-container">
+                  <!-- 显示进度条当任务未冻结且时间未隐藏时 -->
+                  <div v-if="((task.task_type === 'lock' && task.status === 'active') || (task.task_type === 'board' && task.status === 'taken')) && !isTaskFrozen(task) && !isTaskTimeHidden(task)" class="progress-bar mobile-progress-container">
                     <div
                       class="progress-fill mobile-progress-fill"
                       :class="getProgressColorClass(task)"
@@ -275,9 +278,10 @@
                       {{ getProgressPercent(task).toFixed(1) }}% {{ getProgressColorClass(task) }}
                     </div>
                   </div>
-                  <!-- 时间隐藏时显示占位符 -->
-                  <div v-else-if="((task.task_type === 'lock' && task.status === 'active') || (task.task_type === 'board' && task.status === 'taken')) && isTaskTimeHidden(task)" class="progress-hidden-placeholder">
-                    <span class="hidden-time-indicator">🔒 进度已隐藏</span>
+                  <!-- 冻结或时间隐藏时显示占位符 -->
+                  <div v-else-if="((task.task_type === 'lock' && task.status === 'active') || (task.task_type === 'board' && task.status === 'taken'))" class="progress-hidden-placeholder">
+                    <span v-if="(task as any).is_frozen" class="frozen-time-indicator">❄️ 进度已冻结</span>
+                    <span v-else class="hidden-time-indicator">🔒 进度已隐藏</span>
                   </div>
                   <div class="task-user">
                     <UserAvatar
@@ -831,6 +835,12 @@ const getProgressPercent = (task: Task) => {
   // Handle lock tasks
   if (task.task_type === 'lock' && task.status === 'active') {
     const lockTask = task as any
+
+    // If task is frozen, show progress based on frozen state
+    if (lockTask.is_frozen) {
+      return 0 // Frozen tasks show no progress
+    }
+
     if (!lockTask.start_time || !lockTask.end_time) {
       return 0
     }
@@ -867,6 +877,12 @@ const getProgressPercent = (task: Task) => {
 
 // Get progress color class based on time remaining
 const getProgressColorClass = (task: Task) => {
+  // Check if task is frozen
+  const lockTask = task as any
+  if (task.task_type === 'lock' && lockTask.is_frozen) {
+    return 'progress-frozen'
+  }
+
   // Check if task is active (lock tasks) or taken (board tasks)
   const isProgressActive = (task.task_type === 'lock' && task.status === 'active') ||
                           (task.task_type === 'board' && task.status === 'taken')
@@ -900,6 +916,14 @@ const getTimeRemaining = (task: Task) => {
   // Lock tasks time remaining
   if (task.task_type === 'lock' && task.status === 'active') {
     const lockTask = task as any
+
+    // If task is frozen, show the frozen time remaining
+    if (lockTask.is_frozen && lockTask.frozen_end_time && lockTask.frozen_at) {
+      const frozenEndTime = new Date(lockTask.frozen_end_time).getTime()
+      const frozenAt = new Date(lockTask.frozen_at).getTime()
+      return Math.max(0, frozenEndTime - frozenAt)
+    }
+
     if (lockTask.end_time) {
       const end = new Date(lockTask.end_time).getTime()
       const now = currentTime.value
@@ -947,7 +971,14 @@ const canAddOvertime = (task: Task) => {
 // Check if task time display is hidden
 const isTaskTimeHidden = (task: Task) => {
   if (!task || task.task_type !== 'lock') return false
-  return (task as any).time_display_hidden || false
+  const lockTask = task as any
+  return lockTask.time_display_hidden || false
+}
+
+const isTaskFrozen = (task: Task) => {
+  if (!task || task.task_type !== 'lock') return false
+  const lockTask = task as any
+  return lockTask.is_frozen || false
 }
 
 // Add overtime function
@@ -1750,6 +1781,12 @@ onUnmounted(() => {
   animation: pulse-urgent 2s infinite;
 }
 
+.progress-fill.progress-frozen {
+  background: linear-gradient(90deg, #17a2b8, #20c3aa);
+  box-shadow: inset 0 2px 4px rgba(255, 255, 255, 0.3);
+  animation: pulse-frozen-progress 2s infinite;
+}
+
 @keyframes pulse-urgent {
   0%, 100% {
     box-shadow: inset 0 2px 4px rgba(255, 255, 255, 0.3);
@@ -1758,6 +1795,17 @@ onUnmounted(() => {
   50% {
     box-shadow: inset 0 2px 4px rgba(255, 255, 255, 0.5);
     opacity: 0.8;
+  }
+}
+
+@keyframes pulse-frozen-progress {
+  0%, 100% {
+    box-shadow: inset 0 2px 4px rgba(255, 255, 255, 0.3);
+    opacity: 1;
+  }
+  50% {
+    box-shadow: inset 0 2px 4px rgba(255, 255, 255, 0.5);
+    opacity: 0.7;
   }
 }
 
@@ -2170,6 +2218,30 @@ onUnmounted(() => {
   justify-content: center;
 }
 
+.frozen-time-placeholder {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* 冻结时间指示器样式 */
+.frozen-time-indicator {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.25rem 0.5rem;
+  background: linear-gradient(135deg, #17a2b8, #20c3aa);
+  color: white;
+  border: 2px solid #000;
+  border-radius: 4px;
+  font-weight: 600;
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  box-shadow: 2px 2px 0 #000;
+  animation: pulse-frozen 2s infinite;
+}
+
 .hidden-time-indicator {
   display: inline-flex;
   align-items: center;
@@ -2185,6 +2257,23 @@ onUnmounted(() => {
   letter-spacing: 0.5px;
   box-shadow: 1px 1px 0 #000;
   animation: gentle-pulse 2s ease-in-out infinite;
+}
+
+.frozen-time-indicator {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.25rem 0.5rem;
+  background: linear-gradient(135deg, #17a2b8, #20c3aa);
+  color: white;
+  border: 2px solid #000;
+  border-radius: 4px;
+  font-weight: 700;
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  box-shadow: 2px 2px 0 #000;
+  animation: pulse-frozen-indicator 2s ease-in-out infinite;
 }
 
 .progress-hidden-placeholder {
@@ -2207,6 +2296,28 @@ onUnmounted(() => {
   50% {
     opacity: 0.8;
     transform: scale(1.02);
+  }
+}
+
+@keyframes pulse-frozen-indicator {
+  0%, 100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.7;
+    transform: scale(1.02);
+  }
+}
+
+@keyframes pulse-frozen {
+  0%, 100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.7;
+    transform: scale(0.98);
   }
 }
 
