@@ -20,7 +20,7 @@ except ImportError:
 
 # 允许的文件类型
 ALLOWED_IMAGE_EXTENSIONS = {
-    '.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp'
+    '.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp', '.svg'
 }
 
 ALLOWED_VIDEO_EXTENSIONS = {
@@ -35,7 +35,7 @@ ALL_ALLOWED_EXTENSIONS = ALLOWED_IMAGE_EXTENSIONS | ALLOWED_VIDEO_EXTENSIONS | A
 
 # 允许的MIME类型
 ALLOWED_IMAGE_MIMES = {
-    'image/jpeg', 'image/png', 'image/gif', 'image/webp', 'image/bmp'
+    'image/jpeg', 'image/png', 'image/gif', 'image/webp', 'image/bmp', 'image/svg+xml'
 }
 
 ALLOWED_VIDEO_MIMES = {
@@ -134,7 +134,11 @@ def validate_file_security(uploaded_file):
 
     # 如果仍然无法检测，根据扩展名推断
     if not detected_mime:
-        if ext in ALLOWED_IMAGE_EXTENSIONS:
+        if ext == '.svg':
+            detected_mime = 'image/svg+xml'
+        elif ext == '.gif':
+            detected_mime = 'image/gif'
+        elif ext in ALLOWED_IMAGE_EXTENSIONS:
             detected_mime = 'image/jpeg'  # 默认图片类型
         elif ext in ALLOWED_VIDEO_EXTENSIONS:
             detected_mime = 'video/mp4'   # 默认视频类型
@@ -154,24 +158,36 @@ def validate_file_security(uploaded_file):
 
     # 针对图片的额外验证
     if file_type == 'image':
-        try:
-            # 使用PIL验证图片
+        # SVG文件跳过PIL验证，因为PIL不支持SVG
+        if detected_mime == 'image/svg+xml':
+            # SVG文件的基本验证：检查是否包含SVG标签
             uploaded_file.seek(0)
-            with Image.open(uploaded_file) as img:
-                # 检查图片尺寸
-                if img.width > 4096 or img.height > 4096:
-                    raise ValidationError("图片尺寸过大，最大支持 4096x4096 像素")
-
-                # 检查图片格式
-                if img.format.lower() not in ['jpeg', 'png', 'gif', 'webp', 'bmp']:
-                    raise ValidationError(f"不支持的图片格式: {img.format}")
-
+            try:
+                content = uploaded_file.read(1024).decode('utf-8', errors='ignore')
+                if '<svg' not in content.lower():
+                    raise ValidationError("无效的SVG文件")
+            except UnicodeDecodeError:
+                raise ValidationError("无效的SVG文件")
             uploaded_file.seek(0)
+        else:
+            try:
+                # 使用PIL验证图片
+                uploaded_file.seek(0)
+                with Image.open(uploaded_file) as img:
+                    # 检查图片尺寸
+                    if img.width > 4096 or img.height > 4096:
+                        raise ValidationError("图片尺寸过大，最大支持 4096x4096 像素")
 
-        except Exception as e:
-            if isinstance(e, ValidationError):
-                raise
-            raise ValidationError("无效的图片文件")
+                    # 检查图片格式
+                    if img.format.lower() not in ['jpeg', 'png', 'gif', 'webp', 'bmp']:
+                        raise ValidationError(f"不支持的图片格式: {img.format}")
+
+                uploaded_file.seek(0)
+
+            except Exception as e:
+                if isinstance(e, ValidationError):
+                    raise
+                raise ValidationError("无效的图片文件")
 
     # 检查文件大小限制（按类型）
     if file_type == 'image' and uploaded_file.size > MAX_IMAGE_SIZE:
