@@ -353,3 +353,88 @@ class CommentLike(models.Model):
 
     def __str__(self):
         return f"{self.user.username} likes comment {self.comment.id}"
+
+
+class CheckinVote(models.Model):
+    """打卡动态投票"""
+
+    VOTE_CHOICES = [
+        ('pass', '通过'),
+        ('reject', '拒绝'),
+    ]
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    post = models.ForeignKey(
+        Post,
+        on_delete=models.CASCADE,
+        related_name='checkin_votes',
+        help_text="投票的打卡动态"
+    )
+    voter = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name='checkin_votes',
+        help_text="投票用户"
+    )
+    vote_type = models.CharField(
+        max_length=10,
+        choices=VOTE_CHOICES,
+        help_text="投票类型"
+    )
+    coins_spent = models.IntegerField(
+        default=5,
+        help_text='投票花费的积分'
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'checkin_votes'
+        unique_together = ['post', 'voter']  # One vote per user per post
+        ordering = ['-created_at']
+        verbose_name = '打卡投票'
+        verbose_name_plural = '打卡投票'
+
+    def __str__(self):
+        return f"{self.voter.username} voted {self.get_vote_type_display()} on post {self.post.id}"
+
+
+class CheckinVotingSession(models.Model):
+    """打卡动态投票会话"""
+
+    RESULT_CHOICES = [
+        ('pending', '等待投票'),
+        ('passed', '投票通过'),
+        ('rejected', '投票拒绝'),
+    ]
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    post = models.OneToOneField(
+        Post,
+        on_delete=models.CASCADE,
+        related_name='voting_session',
+        help_text="投票的打卡动态"
+    )
+    voting_deadline = models.DateTimeField(help_text='投票截止时间（次日凌晨4点）')
+    total_coins_collected = models.IntegerField(default=0, help_text='收集的总积分')
+    is_processed = models.BooleanField(default=False, help_text='是否已处理投票结果')
+    result = models.CharField(
+        max_length=20,
+        choices=RESULT_CHOICES,
+        default='pending',
+        help_text='投票结果'
+    )
+    processed_at = models.DateTimeField(blank=True, null=True, help_text='处理时间')
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'checkin_voting_sessions'
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['voting_deadline', 'is_processed']),
+            models.Index(fields=['result']),
+        ]
+        verbose_name = '打卡投票会话'
+        verbose_name_plural = '打卡投票会话'
+
+    def __str__(self):
+        return f"Voting session for post {self.post.id} - {self.get_result_display()}"

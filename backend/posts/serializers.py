@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import Post, PostImage, PostLike, Comment, CommentImage, CommentLike
+from .models import Post, PostImage, PostLike, Comment, CommentImage, CommentLike, CheckinVotingSession, CheckinVote
 from users.serializers import UserPublicSerializer
 
 
@@ -50,6 +50,15 @@ class CommentSerializer(serializers.ModelSerializer):
         return False
 
 
+class CheckinVotingSessionSerializer(serializers.ModelSerializer):
+    """打卡投票会话序列化器"""
+
+    class Meta:
+        model = CheckinVotingSession
+        fields = ['voting_deadline', 'total_coins_collected', 'is_processed', 'result']
+        read_only_fields = ['voting_deadline', 'total_coins_collected', 'is_processed', 'result']
+
+
 class PostSerializer(serializers.ModelSerializer):
     """动态序列化器"""
 
@@ -57,6 +66,8 @@ class PostSerializer(serializers.ModelSerializer):
     images = PostImageSerializer(many=True, read_only=True)
     user_has_liked = serializers.SerializerMethodField()
     comments = serializers.SerializerMethodField()
+    voting_session = CheckinVotingSessionSerializer(read_only=True)
+    user_vote = serializers.SerializerMethodField()
 
     class Meta:
         model = Post
@@ -64,7 +75,7 @@ class PostSerializer(serializers.ModelSerializer):
             'id', 'user', 'post_type', 'content', 'latitude', 'longitude',
             'location_name', 'verification_string', 'is_verified',
             'likes_count', 'comments_count', 'images', 'user_has_liked',
-            'comments', 'created_at', 'updated_at'
+            'comments', 'voting_session', 'user_vote', 'created_at', 'updated_at'
         ]
         read_only_fields = [
             'id', 'user', 'is_verified', 'likes_count', 'comments_count',
@@ -86,6 +97,17 @@ class PostSerializer(serializers.ModelSerializer):
             top_comments, many=True, context=self.context
         ).data
 
+    def get_user_vote(self, obj):
+        """获取当前用户对该打卡动态的投票"""
+        request = self.context.get('request')
+        if request and request.user.is_authenticated and obj.post_type == 'checkin':
+            try:
+                vote = CheckinVote.objects.get(post=obj, voter=request.user)
+                return vote.vote_type
+            except CheckinVote.DoesNotExist:
+                pass
+        return None
+
 
 class PostCreateSerializer(serializers.ModelSerializer):
     """动态创建序列化器"""
@@ -100,8 +122,7 @@ class PostCreateSerializer(serializers.ModelSerializer):
     class Meta:
         model = Post
         fields = [
-            'post_type', 'content', 'latitude', 'longitude',
-            'location_name', 'images'
+            'post_type', 'content', 'images'
         ]
 
     def validate_content(self, value):
@@ -140,6 +161,10 @@ class PostCreateSerializer(serializers.ModelSerializer):
                 order=i
             )
 
+        # 为打卡动态创建投票会话
+        if post.post_type == 'checkin':
+            self._create_voting_session(post)
+
         # 更新用户统计
         user.total_posts += 1
         user.update_activity()
@@ -148,6 +173,24 @@ class PostCreateSerializer(serializers.ModelSerializer):
         # 刷新post实例以确保关联关系正确加载
         post.refresh_from_db()
         return post
+
+    def _create_voting_session(self, post):
+        """为打卡动态创建投票会话"""
+        from datetime import datetime, time
+        from django.utils import timezone
+        from datetime import timedelta
+
+        # 计算投票截止时间（次日凌晨4点）
+        now = timezone.now()
+        tomorrow = now.date() + timedelta(days=1)
+        deadline = timezone.datetime.combine(tomorrow, time(4, 0))
+        deadline = timezone.make_aware(deadline, timezone=timezone.get_current_timezone())
+
+        # 创建投票会话
+        CheckinVotingSession.objects.create(
+            post=post,
+            voting_deadline=deadline
+        )
 
 
 class CommentCreateSerializer(serializers.ModelSerializer):

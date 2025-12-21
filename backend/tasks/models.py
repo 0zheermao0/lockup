@@ -100,6 +100,10 @@ class LockTask(models.Model):
     # 多人任务字段
     max_participants = models.IntegerField(blank=True, null=True, help_text='最大参与人数（仅任务板）')
 
+    # 严格模式字段
+    strict_mode = models.BooleanField(default=False, help_text='是否为严格模式')
+    strict_code = models.CharField(max_length=4, blank=True, null=True, help_text='严格模式随机码')
+
     class Meta:
         ordering = ['-created_at']
 

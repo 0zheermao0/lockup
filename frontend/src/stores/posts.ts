@@ -94,7 +94,6 @@ export const usePostsStore = defineStore('posts', () => {
     content: string
     post_type: 'normal' | 'checkin'
     images?: File[]
-    location?: { latitude: number; longitude: number }
   }) => {
     try {
       const newPost = await postsApi.createPost(postData)
@@ -102,6 +101,26 @@ export const usePostsStore = defineStore('posts', () => {
       return newPost
     } catch (err) {
       console.error('Error creating post:', err)
+      throw err
+    }
+  }
+
+  const voteOnCheckinPost = async (postId: string, voteType: 'pass' | 'reject') => {
+    try {
+      const response = await postsApi.voteOnCheckinPost(postId, voteType)
+
+      // Update local state
+      const postIndex = posts.value.findIndex(post => post.id === postId)
+      if (postIndex !== -1 && posts.value[postIndex]) {
+        posts.value[postIndex].user_vote = voteType
+        if (posts.value[postIndex].voting_session) {
+          posts.value[postIndex].voting_session!.total_coins_collected = response.total_coins_collected
+        }
+      }
+
+      return response
+    } catch (err) {
+      console.error('Error voting on checkin post:', err)
       throw err
     }
   }
@@ -135,6 +154,7 @@ export const usePostsStore = defineStore('posts', () => {
     likePost,
     unlikePost,
     createPost,
-    deletePost
+    deletePost,
+    voteOnCheckinPost
   }
 })

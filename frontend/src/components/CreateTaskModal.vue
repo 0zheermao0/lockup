@@ -53,7 +53,7 @@
           ></textarea>
         </div>
 
-        <!-- Auto-post Option and Duration Type (for lock tasks) -->
+        <!-- Auto-post Option, Duration Type and Strict Mode (for lock tasks) -->
         <div class="form-group">
           <div class="form-row-inline-combined">
             <!-- Publish Option -->
@@ -92,6 +92,21 @@
                   <span>随机时间</span>
                 </label>
               </div>
+            </div>
+            <!-- Strict Mode for lock tasks -->
+            <div v-if="form.task_type === 'lock'" class="form-section-compact">
+              <label class="inline-label">严格模式</label>
+              <label class="checkbox-label-compact">
+                <input
+                  type="checkbox"
+                  v-model="form.strict_mode"
+                  class="checkbox-input-compact"
+                />
+                <span class="checkbox-text-compact">
+                  启用严格模式
+                  <small class="checkbox-desc-compact">打卡时自动添加验证码</small>
+                </span>
+              </label>
             </div>
           </div>
         </div>
@@ -284,6 +299,7 @@ const form = reactive<TaskCreateRequest & { autoPost?: boolean }>({
   duration_max: undefined,
   difficulty: 'normal',
   unlock_type: 'time',
+  strict_mode: false, // 默认不启用严格模式
   // Board task fields
   reward: undefined,
   max_duration: 24, // 默认24小时
@@ -310,6 +326,7 @@ const resetForm = () => {
   form.unlock_type = 'time'
   form.duration_max = 120 // 默认2小时作为随机时间的最大值
   form.vote_agreement_ratio = undefined
+  form.strict_mode = false // 默认不启用严格模式
   // Board task fields
   form.reward = undefined
   form.max_duration = 24
@@ -498,7 +515,12 @@ const handleSubmit = async () => {
       delete cleanedForm.difficulty
       delete cleanedForm.unlock_type
       delete cleanedForm.vote_agreement_ratio
+      delete cleanedForm.strict_mode
     }
+
+    // Debug: Log the data being sent
+    console.log('Form data before cleaning:', form)
+    console.log('Cleaned form data being sent:', cleanedForm)
 
     // Create the task through API
     const newTask = await tasksApi.createTask(cleanedForm)
@@ -551,6 +573,7 @@ watch(() => form.task_type, (newValue) => {
     form.duration_type = 'fixed'
     form.duration_value = 60
     form.duration_max = 120
+    form.strict_mode = false
   } else if (newValue === 'board') {
     // Reset lock fields
     form.duration_type = 'fixed'
@@ -559,6 +582,7 @@ watch(() => form.task_type, (newValue) => {
     form.difficulty = 'normal'
     form.unlock_type = 'time'
     form.vote_agreement_ratio = undefined
+    form.strict_mode = false
   }
 })
 

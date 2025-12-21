@@ -116,6 +116,8 @@ class LockTaskSerializer(serializers.ModelSerializer):
             'completion_proof', 'completed_at',
             # 多人任务字段
             'max_participants',
+            # 严格模式字段
+            'strict_mode', 'strict_code',
             # 时间字段
             'start_time', 'end_time', 'created_at', 'updated_at',
             # 钥匙玩法字段
@@ -228,12 +230,14 @@ class LockTaskCreateSerializer(serializers.ModelSerializer):
             'duration_type', 'duration_value', 'duration_max', 'difficulty',
             'unlock_type', 'vote_threshold', 'vote_agreement_ratio',
             'overtime_multiplier', 'overtime_duration', 'voting_duration',
+            # 严格模式字段
+            'strict_mode', 'strict_code',
             # 任务板字段
             'reward', 'deadline', 'max_duration',
             # 多人任务字段
             'max_participants'
         ]
-        read_only_fields = ['id', 'status']
+        read_only_fields = ['id', 'status', 'strict_code']
 
     def create(self, validated_data):
         validated_data['user'] = self.context['request'].user

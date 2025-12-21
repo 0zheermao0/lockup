@@ -193,7 +193,21 @@ class LockTaskListCreateView(generics.ListCreateAPIView):
                     'non_field_errors': ['系统错误：钥匙道具类型不存在']
                 })
 
+        # Debug: Log the validated data
+        print(f"DEBUG: Serializer validated_data: {serializer.validated_data}")
+
         task = serializer.save()
+
+        # Debug: Log the saved task
+        print(f"DEBUG: Saved task - strict_mode: {task.strict_mode}, task_type: {task.task_type}")
+
+        # 生成严格模式随机码
+        if task.task_type == 'lock' and task.strict_mode:
+            task.strict_code = self.generate_strict_code()
+            task.save()
+            print(f"DEBUG: Generated strict code: {task.strict_code}")
+        else:
+            print(f"DEBUG: No strict code generated - task_type: {task.task_type}, strict_mode: {task.strict_mode}")
 
         # 创建任务创建事件
         TaskTimelineEvent.objects.create(
@@ -314,6 +328,14 @@ class LockTaskListCreateView(generics.ListCreateAPIView):
                     logger.error(f"Failed to schedule auto-settlement for newly created task {task.id}: {e}")
 
             task.save()
+
+    def generate_strict_code(self):
+        """Generate 4-character code like A1B2"""
+        import random
+        import string
+        letters = random.choices(string.ascii_uppercase, k=2)
+        digits = random.choices(string.digits, k=2)
+        return f"{letters[0]}{digits[0]}{letters[1]}{digits[1]}"
 
 
 class LockTaskDetailView(generics.RetrieveUpdateDestroyAPIView):

@@ -75,6 +75,13 @@ export interface Post {
   created_at: string
   updated_at: string
   user_has_liked?: boolean
+  user_vote?: 'pass' | 'reject' // User's vote on this post
+  voting_session?: {
+    voting_deadline: string
+    total_coins_collected: number
+    is_processed: boolean
+    result: 'pending' | 'passed' | 'rejected'
+  }
 }
 
 export interface PostImage {
@@ -101,6 +108,26 @@ export interface Comment {
   created_at: string
   updated_at: string
   is_liked?: boolean
+}
+
+// Check-in Voting Types
+export interface CheckinVote {
+  id: string
+  post: string
+  voter: string
+  vote_type: 'pass' | 'reject'
+  coins_spent: number
+  created_at: string
+}
+
+export interface CheckinVotingSession {
+  post: string
+  voting_deadline: string
+  total_coins_collected: number
+  is_processed: boolean
+  result: 'pending' | 'passed' | 'rejected'
+  processed_at?: string
+  created_at: string
 }
 
 // Task Types
@@ -146,6 +173,9 @@ export interface LockTask extends BaseLockTask {
   frozen_at?: string | null // 冻结时间
   frozen_end_time?: string | null // 冻结时保存的原始结束时间
   total_frozen_duration?: number // 总冻结时长（秒）
+  // 严格模式字段
+  strict_mode?: boolean // 是否为严格模式
+  strict_code?: string | null // 严格模式随机码
   // 任务完成相关字段
   taker?: User
   completion_proof?: string
@@ -390,6 +420,7 @@ export interface TaskCreateRequest {
   vote_agreement_ratio?: number
   overtime_multiplier?: number
   overtime_duration?: number
+  strict_mode?: boolean // 严格模式
   // 任务板字段
   reward?: number
   deadline?: string
