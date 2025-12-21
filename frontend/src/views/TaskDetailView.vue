@@ -175,7 +175,8 @@
 
             <div class="task-description">
               <h3>任务描述</h3>
-              <p>{{ task.description }}</p>
+              <div v-if="task.description" class="task-description-content" v-html="task.description"></div>
+              <p v-else class="no-description">暂无描述</p>
             </div>
 
             <!-- Task Details Grid -->
@@ -3459,6 +3460,55 @@ onUnmounted(() => {
 .task-description p {
   line-height: 1.6;
   color: #555;
+}
+
+.task-description-content {
+  line-height: 1.6;
+  color: #555;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+}
+
+.task-description-content h1,
+.task-description-content h2,
+.task-description-content h3 {
+  margin: 0.5rem 0;
+  font-weight: 900;
+  color: #333;
+}
+
+.task-description-content h1 {
+  font-size: 1.5rem;
+}
+
+.task-description-content h2 {
+  font-size: 1.3rem;
+}
+
+.task-description-content h3 {
+  font-size: 1.1rem;
+}
+
+.task-description-content ul {
+  margin: 0.5rem 0;
+  padding-left: 2rem;
+}
+
+.task-description-content li {
+  margin: 0.25rem 0;
+}
+
+.task-description-content strong {
+  font-weight: 900;
+}
+
+.task-description-content em {
+  font-style: italic;
+}
+
+.no-description {
+  color: #999;
+  font-style: italic;
 }
 
 .task-details-grid {

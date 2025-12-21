@@ -451,7 +451,7 @@
                       <span class="task-difficulty">{{ getDifficultyText(task.difficulty) }}</span>
                       <span class="task-status">{{ getStatusText(task.status) }}</span>
                     </p>
-                    <p class="task-description">{{ task.description }}</p>
+                    <p v-if="task.description" class="task-description">{{ stripHtmlAndTruncate(task.description, 120) }}</p>
                   </div>
                   <div class="task-rewards">
                     <!-- Reward points display removed as requested -->
@@ -604,6 +604,22 @@ const getDifficultyText = (difficulty: string): string => {
     'hell': '地狱'
   }
   return difficultyMap[difficulty as keyof typeof difficultyMap] || difficulty
+}
+
+const stripHtmlAndTruncate = (html: string, maxLength: number = 120): string => {
+  if (!html) return ''
+
+  // Create a temporary div to strip HTML tags
+  const tempDiv = document.createElement('div')
+  tempDiv.innerHTML = html
+  const textContent = tempDiv.textContent || tempDiv.innerText || ''
+
+  // Truncate text if it's too long
+  if (textContent.length <= maxLength) {
+    return textContent
+  }
+
+  return textContent.slice(0, maxLength) + '...'
 }
 
 const getTaskReward = (difficulty: string): number => {
