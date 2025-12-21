@@ -232,14 +232,14 @@
                     </button>
                   </div>
 
-                  <!-- Show voting status if already voted -->
-                  <div v-else-if="hasVoted(post)" class="voted-status">
+                  <!-- Show voting status if already voted (only for strict mode posts) -->
+                  <div v-else-if="shouldShowVotingUI(post) && hasVoted(post)" class="voted-status">
                     已投票: {{ getUserVote(post) === 'pass' ? '✅ 通过' : '❌ 拒绝' }}
                   </div>
 
-                  <!-- Show voting deadline -->
-                  <div v-if="post.voting_session" class="voting-deadline">
-                    投票截止: {{ formatVotingDeadline(post.voting_session.voting_deadline) }}
+                  <!-- Show voting deadline (only for strict mode posts) -->
+                  <div v-if="shouldShowVotingUI(post)" class="voting-deadline">
+                    投票截止: {{ formatVotingDeadline(post.voting_session!.voting_deadline) }}
                   </div>
                 </div>
               </div>
@@ -515,6 +515,23 @@ const formatTimeRemaining = (milliseconds: number) => {
 // 投票相关功能
 const voting = ref(false)
 
+// Helper function to check if voting UI should be shown for a post
+const shouldShowVotingUI = (post: Post) => {
+  // Only show voting UI for posts that have voting session AND contain verification code (strict mode)
+  if (!post.voting_session) {
+    return false
+  }
+
+  // Additional check: only show voting UI for posts that contain verification code (strict mode)
+  const hasVerificationCode = post.content.includes('验证码：')
+  if (!hasVerificationCode) {
+    console.log('DEBUG: Post does not contain verification code, voting UI disabled for post', post.id)
+    return false
+  }
+
+  return true
+}
+
 const canVote = (post: Post) => {
   // Debug logging
   console.log('DEBUG canVote for post:', post.id, {
@@ -526,13 +543,13 @@ const canVote = (post: Post) => {
     post_user_id: post.user.id
   })
 
-  // Check if voting session exists and deadline hasn't passed
-  if (!post.voting_session) {
-    console.log('DEBUG: No voting session for post', post.id)
+  // First check if voting UI should be shown at all
+  if (!shouldShowVotingUI(post)) {
+    console.log('DEBUG: Voting UI should not be shown for post', post.id)
     return false
   }
 
-  const deadline = new Date(post.voting_session.voting_deadline)
+  const deadline = new Date(post.voting_session!.voting_deadline)
   const now = new Date()
   const hasVotedResult = hasVoted(post)
 

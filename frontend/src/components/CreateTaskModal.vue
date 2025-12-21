@@ -368,8 +368,8 @@ const handleImageUpload = (event: Event) => {
   if (!file) return
 
   // Validate file type
-  if (!file.type.match(/^image\/(jpeg|jpg|png)$/)) {
-    alert('请选择 JPG 或 PNG 格式的图片')
+  if (!file.type.match(/^image\/(jpeg|jpg|png|gif|webp|bmp|svg\+xml)$/)) {
+    alert('请选择 JPG、PNG、SVG、GIF、WebP 或 BMP 格式的图片')
     return
   }
 

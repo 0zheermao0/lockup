@@ -177,9 +177,19 @@ class PostCreateSerializer(serializers.ModelSerializer):
                 order=i
             )
 
-        # 为打卡动态创建投票会话
+        # 为严格模式打卡动态创建投票会话
         if post.post_type == 'checkin':
-            self._create_voting_session(post)
+            # 只为有活跃严格模式带锁任务的用户创建投票会话
+            from tasks.models import LockTask
+            has_active_strict_task = LockTask.objects.filter(
+                user=user,
+                task_type='lock',
+                status__in=['pending', 'active', 'voting'],
+                strict_mode=True
+            ).exists()
+
+            if has_active_strict_task:
+                self._create_voting_session(post)
 
         # 更新用户统计
         user.total_posts += 1
@@ -191,7 +201,7 @@ class PostCreateSerializer(serializers.ModelSerializer):
         return post
 
     def _create_voting_session(self, post):
-        """为打卡动态创建投票会话"""
+        """为严格模式打卡动态创建投票会话"""
         from datetime import datetime, time
         from django.utils import timezone
         from datetime import timedelta
