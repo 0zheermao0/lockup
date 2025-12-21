@@ -231,8 +231,8 @@ JWT_AUTH = {
 }
 
 # Telegram Bot Configuration - 强制生产环境配置
-TELEGRAM_BOT_TOKEN = '8593610083:AAFPwRTuNZ_9zO8dEKSIKzUfyGF57faeRhY'  # 生产环境强制设置
-TELEGRAM_BOT_USERNAME = 'lock_up_bot'  # 生产环境强制设置
+TELEGRAM_BOT_TOKEN = '8476746874:AAGig__0E_s-BG34kgD9L4ElFy1Z1ymRoBM'  # 生产环境强制设置
+TELEGRAM_BOT_USERNAME = 'lock_heart_bot'  # 生产环境强制设置
 TELEGRAM_WEBHOOK_URL = 'https://lock-down.zheermao.top/api/telegram/webhook/'  # 生产环境强制设置
 
 # Telegram Security Configuration (生产环境必须配置)
