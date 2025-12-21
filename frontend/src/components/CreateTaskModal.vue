@@ -44,35 +44,78 @@
 
         <div class="form-group">
           <label for="description">任务描述 <span class="optional">(可选)</span></label>
-          <textarea
-            id="description"
+          <RichTextEditor
             v-model="form.description"
             :placeholder="form.task_type === 'lock' ? '描述一下你的自律挑战...' : '详细描述任务需求和要求...'"
-            rows="3"
-            maxlength="500"
-          ></textarea>
+            :max-length="500"
+            min-height="100px"
+          />
         </div>
 
-        <!-- Auto-post Option, Duration Type and Strict Mode (for lock tasks) -->
+        <!-- Publish Options and Image Upload Row -->
         <div class="form-group">
-          <div class="form-row-inline-combined">
-            <!-- Publish Option -->
-            <div class="form-section-compact">
-              <label class="inline-label">发布选项</label>
-              <label class="checkbox-label-compact">
+          <div class="publish-image-row">
+            <!-- Left Column: Publish Options -->
+            <div class="publish-options-column">
+              <label class="section-label">发布选项</label>
+              <label class="checkbox-label-enhanced">
                 <input
                   type="checkbox"
                   v-model="form.autoPost"
-                  class="checkbox-input-compact"
+                  class="checkbox-input-enhanced"
                 />
-                <span class="checkbox-text-compact">
+                <span class="checkbox-text-enhanced">
                   自动发布动态
-                  <small class="checkbox-desc-compact">创建任务后自动分享到动态</small>
+                  <small class="checkbox-desc-enhanced">创建任务后自动分享到动态</small>
                 </span>
               </label>
             </div>
-            <!-- Duration Type for lock tasks -->
-            <div v-if="form.task_type === 'lock'" class="form-section-compact">
+
+            <!-- Right Column: Image Upload (conditional) -->
+            <div class="image-upload-column">
+              <label class="section-label">任务图片 <span class="optional">(可选)</span></label>
+              <div v-if="form.autoPost" class="image-upload-container-mini">
+                <input
+                  id="image"
+                  type="file"
+                  accept="image/*"
+                  @change="handleImageUpload"
+                  class="image-input"
+                  ref="imageInput"
+                />
+                <div
+                  v-if="!imagePreview"
+                  class="upload-placeholder-mini"
+                  @click="triggerImageUpload"
+                >
+                  <div class="upload-icon-mini">📷</div>
+                  <div class="upload-text-mini">点击上传</div>
+                  <div class="upload-hint-mini">JPG、PNG、SVG、GIF</div>
+                </div>
+                <div v-else class="image-preview-mini">
+                  <img :src="imagePreview" alt="预览图片" />
+                  <button
+                    type="button"
+                    @click="removeImage"
+                    class="remove-image-btn-mini"
+                    title="移除图片"
+                  >
+                    ×
+                  </button>
+                </div>
+              </div>
+              <div v-else class="upload-disabled-hint">
+                <span>勾选自动发布动态后可上传图片</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Duration Type and Strict Mode (for lock tasks) -->
+        <div v-if="form.task_type === 'lock'" class="form-group">
+          <div class="form-row-inline-combined">
+            <!-- Duration Type -->
+            <div class="form-section-compact">
               <label class="inline-label">持续类型</label>
               <div class="radio-group-compact">
                 <label class="radio-option-compact">
@@ -93,8 +136,8 @@
                 </label>
               </div>
             </div>
-            <!-- Strict Mode for lock tasks -->
-            <div v-if="form.task_type === 'lock'" class="form-section-compact">
+            <!-- Strict Mode -->
+            <div class="form-section-compact">
               <label class="inline-label">严格模式</label>
               <label class="checkbox-label-compact">
                 <input
@@ -107,41 +150,6 @@
                   <small class="checkbox-desc-compact">打卡时自动添加验证码</small>
                 </span>
               </label>
-            </div>
-          </div>
-        </div>
-
-        <!-- Image Upload (conditional) -->
-        <div v-if="form.autoPost" class="form-group">
-          <label for="image">任务图片 <span class="optional">(可选)</span></label>
-          <div class="image-upload-container-compact">
-            <input
-              id="image"
-              type="file"
-              accept="image/*"
-              @change="handleImageUpload"
-              class="image-input"
-              ref="imageInput"
-            />
-            <div
-              v-if="!imagePreview"
-              class="upload-placeholder-compact"
-              @click="triggerImageUpload"
-            >
-              <div class="upload-icon-compact">📷</div>
-              <div class="upload-text-compact">点击上传图片</div>
-              <div class="upload-hint-compact">JPG、PNG，最大5MB</div>
-            </div>
-            <div v-else class="image-preview-compact">
-              <img :src="imagePreview" alt="预览图片" />
-              <button
-                type="button"
-                @click="removeImage"
-                class="remove-image-btn-compact"
-                title="移除图片"
-              >
-                ×
-              </button>
             </div>
           </div>
         </div>
@@ -268,6 +276,7 @@ import { tasksApi } from '../lib/api-tasks'
 import { postsApi } from '../lib/api'
 import type { TaskCreateRequest } from '../types/index'
 import DurationSelector from './DurationSelector.vue'
+import RichTextEditor from './RichTextEditor.vue'
 
 interface Props {
   isVisible: boolean
@@ -394,7 +403,13 @@ const createAutoPost = async (task: any) => {
   let postContent = `🎯 我刚刚创建了一个${taskTypeText}：《${task.title}》`
 
   if (task.description && task.description.trim()) {
-    postContent += `\n\n${task.description}`
+    // Strip HTML tags from description for plain text post
+    const tempDiv = document.createElement('div')
+    tempDiv.innerHTML = task.description
+    const plainDescription = tempDiv.textContent || tempDiv.innerText || ''
+    if (plainDescription.trim()) {
+      postContent += `\n\n${plainDescription}`
+    }
   }
 
   if (form.task_type === 'lock') {
@@ -1189,6 +1204,179 @@ watch(() => form.duration_type, (newValue) => {
   transform: scale(1.1);
 }
 
+/* Enhanced Publish and Image Upload Layout */
+.publish-image-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1.5rem;
+  align-items: start;
+}
+
+.publish-options-column,
+.image-upload-column {
+  display: flex;
+  flex-direction: column;
+}
+
+.section-label {
+  font-weight: 600;
+  font-size: 0.9rem;
+  color: #333;
+  margin-bottom: 0.75rem;
+  display: block;
+}
+
+/* Enhanced checkbox styling */
+.checkbox-label-enhanced {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  cursor: pointer;
+  padding: 0.75rem;
+  border: 2px solid #e9ecef;
+  border-radius: 6px;
+  background: #fafafa;
+  transition: all 0.2s ease;
+}
+
+.checkbox-label-enhanced:hover {
+  border-color: #007bff;
+  background: #f8f9fa;
+}
+
+.checkbox-input-enhanced {
+  width: 18px;
+  height: 18px;
+  margin: 0;
+  cursor: pointer;
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+.checkbox-text-enhanced {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  font-weight: 600;
+  color: #333;
+}
+
+.checkbox-desc-enhanced {
+  font-size: 0.75rem;
+  font-weight: 400;
+  color: #666;
+  line-height: 1.3;
+}
+
+/* Mini image upload component */
+.image-upload-container-mini {
+  position: relative;
+  border: 2px dashed #ddd;
+  border-radius: 6px;
+  overflow: hidden;
+  transition: all 0.2s;
+  max-width: 200px;
+}
+
+.image-upload-container-mini:hover {
+  border-color: #007bff;
+  background-color: #f8f9fa;
+}
+
+.upload-placeholder-mini {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 0.75rem;
+  cursor: pointer;
+  text-align: center;
+  min-height: 100px;
+  background-color: #fafafa;
+  transition: all 0.2s;
+}
+
+.upload-placeholder-mini:hover {
+  background-color: #f0f0f0;
+}
+
+.upload-icon-mini {
+  font-size: 1.2rem;
+  margin-bottom: 0.25rem;
+  opacity: 0.6;
+}
+
+.upload-text-mini {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: #333;
+  margin-bottom: 0.25rem;
+}
+
+.upload-hint-mini {
+  font-size: 0.7rem;
+  color: #666;
+  line-height: 1.2;
+}
+
+.image-preview-mini {
+  position: relative;
+  width: 100%;
+  height: 100px;
+}
+
+.image-preview-mini img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.remove-image-btn-mini {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  width: 20px;
+  height: 20px;
+  border: none;
+  background: rgba(220, 53, 69, 0.8);
+  color: white;
+  border-radius: 50%;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: bold;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s;
+  line-height: 1;
+}
+
+.remove-image-btn-mini:hover {
+  background: rgba(220, 53, 69, 1);
+  transform: scale(1.1);
+}
+
+.upload-disabled-hint {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 100px;
+  max-width: 200px;
+  padding: 0.75rem;
+  background: #f8f9fa;
+  border: 2px dashed #dee2e6;
+  border-radius: 6px;
+  text-align: center;
+}
+
+.upload-disabled-hint span {
+  font-size: 0.75rem;
+  color: #6c757d;
+  font-style: italic;
+  line-height: 1.3;
+}
+
 /* Mobile responsive */
 @media (max-width: 768px) {
   .modal-overlay {
@@ -1234,6 +1422,20 @@ watch(() => form.duration_type, (newValue) => {
     flex-direction: column;
     align-items: flex-start;
     gap: 0.5rem;
+  }
+
+  /* Mobile layout for publish-image row */
+  .publish-image-row {
+    grid-template-columns: 1fr;
+    gap: 1rem;
+  }
+
+  .image-upload-container-mini {
+    max-width: 100%;
+  }
+
+  .upload-disabled-hint {
+    max-width: 100%;
   }
 
   .inline-label {

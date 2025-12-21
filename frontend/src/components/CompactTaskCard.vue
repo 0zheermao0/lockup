@@ -63,7 +63,7 @@
 
     <!-- Task Content - Same as normal task card -->
     <div class="task-content">
-      <p class="task-description">{{ task.description }}</p>
+      <p v-if="task.description" class="task-description">{{ stripHtmlAndTruncate(task.description) }}</p>
     </div>
 
     <!-- Task Details - Same as normal task card -->
@@ -348,6 +348,22 @@ const formatDuration = (task: Task) => {
 
 const formatDateTime = (dateTime: string) => {
   return new Date(dateTime).toLocaleString('zh-CN')
+}
+
+const stripHtmlAndTruncate = (html: string, maxLength: number = 100): string => {
+  if (!html) return ''
+
+  // Create a temporary div to strip HTML tags
+  const tempDiv = document.createElement('div')
+  tempDiv.innerHTML = html
+  const textContent = tempDiv.textContent || tempDiv.innerText || ''
+
+  // Truncate text if it's too long
+  if (textContent.length <= maxLength) {
+    return textContent
+  }
+
+  return textContent.slice(0, maxLength) + '...'
 }
 
 const formatPinTimeRemaining = (pinningInfo: any): string => {
