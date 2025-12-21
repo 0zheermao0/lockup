@@ -1362,8 +1362,8 @@ def create_share_link(request):
                 status='available'
             )
 
-            # 检查物品类型是否可分享 (photo, note, key)
-            if item.item_type.name not in ['photo', 'note', 'key']:
+            # 检查物品类型是否可分享 (photo, note, key, little_treasury)
+            if item.item_type.name not in ['photo', 'note', 'key', 'little_treasury']:
                 return Response({
                     'error': f'{item.item_type.display_name} 不支持分享'
                 }, status=status.HTTP_400_BAD_REQUEST)
@@ -1748,4 +1748,137 @@ def get_task_key_holder(request, task_id):
     except Exception as e:
         return Response({
             'error': f'获取钥匙持有者信息失败: {str(e)}'
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def deposit_treasury_coins(request, item_id):
+    """存入积分到小金库"""
+    try:
+        amount = request.data.get('amount', 0)
+
+        # 验证输入
+        if not isinstance(amount, int) or amount <= 0:
+            return Response({
+                'error': '存入数量必须是正整数'
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        with transaction.atomic():
+            user = request.user
+
+            # 获取小金库道具
+            try:
+                treasury_item = Item.objects.get(
+                    id=item_id,
+                    owner=user,
+                    item_type__name='little_treasury',
+                    status='available'
+                )
+            except Item.DoesNotExist:
+                return Response({
+                    'error': '小金库道具不存在或不可用'
+                }, status=status.HTTP_404_NOT_FOUND)
+
+            # 检查用户积分是否足够
+            if not hasattr(user, 'coins') or user.coins < amount:
+                return Response({
+                    'error': f'积分不足，您当前有 {getattr(user, "coins", 0)} 积分'
+                }, status=status.HTTP_400_BAD_REQUEST)
+
+            # 检查小金库是否已有积分
+            current_stored = treasury_item.properties.get('stored_coins', 0)
+            if current_stored > 0:
+                return Response({
+                    'error': '小金库已经存储了积分，无法再次存入'
+                }, status=status.HTTP_400_BAD_REQUEST)
+
+            # 扣除用户积分
+            user.coins -= amount
+            user.save(update_fields=['coins'])
+
+            # 更新小金库属性
+            treasury_item.properties.update({
+                'stored_coins': amount,
+                'depositor_username': user.username,
+                'deposit_time': timezone.now().isoformat()
+            })
+            treasury_item.save(update_fields=['properties'])
+
+            return Response({
+                'success': True,
+                'message': f'成功存入 {amount} 积分到小金库',
+                'stored_coins': amount,
+                'user_remaining_coins': user.coins
+            }, status=status.HTTP_200_OK)
+
+    except Exception as e:
+        return Response({
+            'error': f'存入积分失败: {str(e)}'
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def withdraw_treasury_coins(request, item_id):
+    """从小金库提取积分（销毁道具）"""
+    try:
+        with transaction.atomic():
+            user = request.user
+
+            # 获取小金库道具
+            try:
+                treasury_item = Item.objects.get(
+                    id=item_id,
+                    owner=user,
+                    item_type__name='little_treasury',
+                    status='available'
+                )
+            except Item.DoesNotExist:
+                return Response({
+                    'error': '小金库道具不存在或不可用'
+                }, status=status.HTTP_404_NOT_FOUND)
+
+            # 获取存储的积分数量
+            stored_coins = treasury_item.properties.get('stored_coins', 0)
+
+            if stored_coins <= 0:
+                return Response({
+                    'error': '小金库中没有积分可以提取'
+                }, status=status.HTTP_400_BAD_REQUEST)
+
+            # 将积分添加到用户账户
+            if hasattr(user, 'coins'):
+                user.coins += stored_coins
+            else:
+                user.coins = stored_coins
+            user.save(update_fields=['coins'])
+
+            # 记录存入者信息（用于通知）
+            depositor_username = treasury_item.properties.get('depositor_username')
+            deposit_time = treasury_item.properties.get('deposit_time')
+
+            # 销毁小金库道具（标记为已使用）
+            treasury_item.status = 'used'
+            treasury_item.used_at = timezone.now()
+            treasury_item.inventory = None  # 从背包中移除
+            treasury_item.save(update_fields=['status', 'used_at', 'inventory'])
+
+            # 创建使用记录（如果有ItemUsageRecord模型的话）
+            # 这里暂时省略，因为没有看到该模型的定义
+
+            return Response({
+                'success': True,
+                'message': f'成功提取 {stored_coins} 积分，小金库已销毁',
+                'withdrawn_coins': stored_coins,
+                'user_total_coins': user.coins,
+                'depositor_info': {
+                    'username': depositor_username,
+                    'deposit_time': deposit_time
+                } if depositor_username else None
+            }, status=status.HTTP_200_OK)
+
+    except Exception as e:
+        return Response({
+            'error': f'提取积分失败: {str(e)}'
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)

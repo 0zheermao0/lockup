@@ -80,6 +80,32 @@ class Command(BaseCommand):
                 'description': '记录文字信息的纸条，可以传递秘密消息',
                 'icon': '📝',
                 'is_consumable': False
+            },
+            {
+                'name': 'little_treasury',
+                'display_name': '小金库',
+                'description': '可以存储和提取积分的神奇道具，使用后销毁',
+                'icon': '💰',
+                'is_consumable': True,
+                'max_uses': 1,
+                'can_be_shared': True,
+                'category': 'tool',
+                'properties_schema': {
+                    'stored_coins': {
+                        'type': 'integer',
+                        'default': 0,
+                        'min': 0,
+                        'description': '存储的积分数量'
+                    },
+                    'depositor_username': {
+                        'type': 'string',
+                        'description': '存入积分的用户名'
+                    },
+                    'deposit_time': {
+                        'type': 'string',
+                        'description': '存入时间'
+                    }
+                }
             }
         ]
 
@@ -131,6 +157,7 @@ class Command(BaseCommand):
             key_type = ItemType.objects.get(name='key')
             drift_bottle_type = ItemType.objects.get(name='drift_bottle')
             note_type = ItemType.objects.get(name='note')
+            little_treasury_type = ItemType.objects.get(name='little_treasury')
         except ItemType.DoesNotExist as e:
             self.stdout.write(
                 self.style.ERROR(f'❌ 道具类型不存在: {e}')
@@ -181,6 +208,17 @@ class Command(BaseCommand):
                 'is_available': True,
                 'stock': None,
                 'daily_limit': 20,
+                'level_requirement': 1
+            },
+            {
+                'item_type': little_treasury_type,
+                'name': '小金库',
+                'description': '神奇的储钱罐，可以存储积分并与朋友分享，使用后销毁',
+                'price': 5,
+                'icon': '💰',
+                'is_available': True,
+                'stock': None,
+                'daily_limit': 5,
                 'level_requirement': 1
             }
         ]

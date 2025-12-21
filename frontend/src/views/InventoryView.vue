@@ -114,8 +114,8 @@
             </button>
           </div>
 
-          <!-- Item properties (only show for items other than keys and photos) -->
-          <div v-if="Object.keys(selectedItem.properties).length > 0 && !['key', 'photo'].includes(selectedItem.item_type.name)" class="properties-section">
+          <!-- Item properties (only show for items other than keys, photos, and treasury) -->
+          <div v-if="Object.keys(selectedItem.properties).length > 0 && !['key', 'photo', 'little_treasury'].includes(selectedItem.item_type.name)" class="properties-section">
             <h4 class="properties-title">物品属性</h4>
             <div class="properties-content">
               <pre class="properties-json">{{ JSON.stringify(selectedItem.properties, null, 2) }}</pre>
@@ -176,6 +176,15 @@
             >
               <span v-if="usingUniversalKey">使用中...</span>
               <span v-else>🗝️ 使用万能钥匙</span>
+            </button>
+
+            <!-- Treasury Item usage -->
+            <button
+              v-if="canUseTreasury(selectedItem)"
+              @click="openTreasuryModal"
+              class="action-btn primary"
+            >
+              💰 管理小金库
             </button>
 
             <!-- Discard item -->
@@ -480,11 +489,19 @@
               :disabled="!selectedTaskId || usingUniversalKey"
             >
               <span v-if="usingUniversalKey">使用中...</span>
-              <span v-else>使用万能钥匙</span>
+              <span v-else">使用万能钥匙</span>
             </button>
           </div>
         </div>
       </div>
+
+      <!-- Treasury Item modal -->
+      <TreasuryItemModal
+        :is-visible="showTreasuryModal"
+        :treasury-item="selectedTreasuryItem"
+        @close="closeTreasuryModal"
+        @success="handleTreasurySuccess"
+      />
     </div>
   </div>
 </template>
@@ -495,6 +512,7 @@ import { useRouter } from 'vue-router'
 import { storeApi, tasksApi } from '../lib/api'
 import { smartGoBack } from '../utils/navigation'
 import type { UserInventory, Item } from '../types'
+import TreasuryItemModal from '../components/TreasuryItemModal.vue'
 
 // Router
 const router = useRouter()
@@ -540,6 +558,10 @@ const showUniversalKeyModal = ref(false)
 const usingUniversalKey = ref(false)
 const availableTasks = ref<any[]>([])
 const selectedTaskId = ref<string>('')
+
+// Treasury Item
+const showTreasuryModal = ref(false)
+const selectedTreasuryItem = ref<Item | null>(null)
 
 // Methods
 const goBack = () => {
@@ -704,7 +726,7 @@ const closePhotoViewer = () => {
 }
 
 const canShareItem = (item: Item): boolean => {
-  return item.status === 'available' && ['photo', 'note', 'key'].includes(item.item_type.name)
+  return item.status === 'available' && ['photo', 'note', 'key', 'little_treasury'].includes(item.item_type.name)
 }
 
 const canBuryItem = (item: Item): boolean => {
@@ -720,6 +742,10 @@ const canUseUniversalKey = (item: Item): boolean => {
   return item.item_type.name === 'key' &&
          item.status === 'available' &&
          item.is_universal_key === true
+}
+
+const canUseTreasury = (item: Item): boolean => {
+  return item.status === 'available' && item.item_type.name === 'little_treasury'
 }
 
 const shareItem = async () => {
@@ -901,6 +927,23 @@ const viewOwnerProfile = (owner: any) => {
   if (owner && owner.id) {
     router.push(`/profile/${owner.id}`)
   }
+}
+
+const openTreasuryModal = () => {
+  if (!selectedItem.value) return
+  selectedTreasuryItem.value = selectedItem.value
+  showTreasuryModal.value = true
+}
+
+const closeTreasuryModal = () => {
+  showTreasuryModal.value = false
+  selectedTreasuryItem.value = null
+  selectedItem.value = null
+}
+
+const handleTreasurySuccess = async () => {
+  // Refresh inventory after successful treasury operation
+  await loadInventory()
 }
 
 // Lifecycle

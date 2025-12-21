@@ -442,7 +442,7 @@ export interface UserStore {
 // Game Store Types
 export interface ItemType {
   id: string
-  name: 'photo_paper' | 'photo' | 'drift_bottle' | 'key' | 'note'
+  name: 'photo_paper' | 'photo' | 'drift_bottle' | 'key' | 'note' | 'little_treasury'
   display_name: string
   description: string
   icon: string
@@ -463,6 +463,38 @@ export interface Item {
   used_at?: string
   expires_at?: string
   is_universal_key?: boolean
+}
+
+// Treasury Item Types
+export interface TreasuryItem extends Item {
+  item_type: ItemType & { name: 'little_treasury' }
+  properties: {
+    stored_coins: number
+    depositor_username?: string
+    deposit_time?: string
+  }
+}
+
+export interface TreasuryDepositRequest {
+  amount: number
+}
+
+export interface TreasuryDepositResponse {
+  success: boolean
+  message: string
+  stored_coins: number
+  user_remaining_coins: number
+}
+
+export interface TreasuryWithdrawResponse {
+  success: boolean
+  message: string
+  withdrawn_coins: number
+  user_total_coins: number
+  depositor_info?: {
+    username: string
+    deposit_time: string
+  }
 }
 
 export interface UserInventory {

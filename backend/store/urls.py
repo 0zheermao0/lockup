@@ -39,4 +39,8 @@ urlpatterns = [
     path('use-universal-key/', views.use_universal_key, name='use-universal-key'),
     path('check-task-key-ownership/', views.check_task_key_ownership, name='check-task-key-ownership'),
     path('task-key-holder/<uuid:task_id>/', views.get_task_key_holder, name='get-task-key-holder'),
+
+    # 小金库相关
+    path('treasury/<uuid:item_id>/deposit/', views.deposit_treasury_coins, name='deposit-treasury-coins'),
+    path('treasury/<uuid:item_id>/withdraw/', views.withdraw_treasury_coins, name='withdraw-treasury-coins'),
 ]
