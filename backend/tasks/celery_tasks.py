@@ -919,3 +919,303 @@ def pinning_health_check(self):
             'timestamp': timezone.now().isoformat(),
             'error': str(exc)
         }
+
+
+# ============================================================================
+# 打卡投票系统 Celery 任务 - Check-in Voting System Tasks
+# ============================================================================
+
+@shared_task(bind=True, max_retries=3, default_retry_delay=60)
+def process_checkin_voting_results(self):
+    """
+    处理所有过期的打卡投票结果（每天凌晨4点执行）
+
+    对于每个过期的投票会话：
+    - 如果拒绝票 > 通过票：冻结用户活跃任务或标记最近任务失败
+    - 如果通过票 >= 拒绝票：将收集的积分平分给通过投票者
+
+    Returns:
+        dict: 处理结果
+    """
+    try:
+        logger.info("Starting check-in voting results processing...")
+
+        with transaction.atomic():
+            now = timezone.now()
+            from posts.models import CheckinVotingSession
+
+            # 查找所有投票期已过但未处理的会话
+            pending_sessions = CheckinVotingSession.objects.select_for_update().filter(
+                voting_deadline__lte=now,
+                is_processed=False
+            )
+
+            processed_sessions = []
+
+            for session in pending_sessions:
+                try:
+                    result = _process_single_voting_session(session, now)
+                    processed_sessions.append(result)
+                    logger.info(f"Processed voting session for post {session.post.id}: {result['result']}")
+                except Exception as e:
+                    logger.error(f"Failed to process voting session {session.id}: {e}")
+                    # 继续处理其他会话，不让单个失败影响整体处理
+                    processed_sessions.append({
+                        'session_id': str(session.id),
+                        'post_id': str(session.post.id),
+                        'result': 'error',
+                        'error': str(e)
+                    })
+
+            logger.info(f"Successfully processed {len(processed_sessions)} voting sessions")
+
+            return {
+                'status': 'success',
+                'processed_count': len(processed_sessions),
+                'processed_sessions': processed_sessions,
+                'timestamp': now.isoformat()
+            }
+
+    except Exception as exc:
+        logger.error(f"Check-in voting results processing failed: {exc}", exc_info=True)
+
+        # Retry the task with exponential backoff
+        raise self.retry(
+            exc=exc,
+            countdown=min(60 * (2 ** self.request.retries), 300)  # Max 5 minutes
+        )
+
+
+def _process_single_voting_session(session, current_time):
+    """
+    处理单个投票会话的结果
+
+    Args:
+        session: CheckinVotingSession实例
+        current_time: 当前时间
+
+    Returns:
+        dict: 处理结果
+    """
+    from posts.models import CheckinVote
+
+    post = session.post
+    votes = CheckinVote.objects.filter(post=post)
+
+    pass_votes = votes.filter(vote_type='pass')
+    reject_votes = votes.filter(vote_type='reject')
+
+    pass_count = pass_votes.count()
+    reject_count = reject_votes.count()
+
+    # 判断结果：拒绝票必须大于通过票才算拒绝（不是大于等于）
+    if reject_count > pass_count:
+        session.result = 'rejected'
+        _handle_voting_rejected(post, session, current_time)
+        result_action = 'rejected'
+    else:
+        session.result = 'passed'
+        _handle_voting_passed(post, session, pass_votes, current_time)
+        result_action = 'passed'
+
+    # 标记会话为已处理
+    session.is_processed = True
+    session.processed_at = current_time
+    session.save()
+
+    return {
+        'session_id': str(session.id),
+        'post_id': str(post.id),
+        'post_author': post.user.username,
+        'result': result_action,
+        'pass_votes': pass_count,
+        'reject_votes': reject_count,
+        'total_coins_collected': session.total_coins_collected
+    }
+
+
+def _handle_voting_rejected(post, session, current_time):
+    """
+    处理投票被拒绝的情况：冻结活跃任务或标记最近任务失败
+
+    Args:
+        post: Post实例
+        session: CheckinVotingSession实例
+        current_time: 当前时间
+    """
+    from posts.models import CheckinVote
+
+    user = post.user
+
+    # 查找用户的活跃带锁任务
+    active_task = LockTask.objects.filter(
+        user=user,
+        task_type='lock',
+        status__in=['active', 'voting']
+    ).first()
+
+    if active_task:
+        # 有活跃任务，冻结它
+        active_task.is_frozen = True
+        active_task.frozen_at = current_time
+        active_task.frozen_end_time = active_task.end_time
+        active_task.save()
+
+        # 创建时间线事件
+        TaskTimelineEvent.objects.create(
+            task=active_task,
+            event_type='task_frozen',
+            user=None,  # 系统事件
+            description='因打卡投票被拒绝而冻结任务',
+            metadata={
+                'frozen_by': 'checkin_vote_rejection',
+                'post_id': str(post.id),
+                'reject_votes': CheckinVote.objects.filter(post=post, vote_type='reject').count(),
+                'pass_votes': CheckinVote.objects.filter(post=post, vote_type='pass').count(),
+                'total_coins_collected': session.total_coins_collected,
+                'processed_by': 'celery_task'
+            }
+        )
+
+        # 通知用户任务被冻结
+        Notification.create_notification(
+            recipient=user,
+            notification_type='task_frozen_by_vote',
+            related_object_type='post',
+            related_object_id=post.id,
+            extra_data={
+                'task_title': active_task.title,
+                'task_id': str(active_task.id),
+                'post_content_preview': post.content[:50] + '...' if len(post.content) > 50 else post.content
+            },
+            priority='high'
+        )
+
+        logger.info(f"Froze active task {active_task.id} for user {user.username} due to rejected check-in vote")
+
+    else:
+        # 没有活跃任务，标记最近的带锁任务为失败
+        recent_task = LockTask.objects.filter(
+            user=user,
+            task_type='lock'
+        ).order_by('-created_at').first()
+
+        if recent_task:
+            recent_task.status = 'failed'
+            recent_task.save()
+
+            # 创建时间线事件
+            TaskTimelineEvent.objects.create(
+                task=recent_task,
+                event_type='task_failed',
+                user=None,  # 系统事件
+                description='因打卡投票被拒绝而标记任务失败（无活跃任务）',
+                metadata={
+                    'failed_by': 'checkin_vote_rejection',
+                    'post_id': str(post.id),
+                    'no_active_task': True,
+                    'processed_by': 'celery_task'
+                }
+            )
+
+            # 通知用户任务失败
+            Notification.create_notification(
+                recipient=user,
+                notification_type='task_failed_by_vote',
+                related_object_type='post',
+                related_object_id=post.id,
+                extra_data={
+                    'task_title': recent_task.title,
+                    'task_id': str(recent_task.id),
+                    'reason': 'no_active_task',
+                    'post_content_preview': post.content[:50] + '...' if len(post.content) > 50 else post.content
+                },
+                priority='high'
+            )
+
+            logger.info(f"Marked recent task {recent_task.id} as failed for user {user.username} due to rejected check-in vote")
+        else:
+            logger.warning(f"User {user.username} has no lock tasks to freeze or fail after rejected check-in vote")
+
+    # 通知动态作者投票被拒绝
+    Notification.create_notification(
+        recipient=user,
+        notification_type='checkin_vote_rejected',
+        related_object_type='post',
+        related_object_id=post.id,
+        extra_data={
+            'reject_votes': CheckinVote.objects.filter(post=post, vote_type='reject').count(),
+            'pass_votes': CheckinVote.objects.filter(post=post, vote_type='pass').count(),
+            'total_coins_collected': session.total_coins_collected,
+            'post_content_preview': post.content[:50] + '...' if len(post.content) > 50 else post.content,
+            'has_active_task': active_task is not None
+        },
+        priority='high'
+    )
+
+
+def _handle_voting_passed(post, session, pass_votes, current_time):
+    """
+    处理投票通过的情况：分配积分给通过投票者
+
+    Args:
+        post: Post实例
+        session: CheckinVotingSession实例
+        pass_votes: 通过投票的QuerySet
+        current_time: 当前时间
+    """
+    from posts.models import CheckinVote
+
+    user = post.user
+    pass_count = pass_votes.count()
+
+    if pass_count > 0 and session.total_coins_collected > 0:
+        # 计算每个投票者应得的积分（向下取整，余数给前几个投票者）
+        coins_per_voter = session.total_coins_collected // pass_count
+        remainder = session.total_coins_collected % pass_count
+
+        # 按投票时间排序，让早投票的用户获得余数
+        ordered_pass_votes = pass_votes.order_by('created_at')
+
+        total_distributed = 0
+        for i, vote in enumerate(ordered_pass_votes):
+            reward = coins_per_voter
+            if i < remainder:  # 前几个投票者获得额外的1积分
+                reward += 1
+
+            # 给投票者分配积分
+            vote.voter.coins += reward
+            vote.voter.save()
+            total_distributed += reward
+
+            # 通知投票者获得奖励
+            Notification.create_notification(
+                recipient=vote.voter,
+                notification_type='checkin_vote_reward',
+                related_object_type='post',
+                related_object_id=post.id,
+                extra_data={
+                    'reward_amount': reward,
+                    'post_author': user.username,
+                    'total_pass_votes': pass_count,
+                    'post_content_preview': post.content[:50] + '...' if len(post.content) > 50 else post.content
+                },
+                priority='normal'
+            )
+
+            logger.info(f"Distributed {reward} coins to voter {vote.voter.username} for passed check-in vote")
+
+    # 通知动态作者投票通过
+    Notification.create_notification(
+        recipient=user,
+        notification_type='checkin_vote_passed',
+        related_object_type='post',
+        related_object_id=post.id,
+        extra_data={
+            'pass_votes': CheckinVote.objects.filter(post=post, vote_type='pass').count(),
+            'reject_votes': CheckinVote.objects.filter(post=post, vote_type='reject').count(),
+            'total_coins_distributed': session.total_coins_collected,
+            'post_content_preview': post.content[:50] + '...' if len(post.content) > 50 else post.content
+        },
+        priority='normal'
+    )

@@ -64,6 +64,8 @@ app.conf.update(
 )
 
 # Beat schedule for periodic tasks
+from celery.schedules import crontab
+
 app.conf.beat_schedule = {
     'process-hourly-rewards': {
         'task': 'tasks.celery_tasks.process_hourly_rewards',
@@ -84,6 +86,14 @@ app.conf.beat_schedule = {
     'pinning-health-check': {
         'task': 'tasks.celery_tasks.pinning_health_check',
         'schedule': 60.0 * 5,  # Execute every 5 minutes (300 seconds)
+        'options': {
+            'queue': 'default',
+            'routing_key': 'default',
+        },
+    },
+    'process-checkin-voting-results': {
+        'task': 'tasks.celery_tasks.process_checkin_voting_results',
+        'schedule': crontab(hour=4, minute=0),  # Execute daily at 4:00 AM
         'options': {
             'queue': 'default',
             'routing_key': 'default',

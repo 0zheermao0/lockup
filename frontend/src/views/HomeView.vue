@@ -52,10 +52,6 @@
           <div class="user-card">
             <h3>用户信息</h3>
             <div class="info-item">
-              <span class="label">用户名</span>
-              <span class="value">{{ authStore.user?.username }}</span>
-            </div>
-            <div class="info-item">
               <span class="label">活跃度</span>
               <span class="value">{{ authStore.user?.activity_score || 0 }}</span>
             </div>
@@ -66,10 +62,6 @@
             <div class="info-item">
               <span class="label">获得点赞</span>
               <span class="value">{{ authStore.user?.total_likes_received || 0 }}</span>
-            </div>
-            <div class="info-item">
-              <span class="label">任务完成率</span>
-              <span class="value">{{ authStore.user?.task_completion_rate || 0 }}%</span>
             </div>
           </div>
 
@@ -217,8 +209,38 @@
                     <div class="time">{{ formatDistanceToNow(post.created_at) }}</div>
                   </div>
                 </div>
-                <div v-if="post.post_type === 'checkin'" class="checkin-badge">
-                  打卡
+                <div v-if="post.post_type === 'checkin'" class="checkin-section">
+                  <div class="checkin-badge">打卡</div>
+
+                  <!-- Voting buttons for other users -->
+                  <div v-if="post.user.id !== authStore.user?.id && canVote(post)" class="voting-buttons">
+                    <button
+                      @click.stop="voteOnPost(post, 'pass')"
+                      class="vote-btn pass-btn"
+                      :disabled="voting"
+                      title="投票通过 (5积分)"
+                    >
+                      ✅ 通过
+                    </button>
+                    <button
+                      @click.stop="voteOnPost(post, 'reject')"
+                      class="vote-btn reject-btn"
+                      :disabled="voting"
+                      title="投票拒绝 (5积分)"
+                    >
+                      ❌ 拒绝
+                    </button>
+                  </div>
+
+                  <!-- Show voting status if already voted -->
+                  <div v-else-if="hasVoted(post)" class="voted-status">
+                    已投票: {{ getUserVote(post) === 'pass' ? '✅ 通过' : '❌ 拒绝' }}
+                  </div>
+
+                  <!-- Show voting deadline -->
+                  <div v-if="post.voting_session" class="voting-deadline">
+                    投票截止: {{ formatVotingDeadline(post.voting_session.voting_deadline) }}
+                  </div>
                 </div>
               </div>
 
@@ -488,6 +510,75 @@ const formatTimeRemaining = (milliseconds: number) => {
   } else {
     return '<1m'
   }
+}
+
+// 投票相关功能
+const voting = ref(false)
+
+const canVote = (post: Post) => {
+  // Debug logging
+  console.log('DEBUG canVote for post:', post.id, {
+    post_type: post.post_type,
+    has_voting_session: !!post.voting_session,
+    voting_session: post.voting_session,
+    user_vote: post.user_vote,
+    current_user_id: authStore.user?.id,
+    post_user_id: post.user.id
+  })
+
+  // Check if voting session exists and deadline hasn't passed
+  if (!post.voting_session) {
+    console.log('DEBUG: No voting session for post', post.id)
+    return false
+  }
+
+  const deadline = new Date(post.voting_session.voting_deadline)
+  const now = new Date()
+  const hasVotedResult = hasVoted(post)
+
+  console.log('DEBUG: Voting session check for post', post.id, {
+    deadline: deadline.toISOString(),
+    now: now.toISOString(),
+    deadline_passed: now >= deadline,
+    has_voted: hasVotedResult
+  })
+
+  return now < deadline && !hasVotedResult
+}
+
+const hasVoted = (post: Post) => {
+  // Check if current user has voted on this post
+  return post.user_vote !== undefined && post.user_vote !== null
+}
+
+const getUserVote = (post: Post) => {
+  return post.user_vote
+}
+
+const voteOnPost = async (post: Post, voteType: 'pass' | 'reject') => {
+  if (voting.value) return
+
+  try {
+    voting.value = true
+    await postsStore.voteOnCheckinPost(post.id, voteType)
+
+    // Update local state
+    post.user_vote = voteType
+
+    // Show success message
+    // Refresh user coins
+    await authStore.refreshUser()
+  } catch (error: any) {
+    console.error('Voting failed:', error)
+    alert(error.message || 'Voting failed')
+  } finally {
+    voting.value = false
+  }
+}
+
+const formatVotingDeadline = (deadline: string) => {
+  const date = new Date(deadline)
+  return date.toLocaleDateString() + ' 04:00'
 }
 
 onMounted(async () => {
@@ -932,6 +1023,13 @@ onMounted(async () => {
   color: #666;
 }
 
+.checkin-section {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
 .checkin-badge {
   background-color: #28a745;
   color: white;
@@ -939,6 +1037,53 @@ onMounted(async () => {
   border-radius: 4px;
   font-size: 0.75rem;
   font-weight: bold;
+}
+
+.voting-buttons {
+  display: flex;
+  gap: 0.25rem;
+}
+
+.vote-btn {
+  padding: 0.25rem 0.5rem;
+  border: 2px solid #000;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  min-width: 50px;
+}
+
+.pass-btn {
+  background: linear-gradient(135deg, #28a745, #20c997);
+  color: white;
+}
+
+.reject-btn {
+  background: linear-gradient(135deg, #dc3545, #c82333);
+  color: white;
+}
+
+.vote-btn:hover:not(:disabled) {
+  transform: translate(-1px, -1px);
+  box-shadow: 2px 2px 0 #000;
+}
+
+.vote-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.voted-status {
+  font-size: 0.75rem;
+  color: #666;
+  font-weight: 600;
+}
+
+.voting-deadline {
+  font-size: 0.7rem;
+  color: #888;
 }
 
 .post-content {

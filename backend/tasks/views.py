@@ -193,7 +193,21 @@ class LockTaskListCreateView(generics.ListCreateAPIView):
                     'non_field_errors': ['系统错误：钥匙道具类型不存在']
                 })
 
+        # Debug: Log the validated data
+        print(f"DEBUG: Serializer validated_data: {serializer.validated_data}")
+
         task = serializer.save()
+
+        # Debug: Log the saved task
+        print(f"DEBUG: Saved task - strict_mode: {task.strict_mode}, task_type: {task.task_type}")
+
+        # 生成严格模式随机码
+        if task.task_type == 'lock' and task.strict_mode:
+            task.strict_code = self.generate_strict_code()
+            task.save()
+            print(f"DEBUG: Generated strict code: {task.strict_code}")
+        else:
+            print(f"DEBUG: No strict code generated - task_type: {task.task_type}, strict_mode: {task.strict_mode}")
 
         # 创建任务创建事件
         TaskTimelineEvent.objects.create(
@@ -315,6 +329,14 @@ class LockTaskListCreateView(generics.ListCreateAPIView):
 
             task.save()
 
+    def generate_strict_code(self):
+        """Generate 4-character code like A1B2"""
+        import random
+        import string
+        letters = random.choices(string.ascii_uppercase, k=2)
+        digits = random.choices(string.digits, k=2)
+        return f"{letters[0]}{digits[0]}{letters[1]}{digits[1]}"
+
 
 class LockTaskDetailView(generics.RetrieveUpdateDestroyAPIView):
     """任务详情、更新和删除"""
@@ -433,6 +455,13 @@ def complete_task(request, pk):
 
     # 检查是否是带锁任务，如果是，需要满足所有完成条件
     if task.task_type == 'lock':
+        # 条件0: 冻结状态的任务不能完成
+        if task.is_frozen:
+            return Response(
+                {'error': '冻结状态的任务无法完成，请先解冻'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
         # 条件1: 倒计时必须结束
         if task.end_time and timezone.now() < task.end_time:
             return Response(
@@ -571,7 +600,9 @@ def complete_task(request, pk):
         completion_metadata.update({
             'time_expired': task.end_time and timezone.now() >= task.end_time,
             'vote_required': task.unlock_type == 'vote',
-            'key_holder_completed': True
+            'key_holder_completed': True,
+            'was_frozen_at_completion': task.is_frozen,
+            'total_frozen_duration': task.total_frozen_duration.total_seconds() if task.total_frozen_duration else 0
         })
 
         if task.unlock_type == 'vote':
@@ -1364,6 +1395,8 @@ def add_overtime(request, pk):
             'message': result['message'],
             'overtime_minutes': result['overtime_minutes'],
             'new_end_time': result['new_end_time'].isoformat() if result['new_end_time'] else None,
+            'is_frozen': result['is_frozen'],
+            'frozen_end_time': result['frozen_end_time'].isoformat() if result['frozen_end_time'] else None,
             'difficulty': result['task'].difficulty
         }
         return Response(response_data, status=status.HTTP_200_OK)
@@ -1607,10 +1640,11 @@ def process_hourly_rewards(request):
     """处理带锁任务的每小时积分奖励"""
     now = timezone.now()
 
-    # 找到所有活跃状态的带锁任务
+    # 找到所有活跃状态的带锁任务（排除冻结状态的任务）
     active_lock_tasks = LockTask.objects.filter(
         task_type='lock',
-        status__in=['active', 'voting']  # 活跃状态和投票期都算活跃
+        status__in=['active', 'voting'],  # 活跃状态和投票期都算活跃
+        is_frozen=False  # 排除冻结状态的任务
     )
 
     processed_rewards = []
@@ -1619,9 +1653,14 @@ def process_hourly_rewards(request):
         if not task.start_time:
             continue
 
-        # 计算任务已运行的总时间（小时）
+        # 计算任务已运行的总时间（小时），需要扣除冻结时间
         elapsed_time = now - task.start_time
-        elapsed_hours = int(elapsed_time.total_seconds() // 3600)
+
+        # 如果任务有冻结时长，需要扣除
+        if task.total_frozen_duration:
+            elapsed_time -= task.total_frozen_duration
+
+        elapsed_hours = int(max(0, elapsed_time.total_seconds()) // 3600)
 
         if elapsed_hours < 1:
             # 任务运行不满一小时，跳过
@@ -1727,9 +1766,19 @@ def _process_task_hourly_rewards(task):
 
     now = timezone.now()
 
-    # 计算任务已运行的总时间（小时）
+    # 计算任务已运行的总时间（小时），需要扣除冻结时间
     elapsed_time = now - task.start_time
-    elapsed_hours = int(elapsed_time.total_seconds() // 3600)
+
+    # 如果任务有冻结时长，需要扣除
+    if task.total_frozen_duration:
+        elapsed_time -= task.total_frozen_duration
+
+    # 如果当前是冻结状态，还需要扣除当前冻结期间的时间
+    if task.is_frozen and task.frozen_at:
+        current_frozen_duration = now - task.frozen_at
+        elapsed_time -= current_frozen_duration
+
+    elapsed_hours = int(max(0, elapsed_time.total_seconds()) // 3600)
 
     if elapsed_hours < 1:
         return 0

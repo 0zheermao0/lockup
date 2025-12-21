@@ -7,7 +7,7 @@ from datetime import timedelta
 from django.shortcuts import get_object_or_404
 from django.core.paginator import Paginator, PageNotAnInteger, EmptyPage
 import logging
-from .models import Post, PostLike, Comment, CommentLike
+from .models import Post, PostLike, Comment, CommentLike, CheckinVote, CheckinVotingSession
 from .serializers import (
     PostSerializer, PostCreateSerializer, CommentSerializer,
     CommentCreateSerializer, PostLikeSerializer, CommentLikeSerializer,
@@ -33,22 +33,77 @@ class PostListCreateView(generics.ListCreateAPIView):
 
     def create(self, request, *args, **kwargs):
         """重写create方法以确保响应序列化正确"""
-        serializer = self.get_serializer(data=request.data)
+        # 预处理请求数据：移除位置信息，添加严格模式验证码
+        request_data = self._preprocess_post_data(request.data.copy())
+
+        serializer = self.get_serializer(data=request_data)
         serializer.is_valid(raise_exception=True)
         post = serializer.save()
-
-        # 重新获取post实例，确保正确的预取关联关系
-        post = Post.objects.select_related('user').prefetch_related(
-            'images', 'likes', 'comments__images'
-        ).get(id=post.id)
 
         # 处理带锁任务状态下的每日首次打卡奖励
         self._process_daily_checkin_reward(post)
 
+        # 重新获取post实例，确保正确的预取关联关系（包括新创建的投票会话）
+        post = Post.objects.select_related('user').prefetch_related(
+            'images', 'likes', 'comments__images', 'voting_session'
+        ).get(id=post.id)
+
         # 使用PostSerializer序列化响应
         response_serializer = PostSerializer(post, context=self.get_serializer_context())
         headers = self.get_success_headers(response_serializer.data)
+
+        # Debug: Check if voting session is in the response
+        if post.post_type == 'checkin':
+            print(f"DEBUG: Post {post.id} voting_session in response: {response_serializer.data.get('voting_session')}")
+            try:
+                session = post.voting_session
+                print(f"DEBUG: Voting session exists for post {post.id}: deadline={session.voting_deadline}")
+            except:
+                print(f"DEBUG: No voting session found for post {post.id}")
+
         return Response(response_serializer.data, status=status.HTTP_201_CREATED, headers=headers)
+
+    def _preprocess_post_data(self, data):
+        """预处理动态数据：移除位置信息，添加严格模式验证码"""
+        # 移除位置信息字段
+        data.pop('latitude', None)
+        data.pop('longitude', None)
+        data.pop('location_name', None)
+
+        # 为打卡动态自动添加严格模式验证码
+        if data.get('post_type') == 'checkin':
+            # 查找用户当前的严格模式带锁任务（包括pending状态）
+            active_strict_task = LockTask.objects.filter(
+                user=self.request.user,
+                task_type='lock',
+                status__in=['pending', 'active', 'voting'],
+                strict_mode=True
+            ).first()
+
+            if active_strict_task and active_strict_task.strict_code:
+                # 在内容末尾添加验证码
+                current_content = data.get('content', '')
+                data['content'] = f"{current_content}\n\n验证码：{active_strict_task.strict_code}"
+
+        return data
+
+    def _create_voting_session(self, post):
+        """为打卡动态创建投票会话"""
+        from datetime import datetime, time
+
+        # 计算投票截止时间（次日凌晨4点）
+        now = timezone.now()
+        tomorrow = now.date() + timedelta(days=1)
+        deadline = timezone.datetime.combine(tomorrow, time(4, 0))
+        deadline = timezone.make_aware(deadline, timezone=timezone.get_current_timezone())
+
+        # 创建投票会话
+        CheckinVotingSession.objects.create(
+            post=post,
+            voting_deadline=deadline
+        )
+
+        logger.info(f"Created voting session for check-in post {post.id}, deadline: {deadline}")
 
     def _process_daily_checkin_reward(self, post):
         """处理带锁任务状态下的每日首次打卡奖励"""
@@ -110,7 +165,7 @@ class PostListCreateView(generics.ListCreateAPIView):
 
     def get_queryset(self):
         queryset = Post.objects.select_related('user').prefetch_related(
-            'images', 'likes', 'comments__images'
+            'images', 'likes', 'comments__images', 'voting_session'
         )
 
         # 筛选参数
@@ -535,3 +590,105 @@ def toggle_comment_like(request, comment_id):
             })
 
         return Response({'message': '还没有点赞'})
+
+
+@api_view(['POST'])
+@permission_classes([permissions.IsAuthenticated])
+def vote_checkin_post(request, pk):
+    """对打卡动态进行投票（通过/拒绝）"""
+    try:
+        post = Post.objects.get(id=pk, post_type='checkin')
+    except Post.DoesNotExist:
+        return Response(
+            {'error': '打卡动态不存在'},
+            status=status.HTTP_404_NOT_FOUND
+        )
+
+    vote_type = request.data.get('vote_type')
+
+    # 验证投票类型
+    if vote_type not in ['pass', 'reject']:
+        return Response(
+            {'error': '无效的投票类型，必须是 pass 或 reject'},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+
+    # 不能对自己的动态投票
+    if post.user == request.user:
+        return Response(
+            {'error': '不能对自己的打卡动态投票'},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+
+    # 检查用户积分是否足够（需要5积分）
+    if request.user.coins < 5:
+        return Response(
+            {'error': '积分不足，投票需要5积分'},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+
+    # 检查投票会话是否存在且未过期
+    try:
+        voting_session = post.voting_session
+        if timezone.now() > voting_session.voting_deadline:
+            return Response(
+                {'error': '投票时间已截止'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        if voting_session.is_processed:
+            return Response(
+                {'error': '该投票已经处理完成'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+    except CheckinVotingSession.DoesNotExist:
+        return Response(
+            {'error': '该动态没有投票会话'},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+
+    # 检查是否已经投过票
+    if CheckinVote.objects.filter(post=post, voter=request.user).exists():
+        return Response(
+            {'error': '您已经对该动态投过票了'},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+
+    # 扣除用户积分
+    request.user.coins -= 5
+    request.user.save(update_fields=['coins'])
+
+    # 创建投票记录
+    vote = CheckinVote.objects.create(
+        post=post,
+        voter=request.user,
+        vote_type=vote_type,
+        coins_spent=5
+    )
+
+    # 更新投票会话的积分总数
+    voting_session.total_coins_collected += 5
+    voting_session.save(update_fields=['total_coins_collected'])
+
+    # 创建投票通知给动态作者
+    Notification.create_notification(
+        recipient=post.user,
+        notification_type='checkin_vote_cast',
+        actor=request.user,
+        related_object_type='post',
+        related_object_id=post.id,
+        extra_data={
+            'vote_type': vote_type,
+            'voter_username': request.user.username,
+            'vote_type_display': '通过' if vote_type == 'pass' else '拒绝'
+        }
+    )
+
+    logger.info(f"User {request.user.username} voted {vote_type} on check-in post {post.id}")
+
+    vote_type_display = '通过' if vote_type == 'pass' else '拒绝'
+    return Response({
+        'message': f'投票成功 - {vote_type_display}',
+        'vote_id': str(vote.id),
+        'remaining_coins': request.user.coins,
+        'total_coins_collected': voting_session.total_coins_collected
+    }, status=status.HTTP_201_CREATED)

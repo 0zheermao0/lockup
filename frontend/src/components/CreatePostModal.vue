@@ -38,6 +38,27 @@
               :max-length="1000"
               min-height="120px"
             />
+
+            <!-- 严格模式验证码提示 -->
+            <div v-if="isCheckinMode" class="verification-code-section">
+              <div v-if="loadingStrictTask" class="verification-loading">
+                🔄 检查严格模式任务...
+              </div>
+              <div v-else-if="hasActiveStrictTask" class="verification-code-display">
+                <div class="verification-icon">🔒</div>
+                <div class="verification-info">
+                  <div class="verification-title">严格模式验证码</div>
+                  <div class="verification-code">{{ verificationCodeText }}</div>
+                  <div class="verification-note">此验证码将自动添加到你的打卡内容中</div>
+                </div>
+              </div>
+              <div v-else class="verification-none">
+                <div class="verification-icon">ℹ️</div>
+                <div class="verification-info">
+                  <div class="verification-note">当前没有活跃的严格模式带锁任务</div>
+                </div>
+              </div>
+            </div>
           </div>
 
           <!-- 图片上传 -->
@@ -78,40 +99,6 @@
             </div>
           </div>
 
-          <!-- 位置信息（仅打卡模式） -->
-          <div v-if="isCheckinMode" class="form-group">
-            <div class="location-section">
-              <div class="location-header">
-                <label>📍 位置信息</label>
-                <button
-                  type="button"
-                  @click="getCurrentLocation"
-                  :disabled="isLoadingLocation || isLoading"
-                  class="location-btn"
-                >
-                  {{ isLoadingLocation ? '获取中...' : '获取当前位置' }}
-                </button>
-              </div>
-
-              <div v-if="locationError" class="error">
-                {{ locationError }}
-              </div>
-
-              <div v-if="form.location" class="location-info">
-                <div class="coordinates">
-                  纬度: {{ form.location.latitude.toFixed(6) }}，
-                  经度: {{ form.location.longitude.toFixed(6) }}
-                </div>
-                <button
-                  type="button"
-                  @click="clearLocation"
-                  class="clear-location"
-                >
-                  清除位置
-                </button>
-              </div>
-            </div>
-          </div>
 
           <!-- 成功信息 -->
           <div v-if="successMessage" class="success">
@@ -148,9 +135,12 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, watch } from 'vue'
+import { ref, reactive, watch, computed, onMounted } from 'vue'
 import { usePostsStore } from '../stores/posts'
+import { useAuthStore } from '../stores/auth'
+import { tasksApi } from '../lib/api'
 import RichTextEditor from './RichTextEditor.vue'
+import type { LockTask } from '../types/index'
 
 interface Props {
   isVisible: boolean
@@ -169,18 +159,33 @@ const props = withDefaults(defineProps<Props>(), {
 const emit = defineEmits<Emits>()
 
 const postsStore = usePostsStore()
+const authStore = useAuthStore()
 
 // 表单状态
 const isCheckinMode = ref(props.defaultCheckinMode)
 const isLoading = ref(false)
-const isLoadingLocation = ref(false)
 const error = ref('')
-const locationError = ref('')
 const successMessage = ref('')
 
 const form = reactive({
-  content: '',
-  location: null as { latitude: number; longitude: number } | null
+  content: ''
+})
+
+// 严格模式任务状态
+const activeStrictTask = ref<LockTask | null>(null)
+const loadingStrictTask = ref(false)
+
+// 计算属性：是否有活跃的严格模式任务
+const hasActiveStrictTask = computed(() => {
+  return activeStrictTask.value && activeStrictTask.value.strict_mode && activeStrictTask.value.strict_code
+})
+
+// 计算属性：验证码显示文本
+const verificationCodeText = computed(() => {
+  if (hasActiveStrictTask.value) {
+    return `验证码：${activeStrictTask.value?.strict_code}`
+  }
+  return ''
 })
 
 // 图片相关
@@ -191,6 +196,10 @@ const selectedImages = ref<Array<{ file: File; preview: string }>>([])
 watch(() => props.isVisible, (visible) => {
   if (visible) {
     resetForm()
+    // 如果打开时是打卡模式，获取严格模式任务
+    if (isCheckinMode.value) {
+      fetchActiveStrictTask()
+    }
   }
 })
 
@@ -198,14 +207,50 @@ watch(() => props.defaultCheckinMode, (mode) => {
   isCheckinMode.value = mode
 })
 
+// 监听打卡模式变化，获取严格模式任务
+watch(isCheckinMode, (isCheckin) => {
+  if (isCheckin) {
+    fetchActiveStrictTask()
+  } else {
+    activeStrictTask.value = null
+  }
+})
+
+// 获取活跃的严格模式任务
+const fetchActiveStrictTask = async () => {
+  if (!authStore.user) return
+
+  try {
+    loadingStrictTask.value = true
+    const tasks = await tasksApi.getTasksList({
+      task_type: 'lock',
+      my_tasks: true
+    })
+
+    // 查找严格模式的活跃任务（包括pending状态，因为新创建的任务还未开始）
+    const strictTask = tasks.find(task =>
+      task.task_type === 'lock' &&
+      (task.status === 'pending' || task.status === 'active' || task.status === 'voting') &&
+      task.strict_mode === true &&
+      task.strict_code
+    )
+
+    activeStrictTask.value = strictTask || null
+  } catch (err) {
+    console.error('Error fetching active strict task:', err)
+    activeStrictTask.value = null
+  } finally {
+    loadingStrictTask.value = false
+  }
+}
+
 const resetForm = () => {
   form.content = ''
-  form.location = null
   selectedImages.value = []
   error.value = ''
-  locationError.value = ''
   successMessage.value = ''
   isCheckinMode.value = props.defaultCheckinMode
+  activeStrictTask.value = null
 }
 
 const closeModal = () => {
@@ -253,53 +298,6 @@ const removeImage = (index: number) => {
   selectedImages.value.splice(index, 1)
 }
 
-// 位置处理
-const getCurrentLocation = () => {
-  if (!navigator.geolocation) {
-    locationError.value = '浏览器不支持地理位置'
-    return
-  }
-
-  isLoadingLocation.value = true
-  locationError.value = ''
-
-  navigator.geolocation.getCurrentPosition(
-    (position) => {
-      form.location = {
-        latitude: position.coords.latitude,
-        longitude: position.coords.longitude
-      }
-      isLoadingLocation.value = false
-    },
-    (error) => {
-      isLoadingLocation.value = false
-      switch (error.code) {
-        case error.PERMISSION_DENIED:
-          locationError.value = '位置访问被拒绝'
-          break
-        case error.POSITION_UNAVAILABLE:
-          locationError.value = '位置信息不可用'
-          break
-        case error.TIMEOUT:
-          locationError.value = '获取位置超时'
-          break
-        default:
-          locationError.value = '获取位置失败'
-          break
-      }
-    },
-    {
-      enableHighAccuracy: true,
-      timeout: 10000,
-      maximumAge: 300000 // 5分钟缓存
-    }
-  )
-}
-
-const clearLocation = () => {
-  form.location = null
-  locationError.value = ''
-}
 
 // 提交处理
 const handleSubmit = async () => {
@@ -313,8 +311,7 @@ const handleSubmit = async () => {
     const postData = {
       content: form.content.trim(),
       post_type: (isCheckinMode.value ? 'checkin' : 'normal') as 'normal' | 'checkin',
-      images: selectedImages.value.map(img => img.file),
-      location: form.location || undefined
+      images: selectedImages.value.map(img => img.file)
     }
 
     await postsStore.createPost(postData)
@@ -335,6 +332,13 @@ const handleSubmit = async () => {
     isLoading.value = false
   }
 }
+
+// 组件挂载时，如果是打卡模式，获取严格模式任务
+onMounted(() => {
+  if (isCheckinMode.value) {
+    fetchActiveStrictTask()
+  }
+})
 </script>
 
 <style scoped>
@@ -512,63 +516,6 @@ const handleSubmit = async () => {
   background: rgba(0, 0, 0, 0.9);
 }
 
-.location-section {
-  border: 2px solid #e9ecef;
-  border-radius: 8px;
-  padding: 1rem;
-}
-
-.location-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 1rem;
-}
-
-.location-header label {
-  margin: 0;
-}
-
-.location-btn {
-  padding: 0.5rem 1rem;
-  background-color: #28a745;
-  color: white;
-  border: none;
-  border-radius: 4px;
-  cursor: pointer;
-  font-size: 0.875rem;
-}
-
-.location-btn:hover:not(:disabled) {
-  background-color: #218838;
-}
-
-.location-btn:disabled {
-  background-color: #6c757d;
-  cursor: not-allowed;
-}
-
-.location-info {
-  background-color: #f8f9fa;
-  padding: 1rem;
-  border-radius: 4px;
-  border: 1px solid #e9ecef;
-}
-
-.coordinates {
-  font-family: monospace;
-  font-size: 0.875rem;
-  margin-bottom: 0.5rem;
-}
-
-.clear-location {
-  background: none;
-  border: none;
-  color: #dc3545;
-  cursor: pointer;
-  font-size: 0.875rem;
-  text-decoration: underline;
-}
 
 .success {
   color: #28a745;
@@ -641,6 +588,77 @@ const handleSubmit = async () => {
   cursor: not-allowed;
 }
 
+/* 验证码显示样式 */
+.verification-code-section {
+  margin-top: 0.75rem;
+  padding: 0.75rem;
+  border: 2px solid #e9ecef;
+  border-radius: 6px;
+  background: linear-gradient(135deg, #f8f9fa, #e9ecef);
+  box-shadow: inset 2px 2px 0 rgba(0, 0, 0, 0.1);
+}
+
+.verification-loading,
+.verification-code-display,
+.verification-none {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.verification-icon {
+  font-size: 1.5rem;
+  flex-shrink: 0;
+}
+
+.verification-info {
+  flex: 1;
+}
+
+.verification-title {
+  font-weight: 700;
+  color: #333;
+  font-size: 0.9rem;
+  margin-bottom: 0.25rem;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.verification-code {
+  font-family: 'Courier New', monospace;
+  font-size: 1.1rem;
+  font-weight: 800;
+  color: #007bff;
+  background: white;
+  padding: 0.5rem 0.75rem;
+  border: 2px solid #000;
+  border-radius: 4px;
+  box-shadow: 2px 2px 0 #000;
+  display: inline-block;
+  margin-bottom: 0.5rem;
+  letter-spacing: 2px;
+}
+
+.verification-note {
+  font-size: 0.8rem;
+  color: #666;
+  font-style: italic;
+}
+
+.verification-loading {
+  color: #6c757d;
+  font-weight: 500;
+}
+
+.verification-none {
+  color: #6c757d;
+}
+
+.verification-none .verification-note {
+  color: #6c757d;
+  font-style: normal;
+}
+
 /* 移动端优化 */
 @media (max-width: 768px) {
   .modal-content {
@@ -659,12 +677,6 @@ const handleSubmit = async () => {
 
   .selected-images {
     grid-template-columns: repeat(2, 1fr);
-  }
-
-  .location-header {
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 0.5rem;
   }
 
   .form-actions {

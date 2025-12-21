@@ -40,6 +40,7 @@ class UserSerializer(serializers.ModelSerializer):
     active_lock_task = serializers.SerializerMethodField()
     total_lock_duration = serializers.SerializerMethodField()
     task_completion_rate = serializers.SerializerMethodField()
+    avatar = serializers.SerializerMethodField()
 
     class Meta:
         model = User
@@ -112,6 +113,13 @@ class UserSerializer(serializers.ModelSerializer):
         """获取用户任务完成率（%）"""
         return obj.get_task_completion_rate()
 
+    def get_avatar(self, obj):
+        """获取头像的完整URL"""
+        if obj.avatar:
+            from utils.media import get_full_media_url
+            return get_full_media_url(obj.avatar.url)
+        return None
+
 
 class UserPublicSerializer(serializers.ModelSerializer):
     """用户公开信息序列化器（用于显示给其他用户）"""
@@ -120,6 +128,7 @@ class UserPublicSerializer(serializers.ModelSerializer):
     total_lock_duration = serializers.SerializerMethodField()
     task_completion_rate = serializers.SerializerMethodField()
     telegram_username = serializers.SerializerMethodField()
+    avatar = serializers.SerializerMethodField()
 
     class Meta:
         model = User
@@ -187,6 +196,13 @@ class UserPublicSerializer(serializers.ModelSerializer):
         """只有在用户启用展示账号选项时才返回 Telegram 用户名"""
         if obj.show_telegram_account and obj.telegram_username:
             return obj.telegram_username
+        return None
+
+    def get_avatar(self, obj):
+        """获取头像的完整URL"""
+        if obj.avatar:
+            from utils.media import get_full_media_url
+            return get_full_media_url(obj.avatar.url)
         return None
 
 

@@ -18,4 +18,7 @@ urlpatterns = [
     path('<str:post_id>/comments/list/', views.get_post_comments, name='get-post-comments'),
     path('comments/<str:comment_id>/replies/', views.get_comment_replies, name='get-comment-replies'),
     path('comments/<str:comment_id>/like/', views.toggle_comment_like, name='toggle-comment-like'),
+
+    # 打卡投票相关
+    path('<str:pk>/vote/', views.vote_checkin_post, name='vote-checkin-post'),
 ]
