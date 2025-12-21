@@ -4,6 +4,7 @@ from django.core.validators import MinValueValidator, MaxValueValidator
 from django.utils import timezone
 from datetime import timedelta
 import uuid
+from utils.file_upload import secure_avatar_upload_to
 
 
 class User(AbstractUser):
@@ -38,10 +39,10 @@ class User(AbstractUser):
 
     # 个人资料
     avatar = models.ImageField(
-        upload_to='avatars/',
+        upload_to=secure_avatar_upload_to,
         blank=True,
         null=True,
-        help_text="头像"
+        help_text="用户头像"
     )
     bio = models.TextField(
         max_length=500,
@@ -248,6 +249,20 @@ class User(AbstractUser):
         return (self.is_telegram_bound() and
                 self.telegram_notifications_enabled and
                 self.telegram_chat_id is not None)
+
+    def save(self, *args, **kwargs):
+        """保存时验证头像文件"""
+        # 如果是路径修复，跳过验证
+        skip_validation = kwargs.pop('skip_file_validation', False)
+
+        if self.avatar and not skip_validation:
+            from utils.file_upload import validate_file_security
+            try:
+                validate_file_security(self.avatar)
+            except Exception as e:
+                from django.core.exceptions import ValidationError
+                raise ValidationError(f"头像文件验证失败: {e}")
+        super().save(*args, **kwargs)
 
 
 class Friendship(models.Model):

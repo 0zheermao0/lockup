@@ -3,6 +3,7 @@ from django.conf import settings
 from django.contrib.contenttypes.fields import GenericForeignKey
 from django.contrib.contenttypes.models import ContentType
 import uuid
+from utils.file_upload import secure_post_image_upload_to, secure_comment_image_upload_to
 
 
 class Post(models.Model):
@@ -91,8 +92,8 @@ class PostImage(models.Model):
         help_text="所属动态"
     )
     image = models.ImageField(
-        upload_to='posts/images/',
-        help_text="图片文件"
+        upload_to=secure_post_image_upload_to,
+        help_text="动态图片文件"
     )
     order = models.IntegerField(
         default=0,
@@ -309,8 +310,8 @@ class CommentImage(models.Model):
         help_text="所属评论"
     )
     image = models.ImageField(
-        upload_to='comments/images/',
-        help_text="图片文件"
+        upload_to=secure_comment_image_upload_to,
+        help_text="评论图片文件"
     )
     order = models.IntegerField(
         default=0,

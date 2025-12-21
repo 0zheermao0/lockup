@@ -5,20 +5,36 @@ from users.serializers import UserPublicSerializer
 
 class PostImageSerializer(serializers.ModelSerializer):
     """动态图片序列化器"""
+    image = serializers.SerializerMethodField()
 
     class Meta:
         model = PostImage
         fields = ['id', 'image', 'order', 'created_at']
         read_only_fields = ['id', 'created_at']
 
+    def get_image(self, obj):
+        """获取图片的完整URL"""
+        if obj.image:
+            from utils.media import get_full_media_url
+            return get_full_media_url(obj.image.url)
+        return None
+
 
 class CommentImageSerializer(serializers.ModelSerializer):
     """评论图片序列化器"""
+    image = serializers.SerializerMethodField()
 
     class Meta:
         model = CommentImage
         fields = ['id', 'image', 'order', 'created_at']
         read_only_fields = ['id', 'created_at']
+
+    def get_image(self, obj):
+        """获取图片的完整URL"""
+        if obj.image:
+            from utils.media import get_full_media_url
+            return get_full_media_url(obj.image.url)
+        return None
 
 
 class CommentSerializer(serializers.ModelSerializer):

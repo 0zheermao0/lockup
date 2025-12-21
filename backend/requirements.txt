@@ -45,6 +45,7 @@ django-cors-headers==4.9.0 # CORS handling for frontend integration
 # IMAGE & MEDIA PROCESSING
 # =============================================================================
 Pillow==11.3.0             # Python Imaging Library for image handling
+python-magic==0.4.27       # File type detection library for security validation
 
 # =============================================================================
 # AUTHENTICATION & SECURITY

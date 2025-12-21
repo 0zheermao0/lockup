@@ -2,6 +2,7 @@ from django.db import models
 from django.conf import settings
 from datetime import timedelta
 import uuid
+from utils.file_upload import secure_task_file_upload_to
 
 # Create your models here.
 
@@ -270,7 +271,11 @@ class TaskSubmissionFile(models.Model):
                                    help_text='关联的参与者（多人任务）')
 
     # 文件信息
-    file = models.FileField(upload_to='task_submissions/%Y/%m/%d/', max_length=500)
+    file = models.FileField(
+        upload_to=secure_task_file_upload_to,
+        max_length=500,
+        help_text='任务提交文件（图片、视频、文档）'
+    )
     file_type = models.CharField(max_length=10, choices=FILE_TYPE_CHOICES, default='image')
     file_name = models.CharField(max_length=255, help_text='原始文件名')
     file_size = models.PositiveIntegerField(help_text='文件大小（字节）')
@@ -297,7 +302,8 @@ class TaskSubmissionFile(models.Model):
     def file_url(self):
         """获取文件的完整URL"""
         if self.file:
-            return self.file.url
+            from utils.media import get_full_media_url
+            return get_full_media_url(self.file.url)
         return None
 
     @property
@@ -324,9 +330,41 @@ class TaskSubmissionFile(models.Model):
             return 'image'  # 默认为图片
 
     def save(self, *args, **kwargs):
+        # 如果是路径修复，跳过验证
+        skip_validation = kwargs.pop('skip_file_validation', False)
+
+        # 如果是新文件上传，进行安全验证
+        if self.file and not skip_validation:
+            try:
+                # 检查文件是否存在且可访问
+                has_file = hasattr(self.file, 'file')
+            except:
+                has_file = False
+
+            if has_file:
+                from utils.file_upload import validate_file_security, clean_filename_for_display
+                try:
+                    # 验证文件安全性
+                    file_info = validate_file_security(self.file.file)
+
+                    # 设置文件信息
+                    if not self.file_type:
+                        self.file_type = file_info['file_type']
+
+                    if not self.file_name:
+                        # 保存清理后的显示文件名
+                        self.file_name = clean_filename_for_display(file_info['original_name'])
+
+                    if not self.file_size:
+                        self.file_size = file_info['file_size']
+
+                except Exception as e:
+                    from django.core.exceptions import ValidationError
+                    raise ValidationError(f"文件验证失败: {str(e)}")
+
         # 如果没有设置file_type，根据文件扩展名自动判断
-        if not self.file_type and self.file:
-            self.file_type = self.get_file_type_from_extension(self.file_name)
+        elif not self.file_type and self.file:
+            self.file_type = self.get_file_type_from_extension(self.file_name or self.file.name)
 
         # 如果没有设置file_name，使用原始文件名
         if not self.file_name and self.file:
