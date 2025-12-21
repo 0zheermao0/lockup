@@ -239,7 +239,7 @@
 
                   <!-- Show voting deadline (only for strict mode posts) -->
                   <div v-if="shouldShowVotingUI(post)" class="voting-deadline">
-                    投票截止: {{ formatVotingDeadline(post.voting_session.voting_deadline) }}
+                    投票截止: {{ formatVotingDeadline(post.voting_session!.voting_deadline) }}
                   </div>
                 </div>
               </div>
