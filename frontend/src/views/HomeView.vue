@@ -532,6 +532,14 @@ const canVote = (post: Post) => {
     return false
   }
 
+  // Additional check: only allow voting on posts that contain verification code (strict mode)
+  // This provides extra protection against legacy non-strict mode posts with voting sessions
+  const hasVerificationCode = post.content.includes('验证码：')
+  if (!hasVerificationCode) {
+    console.log('DEBUG: Post does not contain verification code, voting disabled for post', post.id)
+    return false
+  }
+
   const deadline = new Date(post.voting_session.voting_deadline)
   const now = new Date()
   const hasVotedResult = hasVoted(post)
@@ -540,7 +548,8 @@ const canVote = (post: Post) => {
     deadline: deadline.toISOString(),
     now: now.toISOString(),
     deadline_passed: now >= deadline,
-    has_voted: hasVotedResult
+    has_voted: hasVotedResult,
+    has_verification_code: hasVerificationCode
   })
 
   return now < deadline && !hasVotedResult
