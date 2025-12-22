@@ -1047,19 +1047,23 @@ onUnmounted(() => {
 
 /* Level-specific hover effects */
 .username.clickable.level-1:hover {
-  background-color: #6c757d;
+  background-color: #6c757d !important;
+  color: white !important;
 }
 
 .username.clickable.level-2:hover {
-  background-color: #17a2b8;
+  background-color: #17a2b8 !important;
+  color: white !important;
 }
 
 .username.clickable.level-3:hover {
-  background-color: #ffc107;
+  background-color: #ffc107 !important;
+  color: white !important;
 }
 
 .username.clickable.level-4:hover {
-  background-color: #fd7e14;
+  background-color: #fd7e14 !important;
+  color: white !important;
 }
 
 .time {
