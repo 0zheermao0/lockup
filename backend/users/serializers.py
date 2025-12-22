@@ -121,6 +121,25 @@ class UserSerializer(serializers.ModelSerializer):
         return None
 
 
+class UserMinimalSerializer(serializers.ModelSerializer):
+    """用户最小信息序列化器（用于任务列表等场景，不包含敏感信息）"""
+
+    avatar = serializers.SerializerMethodField()
+
+    class Meta:
+        model = User
+        fields = [
+            'id', 'username', 'level', 'avatar'
+        ]
+
+    def get_avatar(self, obj):
+        """获取头像的完整URL"""
+        if obj.avatar:
+            from utils.media import get_full_media_url
+            return get_full_media_url(obj.avatar.url)
+        return None
+
+
 class UserPublicSerializer(serializers.ModelSerializer):
     """用户公开信息序列化器（用于显示给其他用户）"""
 
