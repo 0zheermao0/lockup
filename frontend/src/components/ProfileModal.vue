@@ -50,8 +50,12 @@
               </div>
               <div class="user-basic-info">
                 <h3 class="username">{{ userProfile.username }}</h3>
-                <div class="level-badge">
-                  等级 {{ userProfile.level || 1 }}
+                <div
+                  class="level-badge"
+                  :class="getLevelCSSClass(userProfile.level || 1)"
+                  :style="getLevelCSSProperties(userProfile.level || 1)"
+                >
+                  {{ getLevelDisplayName(userProfile.level || 1) }}
                 </div>
                 <div v-if="userProfile.bio" class="bio">
                   {{ userProfile.bio }}
@@ -158,6 +162,7 @@ import LockIndicator from './LockIndicator.vue'
 import LockStatus from './LockStatus.vue'
 import UserAvatar from './UserAvatar.vue'
 import { formatDistanceToNow } from '../lib/utils'
+import { getLevelColorScheme, getLevelCSSProperties, getLevelCSSClass, getLevelDisplayName } from '../lib/level-colors'
 import type { User } from '../types'
 
 interface Props {
@@ -506,17 +511,24 @@ onUnmounted(() => {
 }
 
 .level-badge {
-  background: #28a745;
-  color: white;
+  background: var(--level-bg, #28a745);
+  color: var(--level-color, white);
   padding: 0.25rem 0.75rem;
-  border: 2px solid #000;
+  border: 2px solid var(--level-border, #000);
   font-size: 0.875rem;
   font-weight: 900;
   text-transform: uppercase;
   letter-spacing: 1px;
   display: inline-block;
   margin-bottom: 0.5rem;
-  box-shadow: 2px 2px 0 #000;
+  box-shadow: 2px 2px 0 var(--level-border, #000);
+  border-radius: 4px;
+  transition: all 0.2s ease;
+}
+
+.level-badge:hover {
+  transform: translate(-1px, -1px);
+  box-shadow: 3px 3px 0 var(--level-border, #000);
 }
 
 .bio {

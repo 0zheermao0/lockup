@@ -634,7 +634,7 @@ export interface NotificationItem {
                      'coins_earned_hourly' | 'coins_earned_daily_login' | 'coins_earned_task_reward' | 'coins_spent_task_creation' |
                      'treasure_found' | 'photo_viewed' | 'drift_bottle_found' | 'item_received' | 'item_shared' |
                      'friend_request' | 'friend_accepted' |
-                     'level_upgraded' | 'system_announcement' | 'game_result'
+                     'level_upgraded' | 'system_announcement' | 'game_result' | 'task_frozen_auto_strict'
   title: string
   message: string
   priority: 'low' | 'normal' | 'high' | 'urgent'

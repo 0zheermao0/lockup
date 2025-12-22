@@ -6,8 +6,16 @@
         <h1>锁芯社区</h1>
         <div class="user-info">
           <div class="user-stats">
-            <span class="level">等级 {{ authStore.user?.level || 1 }}</span>
-            <span class="coins">🪙 {{ authStore.user?.coins || 0 }}</span>
+            <span
+              class="level"
+              :class="getLevelCSSClass(authStore.user?.level || 1)"
+              :style="getLevelCSSProperties(authStore.user?.level || 1)"
+            >
+              {{ getLevelDisplayName(authStore.user?.level || 1) }}
+            </span>
+            <span class="coins" :class="getLevelCSSClass(authStore.user?.level || 1)">
+              🪙 {{ authStore.user?.coins || 0 }}
+            </span>
           </div>
           <div class="header-actions">
             <!-- 通知铃铛 -->
@@ -201,8 +209,10 @@
                   <div>
                     <div
                       class="username clickable"
+                      :class="getLevelCSSClass(post.user.level || 1)"
+                      :style="{ color: getLevelUsernameColor(post.user.level || 1) }"
                       @click.stop="openProfileModal(post.user)"
-                      :title="`查看 ${post.user.username} 的资料`"
+                      :title="`查看 ${post.user.username} 的资料 (${getLevelDisplayName(post.user.level || 1)})`"
                     >
                       {{ post.user.username }}
                     </div>
@@ -318,6 +328,7 @@ import { usePostsStore } from '../stores/posts'
 import { useNotificationStore } from '../stores/notifications'
 import { useInfiniteScroll } from '../composables/useInfiniteScroll'
 import { formatDistanceToNow } from '../lib/utils'
+import { getLevelColorScheme, getLevelCSSProperties, getLevelCSSClass, getLevelDisplayName, getLevelUsernameColor } from '../lib/level-colors'
 import { tasksApi } from '../lib/api-tasks'
 import CreatePostModal from '../components/CreatePostModal.vue'
 import LockStatus from '../components/LockStatus.vue'
@@ -664,20 +675,41 @@ onMounted(async () => {
 }
 
 .level {
-  background-color: #007bff;
-  color: white;
+  background: var(--level-bg, #007bff);
+  color: var(--level-color, white);
   padding: 0.25rem 0.75rem;
-  border-radius: 12px;
+  border: 2px solid var(--level-border, #000);
+  border-radius: 6px;
   font-size: 0.8rem;
-  font-weight: 600;
+  font-weight: 900;
   text-transform: uppercase;
   letter-spacing: 0.5px;
+  box-shadow: 2px 2px 0 var(--level-border, #000);
+  transition: all 0.2s ease;
+}
+
+.level:hover {
+  transform: translate(-1px, -1px);
+  box-shadow: 3px 3px 0 var(--level-border, #000);
 }
 
 .coins {
-  font-weight: 600;
+  font-weight: 900;
   font-size: 0.9rem;
-  color: #333;
+  color: var(--level-bg, #333);
+  padding: 0.25rem 0.5rem;
+  border: 2px solid var(--level-bg, #333);
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.9);
+  box-shadow: 2px 2px 0 var(--level-bg, #333);
+  transition: all 0.2s ease;
+}
+
+.coins:hover {
+  transform: translate(-1px, -1px);
+  box-shadow: 3px 3px 0 var(--level-bg, #333);
+  background: var(--level-bg, #333);
+  color: var(--level-color, white);
 }
 
 /* 通知铃铛圆圈容器 */
@@ -1021,18 +1053,40 @@ onMounted(async () => {
 
 .username.clickable {
   cursor: pointer;
-  color: #007bff;
   transition: all 0.2s ease;
   padding: 0.25rem 0.5rem;
   border-radius: 4px;
   margin: -0.25rem -0.5rem;
+  font-weight: 700;
+  border: 2px solid transparent;
 }
 
 .username.clickable:hover {
-  background-color: #007bff;
   color: white;
   transform: translate(-1px, -1px);
   box-shadow: 2px 2px 0 #000;
+  border-color: #000;
+}
+
+/* Level-specific hover effects */
+.username.clickable.level-1:hover {
+  background-color: #6c757d !important;
+  color: white !important;
+}
+
+.username.clickable.level-2:hover {
+  background-color: #17a2b8 !important;
+  color: white !important;
+}
+
+.username.clickable.level-3:hover {
+  background-color: #ffc107 !important;
+  color: white !important;
+}
+
+.username.clickable.level-4:hover {
+  background-color: #fd7e14 !important;
+  color: white !important;
 }
 
 .time {

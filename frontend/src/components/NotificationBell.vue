@@ -101,6 +101,54 @@
                   </div>
                 </template>
 
+                <!-- 特殊处理任务审核通过通知 -->
+                <template v-else-if="notification.notification_type === 'task_board_approved'">
+                  <div class="task-approved-content">
+                    <p>{{ notification.message }}</p>
+
+                    <!-- 任务详情 -->
+                    <div v-if="notification.extra_data" class="task-approval-details">
+                      <div v-if="notification.extra_data.task_title" class="task-info">
+                        <div class="task-title">{{ notification.extra_data.task_title }}</div>
+                      </div>
+
+                      <!-- 奖励信息 -->
+                      <div v-if="notification.extra_data.reward_amount" class="reward-info">
+                        <div class="reward-amount">
+                          💰 奖励: {{ notification.extra_data.reward_amount }} 积分
+                        </div>
+
+                        <!-- 区分单人任务和多人任务的到账情况 -->
+                        <div class="payment-status">
+                          <template v-if="notification.extra_data.is_multi_participant && !notification.extra_data.task_completed">
+                            <div class="pending-payment">
+                              ⏳ 等待任务结束后统一发放奖励
+                            </div>
+                            <div v-if="notification.extra_data.other_participants_count" class="participants-info">
+                              还有 {{ notification.extra_data.other_participants_count }} 人参与中
+                            </div>
+                          </template>
+                          <template v-else-if="notification.extra_data.is_multi_participant && notification.extra_data.task_completed">
+                            <div class="completed-payment">
+                              ✅ 任务已结束，奖励已发放
+                            </div>
+                          </template>
+                          <template v-else>
+                            <div class="immediate-payment">
+                              ✅ 奖励已立即到账
+                            </div>
+                          </template>
+                        </div>
+                      </div>
+
+                      <!-- 审核时间 -->
+                      <div v-if="notification.extra_data.approved_at" class="approval-time">
+                        审核时间: {{ new Date(notification.extra_data.approved_at).toLocaleString('zh-CN') }}
+                      </div>
+                    </div>
+                  </div>
+                </template>
+
                 <!-- 特殊处理物品分享通知 -->
                 <template v-else-if="notification.notification_type === 'item_shared'">
                   <div class="item-shared-content">
@@ -129,6 +177,33 @@
                   </div>
                 </template>
 
+                <!-- 特殊处理严格模式自动冻结通知 -->
+                <template v-else-if="notification.notification_type === 'task_frozen_auto_strict'">
+                  <div class="auto-freeze-content">
+                    <p class="freeze-message">{{ notification.message }}</p>
+
+                    <!-- 任务详情 -->
+                    <div v-if="notification.extra_data" class="freeze-details">
+                      <div class="task-info">
+                        <div class="task-title">
+                          任务: {{ notification.extra_data.task_title || '未知任务' }}
+                        </div>
+                        <div class="freeze-reason">
+                          原因: 24小时内未发布打卡动态
+                        </div>
+                        <div v-if="notification.extra_data.frozen_at" class="freeze-time">
+                          冻结时间: {{ new Date(notification.extra_data.frozen_at).toLocaleString('zh-CN') }}
+                        </div>
+                      </div>
+
+                      <!-- 解冻提示 -->
+                      <div class="unfreeze-hint">
+                        💡 提示：需要钥匙持有者解冻任务才能继续
+                      </div>
+                    </div>
+                  </div>
+                </template>
+
                 <!-- 普通通知内容 -->
                 <template v-else>
                   {{ notification.message }}
@@ -138,7 +213,16 @@
               <!-- 通知元信息 -->
               <div class="notification-meta">
                 <span class="time">{{ notification.time_ago }}</span>
-                <span v-if="notification.actor" class="actor">{{ notification.actor.username }}</span>
+                <span
+                  v-if="notification.actor"
+                  class="actor clickable-actor"
+                  :class="getLevelCSSClass(notification.actor.level || 1)"
+                  :style="{ color: getLevelUsernameColor(notification.actor.level || 1) }"
+                  @click.stop="openActorProfile(notification.actor.id, notification.actor.username)"
+                  :title="`查看 ${notification.actor.username} 的个人资料 (${getLevelDisplayName(notification.actor.level || 1)})`"
+                >
+                  {{ notification.actor.username }}
+                </span>
                 <span v-if="getNotificationPriorityClass(notification.priority)"
                       :class="['priority-badge', getNotificationPriorityClass(notification.priority)]">
                   {{ getPriorityText(notification.priority) }}
@@ -176,6 +260,7 @@
 import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useNotificationStore } from '../stores/notifications'
+import { getLevelCSSClass, getLevelDisplayName, getLevelUsernameColor } from '../lib/level-colors'
 import type { NotificationItem } from '../types/index'
 
 const router = useRouter()
@@ -225,7 +310,8 @@ const getNotificationIcon = (type: string) => {
     friend_accepted: '🤝',
     level_upgraded: '⬆️',
     system_announcement: '📢',
-    game_result: '🎮'
+    game_result: '🎮',
+    task_frozen_auto_strict: '🧊'
   }
   return iconMap[type] || '📢'
 }
@@ -316,6 +402,13 @@ const openClaimerProfile = (claimerId: string, claimerUsername: string) => {
   console.log('openClaimerProfile called:', claimerId, claimerUsername)
   // 打开物品领取者的个人资料页面
   router.push({ name: 'profile', params: { id: claimerId } })
+  showDropdown.value = false
+}
+
+const openActorProfile = (actorId: number, actorUsername: string) => {
+  console.log('openActorProfile called:', actorId, actorUsername)
+  // 打开通知触发者的个人资料页面
+  router.push({ name: 'profile', params: { id: actorId.toString() } })
   showDropdown.value = false
 }
 
@@ -652,6 +745,49 @@ onUnmounted(() => {
   font-weight: 500;
 }
 
+.clickable-actor {
+  cursor: pointer;
+  padding: 0.25rem 0.5rem;
+  border-radius: 4px;
+  margin-left: 0.25rem;
+  transition: all 0.2s ease;
+  display: inline-block;
+  position: relative;
+  z-index: 10;
+  pointer-events: auto;
+  border: 2px solid transparent;
+  text-decoration: underline;
+}
+
+.clickable-actor:hover {
+  color: white;
+  transform: translate(-1px, -1px);
+  box-shadow: 2px 2px 0 #000;
+  text-decoration: none;
+  border-color: #000;
+}
+
+/* Level-specific hover effects for actor */
+.clickable-actor.level-1:hover {
+  background-color: #6c757d !important;
+  color: white !important;
+}
+
+.clickable-actor.level-2:hover {
+  background-color: #17a2b8 !important;
+  color: white !important;
+}
+
+.clickable-actor.level-3:hover {
+  background-color: #ffc107 !important;
+  color: white !important;
+}
+
+.clickable-actor.level-4:hover {
+  background-color: #fd7e14 !important;
+  color: white !important;
+}
+
 .priority-badge {
   padding: 0.125rem 0.375rem;
   border-radius: 12px;
@@ -814,12 +950,118 @@ onUnmounted(() => {
 }
 
 .clickable-username:hover {
-  background-color: #007bff;
   color: white;
   transform: translate(-1px, -1px);
   box-shadow: 2px 2px 0 #000;
   text-decoration: none;
   border-color: #000;
+}
+
+/* Level-specific hover effects for username */
+.clickable-username.level-1:hover {
+  background-color: #6c757d !important;
+  color: white !important;
+}
+
+.clickable-username.level-2:hover {
+  background-color: #17a2b8 !important;
+  color: white !important;
+}
+
+.clickable-username.level-3:hover {
+  background-color: #ffc107 !important;
+  color: white !important;
+}
+
+.clickable-username.level-4:hover {
+  background-color: #fd7e14 !important;
+  color: white !important;
+}
+
+/* Task approval notification styles */
+.task-approved-content {
+  margin-top: 0.5rem;
+}
+
+.task-approval-details {
+  margin-top: 0.75rem;
+  padding: 0.75rem;
+  background: linear-gradient(135deg, #f8f9fa, #e9ecef);
+  border: 2px solid #000;
+  border-radius: 6px;
+  font-size: 0.8rem;
+}
+
+.task-title {
+  font-weight: 700;
+  color: #333;
+  margin-bottom: 0.5rem;
+  padding: 0.25rem 0.5rem;
+  background: white;
+  border: 2px solid #000;
+  border-radius: 4px;
+}
+
+.reward-info {
+  margin: 0.5rem 0;
+}
+
+.reward-amount {
+  font-weight: 700;
+  color: #ffc107;
+  margin-bottom: 0.5rem;
+  padding: 0.375rem 0.75rem;
+  background: rgba(255, 193, 7, 0.1);
+  border: 2px solid #ffc107;
+  border-radius: 4px;
+  text-align: center;
+}
+
+.payment-status {
+  margin-top: 0.5rem;
+}
+
+.pending-payment {
+  background: rgba(255, 193, 7, 0.1);
+  color: #856404;
+  padding: 0.375rem 0.75rem;
+  border: 2px solid #ffc107;
+  border-radius: 4px;
+  font-weight: 600;
+  text-align: center;
+  margin-bottom: 0.25rem;
+}
+
+.participants-info {
+  background: rgba(23, 162, 184, 0.1);
+  color: #0c5460;
+  padding: 0.25rem 0.5rem;
+  border: 1px solid #17a2b8;
+  border-radius: 3px;
+  font-size: 0.75rem;
+  text-align: center;
+  font-weight: 500;
+}
+
+.completed-payment,
+.immediate-payment {
+  background: rgba(40, 167, 69, 0.1);
+  color: #155724;
+  padding: 0.375rem 0.75rem;
+  border: 2px solid #28a745;
+  border-radius: 4px;
+  font-weight: 600;
+  text-align: center;
+}
+
+.approval-time {
+  margin-top: 0.5rem;
+  padding: 0.25rem 0.5rem;
+  background: rgba(108, 117, 125, 0.1);
+  border-left: 3px solid #6c757d;
+  font-size: 0.75rem;
+  color: #6c757d;
+  font-weight: 500;
 }
 
 /* Item shared notification styles */
@@ -892,6 +1134,72 @@ onUnmounted(() => {
   background: rgba(220, 53, 69, 0.1);
   color: #dc3545;
   border: 1px solid #dc3545;
+}
+
+/* Auto-freeze notification styles */
+.auto-freeze-content {
+  padding: 0.5rem 0;
+  position: relative;
+}
+
+.freeze-message {
+  font-weight: 600;
+  color: #dc3545;
+  margin-bottom: 0.5rem;
+  position: relative;
+  z-index: 1;
+}
+
+.freeze-details {
+  margin-top: 0.5rem;
+  padding: 0.75rem;
+  background: linear-gradient(135deg, #ffe6e6, #fff0f0);
+  border: 2px solid #dc3545;
+  border-radius: 6px;
+  box-shadow: 2px 2px 0 rgba(220, 53, 69, 0.2);
+}
+
+.task-info {
+  margin-bottom: 0.5rem;
+}
+
+.task-title {
+  font-weight: 700;
+  color: #721c24;
+  margin-bottom: 0.25rem;
+  font-size: 0.9rem;
+}
+
+.freeze-reason {
+  color: #856404;
+  font-weight: 600;
+  margin-bottom: 0.25rem;
+  font-size: 0.85rem;
+  padding: 0.25rem 0.5rem;
+  background: rgba(255, 193, 7, 0.1);
+  border: 1px solid #ffc107;
+  border-radius: 4px;
+  display: inline-block;
+}
+
+.freeze-time {
+  color: #6c757d;
+  font-size: 0.8rem;
+  font-weight: 500;
+  margin-top: 0.25rem;
+}
+
+.unfreeze-hint {
+  margin-top: 0.5rem;
+  padding: 0.5rem;
+  background: rgba(23, 162, 184, 0.1);
+  border: 2px solid #17a2b8;
+  border-radius: 4px;
+  color: #0c5460;
+  font-weight: 600;
+  font-size: 0.85rem;
+  text-align: center;
+  box-shadow: 1px 1px 0 rgba(23, 162, 184, 0.2);
 }
 
 /* 移动端响应式 */
@@ -1054,6 +1362,46 @@ onUnmounted(() => {
   .clickable-username {
     padding: 0.2rem 0.4rem;
     font-size: 0.75rem;
+  }
+
+  .clickable-actor {
+    padding: 0.2rem 0.4rem;
+    font-size: 0.7rem;
+    margin-left: 0.125rem;
+  }
+
+  /* Task approval notification mobile styles */
+  .task-approval-details {
+    padding: 0.5rem;
+    font-size: 0.75rem;
+  }
+
+  .task-title {
+    padding: 0.2rem 0.4rem;
+    font-size: 0.75rem;
+    margin-bottom: 0.375rem;
+  }
+
+  .reward-amount {
+    padding: 0.25rem 0.5rem;
+    font-size: 0.75rem;
+  }
+
+  .pending-payment,
+  .completed-payment,
+  .immediate-payment {
+    padding: 0.25rem 0.5rem;
+    font-size: 0.7rem;
+  }
+
+  .participants-info {
+    padding: 0.2rem 0.4rem;
+    font-size: 0.7rem;
+  }
+
+  .approval-time {
+    padding: 0.2rem 0.4rem;
+    font-size: 0.7rem;
   }
 }
 </style>
