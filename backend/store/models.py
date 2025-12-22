@@ -14,6 +14,7 @@ class ItemType(models.Model):
         ('drift_bottle', '漂流瓶'),
         ('key', '钥匙'),
         ('note', '纸条'),
+        ('little_treasury', '小金库'),
     ]
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
