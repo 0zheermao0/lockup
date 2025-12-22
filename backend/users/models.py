@@ -106,28 +106,117 @@ class User(AbstractUser):
         return f"{self.username} (Level {self.level})"
 
     def can_upgrade_to_level_2(self):
-        """检查是否可以升级到2级"""
-        return (self.level == 1 and
-                self.total_posts >= 5 and
-                self.total_likes_received >= 10)
+        """Check if user can upgrade from level 1 to 2"""
+        if self.level != 1:
+            return False
+
+        # New criteria: Activity ≥100 + Posts ≥5 + Likes ≥10 + Lock Duration ≥24h
+        lock_duration_hours = self.get_total_lock_duration() / 60  # Convert minutes to hours
+
+        return (
+            self.activity_score >= 100 and
+            self.total_posts >= 5 and
+            self.total_likes_received >= 10 and
+            lock_duration_hours >= 24
+        )
 
     def can_upgrade_to_level_3(self):
-        """检查是否可以升级到3级"""
+        """Check if user can upgrade from level 2 to 3"""
         if self.level != 2:
             return False
 
-        # 检查是否连续7天活跃
-        seven_days_ago = timezone.now() - timedelta(days=7)
-        return self.last_active >= seven_days_ago
+        # New criteria: Activity ≥200 + Posts ≥20 + Likes ≥50 + Lock Duration ≥7 days
+        lock_duration_hours = self.get_total_lock_duration() / 60
+        lock_duration_days = lock_duration_hours / 24
 
-    def should_downgrade_from_level_3(self):
-        """检查3级用户是否应该降级"""
+        return (
+            self.activity_score >= 200 and
+            self.total_posts >= 20 and
+            self.total_likes_received >= 50 and
+            lock_duration_days >= 7
+        )
+
+    def can_upgrade_to_level_4(self):
+        """Check if user can upgrade from level 3 to 4"""
         if self.level != 3:
             return False
 
-        # 7天以上不活跃则降级
-        seven_days_ago = timezone.now() - timedelta(days=7)
-        return self.last_active < seven_days_ago
+        # New criteria: Activity ≥500 + Posts ≥50 + Likes ≥1000 + Lock Duration ≥30 days + Task Completion Rate ≥90%
+        lock_duration_hours = self.get_total_lock_duration() / 60
+        lock_duration_days = lock_duration_hours / 24
+        task_completion_rate = self.get_task_completion_rate()
+
+        return (
+            self.activity_score >= 500 and
+            self.total_posts >= 50 and
+            self.total_likes_received >= 1000 and
+            lock_duration_days >= 30 and
+            task_completion_rate >= 90.0
+        )
+
+    def check_level_promotion_eligibility(self):
+        """Check which level user is eligible for promotion to"""
+        if self.level == 1 and self.can_upgrade_to_level_2():
+            return 2
+        elif self.level == 2 and self.can_upgrade_to_level_3():
+            return 3
+        elif self.level == 3 and self.can_upgrade_to_level_4():
+            return 4
+        return None
+
+    def get_level_promotion_requirements(self, target_level):
+        """Get requirements for specific level promotion"""
+        requirements = {
+            2: {
+                'activity_score': 100,
+                'total_posts': 5,
+                'total_likes_received': 10,
+                'lock_duration_hours': 24
+            },
+            3: {
+                'activity_score': 200,
+                'total_posts': 20,
+                'total_likes_received': 50,
+                'lock_duration_hours': 7 * 24  # 7 days
+            },
+            4: {
+                'activity_score': 500,
+                'total_posts': 50,
+                'total_likes_received': 1000,
+                'lock_duration_hours': 30 * 24,  # 30 days
+                'task_completion_rate': 90.0
+            }
+        }
+        return requirements.get(target_level, {})
+
+    def promote_to_level(self, new_level, reason='automatic'):
+        """Promote user to new level with proper tracking"""
+
+        old_level = self.level
+        self.level = new_level
+        self.save(update_fields=['level'])
+
+        # Record level upgrade
+        UserLevelUpgrade.objects.create(
+            user=self,
+            from_level=old_level,
+            to_level=new_level,
+            reason=reason if reason in ['activity', 'manual', 'downgrade'] else 'activity',  # Map 'automatic' to 'activity'
+            promoted_by=None  # System promotion
+        )
+
+        # Create notification
+        Notification.create_notification(
+            recipient=self,
+            notification_type='level_upgraded',
+            title=f'恭喜升级到等级 {new_level}！',
+            message=f'您已成功从等级 {old_level} 升级到等级 {new_level}！',
+            actor=None,  # System notification
+            extra_data={'old_level': old_level, 'new_level': new_level},
+            priority='normal'
+        )
+
+        return True
 
     def update_activity(self):
         """更新用户活跃度"""

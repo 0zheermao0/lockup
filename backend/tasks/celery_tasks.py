@@ -1219,3 +1219,34 @@ def _handle_voting_passed(post, session, pass_votes, current_time):
         },
         priority='normal'
     )
+
+
+@shared_task(bind=True, max_retries=3)
+def process_level_promotions(self):
+    """
+    Weekly task to process user level promotions
+    Runs every Wednesday at 4:30 AM
+    """
+    try:
+        logger.info("Starting weekly level promotion task")
+
+        from users.services.level_promotion import LevelPromotionService
+
+        # Process all eligible users
+        result = LevelPromotionService.bulk_process_level_promotions()
+
+        logger.info(f"Level promotion task completed successfully: {result}")
+        return result
+
+    except Exception as exc:
+        logger.error(f"Level promotion task failed: {str(exc)}")
+
+        # Retry with exponential backoff
+        if self.request.retries < self.max_retries:
+            retry_countdown = 2 ** self.request.retries * 60  # 1min, 2min, 4min
+            logger.info(f"Retrying level promotion task in {retry_countdown} seconds")
+            raise self.retry(countdown=retry_countdown, exc=exc)
+
+        # Final failure notification
+        logger.error("Level promotion task failed after all retries")
+        raise exc
