@@ -3665,12 +3665,28 @@ onUnmounted(() => {
 }
 
 .username-btn:hover {
-  background-color: var(--level-bg, #007bff);
   color: white;
   text-decoration: none;
   transform: translate(-1px, -1px);
   box-shadow: 2px 2px 0 #000;
   border-color: #000;
+}
+
+/* Level-specific hover effects */
+.username-btn.level-1:hover {
+  background-color: #6c757d;
+}
+
+.username-btn.level-2:hover {
+  background-color: #17a2b8;
+}
+
+.username-btn.level-3:hover {
+  background-color: #ffc107;
+}
+
+.username-btn.level-4:hover {
+  background-color: #fd7e14;
 }
 
 .create-time {

@@ -99,6 +99,16 @@ export function getLevelUsernameColor(level: number): string {
 }
 
 /**
+ * Get hover background color for username based on user level
+ * @param level User level (1-4)
+ * @returns CSS color value for hover background
+ */
+export function getLevelHoverBackgroundColor(level: number): string {
+  const colors = getLevelColorScheme(level)
+  return colors.background
+}
+
+/**
  * Get level display name with emoji
  * @param level User level (1-4)
  * @returns Formatted level string

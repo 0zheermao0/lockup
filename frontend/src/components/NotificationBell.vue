@@ -684,12 +684,28 @@ onUnmounted(() => {
 }
 
 .clickable-actor:hover {
-  background-color: var(--level-bg, #007bff);
   color: white;
   transform: translate(-1px, -1px);
   box-shadow: 2px 2px 0 #000;
   text-decoration: none;
   border-color: #000;
+}
+
+/* Level-specific hover effects for actor */
+.clickable-actor.level-1:hover {
+  background-color: #6c757d;
+}
+
+.clickable-actor.level-2:hover {
+  background-color: #17a2b8;
+}
+
+.clickable-actor.level-3:hover {
+  background-color: #ffc107;
+}
+
+.clickable-actor.level-4:hover {
+  background-color: #fd7e14;
 }
 
 .priority-badge {
@@ -854,12 +870,28 @@ onUnmounted(() => {
 }
 
 .clickable-username:hover {
-  background-color: var(--level-bg, #007bff);
   color: white;
   transform: translate(-1px, -1px);
   box-shadow: 2px 2px 0 #000;
   text-decoration: none;
   border-color: #000;
+}
+
+/* Level-specific hover effects for username */
+.clickable-username.level-1:hover {
+  background-color: #6c757d;
+}
+
+.clickable-username.level-2:hover {
+  background-color: #17a2b8;
+}
+
+.clickable-username.level-3:hover {
+  background-color: #ffc107;
+}
+
+.clickable-username.level-4:hover {
+  background-color: #fd7e14;
 }
 
 /* Item shared notification styles */
