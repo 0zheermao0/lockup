@@ -1,11 +1,11 @@
 from rest_framework import serializers
 from .models import LockTask, TaskKey, TaskVote, TaskTimelineEvent, TaskSubmissionFile, TaskParticipant
-from users.serializers import UserSerializer
+from users.serializers import UserSerializer, UserMinimalSerializer, UserPublicSerializer
 
 
 class TaskSubmissionFileSerializer(serializers.ModelSerializer):
     """任务提交文件序列化器"""
-    uploader = UserSerializer(read_only=True)
+    uploader = UserMinimalSerializer(read_only=True)
     file_url = serializers.ReadOnlyField()
     is_image = serializers.ReadOnlyField()
     is_video = serializers.ReadOnlyField()
@@ -22,7 +22,7 @@ class TaskSubmissionFileSerializer(serializers.ModelSerializer):
 
 class TaskParticipantSerializer(serializers.ModelSerializer):
     """任务参与者序列化器"""
-    participant = UserSerializer(read_only=True)
+    participant = UserMinimalSerializer(read_only=True)
     submission_files = serializers.SerializerMethodField()
 
     class Meta:
@@ -88,9 +88,97 @@ class TaskParticipantSerializer(serializers.ModelSerializer):
         return data
 
 
+class LockTaskListSerializer(serializers.ModelSerializer):
+    """任务列表序列化器（精简版，用于列表显示，不包含敏感用户信息）"""
+    user = UserMinimalSerializer(read_only=True)
+    taker = UserMinimalSerializer(read_only=True)
+    vote_count = serializers.SerializerMethodField()
+    vote_agreement_count = serializers.SerializerMethodField()
+    participant_count = serializers.SerializerMethodField()
+    submitted_count = serializers.SerializerMethodField()
+    approved_count = serializers.SerializerMethodField()
+    can_take = serializers.SerializerMethodField()
+
+    class Meta:
+        model = LockTask
+        fields = [
+            'id', 'user', 'task_type', 'title', 'description', 'status',
+            # 带锁任务字段
+            'duration_type', 'duration_value', 'duration_max', 'difficulty',
+            'unlock_type', 'vote_threshold', 'vote_agreement_ratio',
+            # 投票期相关字段
+            'voting_start_time', 'voting_end_time', 'voting_duration',
+            # 任务板字段
+            'reward', 'deadline', 'max_duration', 'taker', 'taken_at',
+            'completed_at',
+            # 多人任务字段
+            'max_participants',
+            # 时间字段
+            'start_time', 'end_time', 'created_at',
+            # 冻结/解冻字段
+            'is_frozen', 'frozen_at', 'frozen_end_time',
+            # 计算字段
+            'vote_count', 'vote_agreement_count',
+            'participant_count', 'submitted_count', 'approved_count', 'can_take'
+        ]
+        read_only_fields = ['id', 'user', 'created_at']
+
+    def get_vote_count(self, obj):
+        """获取总投票数"""
+        return obj.votes.count()
+
+    def get_vote_agreement_count(self, obj):
+        """获取同意票数"""
+        return obj.votes.filter(agree=True).count()
+
+    def get_participant_count(self, obj):
+        """获取参与者数量"""
+        return obj.participants.count()
+
+    def get_submitted_count(self, obj):
+        """获取已提交参与者数量"""
+        return obj.participants.filter(status='submitted').count()
+
+    def get_approved_count(self, obj):
+        """获取已通过审核的参与者数量"""
+        return obj.participants.filter(status='approved').count()
+
+    def get_can_take(self, obj):
+        """判断当前用户是否可以接取任务"""
+        request = self.context.get('request')
+        if not request or not request.user.is_authenticated:
+            return False
+
+        user = request.user
+
+        # 不能接取自己的任务
+        if obj.user == user:
+            return False
+
+        # 检查是否已经参与过
+        if obj.participants.filter(participant=user).exists():
+            return False
+
+        # 判断是单人还是多人任务
+        is_multi_person = obj.max_participants and obj.max_participants > 1
+
+        if is_multi_person:
+            # 多人任务：检查状态和人数限制
+            if obj.status not in ['open', 'taken', 'submitted']:
+                return False
+
+            # 检查是否已满员
+            current_participants = obj.participants.count()
+            return current_participants < obj.max_participants
+        else:
+            # 单人任务：只能是开放状态
+            return obj.status == 'open'
+
+
 class LockTaskSerializer(serializers.ModelSerializer):
-    user = UserSerializer(read_only=True)
-    taker = UserSerializer(read_only=True)
+    """任务详情序列化器（完整版，用于详情显示）"""
+    user = UserPublicSerializer(read_only=True)
+    taker = UserPublicSerializer(read_only=True)
     key_holder = serializers.SerializerMethodField()
     vote_count = serializers.SerializerMethodField()
     vote_agreement_count = serializers.SerializerMethodField()
@@ -133,7 +221,7 @@ class LockTaskSerializer(serializers.ModelSerializer):
     def get_key_holder(self, obj):
         """获取钥匙持有者"""
         if hasattr(obj, 'key') and obj.key:
-            return UserSerializer(obj.key.holder).data
+            return UserPublicSerializer(obj.key.holder).data
         return None
 
     def get_vote_count(self, obj):
@@ -318,8 +406,8 @@ class LockTaskCreateSerializer(serializers.ModelSerializer):
 
 
 class TaskKeySerializer(serializers.ModelSerializer):
-    task = LockTaskSerializer(read_only=True)
-    holder = UserSerializer(read_only=True)
+    task = LockTaskListSerializer(read_only=True)
+    holder = UserMinimalSerializer(read_only=True)
 
     class Meta:
         model = TaskKey
@@ -328,8 +416,8 @@ class TaskKeySerializer(serializers.ModelSerializer):
 
 
 class TaskVoteSerializer(serializers.ModelSerializer):
-    voter = UserSerializer(read_only=True)
-    task = LockTaskSerializer(read_only=True)
+    voter = UserMinimalSerializer(read_only=True)
+    task = LockTaskListSerializer(read_only=True)
 
     class Meta:
         model = TaskVote
@@ -352,7 +440,7 @@ class TaskVoteCreateSerializer(serializers.ModelSerializer):
 
 class TaskTimelineEventSerializer(serializers.ModelSerializer):
     """任务时间线事件序列化器"""
-    user = UserSerializer(read_only=True)
+    user = UserMinimalSerializer(read_only=True)
     event_type_display = serializers.CharField(source='get_event_type_display', read_only=True)
 
     class Meta:

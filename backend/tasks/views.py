@@ -18,7 +18,7 @@ from .utils import destroy_task_keys
 from .pinning_service import PinningQueueManager
 from .pagination import DynamicPageNumberPagination
 from .serializers import (
-    LockTaskSerializer, LockTaskCreateSerializer,
+    LockTaskSerializer, LockTaskListSerializer, LockTaskCreateSerializer,
     TaskKeySerializer, TaskVoteSerializer, TaskVoteCreateSerializer,
     TaskTimelineEventSerializer
 )
@@ -43,7 +43,8 @@ class LockTaskListCreateView(generics.ListCreateAPIView):
     def get_serializer_class(self):
         if self.request.method == 'POST':
             return LockTaskCreateSerializer
-        return LockTaskSerializer
+        # GET请求（列表视图）使用精简序列化器
+        return LockTaskListSerializer
 
     def get_queryset(self):
         # 在获取任务列表时，自动处理过期的投票

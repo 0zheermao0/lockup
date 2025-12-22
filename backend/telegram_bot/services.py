@@ -813,7 +813,7 @@ Telegram 通知：{'✅ 已开启' if user.telegram_notifications_enabled else '
             logger.error(f"Unexpected error in callback query: {e}")
 
     async def _handle_task_overtime_callback(self, query, callback_data, clicker_user_id):
-        """处理 /task 命令的任务加时回调"""
+        """处理 /task 命令的任务加时回调 - 持续存在的按钮"""
         task_id = callback_data.replace('task_overtime_', '')
         logger.info(f"Processing task overtime callback: task_id={task_id}, user_id={clicker_user_id}")
 
@@ -845,47 +845,73 @@ Telegram 通知：{'✅ 已开启' if user.telegram_notifications_enabled else '
                 logger.warning(f"Task {task_id} not found")
                 return
 
-            # 检查任务状态
-            if task.status != 'active':
+            # 检查任务状态 - 允许active和voting状态
+            if task.status not in ['active', 'voting']:
                 await self._safe_callback_response(query, "❌ 任务已结束，无法加时", show_alert=True)
                 logger.warning(f"Task {task_id} is not active, status: {task.status}")
                 return
 
-            # 生成随机加时时间（15-120分钟）
-            random_minutes = random.randint(15, 120)
-            logger.info(f"Generated random minutes: {random_minutes}")
+            # 使用 add_overtime_to_task 的逻辑来生成基于难度的随机时间
+            # 根据难度等级确定加时范围（分钟）
+            difficulty_overtime_map = {
+                'easy': 10,     # 简单：10分钟
+                'normal': 20,   # 普通：20分钟
+                'hard': 30,     # 困难：30分钟
+                'hell': 60      # 地狱：60分钟
+            }
 
-            # 执行加时操作（使用 sync_to_async 包装同步函数）
-            overtime_result = await sync_to_async(add_overtime_to_task)(task, clicker_user, random_minutes)
+            base_overtime = difficulty_overtime_map.get(task.difficulty, 20)  # 默认20分钟
+
+            # 随机加时（在基础时间的50%-150%之间）
+            min_overtime = int(base_overtime * 0.5)
+            max_overtime = int(base_overtime * 1.5)
+            random_minutes = random.randint(min_overtime, max_overtime)
+
+            logger.info(f"Generated difficulty-based random minutes for {task.difficulty}: {random_minutes} (range: {min_overtime}-{max_overtime})")
+
+            # 执行加时操作（不传入minutes参数，让函数自己计算）
+            overtime_result = await sync_to_async(add_overtime_to_task)(task, clicker_user)
             logger.info(f"Overtime result: {overtime_result}")
 
             if overtime_result['success']:
-                # 加时成功，更新消息
+                # 加时成功，在消息末尾追加加时记录，但保持按钮
                 original_text = query.message.text
-                updated_text = f"{original_text}\n\n🎯 @{clicker_user.username} 给这个任务加了 {random_minutes} 分钟！"
 
-                # 更新消息，移除按钮（防止重复点击）
+                # 检查是否已有加时记录，如果有则追加
+                if "🎯 加时记录：" in original_text:
+                    # 已有加时记录，在现有记录后追加
+                    updated_text = f"{original_text}\n• @{clicker_user.username} +{overtime_result['overtime_minutes']}分钟"
+                else:
+                    # 首次加时，添加加时记录区域
+                    updated_text = f"{original_text}\n\n🎯 **加时记录：**\n• @{clicker_user.username} +{overtime_result['overtime_minutes']}分钟"
+
+                # 保持原有的加时按钮（持续存在）
+                keyboard = InlineKeyboardMarkup([
+                    [InlineKeyboardButton("⏰ 给TA加时", callback_data=f"task_overtime_{task.id}")]
+                ])
+
+                # 更新消息，保持按钮
                 edit_success = await self._safe_edit_message(
                     query,
                     updated_text,
-                    reply_markup=None,
+                    reply_markup=keyboard,
                     parse_mode='Markdown'
                 )
 
                 # 发送确认消息
                 response_success = await self._safe_callback_response(
                     query,
-                    f"✅ 成功给任务加时 {random_minutes} 分钟！",
+                    f"✅ 成功给任务加时 {overtime_result['overtime_minutes']} 分钟！",
                     show_alert=True
                 )
 
                 if edit_success and response_success:
-                    logger.info(f"Task overtime successful: user {clicker_user.username} added {random_minutes} minutes to task {task.title}")
+                    logger.info(f"Task overtime successful: user {clicker_user.username} added {overtime_result['overtime_minutes']} minutes to task {task.title}")
                 else:
                     logger.warning(f"Task overtime successful but message update failed: edit={edit_success}, response={response_success}")
 
             else:
-                # 加时失败
+                # 加时失败，显示具体原因（包括两小时冷却等）
                 await self._safe_callback_response(
                     query,
                     f"❌ 加时失败：{overtime_result['message']}",
