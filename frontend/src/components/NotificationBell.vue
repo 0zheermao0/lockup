@@ -101,6 +101,54 @@
                   </div>
                 </template>
 
+                <!-- 特殊处理任务审核通过通知 -->
+                <template v-else-if="notification.notification_type === 'task_board_approved'">
+                  <div class="task-approved-content">
+                    <p>{{ notification.message }}</p>
+
+                    <!-- 任务详情 -->
+                    <div v-if="notification.extra_data" class="task-approval-details">
+                      <div v-if="notification.extra_data.task_title" class="task-info">
+                        <div class="task-title">{{ notification.extra_data.task_title }}</div>
+                      </div>
+
+                      <!-- 奖励信息 -->
+                      <div v-if="notification.extra_data.reward_amount" class="reward-info">
+                        <div class="reward-amount">
+                          💰 奖励: {{ notification.extra_data.reward_amount }} 积分
+                        </div>
+
+                        <!-- 区分单人任务和多人任务的到账情况 -->
+                        <div class="payment-status">
+                          <template v-if="notification.extra_data.is_multi_participant && !notification.extra_data.task_completed">
+                            <div class="pending-payment">
+                              ⏳ 等待任务结束后统一发放奖励
+                            </div>
+                            <div v-if="notification.extra_data.other_participants_count" class="participants-info">
+                              还有 {{ notification.extra_data.other_participants_count }} 人参与中
+                            </div>
+                          </template>
+                          <template v-else-if="notification.extra_data.is_multi_participant && notification.extra_data.task_completed">
+                            <div class="completed-payment">
+                              ✅ 任务已结束，奖励已发放
+                            </div>
+                          </template>
+                          <template v-else>
+                            <div class="immediate-payment">
+                              ✅ 奖励已立即到账
+                            </div>
+                          </template>
+                        </div>
+                      </div>
+
+                      <!-- 审核时间 -->
+                      <div v-if="notification.extra_data.approved_at" class="approval-time">
+                        审核时间: {{ new Date(notification.extra_data.approved_at).toLocaleString('zh-CN') }}
+                      </div>
+                    </div>
+                  </div>
+                </template>
+
                 <!-- 特殊处理物品分享通知 -->
                 <template v-else-if="notification.notification_type === 'item_shared'">
                   <div class="item-shared-content">
@@ -902,6 +950,92 @@ onUnmounted(() => {
   color: white !important;
 }
 
+/* Task approval notification styles */
+.task-approved-content {
+  margin-top: 0.5rem;
+}
+
+.task-approval-details {
+  margin-top: 0.75rem;
+  padding: 0.75rem;
+  background: linear-gradient(135deg, #f8f9fa, #e9ecef);
+  border: 2px solid #000;
+  border-radius: 6px;
+  font-size: 0.8rem;
+}
+
+.task-title {
+  font-weight: 700;
+  color: #333;
+  margin-bottom: 0.5rem;
+  padding: 0.25rem 0.5rem;
+  background: white;
+  border: 2px solid #000;
+  border-radius: 4px;
+}
+
+.reward-info {
+  margin: 0.5rem 0;
+}
+
+.reward-amount {
+  font-weight: 700;
+  color: #ffc107;
+  margin-bottom: 0.5rem;
+  padding: 0.375rem 0.75rem;
+  background: rgba(255, 193, 7, 0.1);
+  border: 2px solid #ffc107;
+  border-radius: 4px;
+  text-align: center;
+}
+
+.payment-status {
+  margin-top: 0.5rem;
+}
+
+.pending-payment {
+  background: rgba(255, 193, 7, 0.1);
+  color: #856404;
+  padding: 0.375rem 0.75rem;
+  border: 2px solid #ffc107;
+  border-radius: 4px;
+  font-weight: 600;
+  text-align: center;
+  margin-bottom: 0.25rem;
+}
+
+.participants-info {
+  background: rgba(23, 162, 184, 0.1);
+  color: #0c5460;
+  padding: 0.25rem 0.5rem;
+  border: 1px solid #17a2b8;
+  border-radius: 3px;
+  font-size: 0.75rem;
+  text-align: center;
+  font-weight: 500;
+}
+
+.completed-payment,
+.immediate-payment {
+  background: rgba(40, 167, 69, 0.1);
+  color: #155724;
+  padding: 0.375rem 0.75rem;
+  border: 2px solid #28a745;
+  border-radius: 4px;
+  font-weight: 600;
+  text-align: center;
+}
+
+.approval-time {
+  margin-top: 0.5rem;
+  padding: 0.25rem 0.5rem;
+  background: rgba(108, 117, 125, 0.1);
+  border-left: 3px solid #6c757d;
+  font-size: 0.75rem;
+  color: #6c757d;
+  font-weight: 500;
+}
+
 /* Item shared notification styles */
 .item-shared-content {
   padding: 0.5rem 0;
@@ -1140,6 +1274,40 @@ onUnmounted(() => {
     padding: 0.2rem 0.4rem;
     font-size: 0.7rem;
     margin-left: 0.125rem;
+  }
+
+  /* Task approval notification mobile styles */
+  .task-approval-details {
+    padding: 0.5rem;
+    font-size: 0.75rem;
+  }
+
+  .task-title {
+    padding: 0.2rem 0.4rem;
+    font-size: 0.75rem;
+    margin-bottom: 0.375rem;
+  }
+
+  .reward-amount {
+    padding: 0.25rem 0.5rem;
+    font-size: 0.75rem;
+  }
+
+  .pending-payment,
+  .completed-payment,
+  .immediate-payment {
+    padding: 0.25rem 0.5rem;
+    font-size: 0.7rem;
+  }
+
+  .participants-info {
+    padding: 0.2rem 0.4rem;
+    font-size: 0.7rem;
+  }
+
+  .approval-time {
+    padding: 0.2rem 0.4rem;
+    font-size: 0.7rem;
   }
 }
 </style>
