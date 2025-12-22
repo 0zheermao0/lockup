@@ -99,6 +99,14 @@ app.conf.beat_schedule = {
             'routing_key': 'default',
         },
     },
+    'process-level-promotions': {
+        'task': 'tasks.celery_tasks.process_level_promotions',
+        'schedule': crontab(hour=4, minute=30, day_of_week=3),  # Wednesday 4:30 AM
+        'options': {
+            'queue': 'default',
+            'expires': 3600,  # Task expires after 1 hour
+        }
+    },
 }
 
 # Set default queue for beat scheduler
