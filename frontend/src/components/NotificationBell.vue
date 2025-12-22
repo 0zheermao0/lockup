@@ -177,6 +177,33 @@
                   </div>
                 </template>
 
+                <!-- 特殊处理严格模式自动冻结通知 -->
+                <template v-else-if="notification.notification_type === 'task_frozen_auto_strict'">
+                  <div class="auto-freeze-content">
+                    <p class="freeze-message">{{ notification.message }}</p>
+
+                    <!-- 任务详情 -->
+                    <div v-if="notification.extra_data" class="freeze-details">
+                      <div class="task-info">
+                        <div class="task-title">
+                          任务: {{ notification.extra_data.task_title || '未知任务' }}
+                        </div>
+                        <div class="freeze-reason">
+                          原因: 24小时内未发布打卡动态
+                        </div>
+                        <div v-if="notification.extra_data.frozen_at" class="freeze-time">
+                          冻结时间: {{ new Date(notification.extra_data.frozen_at).toLocaleString('zh-CN') }}
+                        </div>
+                      </div>
+
+                      <!-- 解冻提示 -->
+                      <div class="unfreeze-hint">
+                        💡 提示：需要钥匙持有者解冻任务才能继续
+                      </div>
+                    </div>
+                  </div>
+                </template>
+
                 <!-- 普通通知内容 -->
                 <template v-else>
                   {{ notification.message }}
@@ -283,7 +310,8 @@ const getNotificationIcon = (type: string) => {
     friend_accepted: '🤝',
     level_upgraded: '⬆️',
     system_announcement: '📢',
-    game_result: '🎮'
+    game_result: '🎮',
+    task_frozen_auto_strict: '🧊'
   }
   return iconMap[type] || '📢'
 }
@@ -1106,6 +1134,72 @@ onUnmounted(() => {
   background: rgba(220, 53, 69, 0.1);
   color: #dc3545;
   border: 1px solid #dc3545;
+}
+
+/* Auto-freeze notification styles */
+.auto-freeze-content {
+  padding: 0.5rem 0;
+  position: relative;
+}
+
+.freeze-message {
+  font-weight: 600;
+  color: #dc3545;
+  margin-bottom: 0.5rem;
+  position: relative;
+  z-index: 1;
+}
+
+.freeze-details {
+  margin-top: 0.5rem;
+  padding: 0.75rem;
+  background: linear-gradient(135deg, #ffe6e6, #fff0f0);
+  border: 2px solid #dc3545;
+  border-radius: 6px;
+  box-shadow: 2px 2px 0 rgba(220, 53, 69, 0.2);
+}
+
+.task-info {
+  margin-bottom: 0.5rem;
+}
+
+.task-title {
+  font-weight: 700;
+  color: #721c24;
+  margin-bottom: 0.25rem;
+  font-size: 0.9rem;
+}
+
+.freeze-reason {
+  color: #856404;
+  font-weight: 600;
+  margin-bottom: 0.25rem;
+  font-size: 0.85rem;
+  padding: 0.25rem 0.5rem;
+  background: rgba(255, 193, 7, 0.1);
+  border: 1px solid #ffc107;
+  border-radius: 4px;
+  display: inline-block;
+}
+
+.freeze-time {
+  color: #6c757d;
+  font-size: 0.8rem;
+  font-weight: 500;
+  margin-top: 0.25rem;
+}
+
+.unfreeze-hint {
+  margin-top: 0.5rem;
+  padding: 0.5rem;
+  background: rgba(23, 162, 184, 0.1);
+  border: 2px solid #17a2b8;
+  border-radius: 4px;
+  color: #0c5460;
+  font-weight: 600;
+  font-size: 0.85rem;
+  text-align: center;
+  box-shadow: 1px 1px 0 rgba(23, 162, 184, 0.2);
 }
 
 /* 移动端响应式 */
