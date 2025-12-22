@@ -175,7 +175,7 @@ def _process_task_hourly_rewards(task, now, next_reward_hour, rewards_to_give, p
                             'notification_type': 'batched',  # 标记为批量通知
                             'processed_by': 'celery_task'
                         },
-                        priority='very_low'  # 更低优先级，减少视觉干扰
+                        priority='low'  # 低优先级，减少视觉干扰
                     )
                     logger.info(f"Sent hourly reward notification for task {task.id}, hour {hour_num}")
                 except Exception as e:
@@ -1249,4 +1249,120 @@ def process_level_promotions(self):
 
         # Final failure notification
         logger.error("Level promotion task failed after all retries")
+        raise exc
+
+
+@shared_task(bind=True, max_retries=3)
+def auto_freeze_strict_mode_tasks(self):
+    """
+    Daily task to automatically freeze strict mode lock tasks without check-in posts
+    Runs daily at 4:00 AM to check for tasks that need to be frozen
+    """
+    try:
+        logger.info("Starting auto-freeze strict mode tasks check")
+
+        from posts.models import Post
+        from datetime import timedelta
+
+        with transaction.atomic():
+            now = timezone.now()
+            yesterday_4am = now.replace(hour=4, minute=0, second=0, microsecond=0) - timedelta(days=1)
+
+            # Find all strict mode lock tasks that are active and not frozen
+            strict_tasks = LockTask.objects.select_for_update().filter(
+                task_type='lock',
+                status='active',
+                strict_mode=True,
+                is_frozen=False,
+                start_time__lt=yesterday_4am  # Task must have been started before yesterday 4 AM
+            )
+
+            logger.info(f"Found {strict_tasks.count()} strict mode tasks to check")
+
+            frozen_tasks = []
+
+            for task in strict_tasks:
+                # Check if user made any check-in post since yesterday 4 AM
+                checkin_posts = Post.objects.filter(
+                    user=task.user,
+                    post_type='checkin',
+                    created_at__gte=yesterday_4am,
+                    created_at__lt=now
+                ).exists()
+
+                if not checkin_posts:
+                    # No check-in post found, auto-freeze the task
+                    logger.info(f"Auto-freezing task {task.id} for user {task.user.username} - no check-in post found")
+
+                    # Freeze the task (similar to manual freeze but without key/coin requirements)
+                    task.is_frozen = True
+                    task.frozen_at = now
+                    task.frozen_end_time = task.end_time
+                    task.save()
+
+                    # Create timeline event
+                    TaskTimelineEvent.objects.create(
+                        task=task,
+                        event_type='task_frozen',
+                        user=None,  # System action
+                        description='系统自动冻结任务（严格模式未打卡）',
+                        metadata={
+                            'action': 'auto_freeze',
+                            'reason': 'strict_mode_no_checkin',
+                            'check_period_start': yesterday_4am.isoformat(),
+                            'check_period_end': now.isoformat(),
+                            'frozen_at': task.frozen_at.isoformat(),
+                            'frozen_end_time': task.frozen_end_time.isoformat() if task.frozen_end_time else None,
+                            'system_action': True
+                        }
+                    )
+
+                    # Create notification for user
+                    Notification.create_notification(
+                        recipient=task.user,
+                        notification_type='task_frozen_auto_strict',
+                        related_object_type='task',
+                        related_object_id=task.id,
+                        extra_data={
+                            'task_title': task.title,
+                            'task_id': str(task.id),
+                            'freeze_reason': 'strict_mode_no_checkin',
+                            'check_period_hours': 24,
+                            'frozen_at': task.frozen_at.isoformat()
+                        },
+                        priority='high'
+                    )
+
+                    frozen_tasks.append({
+                        'task_id': str(task.id),
+                        'task_title': task.title,
+                        'user_id': task.user.id,
+                        'username': task.user.username
+                    })
+                else:
+                    logger.debug(f"Task {task.id} for user {task.user.username} has check-in post, skipping freeze")
+
+            result = {
+                'status': 'success',
+                'total_checked': strict_tasks.count(),
+                'total_frozen': len(frozen_tasks),
+                'frozen_tasks': frozen_tasks,
+                'check_time': now.isoformat(),
+                'check_period_start': yesterday_4am.isoformat()
+            }
+
+            logger.info(f"Auto-freeze task completed: {result}")
+            return result
+
+    except Exception as exc:
+        logger.error(f"Auto-freeze strict mode tasks failed: {str(exc)}")
+
+        # Retry with exponential backoff
+        if self.request.retries < self.max_retries:
+            retry_countdown = 2 ** self.request.retries * 60  # 1min, 2min, 4min
+            logger.info(f"Retrying auto-freeze task in {retry_countdown} seconds")
+            raise self.retry(countdown=retry_countdown, exc=exc)
+
+        # Final failure notification
+        logger.error("Auto-freeze strict mode tasks failed after all retries")
         raise exc

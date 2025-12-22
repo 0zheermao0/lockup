@@ -121,6 +121,90 @@ class Command(BaseCommand):
                     )
 
         # ========================================================================
+        # Auto-Freeze Strict Mode Tasks Setup
+        # ========================================================================
+
+        self.stdout.write('\n' + '=' * 60)
+        self.stdout.write(self.style.SUCCESS('Setting up auto-freeze strict mode tasks...'))
+
+        # Create daily crontab schedule (Daily 4:15 AM)
+        auto_freeze_schedule, created = CrontabSchedule.objects.get_or_create(
+            minute=15,
+            hour=4,
+            day_of_week='*',  # Daily
+            day_of_month='*',
+            month_of_year='*',
+        )
+
+        if created and not dry_run:
+            self.stdout.write(f'Created daily crontab schedule: {auto_freeze_schedule}')
+        elif created:
+            self.stdout.write(f'[DRY RUN] Would create daily crontab schedule: {auto_freeze_schedule}')
+        else:
+            self.stdout.write(f'Using existing daily crontab schedule: {auto_freeze_schedule}')
+
+        # Create periodic task for auto-freeze
+        auto_freeze_task_name = 'auto-freeze-strict-mode-tasks'
+        auto_freeze_task_function = 'tasks.celery_tasks.auto_freeze_strict_mode_tasks'
+
+        if dry_run:
+            existing_auto_freeze_task = PeriodicTask.objects.filter(name=auto_freeze_task_name).first()
+            if existing_auto_freeze_task:
+                self.stdout.write(
+                    self.style.WARNING(f'[DRY RUN] Task "{auto_freeze_task_name}" already exists')
+                )
+            else:
+                self.stdout.write(
+                    self.style.SUCCESS(f'[DRY RUN] Would create periodic task: {auto_freeze_task_name}')
+                )
+        else:
+            auto_freeze_periodic_task, created = PeriodicTask.objects.get_or_create(
+                name=auto_freeze_task_name,
+                defaults={
+                    'crontab': auto_freeze_schedule,
+                    'task': auto_freeze_task_function,
+                    'kwargs': json.dumps({}),
+                    'enabled': True,
+                    'description': 'Auto-freeze strict mode tasks without check-in posts (Daily 4:15 AM)',
+                    'queue': 'default',
+                }
+            )
+
+            if created:
+                self.stdout.write(
+                    self.style.SUCCESS(f'Created periodic task: {auto_freeze_task_name}')
+                )
+                self.stdout.write(f'  Task: {auto_freeze_task_function}')
+                self.stdout.write(f'  Schedule: {auto_freeze_schedule}')
+                self.stdout.write(f'  Queue: default')
+                self.stdout.write(f'  Enabled: {auto_freeze_periodic_task.enabled}')
+            else:
+                # Update existing task if needed
+                updated = False
+                if auto_freeze_periodic_task.task != auto_freeze_task_function:
+                    auto_freeze_periodic_task.task = auto_freeze_task_function
+                    updated = True
+                if auto_freeze_periodic_task.crontab != auto_freeze_schedule:
+                    auto_freeze_periodic_task.crontab = auto_freeze_schedule
+                    updated = True
+                if not auto_freeze_periodic_task.enabled:
+                    auto_freeze_periodic_task.enabled = True
+                    updated = True
+                if getattr(auto_freeze_periodic_task, 'queue', None) != 'default':
+                    auto_freeze_periodic_task.queue = 'default'
+                    updated = True
+
+                if updated:
+                    auto_freeze_periodic_task.save()
+                    self.stdout.write(
+                        self.style.SUCCESS(f'Updated existing periodic task: {auto_freeze_task_name}')
+                    )
+                else:
+                    self.stdout.write(
+                        self.style.WARNING(f'Periodic task "{auto_freeze_task_name}" already exists and is up to date')
+                    )
+
+        # ========================================================================
         # Weekly Level Promotions Task Setup
         # ========================================================================
 
@@ -220,6 +304,14 @@ class Command(BaseCommand):
             self.stdout.write(f'Queue: {getattr(periodic_task, "queue", "default")}')
             self.stdout.write(f'Last Run: {periodic_task.last_run_at or "Never"}')
 
+            self.stdout.write('\n--- Auto-Freeze Strict Mode Tasks ---')
+            self.stdout.write(f'Name: {auto_freeze_periodic_task.name}')
+            self.stdout.write(f'Task: {auto_freeze_periodic_task.task}')
+            self.stdout.write(f'Schedule: {auto_freeze_periodic_task.crontab}')
+            self.stdout.write(f'Enabled: {auto_freeze_periodic_task.enabled}')
+            self.stdout.write(f'Queue: {getattr(auto_freeze_periodic_task, "queue", "default")}')
+            self.stdout.write(f'Last Run: {auto_freeze_periodic_task.last_run_at or "Never"}')
+
             self.stdout.write('\n--- Weekly Level Promotions Task ---')
             self.stdout.write(f'Name: {level_periodic_task.name}')
             self.stdout.write(f'Task: {level_periodic_task.task}')
@@ -246,7 +338,7 @@ class Command(BaseCommand):
             self.style.WARNING('Deleting Celery Beat periodic tasks...')
         )
 
-        task_names = ['process-hourly-rewards', 'process-level-promotions']
+        task_names = ['process-hourly-rewards', 'auto-freeze-strict-mode-tasks', 'process-level-promotions']
 
         if dry_run:
             for task_name in task_names:

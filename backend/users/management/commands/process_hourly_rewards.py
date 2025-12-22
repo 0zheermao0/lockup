@@ -86,7 +86,7 @@ class Command(BaseCommand):
                             'total_hourly_rewards': task.total_hourly_rewards + 1,
                             'notification_type': 'batched'  # 标记为批量通知
                         },
-                        priority='very_low'  # 更低优先级，减少视觉干扰
+                        priority='low'  # 低优先级，减少视觉干扰
                     )
 
                 processed_rewards.append({

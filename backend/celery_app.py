@@ -107,6 +107,14 @@ app.conf.beat_schedule = {
             'expires': 3600,  # Task expires after 1 hour
         }
     },
+    'auto-freeze-strict-mode-tasks': {
+        'task': 'tasks.celery_tasks.auto_freeze_strict_mode_tasks',
+        'schedule': crontab(hour=4, minute=15),  # Daily at 4:15 AM (after check-in voting at 4:00)
+        'options': {
+            'queue': 'default',
+            'expires': 3600,  # Task expires after 1 hour
+        }
+    },
 }
 
 # Set default queue for beat scheduler

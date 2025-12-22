@@ -481,6 +481,7 @@ class Notification(models.Model):
         ('checkin_vote_rejected', '打卡投票拒绝'),
         ('checkin_vote_reward', '打卡投票奖励'),
         ('task_frozen_by_vote', '投票冻结任务'),
+        ('task_frozen_auto_strict', '严格模式自动冻结任务'),
         ('task_failed_by_vote', '投票失败任务'),
 
         # 积分系统类
@@ -668,8 +669,9 @@ class Notification(models.Model):
             # 导入放在方法内部避免循环导入
             from telegram_bot.services import telegram_service
 
-            # 检查用户是否可以接收 Telegram 通知
-            if notification.recipient.can_receive_telegram_notifications():
+            # 检查用户是否可以接收 Telegram 通知，并且只转发 urgent 优先级的通知
+            if (notification.recipient.can_receive_telegram_notifications() and
+                notification.priority == 'urgent'):
                 # 异步发送通知（这里简化处理，实际生产环境可能需要使用 Celery 等任务队列）
                 import asyncio
                 import threading
@@ -726,6 +728,7 @@ class Notification(models.Model):
             'checkin_vote_rejected': "打卡投票被拒绝",
             'checkin_vote_reward': "打卡投票奖励",
             'task_frozen_by_vote': "任务因投票被冻结",
+            'task_frozen_auto_strict': "严格模式任务自动冻结",
             'task_failed_by_vote': "任务因投票失败",
             'coins_earned_hourly': "获得小时奖励积分",
             'coins_earned_hourly_batch': "获得批量小时奖励积分",
@@ -766,6 +769,7 @@ class Notification(models.Model):
             'checkin_vote_rejected': "你的打卡动态投票被拒绝，任务已被冻结或失败",
             'checkin_vote_reward': "你投票支持的打卡通过了，获得奖励积分",
             'task_frozen_by_vote': "你的活跃任务因打卡投票被拒绝而冻结",
+            'task_frozen_auto_strict': "你的严格模式任务因未在24小时内打卡而被系统自动冻结",
             'task_failed_by_vote': "你的任务因打卡投票被拒绝而失败",
             'coins_earned_hourly': "你的任务已运行满一小时，获得1积分奖励",
             'coins_earned_hourly_batch': "你的任务持续进行中，累计获得积分奖励",
