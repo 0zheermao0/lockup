@@ -138,7 +138,14 @@
               <!-- 通知元信息 -->
               <div class="notification-meta">
                 <span class="time">{{ notification.time_ago }}</span>
-                <span v-if="notification.actor" class="actor">{{ notification.actor.username }}</span>
+                <span
+                  v-if="notification.actor"
+                  class="actor clickable-actor"
+                  @click.stop="openActorProfile(notification.actor.id, notification.actor.username)"
+                  :title="`查看 ${notification.actor.username} 的个人资料`"
+                >
+                  {{ notification.actor.username }}
+                </span>
                 <span v-if="getNotificationPriorityClass(notification.priority)"
                       :class="['priority-badge', getNotificationPriorityClass(notification.priority)]">
                   {{ getPriorityText(notification.priority) }}
@@ -316,6 +323,13 @@ const openClaimerProfile = (claimerId: string, claimerUsername: string) => {
   console.log('openClaimerProfile called:', claimerId, claimerUsername)
   // 打开物品领取者的个人资料页面
   router.push({ name: 'profile', params: { id: claimerId } })
+  showDropdown.value = false
+}
+
+const openActorProfile = (actorId: number, actorUsername: string) => {
+  console.log('openActorProfile called:', actorId, actorUsername)
+  // 打开通知触发者的个人资料页面
+  router.push({ name: 'profile', params: { id: actorId.toString() } })
   showDropdown.value = false
 }
 
@@ -650,6 +664,29 @@ onUnmounted(() => {
 .actor {
   color: #007bff;
   font-weight: 500;
+}
+
+.clickable-actor {
+  cursor: pointer;
+  padding: 0.25rem 0.5rem;
+  border-radius: 4px;
+  margin-left: 0.25rem;
+  transition: all 0.2s ease;
+  display: inline-block;
+  position: relative;
+  z-index: 10;
+  pointer-events: auto;
+  border: 2px solid transparent;
+  text-decoration: underline;
+}
+
+.clickable-actor:hover {
+  background-color: #007bff;
+  color: white;
+  transform: translate(-1px, -1px);
+  box-shadow: 2px 2px 0 #000;
+  text-decoration: none;
+  border-color: #000;
 }
 
 .priority-badge {
@@ -1054,6 +1091,12 @@ onUnmounted(() => {
   .clickable-username {
     padding: 0.2rem 0.4rem;
     font-size: 0.75rem;
+  }
+
+  .clickable-actor {
+    padding: 0.2rem 0.4rem;
+    font-size: 0.7rem;
+    margin-left: 0.125rem;
   }
 }
 </style>
