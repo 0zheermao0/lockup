@@ -406,61 +406,154 @@
               <div v-if="timelineLoading" class="timeline-loading">
                 加载时间线中...
               </div>
-              <div v-else class="timeline-container">
-                <!-- Timeline events from API -->
-                <div
-                  v-for="event in timeline"
-                  :key="event.id"
-                  class="timeline-item"
-                >
-                  <div class="timeline-dot" :class="getEventTypeClass(event.event_type)"></div>
-                  <div class="timeline-content">
-                    <div class="timeline-title">{{ event.event_type_display }}</div>
-                    <div class="timeline-description">{{ event.description }}</div>
-                    <div v-if="!taskTimeDisplayHidden" class="timeline-time">{{ formatDateTime(event.created_at) }}</div>
-                    <div v-else class="timeline-time-hidden">
-                      <span class="hidden-time-placeholder">🔒 时间已隐藏</span>
+              <div v-else>
+                <!-- Desktop Timeline (Vertical) -->
+                <div class="timeline-container desktop-timeline">
+                  <!-- Timeline events from API -->
+                  <div
+                    v-for="event in timeline"
+                    :key="event.id"
+                    class="timeline-item"
+                  >
+                    <div class="timeline-dot" :class="getEventTypeClass(event.event_type)"></div>
+                    <div class="timeline-content">
+                      <div class="timeline-title">{{ event.event_type_display }}</div>
+                      <div class="timeline-description">{{ event.description }}</div>
+                      <div v-if="!taskTimeDisplayHidden" class="timeline-time">{{ formatDateTime(event.created_at) }}</div>
+                      <div v-else class="timeline-time-hidden">
+                        <span class="hidden-time-placeholder">🔒 时间已隐藏</span>
+                      </div>
+                      <div v-if="event.user" class="timeline-user">
+                        操作者:
+                        <button
+                          @click="openUserProfile(event.user.id)"
+                          class="timeline-user-btn"
+                          :title="`查看 ${event.user.username} 的资料`"
+                        >
+                          {{ event.user.username }}
+                        </button>
+                      </div>
+                      <div v-if="event.time_change_minutes && !taskTimeDisplayHidden" class="timeline-time-change">
+                        时间变化: {{ event.time_change_minutes > 0 ? '+' : '' }}{{ event.time_change_minutes }} 分钟
+                      </div>
+                      <div v-else-if="event.time_change_minutes && taskTimeDisplayHidden" class="timeline-time-change-hidden">
+                        <span class="hidden-time-placeholder">🔒 时间变化已隐藏</span>
+                      </div>
+                      <div v-if="event.previous_end_time && event.new_end_time && !taskTimeDisplayHidden" class="timeline-times">
+                        <div class="previous-time">原定结束: {{ formatDateTime(event.previous_end_time) }}</div>
+                        <div class="new-time">新的结束: {{ formatDateTime(event.new_end_time) }}</div>
+                      </div>
+                      <div v-else-if="event.previous_end_time && event.new_end_time && taskTimeDisplayHidden" class="timeline-times-hidden">
+                        <span class="hidden-time-placeholder">🔒 时间信息已隐藏</span>
+                      </div>
                     </div>
-                    <div v-if="event.user" class="timeline-user">
-                      操作者:
-                      <button
-                        @click="openUserProfile(event.user.id)"
-                        class="timeline-user-btn"
-                        :title="`查看 ${event.user.username} 的资料`"
-                      >
-                        {{ event.user.username }}
-                      </button>
+                  </div>
+
+                  <!-- Fallback: Basic timeline if no API events -->
+                  <div v-if="timeline.length === 0 && taskStartTime" class="timeline-item">
+                    <div class="timeline-dot start"></div>
+                    <div class="timeline-content">
+                      <div class="timeline-title">任务开始</div>
+                      <div class="timeline-time">{{ formatDateTime(taskStartTime) }}</div>
                     </div>
-                    <div v-if="event.time_change_minutes && !taskTimeDisplayHidden" class="timeline-time-change">
-                      时间变化: {{ event.time_change_minutes > 0 ? '+' : '' }}{{ event.time_change_minutes }} 分钟
-                    </div>
-                    <div v-else-if="event.time_change_minutes && taskTimeDisplayHidden" class="timeline-time-change-hidden">
-                      <span class="hidden-time-placeholder">🔒 时间变化已隐藏</span>
-                    </div>
-                    <div v-if="event.previous_end_time && event.new_end_time && !taskTimeDisplayHidden" class="timeline-times">
-                      <div class="previous-time">原定结束: {{ formatDateTime(event.previous_end_time) }}</div>
-                      <div class="new-time">新的结束: {{ formatDateTime(event.new_end_time) }}</div>
-                    </div>
-                    <div v-else-if="event.previous_end_time && event.new_end_time && taskTimeDisplayHidden" class="timeline-times-hidden">
-                      <span class="hidden-time-placeholder">🔒 时间信息已隐藏</span>
+                  </div>
+                  <div v-if="timeline.length === 0 && taskEndTime" class="timeline-item">
+                    <div class="timeline-dot end"></div>
+                    <div class="timeline-content">
+                      <div class="timeline-title">任务结束</div>
+                      <div class="timeline-time">{{ formatDateTime(taskEndTime) }}</div>
                     </div>
                   </div>
                 </div>
 
-                <!-- Fallback: Basic timeline if no API events -->
-                <div v-if="timeline.length === 0 && taskStartTime" class="timeline-item">
-                  <div class="timeline-dot start"></div>
-                  <div class="timeline-content">
-                    <div class="timeline-title">任务开始</div>
-                    <div class="timeline-time">{{ formatDateTime(taskStartTime) }}</div>
+                <!-- Mobile Timeline (Horizontal) -->
+                <div class="horizontal-timeline-wrapper mobile-timeline">
+                <div
+                  class="horizontal-timeline-container"
+                  :style="{
+                    '--timeline-items': timeline.length || 1,
+                    'width': `${Math.max(timeline.length * 280 + 40, 320)}px`,
+                    'min-height': `${Math.max(280, 240)}px`
+                  }"
+                >
+                  <!-- Timeline track -->
+                  <div class="timeline-track"></div>
+
+                  <!-- Timeline events from API (oldest to newest, left to right) -->
+                  <div
+                    v-for="(event, index) in timelineReversed"
+                    :key="event.id"
+                    class="horizontal-timeline-item"
+                    :style="{ left: `${index * 280 + 20}px` }"
+                  >
+                    <div class="timeline-dot-wrapper">
+                      <div class="timeline-dot" :class="getEventTypeClass(event.event_type)"></div>
+                      <div class="timeline-connector" v-if="index < timelineReversed.length - 1"></div>
+                    </div>
+                    <div class="timeline-card">
+                      <div class="timeline-card-header">
+                        <div class="timeline-title">{{ event.event_type_display }}</div>
+                        <div v-if="!taskTimeDisplayHidden" class="timeline-time">
+                          {{ formatDateTime(event.created_at) }}
+                        </div>
+                        <div v-else class="timeline-time-hidden">
+                          <span class="hidden-time-placeholder">🔒 时间已隐藏</span>
+                        </div>
+                      </div>
+                      <div class="timeline-card-body">
+                        <div class="timeline-description">{{ event.description }}</div>
+                        <div v-if="event.user" class="timeline-user">
+                          操作者:
+                          <button
+                            @click="openUserProfile(event.user.id)"
+                            class="timeline-user-btn"
+                            :title="`查看 ${event.user.username} 的资料`"
+                          >
+                            {{ event.user.username }}
+                          </button>
+                        </div>
+                        <div v-if="event.time_change_minutes && !taskTimeDisplayHidden" class="timeline-time-change">
+                          时间变化: {{ event.time_change_minutes > 0 ? '+' : '' }}{{ event.time_change_minutes }} 分钟
+                        </div>
+                        <div v-else-if="event.time_change_minutes && taskTimeDisplayHidden" class="timeline-time-change-hidden">
+                          <span class="hidden-time-placeholder">🔒 时间变化已隐藏</span>
+                        </div>
+                        <div v-if="event.previous_end_time && event.new_end_time && !taskTimeDisplayHidden" class="timeline-times">
+                          <div class="previous-time">原定结束: {{ formatDateTime(event.previous_end_time) }}</div>
+                          <div class="new-time">新的结束: {{ formatDateTime(event.new_end_time) }}</div>
+                        </div>
+                        <div v-else-if="event.previous_end_time && event.new_end_time && taskTimeDisplayHidden" class="timeline-times-hidden">
+                          <span class="hidden-time-placeholder">🔒 时间信息已隐藏</span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <!-- Fallback: Basic timeline if no API events -->
+                  <div v-if="timeline.length === 0 && taskStartTime" class="horizontal-timeline-item" style="left: 20px">
+                    <div class="timeline-dot-wrapper">
+                      <div class="timeline-dot start"></div>
+                      <div class="timeline-connector" v-if="taskEndTime"></div>
+                    </div>
+                    <div class="timeline-card">
+                      <div class="timeline-card-header">
+                        <div class="timeline-title">任务开始</div>
+                        <div class="timeline-time">{{ formatDateTime(taskStartTime) }}</div>
+                      </div>
+                    </div>
+                  </div>
+                  <div v-if="timeline.length === 0 && taskEndTime" class="horizontal-timeline-item" style="left: 300px">
+                    <div class="timeline-dot-wrapper">
+                      <div class="timeline-dot end"></div>
+                    </div>
+                    <div class="timeline-card">
+                      <div class="timeline-card-header">
+                        <div class="timeline-title">任务结束</div>
+                        <div class="timeline-time">{{ formatDateTime(taskEndTime) }}</div>
+                      </div>
+                    </div>
                   </div>
                 </div>
-                <div v-if="timeline.length === 0 && taskEndTime" class="timeline-item">
-                  <div class="timeline-dot end"></div>
-                  <div class="timeline-content">
-                    <div class="timeline-title">任务结束</div>
-                    <div class="timeline-time">{{ formatDateTime(taskEndTime) }}</div>
-                  </div>
                 </div>
               </div>
             </div>
@@ -1492,6 +1585,11 @@ const shareUrl = computed(() => {
   return `${baseUrl}/tasks/${task.value.id}`
 })
 
+// Timeline reversed for mobile horizontal display (oldest to newest, left to right)
+const timelineReversed = computed(() => {
+  return [...timeline.value].reverse()
+})
+
 // 钥匙玩法相关计算属性
 const taskTimeDisplayHidden = computed(() => {
   if (!task.value || task.value.task_type !== 'lock') return false
@@ -1614,12 +1712,96 @@ const fetchTimeline = async () => {
     timelineLoading.value = true
     const timelineData = await tasksApi.getTaskTimeline(taskId)
     timeline.value = timelineData.timeline_events || []
+
+    console.log('📊 Timeline data loaded:', timeline.value.length, 'events')
+
+    // Scroll to newest event on mobile after timeline loads
+    await nextTick()
+    console.log('🔄 Triggering scroll to newest event after DOM update')
+    scrollToNewestEvent()
+
+    // Setup intersection observer for mobile timeline visibility
+    if (window.innerWidth <= 768) {
+      setTimeout(() => {
+        setupTimelineObserver()
+      }, 300)
+    }
   } catch (err: any) {
     console.error('Error fetching timeline:', err)
     // Timeline is optional, don't show error to user
   } finally {
     timelineLoading.value = false
   }
+}
+
+const scrollToNewestEvent = () => {
+  // Only scroll on mobile devices
+  if (window.innerWidth > 768) return
+
+  // Use a small delay to ensure DOM is fully rendered
+  setTimeout(() => {
+    // Find the horizontal timeline wrapper
+    const timelineWrapper = document.querySelector('.horizontal-timeline-wrapper')
+    if (timelineWrapper && timeline.value.length > 0) {
+      console.log('📱 Scrolling to newest event on mobile')
+      console.log('Timeline wrapper found:', timelineWrapper)
+      console.log('Scroll width:', timelineWrapper.scrollWidth)
+      console.log('Client width:', timelineWrapper.clientWidth)
+
+      // Calculate scroll position to show newest event (rightmost)
+      const maxScrollLeft = timelineWrapper.scrollWidth - timelineWrapper.clientWidth
+      console.log('Calculated max scroll left:', maxScrollLeft)
+
+      // Use smooth scrolling behavior
+      timelineWrapper.scrollTo({
+        left: maxScrollLeft,
+        behavior: 'smooth'
+      })
+
+      // Also set scrollLeft as fallback
+      timelineWrapper.scrollLeft = maxScrollLeft
+
+      // Verify scroll position was set after a short delay
+      setTimeout(() => {
+        console.log('Actual scroll left after setting:', timelineWrapper.scrollLeft)
+      }, 50)
+    } else {
+      console.log('❌ Timeline wrapper not found or no timeline events')
+      console.log('Timeline wrapper:', timelineWrapper)
+      console.log('Timeline length:', timeline.value.length)
+    }
+  }, 200) // Increased delay to ensure DOM is ready
+}
+
+// Add intersection observer for timeline visibility
+const setupTimelineObserver = () => {
+  if (window.innerWidth > 768) return
+
+  // Clean up existing observer
+  if (timelineObserver.value) {
+    timelineObserver.value.disconnect()
+  }
+
+  const observer = new IntersectionObserver((entries) => {
+    entries.forEach((entry) => {
+      if (entry.isIntersecting && timeline.value.length > 0) {
+        console.log('📱 Timeline became visible, scrolling to newest event')
+        scrollToNewestEvent()
+      }
+    })
+  }, {
+    threshold: 0.1
+  })
+
+  // Observe the timeline container
+  const timelineContainer = document.querySelector('.horizontal-timeline-container')
+  if (timelineContainer) {
+    observer.observe(timelineContainer)
+    timelineObserver.value = observer
+    console.log('📱 Timeline observer setup complete')
+  }
+
+  return observer
 }
 
 const refreshTimeline = async () => {
@@ -3190,6 +3372,16 @@ watch(() => task.value?.status, async (newStatus, oldStatus) => {
   }
 })
 
+// Watch for timeline data changes and trigger scroll on mobile
+watch(() => timeline.value.length, (newLength, oldLength) => {
+  if (newLength > 0 && newLength !== oldLength && window.innerWidth <= 768) {
+    console.log('📱 Timeline data changed, triggering scroll to newest event')
+    nextTick(() => {
+      scrollToNewestEvent()
+    })
+  }
+})
+
 // Watch for end_time changes (from time wheel)
 watch(() => taskEndTime.value, async (newEndTime, oldEndTime) => {
   if (newEndTime && oldEndTime && newEndTime !== oldEndTime) {
@@ -3202,12 +3394,44 @@ watch(() => taskEndTime.value, async (newEndTime, oldEndTime) => {
 
 onMounted(() => {
   fetchTask()
+
+  // Add window resize listener to handle orientation changes
+  window.addEventListener('resize', () => {
+    // Debounce resize events
+    clearTimeout(resizeTimeout.value)
+    resizeTimeout.value = setTimeout(() => {
+      if (window.innerWidth <= 768 && timeline.value.length > 0) {
+        console.log('🔄 Window resized to mobile, scrolling to newest event')
+        scrollToNewestEvent()
+      }
+    }, 300)
+  })
 })
+
+// Add resize timeout ref
+const resizeTimeout = ref<number>()
+
+// Add intersection observer ref
+const timelineObserver = ref<IntersectionObserver | null>(null)
 
 onUnmounted(() => {
   if (progressInterval.value) {
     clearInterval(progressInterval.value)
   }
+
+  // Clear resize timeout
+  if (resizeTimeout.value) {
+    clearTimeout(resizeTimeout.value)
+  }
+
+  // Disconnect intersection observer
+  if (timelineObserver.value) {
+    timelineObserver.value.disconnect()
+  }
+
+  // Remove window resize listener
+  window.removeEventListener('resize', scrollToNewestEvent)
+
   // Cleanup (review mode navigation removed)
 })
 </script>
@@ -3580,10 +3804,20 @@ onUnmounted(() => {
 }
 
 .timeline-dot {
-  width: 12px;
-  height: 12px;
+  width: 20px;
+  height: 20px;
   border-radius: 50%;
   flex-shrink: 0;
+  border: 3px solid white;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+  transition: all 0.3s ease;
+  z-index: 3;
+  position: relative;
+}
+
+.timeline-dot:hover {
+  transform: scale(1.2);
+  box-shadow: 0 4px 16px rgba(0,0,0,0.3);
 }
 
 .timeline-dot.start {
@@ -4438,13 +4672,294 @@ onUnmounted(() => {
   padding: 1rem;
 }
 
-.timeline-container {
+/* Desktop Timeline (Vertical) - Keep original styles */
+.desktop-timeline {
   max-height: 400px;
   overflow-y: auto;
   padding: 0.5rem;
   border: 1px solid #e9ecef;
   border-radius: 4px;
   background-color: #fafafa;
+}
+
+/* Hide mobile timeline on desktop */
+.mobile-timeline {
+  display: none;
+}
+
+/* Mobile Timeline Styles - Only show on mobile */
+@media (max-width: 768px) {
+  /* Hide desktop timeline on mobile */
+  .desktop-timeline {
+    display: none;
+  }
+
+  /* Show mobile timeline */
+  .mobile-timeline {
+    display: block;
+  }
+
+  .horizontal-timeline-wrapper {
+    position: relative;
+    margin-bottom: 1rem;
+    overflow-x: auto;
+    overflow-y: hidden; /* Prevent vertical scrollbar */
+    padding: 0;
+    /* Custom scrollbar for webkit browsers */
+    scrollbar-width: thin;
+    scrollbar-color: #6c757d #e9ecef;
+    /* Touch scrolling for iOS */
+    -webkit-overflow-scrolling: touch;
+    /* Ensure wrapper adapts to content height */
+    height: auto;
+  }
+
+  .horizontal-timeline-wrapper::-webkit-scrollbar {
+    height: 8px;
+  }
+
+  .horizontal-timeline-wrapper::-webkit-scrollbar-track {
+    background: #e9ecef;
+    border-radius: 4px;
+  }
+
+  .horizontal-timeline-wrapper::-webkit-scrollbar-thumb {
+    background: #6c757d;
+    border-radius: 4px;
+    transition: background-color 0.2s;
+  }
+
+  .horizontal-timeline-wrapper::-webkit-scrollbar-thumb:hover {
+    background: #495057;
+  }
+
+  .horizontal-timeline-container {
+    position: relative;
+    padding: 2rem 1rem 2rem 1rem; /* Remove extra bottom padding */
+    scroll-behavior: smooth;
+    background: linear-gradient(135deg, #f8f9fa, #e9ecef);
+    border: 2px solid #dee2e6;
+    border-radius: 12px;
+    /* Allow height to grow with content */
+    min-height: 200px;
+    height: auto;
+    /* Width will be set dynamically via inline style */
+    display: inline-block;
+    /* Ensure container expands to contain absolutely positioned children */
+    overflow: visible;
+  }
+
+  .timeline-track {
+    position: absolute;
+    top: 3rem;
+    left: 1rem;
+    /* Dynamic width based on content, subtract padding */
+    width: calc(100% - 2rem);
+    max-width: calc(var(--timeline-items, 1) * 280px);
+    height: 3px;
+    background: linear-gradient(90deg, #007bff, #6f42c1, #e83e8c, #fd7e14, #ffc107);
+    border-radius: 2px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+  }
+
+  .horizontal-timeline-item {
+    position: absolute;
+    top: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    width: 260px;
+    margin: 0 10px;
+  }
+
+  .timeline-dot-wrapper {
+    position: relative;
+    z-index: 2;
+    margin-bottom: 1rem;
+  }
+
+  .timeline-connector {
+    position: absolute;
+    top: 50%;
+    left: 100%;
+    width: 280px;
+    height: 3px;
+    background: linear-gradient(90deg, rgba(0,123,255,0.8), rgba(111,66,193,0.8));
+    transform: translateY(-50%);
+    border-radius: 2px;
+  }
+
+  .timeline-card {
+    background: white;
+    border: 2px solid #dee2e6;
+    border-radius: 12px;
+    padding: 1rem;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+    transition: all 0.3s ease;
+    width: 100%;
+    max-width: 260px;
+    /* Allow content to wrap and expand height */
+    min-height: 180px;
+    height: auto;
+    white-space: normal;
+    word-wrap: break-word;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .timeline-card-header {
+    border-bottom: 1px solid #e9ecef;
+    padding-bottom: 0.75rem;
+    margin-bottom: 0.75rem;
+  }
+
+  .timeline-card-body {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+    flex: 1;
+  }
+
+}
+
+/* Additional mobile optimizations */
+@media (max-width: 768px) {
+  .timeline-title {
+    font-size: 0.9rem;
+    font-weight: 600;
+    line-height: 1.2;
+    word-break: break-word;
+  }
+
+  .timeline-time {
+    font-size: 0.75rem;
+  }
+
+  .timeline-description {
+    font-size: 0.85rem;
+    line-height: 1.4;
+    word-break: break-word;
+    hyphens: auto;
+    overflow-wrap: break-word;
+    white-space: normal;
+  }
+
+  .timeline-dot {
+    width: 16px;
+    height: 16px;
+    border-width: 2px;
+  }
+
+  .timeline-connector {
+    width: 236px;
+    height: 2px;
+  }
+
+  .scroll-hint-text {
+    font-size: 0.8rem;
+  }
+
+  /* Ensure timeline container doesn't overflow parent */
+  .horizontal-timeline-container {
+    box-sizing: border-box;
+  }
+
+  /* Improve text wrapping and card layout */
+  .timeline-card .timeline-description,
+  .timeline-card .timeline-user,
+  .timeline-card .timeline-time-change,
+  .timeline-card .timeline-times {
+    word-wrap: break-word;
+    overflow-wrap: break-word;
+    white-space: normal;
+  }
+
+  .timeline-user-btn {
+    word-break: break-all;
+    max-width: 100%;
+  }
+
+  /* Adjust card height for content */
+  .timeline-card {
+    min-height: 120px;
+    height: auto;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .timeline-card-body {
+    flex: 1;
+  }
+}
+
+@media (max-width: 480px) {
+  .horizontal-timeline-container {
+    padding: 1.5rem 0.5rem 1.5rem 0.5rem;
+    min-height: 240px;
+  }
+
+  .timeline-track {
+    top: 2.5rem;
+    left: 0.5rem;
+  }
+
+  .horizontal-timeline-item {
+    width: 180px;
+    margin: 0 6px;
+  }
+
+  .timeline-card {
+    max-width: 180px;
+    padding: 0.75rem;
+    min-height: 160px;
+  }
+
+  .timeline-title {
+    font-size: 0.85rem;
+  }
+
+  .timeline-time {
+    font-size: 0.7rem;
+  }
+
+  .timeline-description {
+    font-size: 0.8rem;
+    line-height: 1.4;
+  }
+
+  .timeline-dot {
+    width: 14px;
+    height: 14px;
+  }
+
+  .timeline-connector {
+    width: 192px;
+  }
+}
+
+/* Touch-friendly improvements */
+@media (pointer: coarse) {
+  .horizontal-timeline-wrapper {
+    scroll-snap-type: x proximity;
+  }
+
+  .horizontal-timeline-item {
+    scroll-snap-align: center;
+  }
+
+  .timeline-card {
+    cursor: default;
+  }
+
+  .timeline-card:hover {
+    transform: none;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+  }
+
+  .timeline-card:active {
+    transform: scale(0.98);
+    transition: transform 0.1s ease;
+  }
 }
 
 .timeline-description {
