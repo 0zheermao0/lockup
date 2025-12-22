@@ -1063,7 +1063,7 @@ onMounted(async () => {
 
 .username.clickable:hover {
   background-color: var(--level-bg, #007bff);
-  color: var(--level-color, white);
+  color: white;
   transform: translate(-1px, -1px);
   box-shadow: 2px 2px 0 #000;
   border-color: #000;
