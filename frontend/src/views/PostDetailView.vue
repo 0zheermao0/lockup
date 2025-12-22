@@ -40,8 +40,10 @@
                 <div>
                   <div
                     class="username clickable"
+                    :class="getLevelCSSClass(post.user.level || 1)"
+                    :style="{ color: getLevelUsernameColor(post.user.level || 1) }"
                     @click.stop="openProfileModal(post.user)"
-                    :title="`查看 ${post.user.username} 的资料`"
+                    :title="`查看 ${post.user.username} 的资料 (${getLevelDisplayName(post.user.level || 1)})`"
                   >
                     {{ post.user.username }}
                   </div>
@@ -184,8 +186,10 @@
                         <div>
                           <div
                             class="username clickable"
+                            :class="getLevelCSSClass(comment.user.level || 1)"
+                            :style="{ color: getLevelUsernameColor(comment.user.level || 1) }"
                             @click.stop="openProfileModal(comment.user)"
-                            :title="`查看 ${comment.user.username} 的资料`"
+                            :title="`查看 ${comment.user.username} 的资料 (${getLevelDisplayName(comment.user.level || 1)})`"
                           >
                             {{ comment.user.username }}
                           </div>
@@ -445,6 +449,7 @@ import { usePostsStore } from '../stores/posts'
 import { useNotificationStore } from '../stores/notifications'
 import { postsApi } from '../lib/api'
 import { formatDistanceToNow } from '../lib/utils'
+import { getLevelCSSClass, getLevelDisplayName, getLevelUsernameColor } from '../lib/level-colors'
 import { smartGoBack } from '../utils/navigation'
 import LockIndicator from '../components/LockIndicator.vue'
 import ProfileModal from '../components/ProfileModal.vue'
@@ -1025,18 +1030,20 @@ onUnmounted(() => {
 
 .username.clickable {
   cursor: pointer;
-  color: #007bff;
   transition: all 0.2s ease;
   padding: 0.25rem 0.5rem;
   border-radius: 4px;
   margin: -0.25rem -0.5rem;
+  font-weight: 700;
+  border: 2px solid transparent;
 }
 
 .username.clickable:hover {
-  background-color: #007bff;
-  color: white;
+  background-color: var(--level-bg, #007bff);
+  color: var(--level-color, white);
   transform: translate(-1px, -1px);
   box-shadow: 2px 2px 0 #000;
+  border-color: #000;
 }
 
 .time {

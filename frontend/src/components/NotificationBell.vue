@@ -141,8 +141,10 @@
                 <span
                   v-if="notification.actor"
                   class="actor clickable-actor"
+                  :class="getLevelCSSClass(notification.actor.level || 1)"
+                  :style="{ color: getLevelUsernameColor(notification.actor.level || 1) }"
                   @click.stop="openActorProfile(notification.actor.id, notification.actor.username)"
-                  :title="`查看 ${notification.actor.username} 的个人资料`"
+                  :title="`查看 ${notification.actor.username} 的个人资料 (${getLevelDisplayName(notification.actor.level || 1)})`"
                 >
                   {{ notification.actor.username }}
                 </span>
@@ -183,6 +185,7 @@
 import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useNotificationStore } from '../stores/notifications'
+import { getLevelCSSClass, getLevelDisplayName, getLevelUsernameColor } from '../lib/level-colors'
 import type { NotificationItem } from '../types/index'
 
 const router = useRouter()
@@ -681,8 +684,8 @@ onUnmounted(() => {
 }
 
 .clickable-actor:hover {
-  background-color: #007bff;
-  color: white;
+  background-color: var(--level-bg, #007bff);
+  color: var(--level-color, white);
   transform: translate(-1px, -1px);
   box-shadow: 2px 2px 0 #000;
   text-decoration: none;
@@ -851,8 +854,8 @@ onUnmounted(() => {
 }
 
 .clickable-username:hover {
-  background-color: #007bff;
-  color: white;
+  background-color: var(--level-bg, #007bff);
+  color: var(--level-color, white);
   transform: translate(-1px, -1px);
   box-shadow: 2px 2px 0 #000;
   text-decoration: none;

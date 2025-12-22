@@ -164,7 +164,9 @@
                   <button
                     @click="openUserProfile(task.user.id)"
                     class="username-btn"
-                    :title="`查看 ${task.user.username} 的资料`"
+                    :class="getLevelCSSClass(task.user.level || 1)"
+                    :style="{ color: getLevelUsernameColor(task.user.level || 1) }"
+                    :title="`查看 ${task.user.username} 的资料 (${getLevelDisplayName(task.user.level || 1)})`"
                   >
                     {{ task.user.username }}
                   </button>
@@ -1077,6 +1079,7 @@ import { useAuthStore } from '../stores/auth'
 import { useTasksStore } from '../stores/tasks'
 import { tasksApi } from '../lib/api-tasks'
 import { storeApi } from '../lib/api'
+import { getLevelCSSClass, getLevelDisplayName, getLevelUsernameColor } from '../lib/level-colors'
 import { smartGoBack } from '../utils/navigation'
 import TaskSubmissionModal from '../components/TaskSubmissionModal.vue'
 import ProfileModal from '../components/ProfileModal.vue'
@@ -3650,20 +3653,24 @@ onUnmounted(() => {
 
 .username-btn {
   background: none;
-  border: none;
-  color: #007bff;
-  font-weight: bold;
+  border: 2px solid transparent;
+  font-weight: 700;
   font-size: 1.1rem;
   text-decoration: underline;
   cursor: pointer;
-  padding: 0;
+  padding: 0.25rem 0.5rem;
+  margin: -0.25rem -0.5rem;
+  border-radius: 4px;
   transition: all 0.2s ease;
 }
 
 .username-btn:hover {
-  color: #0056b3;
+  background-color: var(--level-bg, #007bff);
+  color: var(--level-color, white);
   text-decoration: none;
-  text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.1);
+  transform: translate(-1px, -1px);
+  box-shadow: 2px 2px 0 #000;
+  border-color: #000;
 }
 
 .create-time {
