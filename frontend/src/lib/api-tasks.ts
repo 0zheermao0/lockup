@@ -1,4 +1,4 @@
-import type { LockTask, TaskCreateRequest, PinningQueueStatus, PinningCarouselData } from '../types/index'
+import type { LockTask, TaskCreateRequest, PinningQueueStatus, PinningCarouselData, SunBottleResponse } from '../types/index'
 import { API_BASE_URL } from '../config/index.js';
 
 class ApiError extends Error {
@@ -445,6 +445,30 @@ export const tasksApi = {
     item_destroyed: boolean
   }> => {
     return apiRequest(`/tasks/${id}/use-detection-radar/`, {
+      method: 'POST'
+    })
+  },
+
+  // 使用暴雪瓶
+  useBlizzardBottle: async (): Promise<{
+    message: string
+    frozen_tasks_count: number
+    affected_users_count: number
+    frozen_tasks: Array<{
+      task_id: string
+      task_title: string
+      owner: string
+    }>
+    item_destroyed: boolean
+  }> => {
+    return apiRequest('/tasks/use-blizzard-bottle/', {
+      method: 'POST'
+    })
+  },
+
+  // 使用太阳瓶
+  useSunBottle: async (): Promise<SunBottleResponse> => {
+    return apiRequest('/tasks/use-sun-bottle/', {
       method: 'POST'
     })
   }

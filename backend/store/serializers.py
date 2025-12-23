@@ -131,6 +131,7 @@ class GameSessionSerializer(serializers.ModelSerializer):
 # Create serializers for specific actions
 class PurchaseItemSerializer(serializers.Serializer):
     store_item_id = serializers.UUIDField()
+    quantity = serializers.IntegerField(min_value=1, max_value=100, default=1)
 
 
 class TimeWheelPlaySerializer(serializers.Serializer):

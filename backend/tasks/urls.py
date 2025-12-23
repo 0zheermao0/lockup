@@ -29,6 +29,8 @@ urlpatterns = [
     path('<uuid:pk>/manual-time-adjustment/', views.manual_time_adjustment, name='task-manual-time-adjustment'),
     path('<uuid:pk>/toggle-time-display/', views.toggle_time_display, name='task-toggle-time-display'),
     path('<uuid:pk>/use-detection-radar/', views.use_detection_radar, name='use-detection-radar'),
+    path('use-blizzard-bottle/', views.use_blizzard_bottle, name='use-blizzard-bottle'),
+    path('use-sun-bottle/', views.use_sun_bottle, name='use-sun-bottle'),
 
     # 冻结/解冻功能
     path('<uuid:pk>/freeze/', views.freeze_task, name='task-freeze'),
