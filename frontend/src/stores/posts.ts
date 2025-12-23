@@ -12,6 +12,17 @@ export const usePostsStore = defineStore('posts', () => {
   const totalCount = ref(0)
   const hasMore = ref(true)
 
+  // Cache state for infinite scroll
+  const postsCache = ref<Map<string, {
+    data: PaginatedResponse<Post>
+    timestamp: number
+    page: number
+  }>>(new Map())
+
+  // Cache configuration
+  const CACHE_TTL = 5 * 60 * 1000 // 5 minutes
+  const MAX_CACHE_SIZE = 50 // Maximum cached pages
+
   // Actions
   const fetchPosts = async (params?: {
     type?: string;
@@ -49,12 +60,55 @@ export const usePostsStore = defineStore('posts', () => {
     }
   }
 
-  // Get paginated posts for infinite scroll
-  const getPaginatedPosts = async (page: number, pageSize: number = 10): Promise<PaginatedResponse<Post>> => {
+  // Get paginated posts for infinite scroll with caching
+  const getPaginatedPosts = async (
+    page: number,
+    pageSize: number = 10,
+    useCache: boolean = true
+  ): Promise<PaginatedResponse<Post>> => {
+    const cacheKey = `posts_${page}_${pageSize}`
+
+    // Check cache first if caching is enabled
+    if (useCache && postsCache.value.has(cacheKey)) {
+      const cached = postsCache.value.get(cacheKey)!
+      const now = Date.now()
+
+      if (now - cached.timestamp < CACHE_TTL) {
+        console.log('📦 Using cached posts for page', page)
+        return cached.data
+      } else {
+        // Remove expired cache
+        console.log('🗑️ Removing expired cache for page', page)
+        postsCache.value.delete(cacheKey)
+      }
+    }
+
+    // Fetch from API
+    console.log('🌐 Fetching posts from API for page', page)
     const response = await postsApi.getPosts({
       page,
       page_size: pageSize
     })
+
+    // Cache the response if caching is enabled
+    if (useCache) {
+      // Manage cache size - remove oldest entries if at limit
+      if (postsCache.value.size >= MAX_CACHE_SIZE) {
+        const oldestKey = postsCache.value.keys().next().value
+        if (oldestKey) {
+          console.log('🧹 Evicting oldest cache entry:', oldestKey)
+          postsCache.value.delete(oldestKey)
+        }
+      }
+
+      postsCache.value.set(cacheKey, {
+        data: response,
+        timestamp: Date.now(),
+        page
+      })
+      console.log('💾 Cached posts for page', page)
+    }
+
     return response
   }
 
@@ -90,6 +144,17 @@ export const usePostsStore = defineStore('posts', () => {
     }
   }
 
+  // Cache management methods
+  const clearPostsCache = () => {
+    console.log('🗑️ Clearing all posts cache')
+    postsCache.value.clear()
+  }
+
+  const invalidatePostsCache = () => {
+    console.log('🗑️ Invalidating posts cache due to new content')
+    clearPostsCache()
+  }
+
   const createPost = async (postData: {
     content: string
     post_type: 'normal' | 'checkin'
@@ -98,6 +163,10 @@ export const usePostsStore = defineStore('posts', () => {
     try {
       const newPost = await postsApi.createPost(postData)
       posts.value.unshift(newPost) // Add to beginning of array
+
+      // Invalidate cache since new content was added
+      invalidatePostsCache()
+
       return newPost
     } catch (err) {
       console.error('Error creating post:', err)
@@ -155,6 +224,9 @@ export const usePostsStore = defineStore('posts', () => {
     unlikePost,
     createPost,
     deletePost,
-    voteOnCheckinPost
+    voteOnCheckinPost,
+    // Cache management
+    clearPostsCache,
+    invalidatePostsCache
   }
 })
