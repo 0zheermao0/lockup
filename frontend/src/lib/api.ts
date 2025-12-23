@@ -356,9 +356,10 @@ export const storeApi = {
   },
 
   async createGame(gameData: {
-    game_type: 'time_wheel' | 'rock_paper_scissors' | 'exploration';
+    game_type: 'time_wheel' | 'rock_paper_scissors' | 'exploration' | 'dice';
     bet_amount: number;
     max_players?: number;
+    item_reward_id?: string; // For dice games - optional item reward from creator's inventory
   }): Promise<Game> {
     return apiRequest('/store/games/', {
       method: 'POST',
@@ -373,6 +374,13 @@ export const storeApi = {
     winner?: string;
     loser?: string;
     results?: any[];
+    // Dice game specific fields
+    dice_result?: number;
+    guess?: string;
+    is_correct?: boolean;
+    item_received?: any;
+    creator_coins_change?: number;
+    remaining_coins?: number;
   }> {
     return apiRequest(`/store/games/${gameId}/join/`, {
       method: 'POST',

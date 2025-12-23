@@ -289,6 +289,21 @@
           </div>
         </div>
       </div>
+
+      <!-- Dice Game -->
+      <div v-if="activeTab === 'dice'" class="space-y-6">
+        <div class="game-section">
+          <h2 class="section-title">🎲 掷骰子</h2>
+          <p class="section-description">
+            创建掷骰子游戏！设置参与费用和可选奖励物品，参与者猜大小，猜中可获得奖励物品。
+          </p>
+
+          <!-- Dice Game Component -->
+          <div>
+            <DiceGame />
+          </div>
+        </div>
+      </div>
     </div>
   </div>
 </template>
@@ -300,6 +315,7 @@ import { storeApi, tasksApi } from '../lib/api'
 import { useAuthStore } from '../stores/auth'
 import { smartGoBack } from '../utils/navigation'
 import TimeWheel from '../components/TimeWheel.vue'
+import DiceGame from '../components/DiceGame.vue'
 import NotificationBell from '../components/NotificationBell.vue'
 import type { Game } from '../types'
 
@@ -312,7 +328,7 @@ const goBack = () => {
 }
 
 // Reactive data
-const activeTab = ref('rockPaperScissors')
+const activeTab = ref('dice')
 const activeLockTask = ref<any>(null) // Active lock task for time wheel
 const games = ref<Game[]>([])
 const loadingGames = ref(false)
@@ -379,6 +395,7 @@ const filteredRPSGames = computed(() => {
 
 // Data
 const tabs = [
+  { id: 'dice', name: '掷骰子' },
   { id: 'rockPaperScissors', name: '石头剪刀布' },
   { id: 'timeWheel', name: '时间转盘' }
 ]

@@ -147,6 +147,7 @@ class Game(models.Model):
         ('time_wheel', '时间转盘'),
         ('rock_paper_scissors', '石头剪刀布'),
         ('exploration', '探索'),
+        ('dice', '掷骰子'),
     ]
 
     STATUS_CHOICES = [
