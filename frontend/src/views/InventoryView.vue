@@ -114,8 +114,8 @@
             </button>
           </div>
 
-          <!-- Item properties (only show for items other than keys, photos, and treasury) -->
-          <div v-if="Object.keys(selectedItem.properties).length > 0 && !['key', 'photo', 'little_treasury'].includes(selectedItem.item_type.name)" class="properties-section">
+          <!-- Item properties (only show for items other than keys, photos, treasury, and notes) -->
+          <div v-if="Object.keys(selectedItem.properties).length > 0 && !['key', 'photo', 'little_treasury', 'note'].includes(selectedItem.item_type.name)" class="properties-section">
             <h4 class="properties-title">物品属性</h4>
             <div class="properties-content">
               <pre class="properties-json">{{ JSON.stringify(selectedItem.properties, null, 2) }}</pre>
@@ -145,6 +145,33 @@
               class="action-btn primary"
             >
               👁️ 查看照片
+            </button>
+
+            <!-- Note edit -->
+            <button
+              v-if="selectedItem.item_type.name === 'note' && selectedItem.status === 'available' && (!selectedItem.properties?.content || selectedItem.properties.content.trim() === '')"
+              @click="openNoteEditModal"
+              class="action-btn primary"
+            >
+              ✏️ 编写纸条
+            </button>
+
+            <!-- Note edit (existing content) -->
+            <button
+              v-if="selectedItem.item_type.name === 'note' && selectedItem.status === 'available' && selectedItem.properties?.content && selectedItem.properties.content.trim() !== ''"
+              @click="openNoteEditModal"
+              class="action-btn secondary"
+            >
+              ✏️ 编辑纸条
+            </button>
+
+            <!-- Note view -->
+            <button
+              v-if="selectedItem.item_type.name === 'note' && selectedItem.status === 'available' && selectedItem.properties?.content && selectedItem.properties.content.trim() !== ''"
+              @click="openNoteViewModal(); viewNote()"
+              class="action-btn primary"
+            >
+              👁️ 查看纸条
             </button>
 
             <!-- Share item -->
@@ -196,6 +223,28 @@
             >
               <span v-if="usingDetectionRadar">探测中...</span>
               <span v-else>🎯 使用探测雷达</span>
+            </button>
+
+            <!-- Blizzard Bottle usage -->
+            <button
+              v-if="canUseBlizzardBottle(selectedItem)"
+              @click="openBlizzardBottleModal"
+              class="action-btn blizzard"
+              :disabled="usingBlizzardBottle"
+            >
+              <span v-if="usingBlizzardBottle">释放中...</span>
+              <span v-else>🌨️ 使用暴雪瓶</span>
+            </button>
+
+            <!-- Sun Bottle usage -->
+            <button
+              v-if="canUseSunBottle(selectedItem)"
+              @click="openSunBottleModal"
+              class="action-btn sun"
+              :disabled="usingSunBottle"
+            >
+              <span v-if="usingSunBottle">使用中...</span>
+              <span v-else>☀️ 使用太阳瓶</span>
             </button>
 
             <!-- Discard item -->
@@ -597,6 +646,248 @@
           </div>
         </div>
       </div>
+
+      <!-- Blizzard Bottle Modal -->
+      <div v-if="showBlizzardBottleModal" class="modal-overlay" @click.self="closeBlizzardBottleModal">
+        <div class="action-modal blizzard-bottle-modal">
+          <div class="modal-header">
+            <h3 class="modal-title">🌨️ 使用暴雪瓶</h3>
+            <button @click="closeBlizzardBottleModal" class="modal-close">×</button>
+          </div>
+
+          <div v-if="!blizzardResults" class="modal-body">
+            <div class="warning-section">
+              <div class="warning-icon">🌨️</div>
+              <div class="warning-content">
+                <h4 class="warning-title">暴雪瓶</h4>
+                <p class="warning-message">
+                  将冻结当前所有处于带锁状态的用户任务！这是一个全局效果，会影响所有正在进行的带锁任务。
+                </p>
+                <p class="warning-note">
+                  ⚠️ 使用后物品将被自动销毁，此操作不可撤销！
+                </p>
+              </div>
+            </div>
+
+            <div class="modal-footer">
+              <button @click="closeBlizzardBottleModal" class="modal-btn secondary">
+                取消
+              </button>
+              <button
+                @click="useBlizzardBottle"
+                class="modal-btn danger"
+                :disabled="usingBlizzardBottle"
+              >
+                {{ usingBlizzardBottle ? '释放中...' : '🌨️ 释放暴雪' }}
+              </button>
+            </div>
+          </div>
+
+          <div v-else class="modal-body">
+            <div class="blizzard-results-section">
+              <h4 class="info-title">🌨️ 暴雪释放结果</h4>
+
+              <div class="blizzard-results-grid">
+                <div class="blizzard-result-card">
+                  <div class="result-header">
+                    <span class="result-icon">❄️</span>
+                    <span class="result-label">冻结任务数</span>
+                  </div>
+                  <div class="result-content">{{ blizzardResults.frozen_tasks_count }}</div>
+                </div>
+
+                <div class="blizzard-result-card">
+                  <div class="result-header">
+                    <span class="result-icon">👥</span>
+                    <span class="result-label">影响用户数</span>
+                  </div>
+                  <div class="result-content">{{ blizzardResults.affected_users_count }}</div>
+                </div>
+
+                <div v-if="blizzardResults.frozen_tasks && blizzardResults.frozen_tasks.length > 0" class="frozen-tasks-list">
+                  <h5 class="tasks-title">被冻结的任务：</h5>
+                  <div class="task-list">
+                    <div
+                      v-for="task in blizzardResults.frozen_tasks"
+                      :key="task.task_id"
+                      class="frozen-task-item"
+                    >
+                      <span class="task-title">{{ task.task_title }}</span>
+                      <span class="task-owner">{{ task.owner }}</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="modal-footer">
+              <button @click="closeBlizzardBottleModal" class="modal-btn primary">
+                确定
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Sun Bottle Modal -->
+      <div v-if="showSunBottleModal" class="modal-overlay" @click.self="closeSunBottleModal">
+        <div class="action-modal sun-bottle-modal">
+          <div class="modal-header">
+            <h3 class="modal-title">☀️ 使用太阳瓶</h3>
+            <button @click="closeSunBottleModal" class="modal-close">×</button>
+          </div>
+
+          <div v-if="!sunBottleResults" class="modal-body">
+            <div class="warning-section">
+              <div class="warning-icon">☀️</div>
+              <div class="warning-content">
+                <h4 class="warning-title">太阳瓶</h4>
+                <p class="warning-message">
+                  将解冻当前所有被冻结的带锁任务！这是一个全局效果，会恢复所有被冻结任务的倒计时。
+                </p>
+                <p class="warning-note">
+                  ⚠️ 使用后物品将被自动销毁，此操作不可撤销！
+                </p>
+              </div>
+            </div>
+
+            <div class="modal-footer">
+              <button @click="closeSunBottleModal" class="modal-btn secondary">
+                取消
+              </button>
+              <button
+                @click="useSunBottle"
+                class="modal-btn primary"
+                :disabled="usingSunBottle"
+              >
+                {{ usingSunBottle ? '释放中...' : '☀️ 释放阳光' }}
+              </button>
+            </div>
+          </div>
+
+          <div v-else class="modal-body">
+            <div class="sun-results-section">
+              <h4 class="info-title">☀️ 太阳瓶使用结果</h4>
+
+              <div class="sun-results-grid">
+                <div class="sun-result-card">
+                  <div class="result-header">
+                    <span class="result-icon">🔥</span>
+                    <span class="result-label">解冻任务数</span>
+                  </div>
+                  <div class="result-content">{{ sunBottleResults.unfrozen_tasks_count }}</div>
+                </div>
+
+                <div class="sun-result-card">
+                  <div class="result-header">
+                    <span class="result-icon">👥</span>
+                    <span class="result-label">影响用户数</span>
+                  </div>
+                  <div class="result-content">{{ sunBottleResults.affected_users_count }}</div>
+                </div>
+
+                <div v-if="sunBottleResults.unfrozen_tasks && sunBottleResults.unfrozen_tasks.length > 0" class="unfrozen-tasks-list">
+                  <h5 class="tasks-title">被解冻的任务：</h5>
+                  <div class="task-list">
+                    <div
+                      v-for="task in sunBottleResults.unfrozen_tasks"
+                      :key="task.task_id"
+                      class="unfrozen-task-item"
+                    >
+                      <span class="task-title">{{ task.task_title }}</span>
+                      <span class="task-owner">{{ task.owner }}</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="modal-footer">
+              <button @click="closeSunBottleModal" class="modal-btn primary">
+                确定
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Note Edit Modal -->
+      <div v-if="showNoteEditModal" class="modal-overlay" @click.self="closeNoteEditModal">
+        <div class="action-modal note-edit-modal">
+          <div class="modal-header">
+            <h3 class="modal-title">✏️ 编辑纸条</h3>
+            <button @click="closeNoteEditModal" class="modal-close">×</button>
+          </div>
+
+          <div class="modal-body">
+            <div class="form-group">
+              <label class="form-label">纸条内容</label>
+              <textarea
+                v-model="noteContent"
+                placeholder="请输入纸条内容（最多30个字符）..."
+                class="form-textarea note-textarea"
+                maxlength="30"
+                rows="3"
+              ></textarea>
+              <div class="char-counter">{{ noteContent.length }}/30</div>
+            </div>
+
+            <div class="warning-section">
+              <div class="warning-icon">⚠️</div>
+              <div class="warning-content">
+                <h4 class="warning-title">重要提醒</h4>
+                <p class="warning-message">
+                  纸条一旦被查看将自动销毁，请谨慎分享！
+                </p>
+                <p class="warning-note">
+                  查看者有30秒阅读时间，阅读后纸条永久消失。
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <div class="modal-footer">
+            <button @click="closeNoteEditModal" class="modal-btn secondary">
+              取消
+            </button>
+            <button
+              @click="saveNoteContent"
+              class="modal-btn primary"
+              :disabled="!noteContent.trim() || editingNote"
+            >
+              {{ editingNote ? '保存中...' : '保存纸条' }}
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Note View Modal -->
+      <div v-if="showNoteViewModal" class="note-viewer-overlay" @click="closeNoteViewModal">
+        <div class="note-viewer-content" @click.stop>
+          <div class="note-container">
+            <div class="note-content">
+              <div class="note-icon">📝</div>
+              <div class="note-text">{{ noteContent }}</div>
+            </div>
+            <div class="note-timer">
+              <div class="timer-display">
+                <span class="timer-icon">⏱️</span>
+                <span class="timer-text">{{ noteTimeRemaining }}s</span>
+              </div>
+              <div class="timer-bar">
+                <div
+                  class="timer-progress"
+                  :style="{ width: `${(noteTimeRemaining / 30) * 100}%` }"
+                ></div>
+              </div>
+            </div>
+          </div>
+          <div class="note-hint">
+            <p class="hint-text">🔥 阅后即焚 - {{ noteTimeRemaining }}秒后自动销毁</p>
+            <p class="hint-action">点击任意位置立即关闭</p>
+          </div>
+        </div>
+      </div>
     </div>
   </div>
 </template>
@@ -663,6 +954,25 @@ const selectedTreasuryItem = ref<Item | null>(null)
 const showDetectionRadarModal = ref(false)
 const usingDetectionRadar = ref(false)
 const detectionResults = ref<any>(null)
+
+// Blizzard Bottle
+const showBlizzardBottleModal = ref(false)
+const usingBlizzardBottle = ref(false)
+const blizzardResults = ref<any>(null)
+
+// Sun Bottle
+const showSunBottleModal = ref(false)
+const usingSunBottle = ref(false)
+const sunBottleResults = ref<any>(null)
+
+// Note management
+const showNoteEditModal = ref(false)
+const showNoteViewModal = ref(false)
+const noteContent = ref('')
+const noteTimeRemaining = ref(30)
+const noteAutoCloseTimer = ref<number | null>(null)
+const editingNote = ref(false)
+const viewingNote = ref(false)
 
 // Methods
 const goBack = () => {
@@ -851,6 +1161,14 @@ const canUseTreasury = (item: Item): boolean => {
 
 const canUseDetectionRadar = (item: Item): boolean => {
   return item.status === 'available' && item.item_type.name === 'detection_radar'
+}
+
+const canUseBlizzardBottle = (item: Item): boolean => {
+  return item.status === 'available' && item.item_type.name === 'blizzard_bottle'
+}
+
+const canUseSunBottle = (item: Item): boolean => {
+  return item.status === 'available' && item.item_type.name === 'sun_bottle'
 }
 
 const shareItem = async () => {
@@ -1134,6 +1452,195 @@ const formatTimeRemaining = (milliseconds: number): string => {
   } else {
     return `${seconds}秒`
   }
+}
+
+const openBlizzardBottleModal = () => {
+  if (!selectedItem.value) return
+  showBlizzardBottleModal.value = true
+}
+
+const closeBlizzardBottleModal = () => {
+  showBlizzardBottleModal.value = false
+  blizzardResults.value = null
+  selectedItem.value = null
+}
+
+const useBlizzardBottle = async () => {
+  if (!selectedItem.value) return
+
+  try {
+    usingBlizzardBottle.value = true
+
+    // Call the blizzard bottle API
+    const response = await tasksApiDetailed.useBlizzardBottle()
+
+    // Set the blizzard results from the API response
+    blizzardResults.value = {
+      frozen_tasks_count: response.frozen_tasks_count,
+      affected_users_count: response.affected_users_count,
+      frozen_tasks: response.frozen_tasks,
+      item_destroyed: response.item_destroyed
+    }
+
+    // Refresh inventory after successful use (item should be destroyed)
+    await loadInventory()
+
+    // Clear selected item since it was destroyed
+    selectedItem.value = null
+
+  } catch (error) {
+    console.error('Error using blizzard bottle:', error)
+    const errorMessage = error instanceof Error ? error.message : '使用暴雪瓶失败，请重试'
+    alert(errorMessage)
+  } finally {
+    usingBlizzardBottle.value = false
+  }
+}
+
+const openSunBottleModal = () => {
+  if (!selectedItem.value) return
+  showSunBottleModal.value = true
+}
+
+const closeSunBottleModal = () => {
+  showSunBottleModal.value = false
+  sunBottleResults.value = null
+  selectedItem.value = null
+}
+
+const useSunBottle = async () => {
+  if (!selectedItem.value) return
+
+  try {
+    usingSunBottle.value = true
+
+    // Call the sun bottle API
+    const response = await tasksApiDetailed.useSunBottle()
+
+    // Set the sun bottle results from the API response
+    sunBottleResults.value = {
+      unfrozen_tasks_count: response.unfrozen_tasks_count,
+      affected_users_count: response.affected_users_count,
+      unfrozen_tasks: response.unfrozen_tasks,
+      item_destroyed: response.item_destroyed
+    }
+
+    // Refresh inventory after successful use (item should be destroyed)
+    await loadInventory()
+
+    // Clear selected item since it was destroyed
+    selectedItem.value = null
+
+  } catch (error) {
+    console.error('Error using sun bottle:', error)
+    const errorMessage = error instanceof Error ? error.message : '使用太阳瓶失败，请重试'
+    alert(errorMessage)
+  } finally {
+    usingSunBottle.value = false
+  }
+}
+
+// Note management functions
+const openNoteEditModal = () => {
+  if (!selectedItem.value) return
+
+  // Load existing content if available
+  noteContent.value = selectedItem.value.properties?.content || ''
+  showNoteEditModal.value = true
+}
+
+const closeNoteEditModal = () => {
+  showNoteEditModal.value = false
+  noteContent.value = ''
+  editingNote.value = false
+}
+
+const saveNoteContent = async () => {
+  if (!selectedItem.value || !noteContent.value.trim()) return
+
+  try {
+    editingNote.value = true
+    await storeApi.editNote(selectedItem.value.id, noteContent.value.trim())
+
+    // Refresh inventory to get updated note
+    await loadInventory()
+
+    // Close modal
+    closeNoteEditModal()
+
+    // Clear selected item to refresh the view
+    selectedItem.value = null
+
+  } catch (error) {
+    console.error('Error editing note:', error)
+    const errorMessage = error instanceof Error ? error.message : '编辑纸条失败，请重试'
+    alert(errorMessage)
+  } finally {
+    editingNote.value = false
+  }
+}
+
+const openNoteViewModal = () => {
+  if (!selectedItem.value) return
+  showNoteViewModal.value = true
+}
+
+const closeNoteViewModal = () => {
+  showNoteViewModal.value = false
+  viewingNote.value = false
+
+  // Clear timer
+  if (noteAutoCloseTimer.value) {
+    clearInterval(noteAutoCloseTimer.value)
+    noteAutoCloseTimer.value = null
+  }
+
+  // Reset timer
+  noteTimeRemaining.value = 30
+
+  // Refresh inventory as note might be destroyed after reading
+  loadInventory()
+
+  // Clear selected item
+  selectedItem.value = null
+}
+
+const viewNote = async () => {
+  if (!selectedItem.value) return
+
+  try {
+    viewingNote.value = true
+
+    // Call the view note API
+    const response = await storeApi.viewNote(selectedItem.value.id)
+    noteContent.value = response.content
+
+    // Start 30-second auto-close timer
+    noteTimeRemaining.value = 30
+    startNoteAutoCloseTimer()
+
+  } catch (error) {
+    console.error('Error viewing note:', error)
+    const errorMessage = error instanceof Error ? error.message : '查看纸条失败，请重试'
+    alert(errorMessage)
+    closeNoteViewModal()
+  } finally {
+    viewingNote.value = false
+  }
+}
+
+const startNoteAutoCloseTimer = () => {
+  if (noteAutoCloseTimer.value) {
+    clearInterval(noteAutoCloseTimer.value)
+  }
+
+  noteAutoCloseTimer.value = window.setInterval(() => {
+    noteTimeRemaining.value--
+
+    if (noteTimeRemaining.value <= 0) {
+      closeNoteViewModal()
+    }
+  }, 1000)
 }
 
 // Lifecycle
@@ -1637,6 +2144,28 @@ onMounted(() => {
 
 .action-btn.radar:hover {
   background: #138496;
+  color: white;
+}
+
+.action-btn.blizzard {
+  background: #6f42c1;
+  color: white;
+  border-color: #000;
+}
+
+.action-btn.blizzard:hover {
+  background: #5a32a3;
+  color: white;
+}
+
+.action-btn.sun {
+  background: #ff8c00;
+  color: white;
+  border-color: #000;
+}
+
+.action-btn.sun:hover {
+  background: #ff7700;
   color: white;
 }
 
@@ -2938,6 +3467,383 @@ onMounted(() => {
 
   .result-content.time-display {
     font-size: 1rem;
+  }
+}
+
+/* Blizzard Bottle Modal Styles */
+.blizzard-bottle-modal {
+  max-width: 600px;
+  width: 100%;
+}
+
+.blizzard-results-section {
+  background: #e8f4f8;
+  border: 3px solid #6f42c1;
+  padding: 1.5rem;
+  margin-bottom: 1.5rem;
+  box-shadow: 4px 4px 0 #6f42c1;
+}
+
+.blizzard-results-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+  margin-top: 1rem;
+}
+
+.blizzard-result-card {
+  background: white;
+  border: 3px solid #000;
+  padding: 1rem;
+  box-shadow: 3px 3px 0 #000;
+  transition: all 0.2s ease;
+}
+
+.blizzard-result-card:hover {
+  transform: translate(-1px, -1px);
+  box-shadow: 4px 4px 0 #000;
+}
+
+.frozen-tasks-list {
+  grid-column: 1 / -1;
+  margin-top: 1rem;
+}
+
+.tasks-title {
+  font-size: 1rem;
+  font-weight: 900;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  margin: 0 0 1rem 0;
+  color: #000;
+}
+
+.task-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.frozen-task-item {
+  background: #f8f9fa;
+  border: 2px solid #6f42c1;
+  padding: 0.75rem;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  box-shadow: 2px 2px 0 #6f42c1;
+}
+
+.task-title {
+  font-weight: 700;
+  color: #000;
+  flex: 1;
+}
+
+.task-owner {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: #6f42c1;
+  background: white;
+  padding: 0.25rem 0.5rem;
+  border: 1px solid #6f42c1;
+}
+
+/* Responsive Design for Blizzard Bottle */
+@media (max-width: 768px) {
+  .blizzard-bottle-modal {
+    margin: 1rem;
+    max-width: calc(100vw - 2rem);
+  }
+
+  .blizzard-results-grid {
+    grid-template-columns: 1fr;
+    gap: 0.75rem;
+  }
+
+  .blizzard-result-card {
+    padding: 0.75rem;
+  }
+
+  .frozen-task-item {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.5rem;
+  }
+
+  .task-owner {
+    align-self: flex-end;
+  }
+}
+
+/* Sun Bottle Modal Styles */
+.sun-bottle-modal {
+  max-width: 600px;
+  width: 100%;
+}
+
+.sun-results-section {
+  background: #fff8dc;
+  border: 3px solid #ff8c00;
+  padding: 1.5rem;
+  margin-bottom: 1.5rem;
+  box-shadow: 4px 4px 0 #ff8c00;
+}
+
+.sun-results-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+  margin-top: 1rem;
+}
+
+.sun-result-card {
+  background: white;
+  border: 3px solid #000;
+  padding: 1rem;
+  box-shadow: 3px 3px 0 #000;
+  transition: all 0.2s ease;
+}
+
+.sun-result-card:hover {
+  transform: translate(-1px, -1px);
+  box-shadow: 4px 4px 0 #000;
+}
+
+.unfrozen-tasks-list {
+  grid-column: 1 / -1;
+  margin-top: 1rem;
+}
+
+.unfrozen-task-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.75rem;
+  background: white;
+  border: 2px solid #000;
+  margin-bottom: 0.5rem;
+  box-shadow: 2px 2px 0 #000;
+  gap: 1rem;
+}
+
+.unfrozen-task-item:hover {
+  transform: translate(-1px, -1px);
+  box-shadow: 3px 3px 0 #000;
+}
+
+/* Responsive Design for Sun Bottle */
+@media (max-width: 768px) {
+  .sun-bottle-modal {
+    margin: 1rem;
+    max-width: calc(100vw - 2rem);
+  }
+
+  .sun-results-grid {
+    grid-template-columns: 1fr;
+    gap: 0.75rem;
+  }
+
+  .sun-result-card {
+    padding: 0.75rem;
+  }
+
+  .unfrozen-task-item {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.5rem;
+  }
+
+  .task-owner {
+    align-self: flex-end;
+  }
+}
+
+/* Note Modal Styles */
+.note-edit-modal {
+  max-width: 500px;
+  width: 100%;
+}
+
+.note-textarea {
+  min-height: 100px;
+  resize: none;
+  font-family: inherit;
+  line-height: 1.5;
+}
+
+/* Note Viewer Styles */
+.note-viewer-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.95);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  padding: 2rem;
+}
+
+.note-viewer-content {
+  max-width: 90vw;
+  max-height: 90vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1rem;
+}
+
+.note-container {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  background: white;
+  border: 4px solid #000;
+  padding: 2rem;
+  box-shadow: 8px 8px 0 rgba(255, 255, 255, 0.3);
+  min-width: 400px;
+  min-height: 200px;
+}
+
+.note-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1rem;
+  flex: 1;
+  justify-content: center;
+  text-align: center;
+}
+
+.note-icon {
+  font-size: 3rem;
+}
+
+.note-text {
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: #000;
+  line-height: 1.5;
+  max-width: 300px;
+  word-wrap: break-word;
+  white-space: pre-wrap;
+}
+
+.note-timer {
+  position: absolute;
+  top: 1rem;
+  right: 1rem;
+  background: #dc3545;
+  border: 3px solid #000;
+  padding: 0.75rem 1rem;
+  box-shadow: 4px 4px 0 rgba(0, 0, 0, 0.8);
+  min-width: 120px;
+}
+
+.timer-display {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+
+.timer-icon {
+  font-size: 1.25rem;
+  color: white;
+}
+
+.timer-text {
+  color: white;
+  font-weight: 900;
+  font-size: 1.25rem;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+.timer-bar {
+  width: 100%;
+  height: 6px;
+  background: rgba(255, 255, 255, 0.3);
+  border: 2px solid #000;
+  overflow: hidden;
+}
+
+.timer-progress {
+  height: 100%;
+  background: white;
+  transition: width 1s linear;
+}
+
+.note-hint {
+  background: rgba(0, 0, 0, 0.8);
+  border: 3px solid white;
+  padding: 1.5rem 2rem;
+  text-align: center;
+  box-shadow: 8px 8px 0 rgba(255, 255, 255, 0.3);
+  max-width: 500px;
+}
+
+.hint-text {
+  color: white;
+  font-weight: 900;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  margin: 0 0 0.5rem 0;
+  font-size: 1.1rem;
+}
+
+.hint-action {
+  color: rgba(255, 255, 255, 0.8);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin: 0;
+  font-size: 0.875rem;
+}
+
+/* Mobile Responsive for Note Modals */
+@media (max-width: 768px) {
+  .note-edit-modal {
+    margin: 1rem;
+    max-width: calc(100vw - 2rem);
+  }
+
+  .note-container {
+    min-width: 300px;
+    padding: 1.5rem;
+  }
+
+  .note-text {
+    font-size: 1rem;
+    max-width: 250px;
+  }
+
+  .note-timer {
+    padding: 0.5rem 0.75rem;
+    min-width: 100px;
+  }
+
+  .timer-text {
+    font-size: 1rem;
+  }
+
+  .note-hint {
+    padding: 1rem 1.5rem;
+    margin: 0 1rem;
+  }
+
+  .hint-text {
+    font-size: 1rem;
+  }
+
+  .hint-action {
+    font-size: 0.75rem;
   }
 }
 </style>
