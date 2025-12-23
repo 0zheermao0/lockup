@@ -200,6 +200,7 @@ class TaskTimelineEvent(models.Model):
         ('pinning_queue_updated', '置顶队列更新'),
         ('task_frozen', '任务冻结'),
         ('task_unfrozen', '任务解冻'),
+        ('radar_detection', '探测雷达检测'),
     ]
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)

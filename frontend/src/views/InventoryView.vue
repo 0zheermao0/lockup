@@ -187,6 +187,17 @@
               💰 管理小金库
             </button>
 
+            <!-- Detection Radar usage -->
+            <button
+              v-if="canUseDetectionRadar(selectedItem)"
+              @click="openDetectionRadarModal"
+              class="action-btn radar"
+              :disabled="usingDetectionRadar"
+            >
+              <span v-if="usingDetectionRadar">探测中...</span>
+              <span v-else>🎯 使用探测雷达</span>
+            </button>
+
             <!-- Discard item -->
             <button
               v-if="canDiscardItem(selectedItem)"
@@ -489,7 +500,7 @@
               :disabled="!selectedTaskId || usingUniversalKey"
             >
               <span v-if="usingUniversalKey">使用中...</span>
-              <span v-else">使用万能钥匙</span>
+              <span v-else>使用万能钥匙</span>
             </button>
           </div>
         </div>
@@ -502,6 +513,90 @@
         @close="closeTreasuryModal"
         @success="handleTreasurySuccess"
       />
+
+      <!-- Detection Radar Modal -->
+      <div v-if="showDetectionRadarModal" class="modal-overlay" @click.self="closeDetectionRadarModal">
+        <div class="action-modal detection-radar-modal">
+          <div class="modal-header">
+            <h3 class="modal-title">🎯 使用探测雷达</h3>
+            <button @click="closeDetectionRadarModal" class="modal-close">×</button>
+          </div>
+
+          <div v-if="!detectionResults" class="modal-body">
+            <div class="warning-section">
+              <div class="warning-icon">🎯</div>
+              <div class="warning-content">
+                <h4 class="warning-title">探测雷达</h4>
+                <p class="warning-message">
+                  可以揭示您自己的带锁任务的隐藏时间信息。
+                </p>
+                <p class="warning-note">
+                  ⚠️ 使用后物品将被自动销毁，请谨慎使用！
+                </p>
+              </div>
+            </div>
+
+            <div class="modal-footer">
+              <button @click="closeDetectionRadarModal" class="modal-btn secondary">
+                取消
+              </button>
+              <button
+                @click="useDetectionRadar"
+                class="modal-btn primary"
+                :disabled="usingDetectionRadar"
+              >
+                {{ usingDetectionRadar ? '探测中...' : '🎯 开始探测' }}
+              </button>
+            </div>
+          </div>
+
+          <div v-else class="modal-body">
+            <div class="detection-results-section">
+              <h4 class="info-title">📊 探测结果</h4>
+
+              <div class="detection-results-grid">
+                <div class="detection-result-card">
+                  <div class="result-header">
+                    <span class="result-icon">📝</span>
+                    <span class="result-label">任务标题</span>
+                  </div>
+                  <div class="result-content">{{ detectionResults.task_title }}</div>
+                </div>
+
+                <div class="detection-result-card">
+                  <div class="result-header">
+                    <span class="result-icon">📊</span>
+                    <span class="result-label">任务状态</span>
+                  </div>
+                  <div class="result-content">{{ detectionResults.status_text }}</div>
+                </div>
+
+                <div class="detection-result-card highlight">
+                  <div class="result-header">
+                    <span class="result-icon">⏰</span>
+                    <span class="result-label">剩余时间</span>
+                  </div>
+                  <div class="result-content time-display">{{ formatTimeRemaining(detectionResults.time_remaining_ms) }}</div>
+                </div>
+
+                <div v-if="detectionResults.is_frozen" class="detection-result-card frozen">
+                  <div class="result-header">
+                    <span class="result-icon">❄️</span>
+                    <span class="result-label">冻结状态</span>
+                  </div>
+                  <div class="result-content">任务已冻结</div>
+                </div>
+              </div>
+            </div>
+
+            <div class="modal-footer">
+              <button @click="closeDetectionRadarModal" class="modal-btn primary">
+                确定
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
   </div>
 </template>
@@ -510,6 +605,7 @@
 import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { storeApi, tasksApi } from '../lib/api'
+import { tasksApi as tasksApiDetailed } from '../lib/api-tasks'
 import { smartGoBack } from '../utils/navigation'
 import type { UserInventory, Item } from '../types'
 import TreasuryItemModal from '../components/TreasuryItemModal.vue'
@@ -562,6 +658,11 @@ const selectedTaskId = ref<string>('')
 // Treasury Item
 const showTreasuryModal = ref(false)
 const selectedTreasuryItem = ref<Item | null>(null)
+
+// Detection Radar
+const showDetectionRadarModal = ref(false)
+const usingDetectionRadar = ref(false)
+const detectionResults = ref<any>(null)
 
 // Methods
 const goBack = () => {
@@ -746,6 +847,10 @@ const canUseUniversalKey = (item: Item): boolean => {
 
 const canUseTreasury = (item: Item): boolean => {
   return item.status === 'available' && item.item_type.name === 'little_treasury'
+}
+
+const canUseDetectionRadar = (item: Item): boolean => {
+  return item.status === 'available' && item.item_type.name === 'detection_radar'
 }
 
 const shareItem = async () => {
@@ -944,6 +1049,91 @@ const closeTreasuryModal = () => {
 const handleTreasurySuccess = async () => {
   // Refresh inventory after successful treasury operation
   await loadInventory()
+}
+
+const openDetectionRadarModal = () => {
+  if (!selectedItem.value) return
+  showDetectionRadarModal.value = true
+}
+
+const closeDetectionRadarModal = () => {
+  showDetectionRadarModal.value = false
+  detectionResults.value = null
+  selectedItem.value = null
+}
+
+const useDetectionRadar = async () => {
+  if (!selectedItem.value) return
+
+  try {
+    usingDetectionRadar.value = true
+
+    // Get user's own active lock tasks with hidden time
+    const tasks = await tasksApiDetailed.getTasksList({
+      task_type: 'lock',
+      status: 'active',
+      my_tasks: true
+    })
+
+    // Also include voting tasks
+    const votingTasks = await tasksApiDetailed.getTasksList({
+      task_type: 'lock',
+      status: 'voting',
+      my_tasks: true
+    })
+
+    const allTasks = [...tasks, ...votingTasks]
+    const hiddenTimeTasks = allTasks.filter(task => task.time_display_hidden)
+
+    if (hiddenTimeTasks.length === 0) {
+      alert('您没有时间被隐藏的带锁任务')
+      return
+    }
+
+    // For simplicity, use the first hidden time task
+    // In a more complete implementation, you might show a task selection modal
+    const targetTask = hiddenTimeTasks[0]
+
+    // Call the detection radar API
+    const response = await tasksApiDetailed.useDetectionRadar(targetTask.id)
+
+    // Set the detection results from the API response
+    detectionResults.value = {
+      task_title: response.revealed_data.task_title,
+      status_text: response.revealed_data.status_text,
+      time_remaining_ms: response.revealed_data.time_remaining_ms,
+      is_frozen: response.revealed_data.is_frozen
+    }
+
+    // Refresh inventory after successful use (item should be destroyed)
+    await loadInventory()
+
+    // Clear selected item since it was destroyed
+    selectedItem.value = null
+
+  } catch (error) {
+    console.error('Error using detection radar:', error)
+    const errorMessage = error instanceof Error ? error.message : '使用探测雷达失败，请重试'
+    alert(errorMessage)
+  } finally {
+    usingDetectionRadar.value = false
+  }
+}
+
+const formatTimeRemaining = (milliseconds: number): string => {
+  if (milliseconds <= 0) return '已结束'
+
+  const hours = Math.floor(milliseconds / (1000 * 60 * 60))
+  const minutes = Math.floor((milliseconds % (1000 * 60 * 60)) / (1000 * 60))
+  const seconds = Math.floor((milliseconds % (1000 * 60)) / 1000)
+
+  if (hours > 0) {
+    return `${hours}小时${minutes}分钟`
+  } else if (minutes > 0) {
+    return `${minutes}分钟${seconds}秒`
+  } else {
+    return `${seconds}秒`
+  }
 }
 
 // Lifecycle
@@ -1437,6 +1627,17 @@ onMounted(() => {
 .action-btn.universal-key:hover {
   background: #e0a800;
   color: #000;
+}
+
+.action-btn.radar {
+  background: #17a2b8;
+  color: white;
+  border-color: #000;
+}
+
+.action-btn.radar:hover {
+  background: #138496;
+  color: white;
 }
 
 .action-btn:hover {
@@ -2599,5 +2800,144 @@ onMounted(() => {
 .task-item.selected .reward-coins {
   background: #cce7ff;
   color: #28a745;
+}
+
+/* Detection Radar Modal Styles */
+.detection-radar-modal {
+  max-width: 600px;
+  width: 100%;
+}
+
+.detection-results-section {
+  background: #f8f9fa;
+  border: 3px solid #17a2b8;
+  padding: 1.5rem;
+  margin-bottom: 1.5rem;
+  box-shadow: 4px 4px 0 #17a2b8;
+}
+
+.detection-results-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+  margin-top: 1rem;
+}
+
+.detection-result-card {
+  background: white;
+  border: 3px solid #000;
+  padding: 1rem;
+  box-shadow: 3px 3px 0 #000;
+  transition: all 0.2s ease;
+}
+
+.detection-result-card:hover {
+  transform: translate(-1px, -1px);
+  box-shadow: 4px 4px 0 #000;
+}
+
+.detection-result-card.highlight {
+  background: #e8f5e8;
+  border-color: #28a745;
+  box-shadow: 3px 3px 0 #28a745;
+}
+
+.detection-result-card.highlight:hover {
+  box-shadow: 4px 4px 0 #28a745;
+}
+
+.detection-result-card.frozen {
+  background: #e1f5fe;
+  border-color: #17a2b8;
+  box-shadow: 3px 3px 0 #17a2b8;
+}
+
+.detection-result-card.frozen:hover {
+  box-shadow: 4px 4px 0 #17a2b8;
+}
+
+.result-header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.75rem;
+  padding-bottom: 0.5rem;
+  border-bottom: 2px solid #eee;
+}
+
+.result-icon {
+  font-size: 1.25rem;
+  flex-shrink: 0;
+}
+
+.result-label {
+  font-size: 0.875rem;
+  font-weight: 900;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: #666;
+}
+
+.result-content {
+  font-size: 1rem;
+  font-weight: 700;
+  color: #000;
+  line-height: 1.3;
+}
+
+.result-content.time-display {
+  font-size: 1.25rem;
+  font-weight: 900;
+  color: #28a745;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  text-shadow: 1px 1px 0 rgba(0, 0, 0, 0.1);
+}
+
+.detection-result-card.highlight .result-content.time-display {
+  color: #155724;
+  background: linear-gradient(45deg, #28a745, #20c997);
+  background-clip: text;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  text-shadow: none;
+}
+
+/* Responsive Design for Detection Radar */
+@media (max-width: 768px) {
+  .detection-radar-modal {
+    margin: 1rem;
+    max-width: calc(100vw - 2rem);
+  }
+
+  .detection-results-grid {
+    grid-template-columns: 1fr;
+    gap: 0.75rem;
+  }
+
+  .detection-result-card {
+    padding: 0.75rem;
+  }
+
+  .result-header {
+    margin-bottom: 0.5rem;
+    padding-bottom: 0.25rem;
+  }
+
+  .result-icon {
+    font-size: 1rem;
+  }
+
+  .result-label {
+    font-size: 0.75rem;
+  }
+
+  .result-content {
+    font-size: 0.875rem;
+  }
+
+  .result-content.time-display {
+    font-size: 1rem;
+  }
 }
 </style>

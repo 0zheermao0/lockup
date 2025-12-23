@@ -15,6 +15,7 @@ class ItemType(models.Model):
         ('key', '钥匙'),
         ('note', '纸条'),
         ('little_treasury', '小金库'),
+        ('detection_radar', '探测雷达'),
     ]
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)

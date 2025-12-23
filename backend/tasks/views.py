@@ -3088,3 +3088,115 @@ def get_pinned_tasks_for_carousel(request):
             {'error': '获取置顶任务失败'},
             status=status.HTTP_500_INTERNAL_SERVER_ERROR
         )
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def use_detection_radar(request, pk):
+    """使用探测雷达查看隐藏的锁任务时间"""
+    from store.models import Item
+    from users.models import Notification
+
+    try:
+        task = LockTask.objects.get(pk=pk)
+    except LockTask.DoesNotExist:
+        return Response({'error': '任务不存在'}, status=404)
+
+    # Validate task conditions
+    if task.task_type != 'lock':
+        return Response({'error': '只能对带锁任务使用探测雷达'}, status=400)
+
+    if not task.time_display_hidden:
+        return Response({'error': '任务时间未隐藏，无需使用探测雷达'}, status=400)
+
+    if task.status not in ['active', 'voting']:
+        return Response({'error': '任务已结束，无法使用探测雷达'}, status=400)
+
+    # REQUIREMENT: Only allow detection on user's own lock tasks
+    if task.user != request.user:
+        return Response({'error': '只能对自己的带锁任务使用探测雷达'}, status=400)
+
+    # Find and validate detection radar item
+    radar_item = Item.objects.filter(
+        item_type__name='detection_radar',
+        owner=request.user,
+        status='available'
+    ).first()
+
+    if not radar_item:
+        return Response({'error': '您没有可用的探测雷达'}, status=400)
+
+    # Mark item as used (auto-destroy)
+    radar_item.status = 'used'
+    radar_item.used_at = timezone.now()
+    radar_item.inventory = None  # Remove from inventory
+    radar_item.save()
+
+    # Calculate revealed time information
+    now = timezone.now()
+
+    # REQUIREMENT: For frozen tasks, show total remaining time (not frozen time)
+    if task.is_frozen:
+        # Calculate total time that would remain if unfrozen now
+        if task.frozen_at and task.total_frozen_duration:
+            # Adjust end_time by removing total frozen duration
+            adjusted_end_time = task.end_time + task.total_frozen_duration
+            time_remaining_ms = max(0, (adjusted_end_time - now).total_seconds() * 1000)
+        else:
+            time_remaining_ms = max(0, (task.end_time - now).total_seconds() * 1000)
+        status_text = "任务已冻结（显示解冻后剩余时间）"
+    else:
+        # For active/voting tasks, calculate normal remaining time
+        if task.status == 'voting' and task.voting_end_time:
+            # REQUIREMENT: Show voting deadline for voting tasks
+            time_remaining_ms = max(0, (task.voting_end_time - now).total_seconds() * 1000)
+            status_text = "投票进行中"
+        else:
+            time_remaining_ms = max(0, (task.end_time - now).total_seconds() * 1000)
+            status_text = "任务进行中"
+
+    # Create timeline event for transparency
+    TaskTimelineEvent.objects.create(
+        task=task,
+        user=request.user,
+        event_type='radar_detection',
+        description=f'{request.user.username} 使用探测雷达查看了隐藏时间',
+        metadata={
+            'detected_time_remaining_ms': int(time_remaining_ms),
+            'task_status': task.status,
+            'is_frozen': task.is_frozen
+        }
+    )
+
+    # REQUIREMENT: Notify task owner with low priority (since it's their own task, this is for logging)
+    # Note: Since user can only detect their own tasks, this notification is mainly for record-keeping
+    Notification.create_notification(
+        recipient=task.user,  # Same as request.user, but keeping for consistency
+        notification_type='item_used',  # Generic item usage notification
+        actor=request.user,
+        title='探测雷达使用记录',
+        message=f'您使用探测雷达查看了任务「{task.title}」的隐藏时间',
+        related_object_type='lock_task',
+        related_object_id=task.id,
+        priority='low',  # Low priority as requested
+        extra_data={
+            'item_type': 'detection_radar',
+            'detected_time_ms': int(time_remaining_ms),
+            'task_status': status_text
+        }
+    )
+
+    # Inventory slot count is automatically updated when item.inventory is set to None above
+
+    return Response({
+        'message': '成功使用探测雷达！时间信息已揭示',
+        'revealed_data': {
+            'actual_end_time': task.end_time.isoformat(),
+            'time_remaining_ms': int(time_remaining_ms),
+            'is_frozen': task.is_frozen,
+            'frozen_end_time': task.frozen_end_time.isoformat() if task.frozen_end_time else None,
+            'status_text': status_text,
+            'task_title': task.title
+        },
+        'item_destroyed': True
+    })

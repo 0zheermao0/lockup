@@ -106,6 +106,13 @@ class Command(BaseCommand):
                         'description': '存入时间'
                     }
                 }
+            },
+            {
+                'name': 'detection_radar',
+                'display_name': '探测雷达',
+                'description': '只有在带锁任务时间被隐藏时可以使用，使用后可以查看一次目前最新的剩余带锁时间，用后自动销毁',
+                'icon': '🎯',
+                'is_consumable': True
             }
         ]
 
@@ -158,6 +165,7 @@ class Command(BaseCommand):
             drift_bottle_type = ItemType.objects.get(name='drift_bottle')
             note_type = ItemType.objects.get(name='note')
             little_treasury_type = ItemType.objects.get(name='little_treasury')
+            detection_radar_type = ItemType.objects.get(name='detection_radar')
         except ItemType.DoesNotExist as e:
             self.stdout.write(
                 self.style.ERROR(f'❌ 道具类型不存在: {e}')
@@ -220,6 +228,17 @@ class Command(BaseCommand):
                 'stock': None,
                 'daily_limit': 5,
                 'level_requirement': 1
+            },
+            {
+                'item_type': detection_radar_type,
+                'name': '探测雷达',
+                'description': '只有在带锁任务时间被隐藏时可以使用，使用后可以查看一次目前最新的剩余带锁时间，用后自动销毁',
+                'price': 30,
+                'icon': '🎯',
+                'is_available': True,
+                'stock': None,
+                'daily_limit': 1,
+                'level_requirement': 2
             }
         ]
 
