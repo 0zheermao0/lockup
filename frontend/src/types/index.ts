@@ -442,7 +442,7 @@ export interface UserStore {
 // Game Store Types
 export interface ItemType {
   id: string
-  name: 'photo_paper' | 'photo' | 'drift_bottle' | 'key' | 'note' | 'little_treasury'
+  name: 'photo_paper' | 'photo' | 'drift_bottle' | 'key' | 'note' | 'little_treasury' | 'detection_radar' | 'blizzard_bottle' | 'sun_bottle'
   display_name: string
   description: string
   icon: string
@@ -632,7 +632,7 @@ export interface NotificationItem {
   notification_type: 'post_liked' | 'post_commented' | 'comment_liked' | 'comment_replied' |
                      'task_overtime_added' | 'task_board_taken' | 'task_board_submitted' | 'task_board_approved' | 'task_board_rejected' |
                      'coins_earned_hourly' | 'coins_earned_daily_login' | 'coins_earned_task_reward' | 'coins_spent_task_creation' |
-                     'treasure_found' | 'photo_viewed' | 'drift_bottle_found' | 'item_received' | 'item_shared' |
+                     'treasure_found' | 'photo_viewed' | 'note_viewed' | 'drift_bottle_found' | 'item_received' | 'item_shared' |
                      'friend_request' | 'friend_accepted' |
                      'level_upgraded' | 'system_announcement' | 'game_result' | 'task_frozen_auto_strict'
   title: string
@@ -681,4 +681,17 @@ export interface TaskSubmissionRequest {
   submission_text: string
   files?: File[]
   file_descriptions?: string[]
+}
+
+// Sun Bottle Response Interface
+export interface SunBottleResponse {
+  message: string
+  unfrozen_tasks_count: number
+  affected_users_count: number
+  unfrozen_tasks: Array<{
+    task_id: string
+    task_title: string
+    owner: string
+  }>
+  item_destroyed: boolean
 }

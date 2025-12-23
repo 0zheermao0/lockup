@@ -495,6 +495,7 @@ class Notification(models.Model):
         # 物品/探索类
         ('treasure_found', '掩埋物品被发现'),
         ('photo_viewed', '照片被查看'),
+        ('note_viewed', '纸条被查看'),
         ('drift_bottle_found', '漂流瓶被发现'),
         ('item_received', '收到物品'),
 
@@ -629,6 +630,7 @@ class Notification(models.Model):
             'task_board_rejected': f'/tasks/{self.related_object_id}',
             'treasure_found': f'/store/treasures/{self.related_object_id}',
             'photo_viewed': f'/store/photos/{self.related_object_id}',
+            'note_viewed': f'/store/notes/{self.related_object_id}',
             'drift_bottle_found': f'/store/bottles/{self.related_object_id}',
             'friend_request': '/friends',
             'friend_accepted': f'/profile/{self.actor.username}' if self.actor else '/friends',
@@ -739,6 +741,7 @@ class Notification(models.Model):
             'coins_refunded_task_failed': "任务失败积分退还",
             'treasure_found': f"{actor_name}发现了你的宝物",
             'photo_viewed': f"{actor_name}查看了你的照片",
+            'note_viewed': f"{actor_name}查看了你的纸条",
             'drift_bottle_found': f"{actor_name}发现了你的漂流瓶",
             'friend_request': f"{actor_name}向你发送了好友请求",
             'friend_accepted': f"{actor_name}接受了你的好友请求",
@@ -784,6 +787,7 @@ class Notification(models.Model):
             'game_result': "游戏结果已出炉，快来查看",
             'treasure_found': f"{actor_name}在探索中发现了你埋藏的宝物",
             'photo_viewed': f"{actor_name}查看了你分享的照片",
+            'note_viewed': f"{actor_name}查看了你的纸条内容",
             'drift_bottle_found': f"你的漂流瓶被{actor_name}发现了",
             'friend_request': f"{actor_name}想要和你成为好友",
             'friend_accepted': f"你们现在是好友了，可以开始聊天",

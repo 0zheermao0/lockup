@@ -92,10 +92,15 @@ def purchase_item(request):
 
                 # 检查每日购买限制
                 if store_item.daily_limit:
+                    # 使用日期范围查询避免timezone问题
+                    today_start = timezone.now().replace(hour=0, minute=0, second=0, microsecond=0)
+                    today_end = today_start + timedelta(days=1)
+
                     today_purchases = Purchase.objects.filter(
                         user=user,
                         store_item=store_item,
-                        created_at__date=timezone.now().date()
+                        created_at__gte=today_start,
+                        created_at__lt=today_end
                     ).count()
 
                     if today_purchases + quantity > store_item.daily_limit:
@@ -1362,8 +1367,8 @@ def create_share_link(request):
                 status='available'
             )
 
-            # 检查物品类型是否可分享 (photo, note, key, little_treasury)
-            if item.item_type.name not in ['photo', 'note', 'key', 'little_treasury']:
+            # 检查物品类型是否可分享 (photo, note, key, little_treasury, detection_radar, blizzard_bottle, sun_bottle)
+            if item.item_type.name not in ['photo', 'note', 'key', 'little_treasury', 'detection_radar', 'blizzard_bottle', 'sun_bottle']:
                 return Response({
                     'error': f'{item.item_type.display_name} 不支持分享'
                 }, status=status.HTTP_400_BAD_REQUEST)
@@ -1881,4 +1886,146 @@ def withdraw_treasury_coins(request, item_id):
     except Exception as e:
         return Response({
             'error': f'提取积分失败: {str(e)}'
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def view_note(request, note_id):
+    """查看纸条（阅后即焚）"""
+    try:
+        with transaction.atomic():
+            note_item = get_object_or_404(
+                Item,
+                id=note_id,
+                item_type__name='note',
+                status='available'
+            )
+
+            # 检查权限（拥有者或漂流瓶接收者或分享链接接收者）
+            can_view = False
+            if note_item.owner == request.user:
+                can_view = True
+            else:
+                # 检查是否是漂流瓶中的纸条
+                drift_bottles = DriftBottle.objects.filter(
+                    items__id=note_id,
+                    finder=request.user,
+                    status='found'
+                )
+                if drift_bottles.exists():
+                    can_view = True
+
+                # 检查是否是分享链接中的纸条
+                shared_items = SharedItem.objects.filter(
+                    item_id=note_id,
+                    is_claimed=False,
+                    expires_at__gt=timezone.now()
+                )
+                if shared_items.exists():
+                    can_view = True
+
+            if not can_view:
+                return Response({
+                    'error': '无权查看此纸条'
+                }, status=status.HTTP_403_FORBIDDEN)
+
+            # 获取纸条内容
+            note_content = note_item.properties.get('content', '')
+            if not note_content:
+                return Response({
+                    'error': '纸条内容为空'
+                }, status=status.HTTP_404_NOT_FOUND)
+
+            # 准备返回数据
+            response_data = {
+                'content': note_content,
+                'created_at': note_item.properties.get('created_at'),
+                'editor': note_item.properties.get('editor'),
+                'burn_after_reading': note_item.properties.get('burn_after_reading', True),
+                'view_time': timezone.now().isoformat()
+            }
+
+            # 阅后即焚：标记道具为已使用
+            if note_item.properties.get('burn_after_reading', True):
+                note_item.status = 'used'
+                note_item.used_at = timezone.now()
+                note_item.inventory = None  # 从背包中移除
+                note_item.save()
+
+                # 创建纸条查看通知（如果不是自己的纸条）
+                if note_item.owner != request.user:
+                    Notification.create_notification(
+                        recipient=note_item.owner,
+                        notification_type='note_viewed',
+                        actor=request.user,
+                        related_object_type='item',
+                        related_object_id=note_item.id,
+                        extra_data={
+                            'content_preview': note_content[:10] + ('...' if len(note_content) > 10 else ''),
+                            'view_time': timezone.now().isoformat(),
+                            'burn_after_reading': True
+                        },
+                        priority='low'
+                    )
+
+            return Response(response_data, status=status.HTTP_200_OK)
+
+    except Exception as e:
+        return Response({
+            'error': f'查看纸条失败: {str(e)}'
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def edit_note(request, note_id):
+    """编辑纸条内容"""
+    try:
+        with transaction.atomic():
+            note_item = get_object_or_404(
+                Item,
+                id=note_id,
+                item_type__name='note',
+                status='available',
+                owner=request.user  # 只有所有者可以编辑
+            )
+
+            content = request.data.get('content', '').strip()
+
+            # 验证内容长度
+            if not content:
+                return Response({
+                    'error': '纸条内容不能为空'
+                }, status=status.HTTP_400_BAD_REQUEST)
+
+            if len(content) > 30:
+                return Response({
+                    'error': '纸条内容不能超过30个字符'
+                }, status=status.HTTP_400_BAD_REQUEST)
+
+            # 更新纸条内容
+            note_item.properties.update({
+                'content': content,
+                'edited_at': timezone.now().isoformat(),
+                'burn_after_reading': True,
+                'editor': request.user.username
+            })
+
+            # 如果是第一次编辑，添加创建时间
+            if 'created_at' not in note_item.properties:
+                note_item.properties['created_at'] = timezone.now().isoformat()
+
+            note_item.save()
+
+            return Response({
+                'success': True,
+                'message': '纸条内容已更新',
+                'content': content,
+                'edited_at': note_item.properties['edited_at']
+            }, status=status.HTTP_200_OK)
+
+    except Exception as e:
+        return Response({
+            'error': f'编辑纸条失败: {str(e)}'
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)

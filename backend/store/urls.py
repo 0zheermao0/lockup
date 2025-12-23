@@ -10,6 +10,8 @@ urlpatterns = [
     path('purchase/', views.purchase_item, name='purchase-item'),
     path('upload-photo/', views.upload_photo_to_paper, name='upload-photo'),
     path('photo/<uuid:photo_id>/', views.view_photo, name='view-photo'),
+    path('note/<uuid:note_id>/view/', views.view_note, name='view-note'),
+    path('note/<uuid:note_id>/edit/', views.edit_note, name='edit-note'),
 
     # 游戏相关
     path('time-wheel/', views.play_time_wheel, name='time-wheel'),

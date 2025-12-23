@@ -106,6 +106,27 @@ class Command(BaseCommand):
                         'description': '存入时间'
                     }
                 }
+            },
+            {
+                'name': 'detection_radar',
+                'display_name': '探测雷达',
+                'description': '只有在带锁任务时间被隐藏时可以使用，使用后可以查看一次目前最新的剩余带锁时间，用后自动销毁',
+                'icon': '🎯',
+                'is_consumable': True
+            },
+            {
+                'name': 'blizzard_bottle',
+                'display_name': '暴雪瓶',
+                'description': '使用后将当前所有处于带锁状态用户的带锁任务冻结，使用后自动销毁',
+                'icon': '🌨️',
+                'is_consumable': True
+            },
+            {
+                'name': 'sun_bottle',
+                'display_name': '太阳瓶',
+                'description': '使用后将当前所有被冻结的带锁任务解冻，使用后自动销毁',
+                'icon': '☀️',
+                'is_consumable': True
             }
         ]
 
@@ -158,6 +179,9 @@ class Command(BaseCommand):
             drift_bottle_type = ItemType.objects.get(name='drift_bottle')
             note_type = ItemType.objects.get(name='note')
             little_treasury_type = ItemType.objects.get(name='little_treasury')
+            detection_radar_type = ItemType.objects.get(name='detection_radar')
+            blizzard_bottle_type = ItemType.objects.get(name='blizzard_bottle')
+            sun_bottle_type = ItemType.objects.get(name='sun_bottle')
         except ItemType.DoesNotExist as e:
             self.stdout.write(
                 self.style.ERROR(f'❌ 道具类型不存在: {e}')
@@ -202,12 +226,12 @@ class Command(BaseCommand):
             {
                 'item_type': note_type,
                 'name': '留言纸条',
-                'description': '精美的留言纸条，适合写下重要的话语或秘密',
+                'description': '可编写30字内容的纸条，阅读后自动销毁',
                 'price': 3,
                 'icon': '📝',
                 'is_available': True,
                 'stock': None,
-                'daily_limit': 20,
+                'daily_limit': 10,
                 'level_requirement': 1
             },
             {
@@ -220,6 +244,39 @@ class Command(BaseCommand):
                 'stock': None,
                 'daily_limit': 5,
                 'level_requirement': 1
+            },
+            {
+                'item_type': detection_radar_type,
+                'name': '探测雷达',
+                'description': '只有在带锁任务时间被隐藏时可以使用，使用后可以查看一次目前最新的剩余带锁时间，用后自动销毁',
+                'price': 30,
+                'icon': '🎯',
+                'is_available': True,
+                'stock': None,
+                'daily_limit': 1,
+                'level_requirement': 2
+            },
+            {
+                'item_type': blizzard_bottle_type,
+                'name': '暴雪瓶',
+                'description': '使用后将当前所有处于带锁状态用户的带锁任务冻结，使用后自动销毁',
+                'price': 500,
+                'icon': '🌨️',
+                'is_available': True,
+                'stock': None,
+                'daily_limit': 1,
+                'level_requirement': 4
+            },
+            {
+                'item_type': sun_bottle_type,
+                'name': '太阳瓶',
+                'description': '使用后将当前所有被冻结的带锁任务解冻，使用后自动销毁',
+                'price': 500,
+                'icon': '☀️',
+                'is_available': True,
+                'stock': None,
+                'daily_limit': 1,
+                'level_requirement': 4
             }
         ]
 

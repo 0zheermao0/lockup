@@ -28,6 +28,7 @@ urlpatterns = [
     # 钥匙玩法 - 手动时间调整和时间显示切换
     path('<uuid:pk>/manual-time-adjustment/', views.manual_time_adjustment, name='task-manual-time-adjustment'),
     path('<uuid:pk>/toggle-time-display/', views.toggle_time_display, name='task-toggle-time-display'),
+    path('<uuid:pk>/use-detection-radar/', views.use_detection_radar, name='use-detection-radar'),
 
     # 冻结/解冻功能
     path('<uuid:pk>/freeze/', views.freeze_task, name='task-freeze'),

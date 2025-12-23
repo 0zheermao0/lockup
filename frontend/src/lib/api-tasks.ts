@@ -429,5 +429,23 @@ export const tasksApi = {
     count: number
   }> => {
     return apiRequest('/tasks/pinned-carousel/')
+  },
+
+  // 使用探测雷达
+  useDetectionRadar: async (id: string): Promise<{
+    message: string
+    revealed_data: {
+      actual_end_time: string
+      time_remaining_ms: number
+      is_frozen: boolean
+      frozen_end_time: string | null
+      status_text: string
+      task_title: string
+    }
+    item_destroyed: boolean
+  }> => {
+    return apiRequest(`/tasks/${id}/use-detection-radar/`, {
+      method: 'POST'
+    })
   }
 }
