@@ -37,35 +37,39 @@ export function smartGoBack(
     targetRoute = 'tasks'
 
     // 检查是否有保存的任务视图状态
-    const savedState = navigationStore.getTaskViewState()
-    if (savedState) {
-      console.log('🔙 Found saved task view state, navigating with query parameters')
+    const savedTasksState = navigationStore.getTasksViewState()
+    if (savedTasksState) {
+      console.log('🔙 Found saved tasks view state, navigating to tasks')
 
-      // 使用状态参数导航到任务路由
+      // 直接导航到任务路由，状态将在TaskView组件中恢复
       try {
-        router.push({
-          name: 'tasks',
-          query: {
-            type: savedState.activeTaskType,
-            filter: savedState.activeFilter,
-            sortBy: savedState.sortBy,
-            sortOrder: savedState.sortOrder
-          }
-        })
-
-        // 使用状态后清除保存的状态
-        navigationStore.clearTaskViewState()
+        router.push({ name: 'tasks' })
         return
       } catch (error) {
-        console.error('🔙 Failed to navigate with saved state:', error)
+        console.error('🔙 Failed to navigate with saved tasks state:', error)
         // 失败时继续执行常规导航
       }
     }
   }
-  // 如果当前在动态详情页面，返回首页
+  // 如果当前在动态详情页面，返回首页并恢复状态
   else if (currentPath.startsWith('/post/') || currentPath.startsWith('/posts/')) {
-    console.log('🔙 Current page is post detail, returning to home')
+    console.log('🔙 Current page is post detail, returning to home with state restoration')
     targetRoute = 'home'
+
+    // 检查是否有保存的动态视图状态
+    const savedPostsState = navigationStore.getPostsViewState()
+    if (savedPostsState) {
+      console.log('🔙 Found saved posts view state, navigating to home')
+
+      try {
+        router.push({ name: 'home' })
+        // Note: State restoration will happen in HomeView onMounted
+        return
+      } catch (error) {
+        console.error('🔙 Failed to navigate with saved posts state:', error)
+        // 失败时继续执行常规导航
+      }
+    }
   }
   // 如果启用了引用页检查且有引用页，分析来源
   else if (checkReferrer && referrer) {

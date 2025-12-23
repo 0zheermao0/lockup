@@ -4,6 +4,12 @@ export interface InfiniteScrollOptions {
   threshold?: number // Distance from bottom to trigger load (in pixels)
   initialPageSize?: number // Number of items per page
   loadDelay?: number // Delay before loading next page (in ms)
+  initialData?: { // Support for initial data restoration
+    items: any[]
+    currentPage: number
+    totalCount: number
+    hasMore: boolean
+  }
 }
 
 export interface PaginatedData<T> {
@@ -20,7 +26,8 @@ export function useInfiniteScroll<T>(
   const {
     threshold = 200,
     initialPageSize = 10,
-    loadDelay = 300
+    loadDelay = 300,
+    initialData
   } = options
 
   // State
@@ -103,6 +110,31 @@ export function useInfiniteScroll<T>(
     initialized.value = false
   }
 
+  // Restore state from saved data
+  const restoreState = (data: {
+    items: T[]
+    currentPage: number
+    totalCount: number
+    hasMore: boolean
+  }) => {
+    console.log('🔄 Restoring infinite scroll state:', data)
+    items.value = data.items
+    currentPage.value = data.currentPage
+    totalCount.value = data.totalCount
+    hasMore.value = data.hasMore
+    initialized.value = true
+  }
+
+  // Get current state for saving
+  const getCurrentState = () => {
+    return {
+      items: items.value,
+      currentPage: currentPage.value,
+      totalCount: totalCount.value,
+      hasMore: hasMore.value
+    }
+  }
+
   // Scroll event handler
   const handleScroll = () => {
     if (loading.value || !hasMore.value) return
@@ -127,9 +159,17 @@ export function useInfiniteScroll<T>(
 
   // Initialize
   const initialize = async () => {
-    if (!initialized.value) {
-      await fetchData(1, false)
+    if (initialized.value) return
+
+    // Check if we have initial data to restore
+    if (initialData) {
+      console.log('📥 Initializing with restored data')
+      restoreState(initialData)
+      return
     }
+
+    // Otherwise, fetch from beginning
+    await fetchData(1, false)
   }
 
   // Setup scroll listener
@@ -164,6 +204,8 @@ export function useInfiniteScroll<T>(
     loadMore,
     refresh,
     reset,
-    fetchData
+    fetchData,
+    restoreState,
+    getCurrentState
   }
 }

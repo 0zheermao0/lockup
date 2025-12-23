@@ -235,6 +235,7 @@ export const useTasksStore = defineStore('tasks', () => {
         tasks.value.splice(taskIndex, 1)
         totalCount.value = Math.max(0, totalCount.value - 1)
       }
+
     } catch (err) {
       console.error('Error deleting task:', err)
       throw err
@@ -268,6 +269,7 @@ export const useTasksStore = defineStore('tasks', () => {
       throw err
     }
   }
+
 
   const getTaskTimeline = async (taskId: string) => {
     try {

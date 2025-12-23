@@ -321,11 +321,12 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, ref, computed } from 'vue'
+import { onMounted, ref, computed, nextTick } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '../stores/auth'
 import { usePostsStore } from '../stores/posts'
 import { useNotificationStore } from '../stores/notifications'
+import { useNavigationStore } from '../stores/navigation'
 import { useInfiniteScroll } from '../composables/useInfiniteScroll'
 import { formatDistanceToNow } from '../lib/utils'
 import { getLevelColorScheme, getLevelCSSProperties, getLevelCSSClass, getLevelDisplayName, getLevelUsernameColor } from '../lib/level-colors'
@@ -343,6 +344,7 @@ const router = useRouter()
 const authStore = useAuthStore()
 const postsStore = usePostsStore()
 const notificationStore = useNotificationStore()
+const navigationStore = useNavigationStore()
 
 // 创建动态模态框状态
 const showCreateModal = ref(false)
@@ -364,6 +366,17 @@ const showPinnedCarousel = computed(() => {
   return hasPinnedUsers.value
 })
 
+// Helper function to validate cached state
+const isStateValid = (state: any): boolean => {
+  if (!state) return false
+
+  const now = Date.now()
+  const stateAge = now - state.lastFetchTime
+  const MAX_STATE_AGE = 10 * 60 * 1000 // 10 minutes
+
+  return stateAge < MAX_STATE_AGE && state.posts && state.posts.length > 0
+}
+
 // 无限滚动设置
 const {
   items: posts,
@@ -374,13 +387,28 @@ const {
   isLoadingMore,
   isInitialLoading,
   initialize,
-  refresh
+  refresh,
+  getCurrentState
 } = useInfiniteScroll(
   postsStore.getPaginatedPosts,
   {
     initialPageSize: 10,
     threshold: 200,
-    loadDelay: 300
+    loadDelay: 300,
+    initialData: (() => {
+      // Try to restore from navigation store
+      const savedState = navigationStore.getPostsViewState()
+      if (savedState && isStateValid(savedState)) {
+        console.log('🔄 Restoring posts from navigation store')
+        return {
+          items: savedState.posts,
+          currentPage: savedState.currentPage,
+          totalCount: savedState.totalCount,
+          hasMore: savedState.hasMore
+        }
+      }
+      return undefined
+    })()
   }
 )
 
@@ -399,7 +427,9 @@ const closeCreateModal = () => {
 }
 
 const handlePostCreated = () => {
-  // 刷新动态列表
+  // Clear cache and refresh since new content was added
+  postsStore.invalidatePostsCache()
+  navigationStore.clearPostsViewState()
   refresh()
 }
 
@@ -455,6 +485,21 @@ const deletePost = async (post: Post) => {
 }
 
 const goToPostDetail = (postId: string) => {
+  // Save current scroll position
+  const scrollPosition = window.pageYOffset || document.documentElement.scrollTop
+
+  // Save posts view state
+  const currentState = getCurrentState()
+  navigationStore.savePostsViewState({
+    posts: currentState.items,
+    currentPage: currentState.currentPage,
+    totalCount: currentState.totalCount,
+    hasMore: currentState.hasMore,
+    scrollPosition,
+    lastFetchTime: Date.now()
+  })
+
+  console.log('💾 Saved posts state before navigation')
   router.push({ name: 'post-detail', params: { id: postId } })
 }
 
@@ -615,6 +660,18 @@ onMounted(async () => {
     initialize(),
     checkPinnedUsers()
   ])
+
+  // Restore scroll position if we have saved state
+  const savedState = navigationStore.getPostsViewState()
+  if (savedState && savedState.scrollPosition) {
+    nextTick(() => {
+      console.log('📍 Restoring scroll position:', savedState.scrollPosition)
+      window.scrollTo(0, savedState.scrollPosition)
+
+      // Clear the saved state after restoration
+      navigationStore.clearPostsViewState()
+    })
+  }
 
   // Set up periodic checking for pinned users (every 30 seconds)
   setInterval(checkPinnedUsers, 30000)

@@ -332,7 +332,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, computed, onUnmounted, watch, onActivated } from 'vue'
+import { ref, onMounted, computed, onUnmounted, watch, onActivated, nextTick } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useAuthStore } from '../stores/auth'
 import { useTasksStore } from '../stores/tasks'
@@ -433,6 +433,17 @@ const getFilteredTasks = async (page: number, pageSize: number) => {
   }
 }
 
+// Helper function to validate cached state
+const isStateValid = (state: any): boolean => {
+  if (!state) return false
+
+  const now = Date.now()
+  const stateAge = now - state.lastFetchTime
+  const MAX_STATE_AGE = 10 * 60 * 1000 // 10 minutes
+
+  return stateAge < MAX_STATE_AGE && state.tasks && state.tasks.length > 0
+}
+
 // 无限滚动设置 - 一行三个卡片，4行=12个任务
 const {
   items: tasks,
@@ -443,13 +454,37 @@ const {
   isLoadingMore,
   isInitialLoading,
   initialize,
-  refresh
+  refresh,
+  getCurrentState
 } = useInfiniteScroll(
   getFilteredTasks,
   {
     initialPageSize: 12, // 4行 × 3列 = 12个任务
     threshold: 200,
-    loadDelay: 300
+    loadDelay: 300,
+    initialData: (() => {
+      // Try to restore from navigation store
+      const savedState = navigationStore.getTasksViewState()
+      if (savedState && isStateValid(savedState)) {
+        // Check if current filters match saved state
+        const filtersMatch =
+          savedState.activeTaskType === activeTaskType.value &&
+          savedState.activeFilter === activeFilter.value &&
+          savedState.sortBy === sortBy.value &&
+          savedState.sortOrder === sortOrder.value
+
+        if (filtersMatch) {
+          console.log('🔄 Restoring tasks from navigation store')
+          return {
+            items: savedState.tasks || [],
+            currentPage: savedState.currentPage || 1,
+            totalCount: savedState.totalCount || 0,
+            hasMore: savedState.hasMore || false
+          }
+        }
+      }
+      return undefined
+    })()
   }
 )
 
@@ -716,7 +751,8 @@ const startPinningUpdate = () => {
 }
 
 const handleTaskCreated = async () => {
-  // Refresh the task list
+  // Clear cache and refresh since new content was added
+  navigationStore.clearTasksViewState()
   refresh()
 
   // Refresh task counts
@@ -741,6 +777,8 @@ const deleteTask = async (task: Task) => {
 
   try {
     await tasksStore.deleteTask(task.id)
+    // Clear navigation state since task list has changed
+    navigationStore.clearTasksViewState()
     // Refresh task counts after deletion
     await fetchTaskCounts()
     console.log('任务删除成功')
@@ -751,21 +789,26 @@ const deleteTask = async (task: Task) => {
 }
 
 const goToTaskDetail = (taskId: string) => {
-  // Save current task view state before navigating
-  navigationStore.saveTaskViewState({
+  // Save current scroll position
+  const scrollPosition = window.pageYOffset || document.documentElement.scrollTop
+
+  // Save current tasks view state
+  const currentState = getCurrentState()
+  navigationStore.saveTasksViewState({
+    tasks: currentState.items,
+    currentPage: currentState.currentPage,
+    totalCount: currentState.totalCount,
+    hasMore: currentState.hasMore,
+    scrollPosition,
+    lastFetchTime: Date.now(),
+    // Store filter context to ensure we restore the right data
     activeTaskType: activeTaskType.value,
     activeFilter: activeFilter.value,
     sortBy: sortBy.value,
     sortOrder: sortOrder.value
   })
 
-  console.log('🗂️ Saved task view state before navigating to task detail:', {
-    activeTaskType: activeTaskType.value,
-    activeFilter: activeFilter.value,
-    sortBy: sortBy.value,
-    sortOrder: sortOrder.value
-  })
-
+  console.log('💾 Saved tasks state before navigation')
   router.push({ name: 'task-detail', params: { id: taskId } })
 }
 
@@ -1178,10 +1221,52 @@ watch(activeTaskType, (newType) => {
 
 // Watch for filter changes and refresh tasks
 watch(activeFilter, () => {
+  // Skip refresh if we're currently restoring state
+  if (isRestoringState.value) {
+    console.log('🔄 Skipping filter refresh during state restoration')
+    return
+  }
   refresh()
 })
 
-// Restore state from query parameters
+// Restore state from TasksViewState
+const restoreStateFromTasksView = () => {
+  const savedState = navigationStore.getTasksViewState()
+
+  if (savedState && isStateValid(savedState)) {
+    console.log('🔄 Restoring state from TasksViewState:', savedState)
+
+    // Set flag to prevent watchers from interfering
+    isRestoringState.value = true
+
+    // Restore task type
+    activeTaskType.value = savedState.activeTaskType
+    console.log('🔄 Restored activeTaskType:', activeTaskType.value)
+
+    // Restore filter
+    activeFilter.value = savedState.activeFilter
+    console.log('🔄 Restored activeFilter:', activeFilter.value)
+
+    // Restore sort by
+    sortBy.value = savedState.sortBy
+    console.log('🔄 Restored sortBy:', sortBy.value)
+
+    // Restore sort order
+    sortOrder.value = savedState.sortOrder
+    console.log('🔄 Restored sortOrder:', sortOrder.value)
+
+    // Reset flag after restoration is complete
+    setTimeout(() => {
+      isRestoringState.value = false
+      console.log('🔄 State restoration completed, flag reset')
+    }, 100)
+
+    return true // Indicate that state was restored
+  }
+  return false // No state to restore
+}
+
+// Restore state from query parameters (fallback)
 const restoreStateFromQuery = () => {
   const query = route.query
 
@@ -1228,8 +1313,12 @@ const restoreStateFromQuery = () => {
 }
 
 onMounted(async () => {
-  // Restore state from query parameters if present
-  restoreStateFromQuery()
+  // Priority 1: Restore state from TasksViewState (from navigation)
+  // Priority 2: Restore state from query parameters (fallback)
+  const stateRestored = restoreStateFromTasksView()
+  if (!stateRestored) {
+    restoreStateFromQuery()
+  }
 
   // Initialize task list, counts, and pinning status in parallel
   await Promise.all([
@@ -1237,6 +1326,18 @@ onMounted(async () => {
     fetchTaskCounts(),
     activeTaskType.value === 'lock' ? fetchPinningStatus() : Promise.resolve()
   ])
+
+  // Restore scroll position if we have saved state
+  const savedState = navigationStore.getTasksViewState()
+  if (savedState && savedState.scrollPosition !== undefined) {
+    nextTick(() => {
+      console.log('📍 Restoring scroll position:', savedState.scrollPosition)
+      window.scrollTo(0, savedState.scrollPosition)
+
+      // Clear the saved state after restoration
+      navigationStore.clearTasksViewState()
+    })
+  }
 
   startProgressUpdate()
   startPinningUpdate()
