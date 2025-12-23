@@ -115,6 +115,8 @@ class LockTaskListSerializer(serializers.ModelSerializer):
             'max_participants',
             # 时间字段
             'start_time', 'end_time', 'created_at',
+            # 钥匙玩法字段
+            'time_display_hidden',
             # 冻结/解冻字段
             'is_frozen', 'frozen_at', 'frozen_end_time',
             # 计算字段
