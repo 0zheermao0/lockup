@@ -51,7 +51,10 @@
               :key="item.id"
               class="inventory-slot occupied"
               @click="selectItem(item)"
-              :class="{ 'selected': selectedItem?.id === item.id }"
+              :class="{
+                'selected': selectedItem?.id === item.id,
+                'in-game': item.status === 'in_game'
+              }"
             >
               <div class="slot-content">
                 <span class="item-icon">{{ item.item_type.icon }}</span>
@@ -87,6 +90,14 @@
                   <span class="meta-label">状态:</span>
                   <span class="meta-value">{{ getStatusText(selectedItem.status) }}</span>
                 </p>
+                <!-- In-game status special notice -->
+                <div v-if="selectedItem.status === 'in_game'" class="in-game-notice">
+                  <div class="notice-icon">🎮</div>
+                  <div class="notice-content">
+                    <p class="notice-title">物品已预留为游戏奖品</p>
+                    <p class="notice-text">此物品已被设置为掷骰子游戏的奖励，游戏结算前无法使用或处置。</p>
+                  </div>
+                </div>
                 <p class="meta-item">
                   <span class="meta-label">创建时间:</span>
                   <span class="meta-value">{{ formatDate(selectedItem.created_at) }}</span>
@@ -1001,7 +1012,8 @@ const getStatusText = (status: string): string => {
     'used': '已使用',
     'expired': '已过期',
     'in_drift_bottle': '漂流中',
-    'buried': '已掩埋'
+    'buried': '已掩埋',
+    'in_game': '预留奖品'
   }
   return statusMap[status as keyof typeof statusMap] || status
 }
@@ -1141,7 +1153,7 @@ const canShareItem = (item: Item): boolean => {
 }
 
 const canBuryItem = (item: Item): boolean => {
-  return item.status === 'available' && ['photo', 'key', 'note'].includes(item.item_type.name)
+  return item.status === 'available' && ['photo', 'key', 'note', 'little_treasury', 'detection_radar', 'photo_paper', 'blizzard_bottle', 'sun_bottle'].includes(item.item_type.name)
 }
 
 const canDiscardItem = (item: Item): boolean => {
@@ -1941,6 +1953,66 @@ onMounted(() => {
 
 .inventory-slot.occupied.selected .item-status {
   color: #cce7ff;
+}
+
+/* In-game items special styling */
+.inventory-slot.occupied.in-game {
+  background: linear-gradient(135deg, #fff3cd, #ffeaa7);
+  border-color: #f39c12;
+  box-shadow: 4px 4px 0 #e67e22;
+}
+
+.inventory-slot.occupied.in-game .item-status {
+  color: #d68910;
+  font-weight: 900;
+  background: rgba(211, 84, 0, 0.1);
+  padding: 2px 6px;
+  border-radius: 3px;
+  border: 1px solid #d35400;
+}
+
+.inventory-slot.occupied.in-game .item-icon {
+  opacity: 0.8;
+  filter: sepia(0.3) hue-rotate(30deg);
+}
+
+/* In-game notice styling */
+.in-game-notice {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+  margin-top: 1rem;
+  padding: 1rem;
+  background: linear-gradient(135deg, #fff3cd, #ffeaa7);
+  border: 3px solid #f39c12;
+  border-radius: 6px;
+  box-shadow: 4px 4px 0 #e67e22;
+}
+
+.notice-icon {
+  font-size: 1.5rem;
+  flex-shrink: 0;
+}
+
+.notice-content {
+  flex: 1;
+}
+
+.notice-title {
+  font-size: 0.875rem;
+  font-weight: 900;
+  color: #d68910;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin: 0 0 0.5rem 0;
+}
+
+.notice-text {
+  font-size: 0.75rem;
+  color: #b7950b;
+  line-height: 1.4;
+  margin: 0;
+  font-weight: 600;
 }
 
 .empty-text {

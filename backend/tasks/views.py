@@ -3200,3 +3200,244 @@ def use_detection_radar(request, pk):
         },
         'item_destroyed': True
     })
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def use_blizzard_bottle(request):
+    """使用暴雪瓶冻结所有活跃的带锁任务"""
+    try:
+        # Find and validate blizzard bottle item
+        blizzard_bottle = Item.objects.filter(
+            item_type__name='blizzard_bottle',
+            owner=request.user,
+            status='available'
+        ).first()
+
+        if not blizzard_bottle:
+            return Response({'error': '您没有可用的暴雪瓶'}, status=400)
+
+        # Get all active lock tasks that are not frozen
+        active_lock_tasks = LockTask.objects.filter(
+            task_type='lock',
+            status__in=['active', 'voting'],
+            is_frozen=False
+        )
+
+        if active_lock_tasks.count() == 0:
+            return Response({'error': '当前没有活跃的带锁任务可以冻结'}, status=400)
+
+        # Mark blizzard bottle as used (auto-destroy)
+        blizzard_bottle.status = 'used'
+        blizzard_bottle.used_at = timezone.now()
+        blizzard_bottle.inventory = None  # Remove from inventory
+        blizzard_bottle.save()
+
+        # Freeze all active lock tasks
+        frozen_tasks = []
+        affected_users = set()
+
+        for task in active_lock_tasks:
+            # Only freeze tasks that aren't already frozen
+            if not task.is_frozen:
+                task.is_frozen = True
+                task.frozen_at = timezone.now()
+                task.frozen_end_time = task.end_time
+                task.save()
+
+                frozen_tasks.append({
+                    'task_id': task.id,
+                    'task_title': task.title,
+                    'owner': task.user.username
+                })
+                affected_users.add(task.user)
+
+                # Create timeline event for each frozen task
+                TaskTimelineEvent.objects.create(
+                    task=task,
+                    user=request.user,
+                    event_type='system_freeze',
+                    description=f'{request.user.username} 使用暴雪瓶冻结了所有活跃任务',
+                    metadata={
+                        'freeze_reason': 'blizzard_bottle',
+                        'frozen_by_user': request.user.username,
+                        'frozen_by_user_id': request.user.id,
+                        'system_wide_freeze': True
+                    }
+                )
+
+        # Send urgent notifications to all affected users
+        for user in affected_users:
+            Notification.create_notification(
+                recipient=user,
+                notification_type='system_announcement',
+                actor=request.user,
+                title='❄️ 暴雪来袭！',
+                message=f'用户 {request.user.username} 使用了暴雪瓶，您的带锁任务已被冻结！',
+                related_object_type='system_event',
+                related_object_id=str(blizzard_bottle.id),
+                priority='urgent',  # Urgent priority as requested
+                extra_data={
+                    'freeze_type': 'blizzard_bottle',
+                    'frozen_by_user': request.user.username,
+                    'frozen_tasks_count': len(frozen_tasks),
+                    'system_wide_effect': True
+                }
+            )
+
+        # Create global announcement for system-wide effect
+        Notification.create_notification(
+            recipient=request.user,
+            notification_type='system_announcement',
+            actor=request.user,
+            title='🌨️ 暴雪瓶使用成功',
+            message=f'您使用暴雪瓶成功冻结了 {len(frozen_tasks)} 个活跃任务！',
+            related_object_type='system_event',
+            related_object_id=str(blizzard_bottle.id),
+            priority='urgent',
+            extra_data={
+                'action_type': 'blizzard_bottle_usage',
+                'frozen_tasks_count': len(frozen_tasks),
+                'affected_users_count': len(affected_users)
+            }
+        )
+
+        return Response({
+            'message': f'暴雪瓶使用成功！已冻结 {len(frozen_tasks)} 个活跃任务',
+            'frozen_tasks_count': len(frozen_tasks),
+            'affected_users_count': len(affected_users),
+            'frozen_tasks': frozen_tasks,
+            'item_destroyed': True
+        })
+
+    except Exception as e:
+        return Response({
+            'error': f'使用暴雪瓶时发生错误: {str(e)}'
+        }, status=500)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def use_sun_bottle(request):
+    """使用太阳瓶解冻所有被冻结的带锁任务"""
+    try:
+        # Find and validate sun bottle item
+        sun_bottle = Item.objects.filter(
+            item_type__name='sun_bottle',
+            owner=request.user,
+            status='available'
+        ).first()
+
+        if not sun_bottle:
+            return Response({'error': '您没有可用的太阳瓶'}, status=400)
+
+        # Get all frozen lock tasks
+        frozen_lock_tasks = LockTask.objects.filter(
+            task_type='lock',
+            status__in=['active', 'voting'],
+            is_frozen=True
+        )
+
+        if frozen_lock_tasks.count() == 0:
+            return Response({'error': '当前没有被冻结的任务可以解冻'}, status=400)
+
+        # Mark sun bottle as used (auto-destroy)
+        sun_bottle.status = 'used'
+        sun_bottle.used_at = timezone.now()
+        sun_bottle.inventory = None  # Remove from inventory
+        sun_bottle.save()
+
+        # Unfreeze all frozen lock tasks
+        unfrozen_tasks = []
+        affected_users = set()
+        now = timezone.now()
+
+        for task in frozen_lock_tasks:
+            # Validate freeze state before unfreezing
+            if task.is_frozen and task.frozen_at and task.frozen_end_time:
+                # Calculate remaining time from when it was frozen
+                remaining_time = task.frozen_end_time - task.frozen_at
+
+                # Set new end time (restore remaining time)
+                task.end_time = now + remaining_time
+
+                # Accumulate frozen duration
+                frozen_duration = now - task.frozen_at
+                task.total_frozen_duration += frozen_duration
+
+                # Clear freeze state
+                task.is_frozen = False
+                task.frozen_at = None
+                task.frozen_end_time = None
+                task.save()
+
+                unfrozen_tasks.append({
+                    'task_id': task.id,
+                    'task_title': task.title,
+                    'owner': task.user.username
+                })
+                affected_users.add(task.user)
+
+                # Create timeline event for each unfrozen task
+                TaskTimelineEvent.objects.create(
+                    task=task,
+                    user=request.user,
+                    event_type='task_unfrozen',
+                    description=f'{request.user.username} 使用太阳瓶解冻了所有冻结任务',
+                    metadata={
+                        'unfreeze_reason': 'sun_bottle',
+                        'unfrozen_by_user': request.user.username,
+                        'unfrozen_by_user_id': request.user.id,
+                        'system_wide_unfreeze': True,
+                        'remaining_time_minutes': remaining_time.total_seconds() / 60
+                    }
+                )
+
+        # Send urgent notifications to all affected users
+        for user in affected_users:
+            Notification.create_notification(
+                recipient=user,
+                notification_type='system_announcement',
+                actor=request.user,
+                title='☀️ 太阳普照！',
+                message=f'用户 {request.user.username} 使用了太阳瓶，您的带锁任务已被解冻！',
+                related_object_type='system_event',
+                related_object_id=str(sun_bottle.id),
+                priority='urgent',  # Urgent priority as requested
+                extra_data={
+                    'unfreeze_type': 'sun_bottle',
+                    'unfrozen_by_user': request.user.username,
+                    'unfrozen_tasks_count': len(unfrozen_tasks),
+                    'system_wide_effect': True
+                }
+            )
+
+        # Create notification for the user who used the item
+        Notification.create_notification(
+            recipient=request.user,
+            notification_type='system_announcement',
+            actor=request.user,
+            title='☀️ 太阳瓶使用成功',
+            message=f'您使用太阳瓶成功解冻了 {len(unfrozen_tasks)} 个冻结任务！',
+            related_object_type='system_event',
+            related_object_id=str(sun_bottle.id),
+            priority='urgent',
+            extra_data={
+                'action_type': 'sun_bottle_usage',
+                'unfrozen_tasks_count': len(unfrozen_tasks),
+                'affected_users_count': len(affected_users)
+            }
+        )
+
+        return Response({
+            'message': f'太阳瓶使用成功！已解冻 {len(unfrozen_tasks)} 个冻结任务',
+            'unfrozen_tasks_count': len(unfrozen_tasks),
+            'affected_users_count': len(affected_users),
+            'unfrozen_tasks': unfrozen_tasks,
+            'item_destroyed': True
+        })
+
+    except Exception as e:
+        return Response({
+            'error': f'使用太阳瓶时发生错误: {str(e)}'
+        }, status=500)

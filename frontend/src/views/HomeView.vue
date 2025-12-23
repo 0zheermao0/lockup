@@ -103,11 +103,11 @@
                 'frozen': authStore.user.active_lock_task.is_frozen
               }"
               @click="goToTaskDetail(authStore.user.active_lock_task.id)"
-              :title="authStore.user.active_lock_task.is_frozen ? '点击查看冻结任务详情' : (authStore.user.active_lock_task.is_expired ? '点击完成任务' : '点击查看任务详情')"
+              :title="`${authStore.user.active_lock_task.title} - ${authStore.user.active_lock_task.is_frozen ? '点击查看冻结任务详情' : (authStore.user.active_lock_task.is_expired ? '点击完成任务' : '点击查看任务详情')}`"
             >
               <div class="lock-inline-icon">🔒</div>
               <div class="lock-inline-info">
-                <div class="lock-inline-title">{{ authStore.user.active_lock_task.title }}</div>
+                <div class="lock-inline-title">{{ truncateTitle(authStore.user.active_lock_task.title) }}</div>
                 <div class="lock-inline-time">
                   <span v-if="authStore.user.active_lock_task.is_frozen">
                     ❄️ 已冻结
@@ -652,6 +652,13 @@ const voteOnPost = async (post: Post, voteType: 'pass' | 'reject') => {
 const formatVotingDeadline = (deadline: string) => {
   const date = new Date(deadline)
   return date.toLocaleDateString() + ' 04:00'
+}
+
+// 截断标题函数 - 移动端显示优化
+const truncateTitle = (title: string) => {
+  if (!title) return ''
+  if (title.length <= 6) return title
+  return title.substring(0, 6) + '...'
 }
 
 onMounted(async () => {

@@ -16,6 +16,8 @@ class ItemType(models.Model):
         ('note', '纸条'),
         ('little_treasury', '小金库'),
         ('detection_radar', '探测雷达'),
+        ('blizzard_bottle', '暴雪瓶'),
+        ('sun_bottle', '太阳瓶'),
     ]
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
@@ -145,6 +147,7 @@ class Game(models.Model):
         ('time_wheel', '时间转盘'),
         ('rock_paper_scissors', '石头剪刀布'),
         ('exploration', '探索'),
+        ('dice', '掷骰子'),
     ]
 
     STATUS_CHOICES = [

@@ -515,14 +515,62 @@ class GameListCreateView(generics.ListCreateAPIView):
 
     def perform_create(self, serializer):
         from rest_framework.exceptions import ValidationError
-        # 检查用户是否有正在进行的锁任务
-        active_lock_tasks = LockTask.objects.filter(
-            user=self.request.user,
-            status='active'
-        )
 
-        if not active_lock_tasks.exists():
-            raise ValidationError('只有正在进行锁任务时才能创建游戏')
+        # 处理掷骰子游戏的特殊逻辑
+        game_type = serializer.validated_data.get('game_type')
+
+        # 只对非掷骰子游戏检查带锁任务限制
+        if game_type != 'dice':
+            # 检查用户是否有正在进行的锁任务
+            active_lock_tasks = LockTask.objects.filter(
+                user=self.request.user,
+                status='active'
+            )
+
+            if not active_lock_tasks.exists():
+                raise ValidationError('只有正在进行锁任务时才能创建游戏')
+        if game_type == 'dice':
+            # 预先掷骰子 (1-6)
+            dice_result = random.randint(1, 6)
+
+            # 获取可选的物品奖励
+            item_reward_id = self.request.data.get('item_reward_id')
+            item_reward_details = None
+
+            if item_reward_id:
+                try:
+                    # 验证物品是否属于创建者且可用
+                    item = Item.objects.get(
+                        id=item_reward_id,
+                        owner=self.request.user,
+                        status='available'
+                    )
+
+                    # 缓存物品信息用于显示
+                    item_reward_details = {
+                        'name': item.item_type.name,
+                        'display_name': item.item_type.display_name,
+                        'icon': item.item_type.icon,
+                        'description': item.item_type.description
+                    }
+
+                    # 锁定物品，防止创建者在游戏结束前处置
+                    item.status = 'in_game'
+                    item.save()
+
+                except Item.DoesNotExist:
+                    raise ValidationError('选择的奖励物品不存在或不可用')
+
+            # 设置游戏数据
+            game_data = {
+                'dice_result': dice_result,
+                'item_reward_id': item_reward_id,
+                'item_reward_details': item_reward_details
+            }
+
+            # 掷骰子游戏固定为一对一（创建者 vs 第一个参与者）
+            serializer.validated_data['max_players'] = 1
+            serializer.validated_data['game_data'] = game_data
 
         serializer.save(creator=self.request.user)
 
@@ -541,16 +589,18 @@ def join_game(request, game_id):
                 game = get_object_or_404(Game, id=game_id, status='waiting')
                 user = request.user
 
-                # 检查用户是否有正在进行的锁任务
-                active_lock_tasks = LockTask.objects.filter(
-                    user=user,
-                    status='active'
-                )
+                # 只对非掷骰子游戏检查带锁任务限制
+                if game.game_type != 'dice':
+                    # 检查用户是否有正在进行的锁任务
+                    active_lock_tasks = LockTask.objects.filter(
+                        user=user,
+                        status='active'
+                    )
 
-                if not active_lock_tasks.exists():
-                    return Response({
-                        'error': '只有正在进行锁任务时才能参与游戏'
-                    }, status=status.HTTP_400_BAD_REQUEST)
+                    if not active_lock_tasks.exists():
+                        return Response({
+                            'error': '只有正在进行锁任务时才能参与游戏'
+                        }, status=status.HTTP_400_BAD_REQUEST)
 
                 # 检查是否已经参与
                 if GameParticipant.objects.filter(game=game, user=user).exists():
@@ -563,6 +613,15 @@ def join_game(request, game_id):
                     return Response({
                         'error': '积分不足'
                     }, status=status.HTTP_400_BAD_REQUEST)
+
+                # 对于掷骰子游戏，如果有物品奖励，需要检查参与者背包空间
+                if game.game_type == 'dice' and game.game_data.get('item_reward_id'):
+                    from .models import UserInventory
+                    inventory, _ = UserInventory.objects.get_or_create(user=user)
+                    if inventory.available_slots < 1:
+                        return Response({
+                            'error': f'背包空间不足，剩余{inventory.available_slots}格，无法参与有奖励物品的游戏'
+                        }, status=status.HTTP_400_BAD_REQUEST)
 
                 # 扣除积分
                 if hasattr(user, 'coins'):
@@ -581,6 +640,7 @@ def join_game(request, game_id):
 
                 # 检查是否可以开始游戏
                 participant_count = game.participants.count()
+                print(f"DEBUG: Game {game.id}, type: {game.game_type}, participant_count: {participant_count}, max_players: {game.max_players}")
                 if participant_count >= game.max_players:
                     game.status = 'active'
                     game.save()
@@ -753,6 +813,187 @@ def join_game(request, game_id):
                                 'coins_change': game.bet_amount,  # 为前端显示积分变化
                                 'remaining_coins': getattr(winner, 'coins', 0)  # 获胜者的剩余积分
                             })
+
+                    # 掷骰子游戏逻辑
+                    elif game.game_type == 'dice':
+                        print(f"DEBUG: Starting dice game logic for game {game.id}")
+                        participant = GameParticipant.objects.get(game=game, user=user)
+                        participant_guess = participant.action.get('guess', 'big')
+
+                        # 获取预先掷好的骰子结果
+                        dice_result = game.game_data.get('dice_result', 1)
+                        print(f"DEBUG: Dice result: {dice_result}, participant guess: {participant_guess}")
+
+                        # 判断大小 (4,5,6为大，1,2,3为小)
+                        is_big = dice_result >= 4
+                        is_correct = (participant_guess == 'big' and is_big) or (participant_guess == 'small' and not is_big)
+                        print(f"DEBUG: is_big: {is_big}, is_correct: {is_correct}")
+
+                        # 创建者总是获得参与费用
+                        creator = game.creator
+                        creator.coins += game.bet_amount
+                        creator.save()
+
+                        # 处理物品奖励转移
+                        item_transferred = False
+                        item_reward_details = None
+
+                        if is_correct and game.game_data.get('item_reward_id'):
+                            try:
+                                # 验证物品仍然存在且在游戏中
+                                reward_item = Item.objects.get(
+                                    id=game.game_data['item_reward_id'],
+                                    owner=creator,
+                                    status='in_game'
+                                )
+
+                                # 获取参与者背包
+                                participant_inventory, _ = UserInventory.objects.get_or_create(user=user)
+
+                                # 转移物品给获胜者
+                                reward_item.owner = user
+                                reward_item.inventory = participant_inventory
+                                reward_item.status = 'available'
+                                reward_item.save()
+                                item_transferred = True
+                                item_reward_details = game.game_data.get('item_reward_details')
+
+                                # 记录物品转移到游戏会话中
+                                GameSession.objects.create(
+                                    user=user,
+                                    game_type='dice',
+                                    bet_amount=game.bet_amount,
+                                    result_data={
+                                        'dice_result': dice_result,
+                                        'guess': participant_guess,
+                                        'is_correct': is_correct,
+                                        'item_received': item_reward_details,
+                                        'creator': creator.username
+                                    }
+                                )
+
+                            except Item.DoesNotExist:
+                                # 物品不再可用，只给积分奖励
+                                pass
+
+                        # 如果有奖励物品但参与者没猜中，归还物品给创建者
+                        if not is_correct and game.game_data.get('item_reward_id'):
+                            try:
+                                reward_item = Item.objects.get(
+                                    id=game.game_data['item_reward_id'],
+                                    owner=creator,
+                                    status='in_game'
+                                )
+                                # 归还给创建者
+                                creator_inventory, _ = UserInventory.objects.get_or_create(user=creator)
+                                reward_item.inventory = creator_inventory
+                                reward_item.status = 'available'
+                                reward_item.save()
+                            except Item.DoesNotExist:
+                                pass
+
+                        # 记录创建者的游戏会话
+                        GameSession.objects.create(
+                            user=creator,
+                            game_type='dice',
+                            bet_amount=game.bet_amount,
+                            result_data={
+                                'dice_result': dice_result,
+                                'participant_guess': participant_guess,
+                                'participant_won': is_correct,
+                                'coins_earned': game.bet_amount,
+                                'item_given': item_transferred,
+                                'participant': user.username
+                            }
+                        )
+
+                        # 完成游戏
+                        game.status = 'completed'
+                        game.completed_at = timezone.now()
+                        game.result = {
+                            'dice_result': dice_result,
+                            'participant_guess': participant_guess,
+                            'is_correct': is_correct,
+                            'creator': creator.username,
+                            'participant': user.username,
+                            'item_transferred': item_transferred,
+                            'item_details': item_reward_details
+                        }
+                        game.save()
+
+                        # 发送通知给参与者
+                        if is_correct:
+                            title = '掷骰子获胜'
+                            message = f'恭喜！您猜{participant_guess}，骰子结果是{dice_result}，猜中了！'
+                            if item_transferred:
+                                message += f'获得奖励物品：{item_reward_details["display_name"]}'
+                        else:
+                            title = '掷骰子失败'
+                            message = f'很遗憾，您猜{participant_guess}，骰子结果是{dice_result}，没有猜中。'
+
+                        NotificationModel.create_notification(
+                            recipient=user,
+                            notification_type='game_result',
+                            actor=creator,
+                            title=title,
+                            message=message,
+                            related_object_type='game',
+                            related_object_id=game.id,
+                            extra_data={
+                                'game_type': 'dice',
+                                'dice_result': dice_result,
+                                'guess': participant_guess,
+                                'is_correct': is_correct,
+                                'item_received': item_reward_details if item_transferred else None,
+                                'creator_username': creator.username,
+                                'creator_id': creator.id,
+                                'bet_amount': game.bet_amount
+                            },
+                            priority='normal'
+                        )
+
+                        # 发送通知给创建者
+                        creator_message = f'{user.username} 参与了您的掷骰子游戏，猜{participant_guess}，'
+                        creator_message += f'骰子结果{dice_result}，{"猜中了" if is_correct else "没猜中"}，'
+                        creator_message += f'您获得了 {game.bet_amount} 积分'
+                        if item_transferred:
+                            creator_message += f'，奖励物品已转移给对方'
+
+                        NotificationModel.create_notification(
+                            recipient=creator,
+                            notification_type='game_result',
+                            actor=user,
+                            title='掷骰子游戏完成',
+                            message=creator_message,
+                            related_object_type='game',
+                            related_object_id=game.id,
+                            extra_data={
+                                'game_type': 'dice',
+                                'dice_result': dice_result,
+                                'participant_guess': participant_guess,
+                                'participant_won': is_correct,
+                                'coins_earned': game.bet_amount,
+                                'item_given': item_transferred,
+                                'participant_username': user.username,
+                                'participant_id': user.id,
+                                'bet_amount': game.bet_amount
+                            },
+                            priority='normal'
+                        )
+
+                        # 刷新用户对象以获取最新的积分
+                        user.refresh_from_db()
+                        print(f"DEBUG: Final user coins: {getattr(user, 'coins', 0)}")
+
+                        return Response({
+                            'message': f'掷骰子结果：{dice_result}，您猜{participant_guess}，{"猜中了！" if is_correct else "没猜中"}',
+                            'dice_result': dice_result,
+                            'guess': participant_guess,
+                            'is_correct': is_correct,
+                            'item_received': item_reward_details if item_transferred else None,
+                            'creator_coins_change': game.bet_amount,
+                            'remaining_coins': getattr(user, 'coins', 0)
+                        })
 
                 return Response({
                     'message': '成功加入游戏',
@@ -1212,13 +1453,40 @@ def cancel_game(request, game_id):
                 user.coins += game.bet_amount
                 user.save()
 
+            # 返还物品奖励给创建者（如果有的话）
+            item_returned = False
+            if game.game_type == 'dice' and game.game_data.get('item_reward_id'):
+                try:
+                    # 获取物品并返还给创建者
+                    reward_item = Item.objects.get(
+                        id=game.game_data['item_reward_id'],
+                        owner=user,
+                        status='in_game'
+                    )
+
+                    # 确保物品回到创建者的背包
+                    inventory, _ = UserInventory.objects.get_or_create(user=user)
+                    reward_item.inventory = inventory
+                    reward_item.status = 'available'  # 解锁物品
+                    reward_item.save()
+                    item_returned = True
+
+                except Item.DoesNotExist:
+                    # 物品已经不存在或状态异常，忽略
+                    pass
+
             # 删除游戏
             game.delete()
 
+            message = '游戏已取消，积分已返还'
+            if item_returned:
+                message += '，奖励物品已返还'
+
             return Response({
-                'message': '游戏已取消，积分已返还',
+                'message': message,
                 'refunded_amount': game.bet_amount,
-                'remaining_coins': getattr(user, 'coins', 0)
+                'remaining_coins': getattr(user, 'coins', 0),
+                'item_returned': item_returned
             }, status=status.HTTP_200_OK)
 
     except Exception as e:

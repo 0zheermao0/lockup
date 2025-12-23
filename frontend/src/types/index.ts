@@ -458,7 +458,7 @@ export interface Item {
   original_creator?: User
   inventory?: UserInventory
   properties: Record<string, any>
-  status: 'available' | 'used' | 'expired' | 'in_drift_bottle' | 'buried'
+  status: 'available' | 'used' | 'expired' | 'in_drift_bottle' | 'buried' | 'in_game'
   created_at: string
   used_at?: string
   expires_at?: string
@@ -533,7 +533,7 @@ export interface Purchase {
 
 export interface Game {
   id: string
-  game_type: 'time_wheel' | 'rock_paper_scissors' | 'exploration'
+  game_type: 'time_wheel' | 'rock_paper_scissors' | 'exploration' | 'dice'
   creator: User
   participants: GameParticipant[]
   bet_amount: number
