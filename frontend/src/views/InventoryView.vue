@@ -1141,7 +1141,7 @@ const canShareItem = (item: Item): boolean => {
 }
 
 const canBuryItem = (item: Item): boolean => {
-  return item.status === 'available' && ['photo', 'key', 'note'].includes(item.item_type.name)
+  return item.status === 'available' && ['photo', 'key', 'note', 'little_treasury'].includes(item.item_type.name)
 }
 
 const canDiscardItem = (item: Item): boolean => {
