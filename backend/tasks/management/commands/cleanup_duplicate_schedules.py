@@ -86,20 +86,35 @@ class Command(BaseCommand):
         # 获取所有CrontabSchedule记录
         all_schedules = CrontabSchedule.objects.all()
 
+        self.stdout.write(f'总共找到 {all_schedules.count()} 个CrontabSchedule记录')
+
         # 按照关键字段分组
         groups = {}
         for schedule in all_schedules:
+            # 处理时区字段
+            timezone_str = None
+            if schedule.timezone:
+                if hasattr(schedule.timezone, 'zone'):
+                    timezone_str = schedule.timezone.zone
+                else:
+                    timezone_str = str(schedule.timezone)
+
             key = (
                 schedule.minute,
                 schedule.hour,
                 schedule.day_of_week,
                 schedule.day_of_month,
                 schedule.month_of_year,
-                schedule.timezone.zone if hasattr(schedule.timezone, 'zone') else str(schedule.timezone)
+                timezone_str
             )
             if key not in groups:
                 groups[key] = []
             groups[key].append(schedule)
+
+            # 调试输出：显示每个记录的详细信息
+            self.stdout.write(
+                f'记录 ID:{schedule.id} - {schedule.minute} {schedule.hour} {schedule.day_of_week} {schedule.day_of_month} {schedule.month_of_year} (时区: {timezone_str})'
+            )
 
         # 找出有重复的组
         for key, schedules in groups.items():
