@@ -132,13 +132,14 @@ class Command(BaseCommand):
         self.stdout.write('\n' + '=' * 60)
         self.stdout.write(self.style.SUCCESS('Setting up auto-freeze strict mode tasks...'))
 
-        # Create daily crontab schedule (Daily 4:15 AM)
+        # Create daily crontab schedule (Daily 4:15 AM UTC)
         auto_freeze_schedule, created = CrontabSchedule.objects.get_or_create(
             minute='15',
             hour='4',
             day_of_week='*',  # Daily
             day_of_month='*',
             month_of_year='*',
+            timezone='UTC',  # 明确指定UTC时区
         )
 
         if created and not dry_run:
@@ -216,13 +217,14 @@ class Command(BaseCommand):
         self.stdout.write('\n' + '=' * 60)
         self.stdout.write(self.style.SUCCESS('Setting up weekly level promotions task...'))
 
-        # Create weekly crontab schedule (Wednesday 4:30 AM)
+        # Create weekly crontab schedule (Wednesday 4:30 AM UTC)
         level_promotion_schedule, created = CrontabSchedule.objects.get_or_create(
             minute='30',
             hour='4',
             day_of_week='3',  # Wednesday (0=Monday)
             day_of_month='*',
             month_of_year='*',
+            timezone='UTC',  # 明确指定UTC时区
         )
 
         if created and not dry_run:
