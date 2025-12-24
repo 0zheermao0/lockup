@@ -134,8 +134,8 @@ class Command(BaseCommand):
 
         # Create daily crontab schedule (Daily 4:15 AM)
         auto_freeze_schedule, created = CrontabSchedule.objects.get_or_create(
-            minute=15,
-            hour=4,
+            minute='15',
+            hour='4',
             day_of_week='*',  # Daily
             day_of_month='*',
             month_of_year='*',
@@ -218,9 +218,9 @@ class Command(BaseCommand):
 
         # Create weekly crontab schedule (Wednesday 4:30 AM)
         level_promotion_schedule, created = CrontabSchedule.objects.get_or_create(
-            minute=30,
-            hour=4,
-            day_of_week=3,  # Wednesday (0=Monday)
+            minute='30',
+            hour='4',
+            day_of_week='3',  # Wednesday (0=Monday)
             day_of_month='*',
             month_of_year='*',
         )
@@ -305,8 +305,8 @@ class Command(BaseCommand):
 
         # Create daily crontab schedule (Daily 4:45 AM Asia/Shanghai)
         activity_decay_schedule, created = CrontabSchedule.objects.get_or_create(
-            minute=45,
-            hour=4,
+            minute='45',
+            hour='4',
             day_of_week='*',  # Daily
             day_of_month='*',
             month_of_year='*',
@@ -390,8 +390,8 @@ class Command(BaseCommand):
 
         # Create daily crontab schedule (Daily 4:00 AM Asia/Shanghai)
         voting_results_schedule, created = CrontabSchedule.objects.get_or_create(
-            minute=0,
-            hour=4,
+            minute='0',
+            hour='4',
             day_of_week='*',  # Daily
             day_of_month='*',
             month_of_year='*',
