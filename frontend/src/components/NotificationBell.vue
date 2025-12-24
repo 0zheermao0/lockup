@@ -299,6 +299,7 @@ const getNotificationIcon = (type: string) => {
     task_board_rejected: '❌',
     coins_earned_hourly: '💰',
     coins_earned_daily_login: '🎁',
+    coins_earned_daily_board_post: '📋💰',
     coins_earned_task_reward: '🏆',
     coins_spent_task_creation: '💸',
     treasure_found: '💎',

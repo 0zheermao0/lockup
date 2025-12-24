@@ -1366,3 +1366,76 @@ def auto_freeze_strict_mode_tasks(self):
         # Final failure notification
         logger.error("Auto-freeze strict mode tasks failed after all retries")
         raise exc
+
+
+@shared_task(bind=True, max_retries=3, default_retry_delay=60)
+def process_activity_decay(self):
+    """
+    处理用户活跃度时间衰减 - 每日凌晨4:45执行
+
+    基于用户最后活跃时间，按斐波那契数列衰减活跃度：
+    - 1天未活跃: -1分
+    - 2天未活跃: -1分
+    - 3天未活跃: -2分
+    - 4天未活跃: -3分
+    - 5天未活跃: -5分
+    - 以此类推...
+
+    活跃度不会低于0分。
+    """
+    try:
+        from users.models import User
+        from datetime import timedelta
+
+        logger.info("Starting daily activity decay processing")
+
+        # 获取需要处理衰减的用户（最后活跃时间超过1天）
+        yesterday = timezone.now() - timedelta(days=1)
+        users_to_decay = User.objects.filter(
+            last_active__lt=yesterday,
+            activity_score__gt=0
+        ).exclude(
+            last_decay_processed__date=timezone.now().date()
+        )
+
+        processed_count = 0
+        total_decay = 0
+
+        logger.info(f"Found {users_to_decay.count()} users eligible for activity decay")
+
+        with transaction.atomic():
+            for user in users_to_decay:
+                old_score = user.activity_score
+
+                # 应用衰减
+                user.apply_time_decay()
+
+                if user.activity_score != old_score:
+                    processed_count += 1
+                    decay_amount = old_score - user.activity_score
+                    total_decay += decay_amount
+
+                    logger.debug(f"User {user.username}: {old_score} -> {user.activity_score} (-{decay_amount})")
+
+        result = {
+            'processed_users': processed_count,
+            'total_decay_applied': total_decay,
+            'eligible_users': users_to_decay.count(),
+            'process_time': timezone.now().isoformat()
+        }
+
+        logger.info(f"Activity decay processing completed: {result}")
+        return result
+
+    except Exception as exc:
+        logger.error(f"Activity decay processing failed: {str(exc)}")
+
+        # Retry with exponential backoff
+        if self.request.retries < self.max_retries:
+            retry_countdown = 2 ** self.request.retries * 60  # 1min, 2min, 4min
+            logger.info(f"Retrying activity decay processing in {retry_countdown} seconds")
+            raise self.retry(countdown=retry_countdown, exc=exc)
+
+        # Final failure notification
+        logger.error("Activity decay processing failed after all retries")
+        raise exc

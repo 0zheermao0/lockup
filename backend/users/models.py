@@ -93,6 +93,13 @@ class User(AbstractUser):
     total_likes_received = models.IntegerField(default=0, help_text="收到点赞总数")
     total_tasks_completed = models.IntegerField(default=0, help_text="完成任务总数")
 
+    # 活跃度衰减处理
+    last_decay_processed = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text="最后一次处理衰减的时间"
+    )
+
     # 时间戳
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -218,11 +225,69 @@ class User(AbstractUser):
 
         return True
 
-    def update_activity(self):
-        """更新用户活跃度"""
+    def update_activity(self, points=1):
+        """更新用户活跃度 - 支持可变积分"""
         self.last_active = timezone.now()
-        self.activity_score += 1
-        self.save()
+        self.activity_score += points
+        self.save(update_fields=['activity_score', 'last_active'])
+
+        # 创建活动日志
+        try:
+            ActivityLog.objects.create(
+                user=self,
+                action_type='activity_gain',
+                points_change=points,
+                new_total=self.activity_score
+            )
+        except Exception:
+            # 如果ActivityLog模型还不存在，忽略错误（迁移期间）
+            pass
+
+    def calculate_fibonacci_decay(self):
+        """计算斐波那契衰减值"""
+        if not self.last_active:
+            return 0
+
+        days_inactive = (timezone.now().date() - self.last_active.date()).days
+        if days_inactive <= 0:
+            return 0
+
+        # 斐波那契数列计算
+        fib_sequence = [1, 1]
+        total_decay = 0
+
+        for day in range(1, min(days_inactive + 1, 30)):  # 限制最大30天
+            if day <= 2:
+                total_decay += fib_sequence[day - 1]
+            else:
+                next_fib = fib_sequence[-1] + fib_sequence[-2]
+                fib_sequence.append(next_fib)
+                total_decay += next_fib
+
+        return total_decay
+
+    def apply_time_decay(self):
+        """应用时间衰减"""
+        decay_amount = self.calculate_fibonacci_decay()
+        if decay_amount > 0:
+            old_score = self.activity_score
+            self.activity_score = max(0, self.activity_score - decay_amount)
+            self.last_decay_processed = timezone.now()
+            self.save(update_fields=['activity_score', 'last_decay_processed'])
+
+            # 记录衰减日志
+            if old_score != self.activity_score:
+                try:
+                    ActivityLog.objects.create(
+                        user=self,
+                        action_type='time_decay',
+                        points_change=-(old_score - self.activity_score),
+                        new_total=self.activity_score,
+                        metadata={'days_inactive': (timezone.now().date() - self.last_active.date()).days}
+                    )
+                except Exception:
+                    # 如果ActivityLog模型还不存在，忽略错误（迁移期间）
+                    pass
 
     def get_daily_login_reward(self):
         """根据用户等级获取每日登录奖励积分"""
@@ -256,7 +321,7 @@ class User(AbstractUser):
         return total_duration
 
     def get_task_completion_rate(self):
-        """计算任务完成率：(已完成带锁任务+已完成任务板) / (参与带锁、任务板任务的已完成+失败数)"""
+        """计算任务完成率：(已完成带锁任务+参与他人任务板的通过数) / (已完成+失败带锁任务+参与他人任务板的完成数)"""
         from tasks.models import LockTask, TaskParticipant
 
         # 1. 计算用户创建的已完成带锁任务数
@@ -266,20 +331,13 @@ class User(AbstractUser):
             status='completed'
         ).count()
 
-        # 2. 计算用户创建的已完成任务板数
-        completed_board_tasks = LockTask.objects.filter(
-            user=self,
-            task_type='board',
-            status='completed'
-        ).count()
-
-        # 3. 计算用户参与的任务板任务中已通过审核的数量
+        # 2. 计算用户参与他人任务板任务中已通过审核的数量
         approved_participations = TaskParticipant.objects.filter(
             participant=self,
             status='approved'
         ).count()
 
-        # 4. 计算分母：参与带锁、任务板任务的已完成+失败数
+        # 3. 计算分母：参与带锁任务和他人任务板的已完成+失败数
         # 用户创建的已完成+失败的带锁任务数
         finished_lock_tasks = LockTask.objects.filter(
             user=self,
@@ -287,26 +345,19 @@ class User(AbstractUser):
             status__in=['completed', 'failed']
         ).count()
 
-        # 用户创建的已完成+失败的任务板数
-        finished_board_tasks = LockTask.objects.filter(
-            user=self,
-            task_type='board',
-            status__in=['completed', 'failed']
-        ).count()
-
-        # 用户参与的任务板任务中已完成的数量（通过审核和被拒绝的）
+        # 用户参与他人任务板任务中已完成的数量（通过审核和被拒绝的）
         finished_participations = TaskParticipant.objects.filter(
             participant=self,
             status__in=['approved', 'rejected']
         ).count()
 
-        total_finished_tasks = finished_lock_tasks + finished_board_tasks + finished_participations
+        total_finished_tasks = finished_lock_tasks + finished_participations
 
-        # 5. 计算完成率
+        # 4. 计算完成率
         if total_finished_tasks == 0:
             return 0.0  # 没有已完成或失败的任务，完成率为0%
 
-        completed_tasks = completed_lock_tasks + completed_board_tasks + approved_participations
+        completed_tasks = completed_lock_tasks + approved_participations
         completion_rate = (completed_tasks / total_finished_tasks) * 100
 
         return round(completion_rate, 1)  # 保留一位小数
@@ -489,6 +540,7 @@ class Notification(models.Model):
         ('coins_earned_hourly_batch', '批量小时奖励积分'),
         ('coins_earned_daily_login', '每日登录奖励积分'),
         ('coins_earned_daily_checkin', '每日首次打卡奖励积分'),
+        ('coins_earned_daily_board_post', '每日首次发布任务板奖励积分'),
         ('coins_earned_task_reward', '任务奖励积分'),
         ('coins_spent_task_creation', '创建任务消耗积分'),
 
@@ -736,6 +788,7 @@ class Notification(models.Model):
             'coins_earned_hourly_batch': "获得批量小时奖励积分",
             'coins_earned_daily_login': "获得每日登录奖励",
             'coins_earned_daily_checkin': "获得每日首次打卡奖励",
+            'coins_earned_daily_board_post': "获得每日首次发布任务板奖励",
             'coins_earned_task_reward': "获得任务奖励积分",
             'coins_earned_task_completion': "获得任务完成积分",
             'coins_refunded_task_failed': "任务失败积分退还",
@@ -778,6 +831,7 @@ class Notification(models.Model):
             'coins_earned_hourly_batch': "你的任务持续进行中，累计获得积分奖励",
             'coins_earned_daily_login': "欢迎回来！获得每日登录奖励积分",
             'coins_earned_daily_checkin': "带锁任务状态下每日首次打卡，获得1积分奖励",
+            'coins_earned_daily_board_post': "恭喜！每日首次发布任务板，获得5积分奖励",
             'coins_earned_task_reward': "任务完成，获得奖励积分",
             'coins_earned_task_completion': "任务完成，获得完成奖励积分",
             'coins_refunded_task_failed': "任务失败，已退还扣除的积分",
@@ -795,3 +849,48 @@ class Notification(models.Model):
         }
 
         return message_mapping.get(notification_type, "你有新的通知")
+
+
+class ActivityLog(models.Model):
+    """用户活跃度变化日志"""
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    user = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name='activity_logs',
+        help_text="相关用户"
+    )
+    action_type = models.CharField(
+        max_length=50,
+        choices=[
+            ('activity_gain', '活跃度获得'),
+            ('time_decay', '时间衰减'),
+        ],
+        help_text="活动类型"
+    )
+    points_change = models.IntegerField(
+        help_text="积分变化（正数为增加，负数为减少）"
+    )
+    new_total = models.IntegerField(
+        help_text="变化后的总积分"
+    )
+    metadata = models.JSONField(
+        default=dict,
+        blank=True,
+        help_text="额外的元数据"
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'activity_logs'
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['user', '-created_at']),
+            models.Index(fields=['action_type', '-created_at']),
+        ]
+        verbose_name = '活跃度日志'
+        verbose_name_plural = '活跃度日志'
+
+    def __str__(self):
+        return f"{self.user.username} - {self.get_action_type_display()}: {self.points_change:+d} (总计: {self.new_total})"
