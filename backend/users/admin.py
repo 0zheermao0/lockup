@@ -1,14 +1,14 @@
 from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
 from django.utils.html import format_html
-from .models import User, Friendship, UserLevelUpgrade, DailyLoginReward, Notification
+from .models import User, Friendship, UserLevelUpgrade, DailyLoginReward, Notification, ActivityLog
 
 
 @admin.register(User)
 class UserAdmin(BaseUserAdmin):
     """用户管理"""
 
-    list_display = ['username', 'email', 'level', 'activity_score', 'coins', 'is_active', 'created_at']
+    list_display = ['username', 'email', 'level', 'activity_score', 'coins', 'last_decay_processed', 'is_active', 'created_at']
     list_filter = ['level', 'is_active', 'created_at']
     search_fields = ['username', 'email']
     ordering = ['-created_at']
@@ -16,14 +16,14 @@ class UserAdmin(BaseUserAdmin):
     fieldsets = BaseUserAdmin.fieldsets + (
         ('扩展信息', {
             'fields': (
-                'level', 'activity_score', 'last_active', 'location_precision',
+                'level', 'activity_score', 'last_active', 'last_decay_processed', 'location_precision',
                 'coins', 'avatar', 'bio', 'total_posts', 'total_likes_received',
                 'total_tasks_completed'
             )
         }),
     )
 
-    readonly_fields = ['last_login', 'date_joined', 'activity_score', 'total_posts',
+    readonly_fields = ['last_login', 'date_joined', 'activity_score', 'last_decay_processed', 'total_posts',
                        'total_likes_received', 'total_tasks_completed']
 
 
@@ -184,4 +184,83 @@ class NotificationAdmin(admin.ModelAdmin):
 
     # 在列表页面显示更多信息
     list_per_page = 25
+    show_full_result_count = True
+
+
+@admin.register(ActivityLog)
+class ActivityLogAdmin(admin.ModelAdmin):
+    """活跃度日志管理"""
+
+    list_display = [
+        'user',
+        'action_type_badge',
+        'points_change_display',
+        'new_total',
+        'created_at'
+    ]
+    list_filter = [
+        'action_type',
+        'created_at',
+        'user'
+    ]
+    search_fields = [
+        'user__username',
+    ]
+    ordering = ['-created_at']
+    readonly_fields = ['created_at', 'user', 'action_type', 'points_change', 'new_total', 'metadata']
+
+    fieldsets = (
+        ('基本信息', {
+            'fields': (
+                'user', 'action_type', 'points_change', 'new_total'
+            )
+        }),
+        ('元数据', {
+            'fields': (
+                'metadata', 'created_at'
+            ),
+            'classes': ('collapse',)
+        }),
+    )
+
+    def get_queryset(self, request):
+        return super().get_queryset(request).select_related('user')
+
+    def action_type_badge(self, obj):
+        """显示活动类型徽章"""
+        colors = {
+            'activity_gain': '#28a745',
+            'time_decay': '#dc3545'
+        }
+        color = colors.get(obj.action_type, '#6c757d')
+        return format_html(
+            '<span style="background-color: {}; color: white; padding: 2px 8px; '
+            'border-radius: 12px; font-size: 11px; font-weight: bold;">{}</span>',
+            color,
+            obj.get_action_type_display()
+        )
+    action_type_badge.short_description = '活动类型'
+    action_type_badge.admin_order_field = 'action_type'
+
+    def points_change_display(self, obj):
+        """显示积分变化"""
+        if obj.points_change > 0:
+            return format_html(
+                '<span style="color: #28a745; font-weight: bold;">+{}</span>',
+                obj.points_change
+            )
+        elif obj.points_change < 0:
+            return format_html(
+                '<span style="color: #dc3545; font-weight: bold;">{}</span>',
+                obj.points_change
+            )
+        else:
+            return format_html(
+                '<span style="color: #6c757d;">0</span>'
+            )
+    points_change_display.short_description = '积分变化'
+    points_change_display.admin_order_field = 'points_change'
+
+    # 在列表页面显示更多信息
+    list_per_page = 50
     show_full_result_count = True

@@ -3,7 +3,7 @@ from django.utils.html import format_html
 from django.db.models import Count
 from .models import (
     Post, PostImage, PostLike, Comment,
-    CommentImage, CommentLike
+    CommentImage, CommentLike, CheckinVote, CheckinVotingSession
 )
 
 
@@ -292,3 +292,123 @@ class CommentLikeAdmin(admin.ModelAdmin):
             obj.comment.content[:20] + '...' if len(obj.comment.content) > 20 else obj.comment.content
         )
     comment_info.short_description = '评论'
+
+
+@admin.register(CheckinVote)
+class CheckinVoteAdmin(admin.ModelAdmin):
+    """打卡投票管理"""
+
+    list_display = [
+        'post_info',
+        'voter',
+        'vote_type_badge',
+        'coins_spent',
+        'created_at'
+    ]
+    list_filter = ['vote_type', 'created_at']
+    search_fields = ['post__content', 'voter__username']
+    ordering = ['-created_at']
+    readonly_fields = ['created_at']
+
+    fieldsets = (
+        ('基本信息', {
+            'fields': ('post', 'voter', 'vote_type', 'coins_spent')
+        }),
+        ('时间信息', {
+            'fields': ('created_at',)
+        }),
+    )
+
+    def get_queryset(self, request):
+        return super().get_queryset(request).select_related('post', 'voter')
+
+    def post_info(self, obj):
+        """显示打卡动态信息"""
+        return format_html(
+            '<strong>{}</strong><br><small>{}</small>',
+            obj.post.user.username,
+            obj.post.content[:30] + '...' if len(obj.post.content) > 30 else obj.post.content
+        )
+    post_info.short_description = '打卡动态'
+
+    def vote_type_badge(self, obj):
+        """显示投票类型徽章"""
+        colors = {
+            'support': '#28a745',
+            'reject': '#dc3545'
+        }
+        color = colors.get(obj.vote_type, '#6c757d')
+        return format_html(
+            '<span style="background-color: {}; color: white; padding: 2px 8px; '
+            'border-radius: 12px; font-size: 11px; font-weight: bold;">{}</span>',
+            color,
+            obj.get_vote_type_display()
+        )
+    vote_type_badge.short_description = '投票类型'
+    vote_type_badge.admin_order_field = 'vote_type'
+
+    list_per_page = 30
+
+
+@admin.register(CheckinVotingSession)
+class CheckinVotingSessionAdmin(admin.ModelAdmin):
+    """打卡投票会话管理"""
+
+    list_display = [
+        'post_info',
+        'voting_deadline',
+        'total_coins_collected',
+        'result_badge',
+        'is_processed'
+    ]
+    list_filter = ['is_processed', 'result', 'voting_deadline']
+    search_fields = ['post__content', 'post__user__username']
+    ordering = ['-voting_deadline']
+    readonly_fields = ['total_coins_collected', 'is_processed']
+
+    fieldsets = (
+        ('基本信息', {
+            'fields': ('post', 'voting_deadline')
+        }),
+        ('投票结果', {
+            'fields': ('total_coins_collected', 'result', 'is_processed')
+        }),
+    )
+
+    def get_queryset(self, request):
+        return super().get_queryset(request).select_related('post')
+
+    def post_info(self, obj):
+        """显示打卡动态信息"""
+        return format_html(
+            '<strong>{}</strong><br><small>{}</small>',
+            obj.post.user.username,
+            obj.post.content[:30] + '...' if len(obj.post.content) > 30 else obj.post.content
+        )
+    post_info.short_description = '打卡动态'
+
+    def result_badge(self, obj):
+        """显示投票结果徽章"""
+        if obj.result is None:
+            return format_html(
+                '<span style="background-color: #6c757d; color: white; padding: 2px 8px; '
+                'border-radius: 12px; font-size: 11px; font-weight: bold;">进行中</span>'
+            )
+
+        colors = {
+            'passed': '#28a745',
+            'rejected': '#dc3545'
+        }
+        color = colors.get(obj.result, '#6c757d')
+        display_text = '通过' if obj.result == 'passed' else '拒绝'
+
+        return format_html(
+            '<span style="background-color: {}; color: white; padding: 2px 8px; '
+            'border-radius: 12px; font-size: 11px; font-weight: bold;">{}</span>',
+            color,
+            display_text
+        )
+    result_badge.short_description = '投票结果'
+    result_badge.admin_order_field = 'result'
+
+    list_per_page = 20

@@ -330,6 +330,45 @@ class LockTaskListCreateView(generics.ListCreateAPIView):
 
             task.save()
 
+            # 任务板发布活跃度奖励
+            self.request.user.update_activity(points=1)
+
+            # 每日首次任务板发布奖励
+            self._handle_daily_board_post_reward(task)
+
+    def _handle_daily_board_post_reward(self, task):
+        """处理每日首次发布任务板奖励"""
+        from django.utils import timezone
+        from users.models import Notification
+
+        today = timezone.now().date()
+
+        # 检查今天是否已发布过任务板
+        today_boards = LockTask.objects.filter(
+            user=task.user,
+            task_type='board',
+            created_at__date=today
+        ).exclude(id=task.id)
+
+        if not today_boards.exists():
+            # 首次发布，奖励5积分
+            task.user.coins += 5
+            task.user.save()
+
+            # 创建低优先级通知
+            Notification.create_notification(
+                recipient=task.user,
+                notification_type='coins_earned_daily_board_post',
+                actor=None,  # 系统通知
+                extra_data={
+                    'reward_amount': 5,
+                    'task_title': task.title,
+                    'task_id': str(task.id),
+                    'board_post_date': today.isoformat()
+                },
+                priority='low'
+            )
+
     def generate_strict_code(self):
         """Generate 4-character code like A1B2"""
         import random

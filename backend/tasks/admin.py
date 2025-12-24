@@ -4,7 +4,7 @@ from django.utils.html import format_html
 from django.db.models import Count
 from .models import (
     LockTask, TaskKey, TaskVote, OvertimeAction,
-    TaskTimelineEvent, HourlyReward
+    TaskTimelineEvent, HourlyReward, TaskSubmissionFile, TaskParticipant, PinnedUser
 )
 
 
@@ -313,3 +313,111 @@ class HourlyRewardAdmin(admin.ModelAdmin):
 
     def get_queryset(self, request):
         return super().get_queryset(request).select_related('task', 'user')
+
+
+@admin.register(TaskSubmissionFile)
+class TaskSubmissionFileAdmin(admin.ModelAdmin):
+    """任务提交文件管理"""
+
+    list_display = ['task', 'file_name', 'file_size_display', 'created_at']
+    list_filter = ['created_at', 'file_type']
+    search_fields = ['task__title', 'file_name']
+    ordering = ['-created_at']
+    readonly_fields = ['created_at', 'file_size', 'file_type']
+
+    fieldsets = (
+        ('基本信息', {
+            'fields': ('task', 'file_name', 'file_type')
+        }),
+        ('文件属性', {
+            'fields': ('file_size', 'created_at')
+        }),
+    )
+
+    def get_queryset(self, request):
+        return super().get_queryset(request).select_related('task')
+
+    def file_size_display(self, obj):
+        """显示文件大小"""
+        if obj.file_size:
+            if obj.file_size < 1024:
+                return f"{obj.file_size} B"
+            elif obj.file_size < 1024 * 1024:
+                return f"{obj.file_size / 1024:.1f} KB"
+            else:
+                return f"{obj.file_size / (1024 * 1024):.1f} MB"
+        return "-"
+    file_size_display.short_description = '文件大小'
+
+
+@admin.register(TaskParticipant)
+class TaskParticipantAdmin(admin.ModelAdmin):
+    """任务参与者管理"""
+
+    list_display = [
+        'task',
+        'participant',
+        'status_badge',
+        'submitted_at',
+        'reviewed_at',
+        'reward_amount'
+    ]
+    list_filter = ['status', 'submitted_at', 'reviewed_at']
+    search_fields = ['task__title', 'participant__username']
+    ordering = ['-submitted_at']
+    readonly_fields = ['submitted_at', 'reviewed_at', 'joined_at']
+
+    fieldsets = (
+        ('基本信息', {
+            'fields': ('task', 'participant', 'status', 'reward_amount')
+        }),
+        ('提交信息', {
+            'fields': ('submission_text', 'submitted_at')
+        }),
+        ('审核信息', {
+            'fields': ('reviewed_at', 'review_comment'),
+            'classes': ('collapse',)
+        }),
+    )
+
+    def get_queryset(self, request):
+        return super().get_queryset(request).select_related('task', 'participant')
+
+    def status_badge(self, obj):
+        """显示状态徽章"""
+        colors = {
+            'pending': '#6c757d',
+            'submitted': '#ffc107',
+            'approved': '#28a745',
+            'rejected': '#dc3545'
+        }
+        color = colors.get(obj.status, '#6c757d')
+        return format_html(
+            '<span style="background-color: {}; color: white; padding: 2px 8px; '
+            'border-radius: 12px; font-size: 11px; font-weight: bold;">{}</span>',
+            color,
+            obj.get_status_display()
+        )
+    status_badge.short_description = '状态'
+    status_badge.admin_order_field = 'status'
+
+
+@admin.register(PinnedUser)
+class PinnedUserAdmin(admin.ModelAdmin):
+    """置顶用户管理"""
+
+    list_display = ['pinned_user', 'key_holder', 'created_at', 'is_active']
+    list_filter = ['created_at', 'key_holder']
+    search_fields = ['pinned_user__username', 'key_holder__username']
+    ordering = ['-created_at']
+    readonly_fields = ['created_at']
+
+    def get_queryset(self, request):
+        return super().get_queryset(request).select_related('pinned_user', 'key_holder')
+
+    def is_active(self, obj):
+        """显示是否活跃（简单显示为是）"""
+        return format_html(
+            '<span style="color: #28a745; font-weight: bold;">✓</span>'
+        )
+    is_active.short_description = '活跃'

@@ -267,6 +267,17 @@
         {{ successMessage }}
       </div>
     </div>
+
+    <!-- NotificationToast for error handling -->
+    <NotificationToast
+      :is-visible="showToast"
+      :type="toastData.type"
+      :title="toastData.title"
+      :message="toastData.message"
+      :secondary-message="toastData.secondaryMessage"
+      :details="toastData.details"
+      @close="showToast = false"
+    />
   </div>
 </template>
 
@@ -277,6 +288,7 @@ import { postsApi } from '../lib/api'
 import type { TaskCreateRequest } from '../types/index'
 import DurationSelector from './DurationSelector.vue'
 import RichTextEditor from './RichTextEditor.vue'
+import NotificationToast from './NotificationToast.vue'
 
 interface Props {
   isVisible: boolean
@@ -296,6 +308,16 @@ const successMessage = ref('')
 const imageInput = ref<HTMLInputElement>()
 const imagePreview = ref<string>('')
 const imageFile = ref<File | null>(null)
+
+// NotificationToast 状态
+const showToast = ref(false)
+const toastData = ref({
+  type: 'error' as 'success' | 'error' | 'warning' | 'info',
+  title: '',
+  message: '',
+  secondaryMessage: '',
+  details: {} as Record<string, any>
+})
 
 const form = reactive<TaskCreateRequest & { autoPost?: boolean }>({
   task_type: 'lock',
@@ -348,6 +370,7 @@ const resetForm = () => {
   }
   successMessage.value = ''
   submitting.value = false
+  showToast.value = false
 }
 
 const closeModal = () => {
@@ -546,9 +569,19 @@ const handleSubmit = async () => {
       try {
         await createAutoPost(newTask)
         console.log('Auto-post created successfully')
-      } catch (postError) {
+      } catch (postError: any) {
         console.error('Failed to create auto-post:', postError)
-        // Don't fail the entire task creation if auto-post fails
+        // Show notification for auto-post failure but don't fail the entire task creation
+        showToast.value = true
+        toastData.value = {
+          type: 'warning',
+          title: '自动发布动态失败',
+          message: '任务创建成功，但自动发布动态失败',
+          secondaryMessage: '您可以手动发布动态分享任务',
+          details: {
+            '错误信息': postError.message || '未知错误'
+          }
+        }
       }
     }
 
@@ -568,10 +601,39 @@ const handleSubmit = async () => {
 
   } catch (error: any) {
     console.error('Error creating task:', error)
-    const errorMessage = error.status === 401
-      ? '请先登录'
-      : error.data?.error || error.message || '创建失败，请重试'
-    alert(errorMessage)
+    let errorData = {
+      type: 'error' as const,
+      title: '创建失败',
+      message: '创建任务时发生错误',
+      secondaryMessage: '请检查输入信息后重试',
+      details: {} as Record<string, any>
+    }
+
+    if (error.status === 400) {
+      errorData.title = '任务信息验证失败'
+      errorData.message = error.data?.error || error.data?.message || '任务信息格式有误'
+      errorData.details['状态码'] = '400'
+      if (error.data?.details) {
+        Object.assign(errorData.details, error.data.details)
+      }
+    } else if (error.status === 401) {
+      errorData.title = '身份验证失败'
+      errorData.message = '请先登录后再创建任务'
+      errorData.details['状态码'] = '401'
+    } else if (error.status >= 500) {
+      errorData.title = '服务器错误'
+      errorData.message = error.data?.error || error.data?.message || '服务器内部发生错误'
+      errorData.details['状态码'] = error.status?.toString()
+      errorData.details['错误时间'] = new Date().toLocaleString()
+    } else {
+      errorData.message = error.data?.error || error.data?.message || error.message || '创建任务失败'
+      if (error.status) {
+        errorData.details['状态码'] = error.status.toString()
+      }
+    }
+
+    showToast.value = true
+    toastData.value = errorData
   } finally {
     submitting.value = false
   }

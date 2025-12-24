@@ -5,9 +5,21 @@ from users.models import Notification
 
 
 class Command(BaseCommand):
-    help = 'Process hourly rewards for active lock tasks and expired task checks'
+    help = '处理每小时奖励 (已废弃 - 请使用 Celery Beat)'
 
     def handle(self, *args, **options):
+        self.stdout.write(
+            self.style.WARNING(
+                '⚠️  此命令已废弃。请使用 Celery Beat 自动处理每小时奖励。\n'
+                '如需手动执行，请确认 Celery Beat 未在运行以避免重复处理。'
+            )
+        )
+
+        confirm = input('确认继续执行吗？ (y/N): ')
+        if confirm.lower() != 'y':
+            self.stdout.write('操作已取消')
+            return
+
         now = timezone.now()
 
         # 1. 处理小时奖励

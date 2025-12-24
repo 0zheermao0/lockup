@@ -435,6 +435,9 @@ def play_time_wheel(request):
                 bet_amount=bet_amount
             )
 
+            # 小游戏活跃度奖励
+            request.user.update_activity(points=1)
+
             return Response({
                 'success': True,
                 'result': 'increase' if is_increase else 'decrease',
@@ -637,6 +640,9 @@ def join_game(request, game_id):
                     user=user,
                     action=action_data
                 )
+
+                # 小游戏活跃度奖励
+                request.user.update_activity(points=1)
 
                 # 检查是否可以开始游戏
                 participant_count = game.participants.count()
@@ -1072,6 +1078,9 @@ def bury_item(request):
                 item.inventory = None  # 从背包中移除
                 item.save()
 
+                # 掩埋活跃度奖励
+                request.user.update_activity(points=1)
+
                 return Response({
                     'message': f'物品已掩埋到 {get_zone_display_name(location_zone)} ({getDifficultyText(difficulty)})',
                     'treasure_id': str(buried_treasure.id),
@@ -1111,6 +1120,9 @@ def explore_zone(request):
                 if hasattr(user, 'coins'):
                     user.coins -= 1
                     user.save()
+
+                # 探索活跃度奖励
+                request.user.update_activity(points=1)
 
                 # 查找该区域的可发现宝物
                 available_treasures = BuriedTreasure.objects.filter(
@@ -1755,6 +1767,9 @@ def claim_shared_item(request, share_token):
                     'claimed_at': shared_item.claimed_at.isoformat()
                 }
             )
+
+            # 给分享者增加活跃度
+            shared_item.sharer.update_activity(points=1)
 
             return Response({
                 'message': f'成功领取 {item.item_type.display_name}！',

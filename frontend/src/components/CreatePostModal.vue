@@ -105,11 +105,6 @@
             {{ successMessage }}
           </div>
 
-          <!-- 错误信息 -->
-          <div v-if="error" class="error">
-            {{ error }}
-          </div>
-
           <!-- 提交按钮 -->
           <div class="form-actions">
             <button
@@ -131,6 +126,17 @@
         </form>
       </div>
     </div>
+
+    <!-- NotificationToast for error handling -->
+    <NotificationToast
+      :is-visible="showToast"
+      :type="toastData.type"
+      :title="toastData.title"
+      :message="toastData.message"
+      :secondary-message="toastData.secondaryMessage"
+      :details="toastData.details"
+      @close="showToast = false"
+    />
   </div>
 </template>
 
@@ -140,6 +146,7 @@ import { usePostsStore } from '../stores/posts'
 import { useAuthStore } from '../stores/auth'
 import { tasksApi } from '../lib/api'
 import RichTextEditor from './RichTextEditor.vue'
+import NotificationToast from './NotificationToast.vue'
 import type { LockTask } from '../types/index'
 
 interface Props {
@@ -164,8 +171,17 @@ const authStore = useAuthStore()
 // 表单状态
 const isCheckinMode = ref(props.defaultCheckinMode)
 const isLoading = ref(false)
-const error = ref('')
 const successMessage = ref('')
+
+// NotificationToast 状态
+const showToast = ref(false)
+const toastData = ref({
+  type: 'error' as 'success' | 'error' | 'warning' | 'info',
+  title: '',
+  message: '',
+  secondaryMessage: '',
+  details: {} as Record<string, any>
+})
 
 const form = reactive({
   content: ''
@@ -247,8 +263,8 @@ const fetchActiveStrictTask = async () => {
 const resetForm = () => {
   form.content = ''
   selectedImages.value = []
-  error.value = ''
   successMessage.value = ''
+  showToast.value = false
   isCheckinMode.value = props.defaultCheckinMode
   activeStrictTask.value = null
 }
@@ -303,8 +319,8 @@ const removeImage = (index: number) => {
 const handleSubmit = async () => {
   if (isLoading.value || !form.content.trim()) return
 
-  error.value = ''
   successMessage.value = ''
+  showToast.value = false
   isLoading.value = true
 
   try {
@@ -326,8 +342,36 @@ const handleSubmit = async () => {
         closeModal()
       }
     }, 1500)
-  } catch (err: any) {
-    error.value = err.response?.data?.message || err.message || '发布失败'
+  } catch (error: any) {
+    let errorData = {
+      type: 'error' as const,
+      title: '发布失败',
+      message: '发布动态时发生错误',
+      secondaryMessage: '请稍后重试或联系管理员',
+      details: {} as Record<string, any>
+    }
+
+    if (error.status === 400) {
+      errorData.title = '内容验证失败'
+      errorData.message = error.data?.error || error.data?.message || '提交的内容格式有误'
+      errorData.details['状态码'] = '400'
+      if (error.data?.details) {
+        Object.assign(errorData.details, error.data.details)
+      }
+    } else if (error.status >= 500) {
+      errorData.title = '服务器错误'
+      errorData.message = error.data?.error || error.data?.message || '服务器内部发生错误'
+      errorData.details['状态码'] = error.status?.toString()
+      errorData.details['错误时间'] = new Date().toLocaleString()
+    } else {
+      errorData.message = error.data?.error || error.data?.message || error.message || '发布失败'
+      if (error.status) {
+        errorData.details['状态码'] = error.status.toString()
+      }
+    }
+
+    showToast.value = true
+    toastData.value = errorData
   } finally {
     isLoading.value = false
   }
@@ -536,15 +580,6 @@ onMounted(() => {
   font-size: 1rem;
 }
 
-.error {
-  color: #dc3545;
-  margin: 1rem 0;
-  padding: 0.75rem;
-  background-color: #f8d7da;
-  border: 1px solid #f5c6cb;
-  border-radius: 4px;
-  font-size: 0.875rem;
-}
 
 .form-actions {
   display: flex;

@@ -3,7 +3,7 @@
 Celery Application Configuration for Lockup Backend
 
 This module configures Celery for handling asynchronous tasks in the Lockup application.
-Currently focused on hourly rewards processing for lock tasks.
+Includes hourly rewards processing for lock tasks and daily activity decay processing.
 
 Author: Claude Code
 Created: 2024-12-19
@@ -40,6 +40,7 @@ app.conf.update(
     # Task routing - separate queues for different task types
     task_routes={
         'tasks.celery_tasks.process_hourly_rewards': {'queue': 'rewards'},
+        'tasks.celery_tasks.process_activity_decay': {'queue': 'activity'},
     },
 
     # Worker configuration
@@ -63,59 +64,12 @@ app.conf.update(
     task_send_sent_event=True,
 )
 
-# Beat schedule for periodic tasks
-from celery.schedules import crontab
-
-app.conf.beat_schedule = {
-    'process-hourly-rewards': {
-        'task': 'tasks.celery_tasks.process_hourly_rewards',
-        'schedule': 60.0 * 60.0,  # Execute every hour (3600 seconds)
-        'options': {
-            'queue': 'rewards',
-            'routing_key': 'rewards',
-        },
-    },
-    'process-pinning-queue': {
-        'task': 'tasks.celery_tasks.process_pinning_queue',
-        'schedule': 60.0,  # Execute every minute (60 seconds)
-        'options': {
-            'queue': 'default',
-            'routing_key': 'default',
-        },
-    },
-    'pinning-health-check': {
-        'task': 'tasks.celery_tasks.pinning_health_check',
-        'schedule': 60.0 * 5,  # Execute every 5 minutes (300 seconds)
-        'options': {
-            'queue': 'default',
-            'routing_key': 'default',
-        },
-    },
-    'process-checkin-voting-results': {
-        'task': 'tasks.celery_tasks.process_checkin_voting_results',
-        'schedule': crontab(hour=4, minute=0),  # Execute daily at 4:00 AM
-        'options': {
-            'queue': 'default',
-            'routing_key': 'default',
-        },
-    },
-    'process-level-promotions': {
-        'task': 'tasks.celery_tasks.process_level_promotions',
-        'schedule': crontab(hour=4, minute=30, day_of_week=3),  # Wednesday 4:30 AM
-        'options': {
-            'queue': 'default',
-            'expires': 3600,  # Task expires after 1 hour
-        }
-    },
-    'auto-freeze-strict-mode-tasks': {
-        'task': 'tasks.celery_tasks.auto_freeze_strict_mode_tasks',
-        'schedule': crontab(hour=4, minute=15),  # Daily at 4:15 AM (after check-in voting at 4:00)
-        'options': {
-            'queue': 'default',
-            'expires': 3600,  # Task expires after 1 hour
-        }
-    },
-}
+# Beat schedule configuration removed - using DatabaseScheduler
+# All periodic tasks are now managed through Django admin interface
+# via django_celery_beat.models.PeriodicTask
+#
+# This eliminates redundancy between static code definitions and dynamic database records.
+# Tasks can be managed, enabled/disabled, and scheduled through Django admin without code changes.
 
 # Set default queue for beat scheduler
 app.conf.beat_scheduler = 'django_celery_beat.schedulers:DatabaseScheduler'

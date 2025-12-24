@@ -193,7 +193,7 @@ class PostCreateSerializer(serializers.ModelSerializer):
 
         # 更新用户统计
         user.total_posts += 1
-        user.update_activity()
+        user.update_activity(points=2)  # 发布动态 +2 活跃度
         user.save(update_fields=['total_posts', 'activity_score', 'last_active'])
 
         # 刷新post实例以确保关联关系正确加载
