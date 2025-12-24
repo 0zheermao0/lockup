@@ -122,6 +122,38 @@ class Command(BaseCommand):
                 criteria = f"minute={key[0]} hour={key[1]} day_of_week={key[2]} day_of_month={key[3]} month_of_year={key[4]} timezone={key[5]}"
                 duplicates.append((criteria, schedules))
 
+        # 额外检查：查找相同时间但不同时区的记录（可能导致get_or_create冲突）
+        time_groups = {}
+        for schedule in all_schedules:
+            time_key = (
+                schedule.minute,
+                schedule.hour,
+                schedule.day_of_week,
+                schedule.day_of_month,
+                schedule.month_of_year,
+            )
+            if time_key not in time_groups:
+                time_groups[time_key] = []
+            time_groups[time_key].append(schedule)
+
+        # 检查时间相同但时区不同的记录
+        for time_key, schedules in time_groups.items():
+            if len(schedules) > 1:
+                # 检查是否有不同的时区
+                timezones = set()
+                for schedule in schedules:
+                    timezone_str = None
+                    if schedule.timezone:
+                        if hasattr(schedule.timezone, 'zone'):
+                            timezone_str = schedule.timezone.zone
+                        else:
+                            timezone_str = str(schedule.timezone)
+                    timezones.add(timezone_str)
+
+                if len(timezones) > 1:
+                    criteria = f"⚠️  时间冲突: minute={time_key[0]} hour={time_key[1]} day_of_week={time_key[2]} day_of_month={time_key[3]} month_of_year={time_key[4]} (不同时区: {', '.join(filter(None, timezones))})"
+                    duplicates.append((criteria, schedules))
+
         return duplicates
 
     def _preview_cleanup(self, duplicates_info):
