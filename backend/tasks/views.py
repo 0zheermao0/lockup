@@ -1503,6 +1503,10 @@ def _process_voting_results_internal():
             # 不销毁钥匙道具，因为任务还未完成
             # 不发放完成奖励，因为任务还未完成
 
+            # 清理投票状态字段，投票已结束
+            task.voting_start_time = None
+            task.voting_end_time = None
+
             task.save()
 
             # 创建投票通过事件（但任务未完成）
@@ -1565,6 +1569,11 @@ def _process_voting_results_internal():
 
             task.status = 'active'
             task.vote_failed_penalty_minutes = penalty_minutes
+
+            # 清理投票状态字段，确保加时期间不能重新发起投票
+            task.voting_start_time = None
+            task.voting_end_time = None
+
             task.save()
 
             # 创建投票失败事件
