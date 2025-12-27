@@ -181,15 +181,23 @@ class PostCreateSerializer(serializers.ModelSerializer):
         if post.post_type == 'checkin':
             # 只为有活跃严格模式带锁任务的用户创建投票会话
             from tasks.models import LockTask
-            has_active_strict_task = LockTask.objects.filter(
+            from django.utils import timezone
+            from datetime import timedelta
+
+            # 检查用户是否有在24小时内开始的活跃严格模式任务
+            yesterday = timezone.now() - timedelta(hours=24)
+            active_strict_tasks = LockTask.objects.filter(
                 user=user,
                 task_type='lock',
                 status__in=['pending', 'active', 'voting'],
-                strict_mode=True
-            ).exists()
+                strict_mode=True,
+                start_time__gte=yesterday  # 任务必须在24小时内开始
+            )
 
-            if has_active_strict_task:
-                self._create_voting_session(post)
+            if active_strict_tasks.exists():
+                # 记录关联的严格模式任务信息
+                task = active_strict_tasks.first()
+                self._create_voting_session(post, task)
 
         # 更新用户统计
         user.total_posts += 1
@@ -200,7 +208,7 @@ class PostCreateSerializer(serializers.ModelSerializer):
         post.refresh_from_db()
         return post
 
-    def _create_voting_session(self, post):
+    def _create_voting_session(self, post, task):
         """为严格模式打卡动态创建投票会话"""
         from datetime import datetime, time
         from django.utils import timezone
@@ -212,11 +220,20 @@ class PostCreateSerializer(serializers.ModelSerializer):
         deadline = timezone.datetime.combine(tomorrow, time(4, 0))
         deadline = timezone.make_aware(deadline, timezone=timezone.get_current_timezone())
 
-        # 创建投票会话
-        CheckinVotingSession.objects.create(
+        # 创建投票会话，关联严格模式任务
+        session = CheckinVotingSession.objects.create(
             post=post,
             voting_deadline=deadline
         )
+
+        # 在投票会话的元数据中记录关联的严格模式任务
+        if hasattr(session, 'metadata'):
+            session.metadata = {
+                'strict_task_id': str(task.id),
+                'strict_task_title': task.title,
+                'task_start_time': task.start_time.isoformat() if task.start_time else None
+            }
+            session.save()
 
 
 class CommentCreateSerializer(serializers.ModelSerializer):
