@@ -471,5 +471,21 @@ export const tasksApi = {
     return apiRequest('/tasks/use-sun-bottle/', {
       method: 'POST'
     })
+  },
+
+  // 使用时间沙漏
+  useTimeHourglass: async (id: string): Promise<{
+    message: string
+    rollback_data: {
+      reverted_events_count: number
+      new_end_time: string | null
+      is_frozen: boolean
+      rollback_id: string
+    }
+    item_destroyed: boolean
+  }> => {
+    return apiRequest(`/tasks/${id}/use-time-hourglass/`, {
+      method: 'POST'
+    })
   }
 }

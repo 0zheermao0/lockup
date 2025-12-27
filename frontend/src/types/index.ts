@@ -442,7 +442,7 @@ export interface UserStore {
 // Game Store Types
 export interface ItemType {
   id: string
-  name: 'photo_paper' | 'photo' | 'drift_bottle' | 'key' | 'note' | 'little_treasury' | 'detection_radar' | 'blizzard_bottle' | 'sun_bottle'
+  name: 'photo_paper' | 'photo' | 'drift_bottle' | 'key' | 'note' | 'little_treasury' | 'detection_radar' | 'blizzard_bottle' | 'sun_bottle' | 'time_hourglass'
   display_name: string
   description: string
   icon: string

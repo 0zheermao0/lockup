@@ -258,6 +258,17 @@
               <span v-else>☀️ 使用太阳瓶</span>
             </button>
 
+            <!-- Time Hourglass usage -->
+            <button
+              v-if="canUseTimeHourglass(selectedItem)"
+              @click="openTimeHourglassModal"
+              class="action-btn hourglass"
+              :disabled="usingTimeHourglass"
+            >
+              <span v-if="usingTimeHourglass">使用中...</span>
+              <span v-else>⏳ 使用时间沙漏</span>
+            </button>
+
             <!-- Discard item -->
             <button
               v-if="canDiscardItem(selectedItem)"
@@ -822,6 +833,82 @@
         </div>
       </div>
 
+      <!-- Time Hourglass Modal -->
+      <div v-if="showTimeHourglassModal" class="modal-overlay" @click.self="closeTimeHourglassModal">
+        <div class="action-modal time-hourglass-modal">
+          <div class="modal-header">
+            <h3 class="modal-title">⏳ 使用时间沙漏</h3>
+            <button @click="closeTimeHourglassModal" class="modal-close">×</button>
+          </div>
+
+          <div v-if="!hourglassResults" class="modal-body">
+            <div class="warning-section">
+              <div class="warning-icon">⏳</div>
+              <div class="warning-content">
+                <h4 class="warning-title">时间沙漏</h4>
+                <p class="warning-message">
+                  将当前带锁任务状态回退到30分钟前，撤销最近30分钟内的加减时、冻结等操作。
+                </p>
+                <p class="warning-note">
+                  ⚠️ 使用后物品将被自动销毁，此操作不可撤销！
+                </p>
+              </div>
+            </div>
+
+            <div class="modal-footer">
+              <button @click="closeTimeHourglassModal" class="modal-btn secondary">
+                取消
+              </button>
+              <button
+                @click="useTimeHourglass"
+                class="modal-btn primary"
+                :disabled="usingTimeHourglass"
+              >
+                {{ usingTimeHourglass ? '使用中...' : '⏳ 使用时间沙漏' }}
+              </button>
+            </div>
+          </div>
+
+          <div v-else class="modal-body">
+            <div class="hourglass-results-section">
+              <h4 class="info-title">⏳ 时间回退结果</h4>
+
+              <div class="hourglass-results-grid">
+                <div class="hourglass-result-card">
+                  <div class="result-header">
+                    <span class="result-icon">🔄</span>
+                    <span class="result-label">回退操作数</span>
+                  </div>
+                  <div class="result-content">{{ hourglassResults.reverted_events_count }}</div>
+                </div>
+
+                <div class="hourglass-result-card">
+                  <div class="result-header">
+                    <span class="result-icon">⏰</span>
+                    <span class="result-label">新结束时间</span>
+                  </div>
+                  <div class="result-content">{{ hourglassResults.new_end_time ? formatDate(hourglassResults.new_end_time) : '无' }}</div>
+                </div>
+
+                <div v-if="hourglassResults.is_frozen" class="hourglass-result-card frozen">
+                  <div class="result-header">
+                    <span class="result-icon">❄️</span>
+                    <span class="result-label">冻结状态</span>
+                  </div>
+                  <div class="result-content">任务已冻结</div>
+                </div>
+              </div>
+            </div>
+
+            <div class="modal-footer">
+              <button @click="closeTimeHourglassModal" class="modal-btn primary">
+                确定
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
       <!-- Note Edit Modal -->
       <div v-if="showNoteEditModal" class="modal-overlay" @click.self="closeNoteEditModal">
         <div class="action-modal note-edit-modal">
@@ -984,6 +1071,12 @@ const noteTimeRemaining = ref(30)
 const noteAutoCloseTimer = ref<number | null>(null)
 const editingNote = ref(false)
 const viewingNote = ref(false)
+
+// Time Hourglass
+const showTimeHourglassModal = ref(false)
+const usingTimeHourglass = ref(false)
+const hourglassResults = ref<any>(null)
+const availableHourglassTasks = ref<any[]>([])
 
 // Methods
 const goBack = () => {
@@ -1149,11 +1242,11 @@ const closePhotoViewer = () => {
 }
 
 const canShareItem = (item: Item): boolean => {
-  return item.status === 'available' && ['photo', 'note', 'key', 'little_treasury'].includes(item.item_type.name)
+  return item.status === 'available' && ['photo', 'note', 'key', 'little_treasury', 'time_hourglass'].includes(item.item_type.name)
 }
 
 const canBuryItem = (item: Item): boolean => {
-  return item.status === 'available' && ['photo', 'key', 'note', 'little_treasury', 'detection_radar', 'photo_paper', 'blizzard_bottle', 'sun_bottle'].includes(item.item_type.name)
+  return item.status === 'available' && ['photo', 'key', 'note', 'little_treasury', 'detection_radar', 'photo_paper', 'blizzard_bottle', 'sun_bottle', 'time_hourglass'].includes(item.item_type.name)
 }
 
 const canDiscardItem = (item: Item): boolean => {
@@ -1181,6 +1274,10 @@ const canUseBlizzardBottle = (item: Item): boolean => {
 
 const canUseSunBottle = (item: Item): boolean => {
   return item.status === 'available' && item.item_type.name === 'sun_bottle'
+}
+
+const canUseTimeHourglass = (item: Item): boolean => {
+  return item.status === 'available' && item.item_type.name === 'time_hourglass'
 }
 
 const shareItem = async () => {
@@ -1549,6 +1646,75 @@ const useSunBottle = async () => {
     alert(errorMessage)
   } finally {
     usingSunBottle.value = false
+  }
+}
+
+// Time Hourglass functions
+const openTimeHourglassModal = () => {
+  if (!selectedItem.value) return
+  showTimeHourglassModal.value = true
+}
+
+const closeTimeHourglassModal = () => {
+  showTimeHourglassModal.value = false
+  hourglassResults.value = null
+  selectedItem.value = null
+}
+
+const useTimeHourglass = async () => {
+  if (!selectedItem.value) return
+
+  try {
+    usingTimeHourglass.value = true
+
+    // Get user's active lock task
+    const tasks = await tasksApiDetailed.getTasksList({
+      task_type: 'lock',
+      status: 'active',
+      my_tasks: true
+    })
+
+    // Also include voting tasks
+    const votingTasks = await tasksApiDetailed.getTasksList({
+      task_type: 'lock',
+      status: 'voting',
+      my_tasks: true
+    })
+
+    const allTasks = [...tasks, ...votingTasks]
+
+    if (allTasks.length === 0) {
+      alert('您当前没有活跃的带锁任务')
+      return
+    }
+
+    // For simplicity, use the first active task
+    // In a more complete implementation, you might show a task selection modal
+    const targetTask = allTasks[0]
+
+    // Call the time hourglass API
+    const response = await tasksApiDetailed.useTimeHourglass(targetTask.id)
+
+    // Set the hourglass results from the API response
+    hourglassResults.value = {
+      reverted_events_count: response.rollback_data.reverted_events_count,
+      new_end_time: response.rollback_data.new_end_time,
+      is_frozen: response.rollback_data.is_frozen,
+      rollback_id: response.rollback_data.rollback_id
+    }
+
+    // Refresh inventory after successful use (item should be destroyed)
+    await loadInventory()
+
+    // Clear selected item since it was destroyed
+    selectedItem.value = null
+
+  } catch (error) {
+    console.error('Error using time hourglass:', error)
+    const errorMessage = error instanceof Error ? error.message : '使用时间沙漏失败，请重试'
+    alert(errorMessage)
+  } finally {
+    usingTimeHourglass.value = false
   }
 }
 
@@ -3730,6 +3896,78 @@ onMounted(() => {
 
   .task-owner {
     align-self: flex-end;
+  }
+}
+
+/* Time Hourglass Modal Styles */
+.time-hourglass-modal {
+  max-width: 600px;
+  width: 100%;
+}
+
+.hourglass-results-section {
+  background: #f0f8ff;
+  border: 3px solid #4682b4;
+  padding: 1.5rem;
+  margin-bottom: 1.5rem;
+  box-shadow: 4px 4px 0 #4682b4;
+}
+
+.hourglass-results-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+  margin-top: 1rem;
+}
+
+.hourglass-result-card {
+  background: white;
+  border: 3px solid #000;
+  padding: 1rem;
+  box-shadow: 3px 3px 0 #000;
+  transition: all 0.2s ease;
+}
+
+.hourglass-result-card:hover {
+  transform: translate(-1px, -1px);
+  box-shadow: 4px 4px 0 #000;
+}
+
+.hourglass-result-card.frozen {
+  background: #e1f5fe;
+  border-color: #17a2b8;
+  box-shadow: 3px 3px 0 #17a2b8;
+}
+
+.hourglass-result-card.frozen:hover {
+  box-shadow: 4px 4px 0 #17a2b8;
+}
+
+.action-btn.hourglass {
+  background: #4682b4;
+  color: white;
+  border-color: #000;
+}
+
+.action-btn.hourglass:hover {
+  background: #36648b;
+  color: white;
+}
+
+/* Responsive Design for Time Hourglass */
+@media (max-width: 768px) {
+  .time-hourglass-modal {
+    margin: 1rem;
+    max-width: calc(100vw - 2rem);
+  }
+
+  .hourglass-results-grid {
+    grid-template-columns: 1fr;
+    gap: 0.75rem;
+  }
+
+  .hourglass-result-card {
+    padding: 0.75rem;
   }
 }
 
