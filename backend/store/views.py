@@ -1649,8 +1649,8 @@ def create_share_link(request):
                 status='available'
             )
 
-            # 检查物品类型是否可分享 (photo, note, key, little_treasury, detection_radar, blizzard_bottle, sun_bottle)
-            if item.item_type.name not in ['photo', 'note', 'key', 'little_treasury', 'detection_radar', 'blizzard_bottle', 'sun_bottle']:
+            # 检查物品类型是否可分享 (photo, note, key, little_treasury, detection_radar, blizzard_bottle, sun_bottle, time_hourglass)
+            if item.item_type.name not in ['photo', 'note', 'key', 'little_treasury', 'detection_radar', 'blizzard_bottle', 'sun_bottle', 'time_hourglass']:
                 return Response({
                     'error': f'{item.item_type.display_name} 不支持分享'
                 }, status=status.HTTP_400_BAD_REQUEST)

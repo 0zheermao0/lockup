@@ -1012,7 +1012,7 @@ Telegram 通知：{'✅ 已开启' if user.telegram_notifications_enabled else '
                 return
 
             # 检查物品是否可分享
-            if item.item_type.name not in ['photo', 'note', 'key']:
+            if item.item_type.name not in ['photo', 'note', 'key', 'little_treasury', 'detection_radar', 'blizzard_bottle', 'sun_bottle', 'time_hourglass']:
                 await self._safe_callback_response(query, "❌ 该物品无法分享", show_alert=True)
                 return
 
