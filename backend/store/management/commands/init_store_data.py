@@ -127,6 +127,13 @@ class Command(BaseCommand):
                 'description': '使用后将当前所有被冻结的带锁任务解冻，使用后自动销毁',
                 'icon': '☀️',
                 'is_consumable': True
+            },
+            {
+                'name': 'time_hourglass',
+                'display_name': '时间沙漏',
+                'description': '将当前带锁任务状态回退到30分钟前，撤销最近30分钟内的加减时、冻结等操作，每个用户终身只能购买一次',
+                'icon': '⏳',
+                'is_consumable': True
             }
         ]
 
@@ -182,6 +189,7 @@ class Command(BaseCommand):
             detection_radar_type = ItemType.objects.get(name='detection_radar')
             blizzard_bottle_type = ItemType.objects.get(name='blizzard_bottle')
             sun_bottle_type = ItemType.objects.get(name='sun_bottle')
+            time_hourglass_type = ItemType.objects.get(name='time_hourglass')
         except ItemType.DoesNotExist as e:
             self.stdout.write(
                 self.style.ERROR(f'❌ 道具类型不存在: {e}')
@@ -277,6 +285,17 @@ class Command(BaseCommand):
                 'stock': None,
                 'daily_limit': 1,
                 'level_requirement': 4
+            },
+            {
+                'item_type': time_hourglass_type,
+                'name': '时间沙漏',
+                'description': '回退任务状态到30分钟前，撤销最近30分钟内的加减时、冻结等操作。每日限购1个！',
+                'price': 50,
+                'icon': '⏳',
+                'is_available': True,
+                'stock': None,
+                'daily_limit': 1,  # 每日限制1个
+                'level_requirement': 2
             }
         ]
 
