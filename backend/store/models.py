@@ -18,6 +18,7 @@ class ItemType(models.Model):
         ('detection_radar', '探测雷达'),
         ('blizzard_bottle', '暴雪瓶'),
         ('sun_bottle', '太阳瓶'),
+        ('time_hourglass', '时间沙漏'),
     ]
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
@@ -328,3 +329,27 @@ class GameSession(models.Model):
 
     def __str__(self):
         return f"{self.user.username} - {self.game_type} - {self.bet_amount}积分"
+
+
+class UserHourglassPurchase(models.Model):
+    """用户时间沙漏购买记录 - 终身限购一次"""
+
+    user = models.OneToOneField(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name='hourglass_purchase'
+    )
+    purchased_at = models.DateTimeField(auto_now_add=True)
+    used_at = models.DateTimeField(null=True, blank=True)
+    task_used_on = models.ForeignKey(
+        'tasks.LockTask',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True
+    )
+
+    class Meta:
+        db_table = 'store_user_hourglass_purchase'
+
+    def __str__(self):
+        return f"{self.user.username} - 时间沙漏购买记录"

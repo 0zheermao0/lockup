@@ -3489,3 +3489,158 @@ def use_sun_bottle(request):
         return Response({
             'error': f'使用太阳瓶时发生错误: {str(e)}'
         }, status=500)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def use_time_hourglass(request, pk):
+    """使用时间沙漏回退任务状态到30分钟前"""
+    from store.models import Item, UserHourglassPurchase
+    from .utils import get_revertible_events, calculate_rollback_state
+    from .models import TaskTimeRollback
+    from django.db import transaction
+
+    try:
+        task = LockTask.objects.get(pk=pk)
+    except LockTask.DoesNotExist:
+        return Response({'error': '任务不存在'}, status=404)
+
+    # 验证任务条件
+    if task.task_type != 'lock':
+        return Response({'error': '只能对带锁任务使用时间沙漏'}, status=400)
+
+    if task.status not in ['active', 'voting']:
+        return Response({'error': '任务已结束，无法使用时间沙漏'}, status=400)
+
+    # 验证钥匙持有者权限
+    task_key_item = Item.objects.filter(
+        item_type__name='key',
+        owner=request.user,
+        status='available',
+        properties__task_id=str(task.id)
+    ).first()
+
+    if not task_key_item:
+        return Response({'error': '只有钥匙持有者可以使用时间沙漏'}, status=403)
+
+    # 查找时间沙漏道具
+    hourglass_item = Item.objects.filter(
+        item_type__name='time_hourglass',
+        owner=request.user,
+        status='available'
+    ).first()
+
+    if not hourglass_item:
+        return Response({'error': '您没有可用的时间沙漏'}, status=400)
+
+    # 计算30分钟前的时间点
+    rollback_time = timezone.now()
+    target_time = rollback_time - timedelta(minutes=30)
+
+    # 使用新的逻辑：直接计算30分钟前的任务状态
+    from .utils import get_task_state_at_time
+    rollback_state = get_task_state_at_time(task, target_time)
+
+    if rollback_state is None:
+        return Response({'error': '任务在30分钟前还未创建'}, status=400)
+
+    # 获取30分钟内的所有相关事件用于记录
+    revertible_events = get_revertible_events(task, rollback_time)
+
+    # 执行回退操作（原子事务）
+    with transaction.atomic():
+        # 记录回退操作
+        rollback_record = TaskTimeRollback.objects.create(
+            task=task,
+            user=request.user,
+            rollback_start_time=rollback_time - timedelta(minutes=30),
+            rollback_end_time=rollback_time,
+            original_end_time=task.end_time,
+            original_is_frozen=task.is_frozen,
+            original_frozen_at=task.frozen_at,
+            original_frozen_end_time=task.frozen_end_time,
+            restored_end_time=rollback_state['end_time'],
+            restored_is_frozen=rollback_state['is_frozen'],
+            restored_frozen_at=rollback_state['frozen_at'],
+            restored_frozen_end_time=rollback_state['frozen_end_time'],
+            reverted_events=[{
+                'event_id': str(event.id),
+                'event_type': event.event_type,
+                'created_at': event.created_at.isoformat(),
+                'description': event.description,
+                'time_change_minutes': event.time_change_minutes
+            } for event in revertible_events],
+            reverted_events_count=revertible_events.count() if revertible_events.exists() else 0
+        )
+
+        # 更新任务状态
+        task.end_time = rollback_state['end_time']
+        task.is_frozen = rollback_state['is_frozen']
+        task.frozen_at = rollback_state['frozen_at']
+        task.frozen_end_time = rollback_state['frozen_end_time']
+        task.save()
+
+        # 标记道具为已使用
+        hourglass_item.status = 'used'
+        hourglass_item.used_at = timezone.now()
+        hourglass_item.inventory = None
+        hourglass_item.save()
+
+        # 记录使用记录
+        try:
+            purchase_record = UserHourglassPurchase.objects.get(user=request.user)
+            purchase_record.used_at = timezone.now()
+            purchase_record.task_used_on = task
+            purchase_record.save()
+        except UserHourglassPurchase.DoesNotExist:
+            pass
+
+        # 创建时间线事件
+        TaskTimelineEvent.objects.create(
+            task=task,
+            user=request.user,
+            event_type='time_rollback',
+            description=f'{request.user.username} 使用时间沙漏将任务状态回退到30分钟前，撤销了 {len(revertible_events)} 个操作',
+            metadata={
+                'rollback_id': str(rollback_record.id),
+                'reverted_events_count': len(revertible_events),
+                'rollback_minutes': 30,
+                'original_end_time': task.end_time.isoformat() if rollback_record.original_end_time else None,
+                'restored_end_time': rollback_state['end_time'].isoformat() if rollback_state['end_time'] else None,
+                'original_is_frozen': rollback_record.original_is_frozen,
+                'restored_is_frozen': rollback_state['is_frozen'],
+                'reverted_operations': [event.event_type for event in revertible_events]
+            }
+        )
+
+        # 创建通知
+        Notification.create_notification(
+            recipient=request.user,
+            notification_type='item_used',
+            actor=request.user,
+            title='⏳ 时间沙漏使用成功',
+            message=f'成功将任务「{task.title}」状态回退到30分钟前，撤销了 {len(revertible_events)} 个操作',
+            related_object_type='lock_task',
+            related_object_id=task.id,
+            priority='normal',
+            extra_data={
+                'item_type': 'time_hourglass',
+                'rollback_id': str(rollback_record.id),
+                'reverted_events_count': len(revertible_events),
+                'new_end_time': rollback_state['end_time'].isoformat() if rollback_state['end_time'] else None,
+                'is_frozen': rollback_state['is_frozen']
+            }
+        )
+
+    return Response({
+        'message': f'时间沙漏使用成功！任务状态已回退到30分钟前，撤销了 {len(revertible_events)} 个操作',
+        'rollback_data': {
+            'rollback_id': str(rollback_record.id),
+            'reverted_events_count': len(revertible_events),
+            'new_end_time': rollback_state['end_time'].isoformat() if rollback_state['end_time'] else None,
+            'is_frozen': rollback_state['is_frozen'],
+            'frozen_end_time': rollback_state['frozen_end_time'].isoformat() if rollback_state['frozen_end_time'] else None,
+            'reverted_operations': [event.event_type for event in revertible_events]
+        },
+        'item_destroyed': True
+    })

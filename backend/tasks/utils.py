@@ -312,3 +312,261 @@ def destroy_task_keys(task, reason="task_ended", user=None, metadata=None):
         'keys_destroyed': len(destroyed_keys),
         'destroyed_keys': destroyed_keys
     }
+
+
+def get_revertible_events(task, rollback_time):
+    """
+    获取可回退的时间线事件（30分钟内）
+
+    Args:
+        task: LockTask 实例
+        rollback_time: 回退操作的时间点
+
+    Returns:
+        QuerySet: 可回退的 TaskTimelineEvent 对象列表，按时间倒序
+    """
+    cutoff_time = rollback_time - timedelta(minutes=30)
+
+    # 可回退的事件类型
+    revertible_event_types = [
+        'time_wheel_increase',      # 时间转盘加时（也包括手动加时）
+        'time_wheel_decrease',      # 时间转盘减时（也包括手动减时）
+        'overtime_added',           # 他人加时
+        'task_frozen',              # 任务冻结
+        'task_unfrozen',            # 任务解冻
+        'vote_failed',              # 投票失败加时
+        'system_freeze',            # 系统冻结（暴雪瓶）
+    ]
+
+    # 获取30分钟内的可回退事件，按时间倒序
+    events = TaskTimelineEvent.objects.filter(
+        task=task,
+        event_type__in=revertible_event_types,
+        created_at__gte=cutoff_time,
+        created_at__lte=rollback_time
+    ).order_by('-created_at')
+
+    return events
+
+
+def get_task_state_at_time(task, target_time):
+    """
+    获取任务在指定时间点的状态
+
+    Args:
+        task: LockTask 实例
+        target_time: 目标时间点
+
+    Returns:
+        dict: 包含任务状态信息的字典
+    """
+    from .models import TaskTimelineEvent
+    from django.utils import timezone
+
+    # 获取目标时间之前的最后一个状态快照事件
+    # 如果没有状态快照，则使用任务创建时的状态
+
+    # 首先尝试从任务创建时的状态开始
+    if task.created_at <= target_time:
+        # 任务在目标时间之前就存在
+        initial_state = {
+            'end_time': task.end_time,  # 使用当前结束时间作为基准
+            'is_frozen': False,
+            'frozen_at': None,
+            'frozen_end_time': None
+        }
+
+        # 获取目标时间之前的所有事件，按时间正序
+        events = TaskTimelineEvent.objects.filter(
+            task=task,
+            created_at__lte=target_time
+        ).order_by('created_at')
+
+        # 逆向计算：从当前状态回推到目标时间的状态
+        current_time = timezone.now()
+
+        # 获取目标时间之后的所有可回退事件，按时间倒序
+        future_events = TaskTimelineEvent.objects.filter(
+            task=task,
+            created_at__gt=target_time,
+            created_at__lte=current_time,
+            event_type__in=[
+                'time_wheel_increase',
+                'time_wheel_decrease',
+                'overtime_added',
+                'task_frozen',
+                'task_unfrozen',
+                'vote_failed',
+                'system_freeze'
+            ]
+        ).order_by('-created_at')
+
+        # 从当前状态开始，逆向应用事件
+        result_state = {
+            'end_time': task.end_time,
+            'is_frozen': task.is_frozen,
+            'frozen_at': task.frozen_at,
+            'frozen_end_time': task.frozen_end_time
+        }
+
+        # 逆向应用每个事件
+        for event in future_events:
+            result_state = _reverse_apply_event(result_state, event)
+
+        return result_state
+    else:
+        # 任务在目标时间之后才创建，返回None表示任务不存在
+        return None
+
+
+def _reverse_apply_event(state, event):
+    """
+    逆向应用单个事件到状态
+
+    Args:
+        state: 当前状态字典
+        event: TaskTimelineEvent 实例
+
+    Returns:
+        dict: 应用事件后的状态
+    """
+    metadata = event.metadata or {}
+
+    if event.event_type in ['time_wheel_increase', 'overtime_added']:
+        # 逆向加时：减去之前增加的时间
+        if event.time_change_minutes:
+            time_delta = timedelta(minutes=event.time_change_minutes)
+
+            if state['is_frozen'] and state['frozen_end_time']:
+                state['frozen_end_time'] = state['frozen_end_time'] - time_delta
+            elif state['end_time']:
+                state['end_time'] = state['end_time'] - time_delta
+
+    elif event.event_type == 'time_wheel_decrease':
+        # 逆向减时：加回之前减少的时间
+        if event.time_change_minutes:
+            time_delta = timedelta(minutes=abs(event.time_change_minutes))
+
+            if state['is_frozen'] and state['frozen_end_time']:
+                state['frozen_end_time'] = state['frozen_end_time'] + time_delta
+            elif state['end_time']:
+                state['end_time'] = state['end_time'] + time_delta
+
+    elif event.event_type == 'task_frozen':
+        # 逆向冻结：恢复到未冻结状态
+        state['is_frozen'] = False
+        state['frozen_at'] = None
+        state['frozen_end_time'] = None
+
+    elif event.event_type == 'task_unfrozen':
+        # 逆向解冻：恢复到冻结状态
+        state['is_frozen'] = True
+        if 'frozen_at' in metadata:
+            try:
+                from datetime import datetime
+                state['frozen_at'] = datetime.fromisoformat(metadata['frozen_at'].replace('Z', '+00:00'))
+            except (ValueError, AttributeError):
+                state['frozen_at'] = None
+
+        if 'frozen_end_time' in metadata:
+            try:
+                from datetime import datetime
+                state['frozen_end_time'] = datetime.fromisoformat(metadata['frozen_end_time'].replace('Z', '+00:00'))
+            except (ValueError, AttributeError):
+                state['frozen_end_time'] = None
+
+    elif event.event_type == 'vote_failed':
+        # 逆向投票失败加时：减去失败惩罚时间
+        if event.time_change_minutes:
+            time_delta = timedelta(minutes=event.time_change_minutes)
+
+            if state['is_frozen'] and state['frozen_end_time']:
+                state['frozen_end_time'] = state['frozen_end_time'] - time_delta
+            elif state['end_time']:
+                state['end_time'] = state['end_time'] - time_delta
+
+    return state
+
+
+def calculate_rollback_state(task, events_to_revert):
+    """
+    计算回退后的任务状态
+
+    Args:
+        task: LockTask 实例
+        events_to_revert: 需要回退的 TaskTimelineEvent 对象列表
+
+    Returns:
+        dict: 回退后的状态信息
+    """
+    # 从当前状态开始，逆向应用每个事件的反向操作
+    current_end_time = task.end_time
+    current_is_frozen = task.is_frozen
+    current_frozen_at = task.frozen_at
+    current_frozen_end_time = task.frozen_end_time
+
+    for event in events_to_revert:
+        metadata = event.metadata or {}
+
+        if event.event_type in ['time_wheel_increase', 'overtime_added']:
+            # 回退加时：减去之前增加的时间
+            if event.time_change_minutes:
+                time_delta = timedelta(minutes=event.time_change_minutes)
+
+                if current_is_frozen and current_frozen_end_time:
+                    current_frozen_end_time = current_frozen_end_time - time_delta
+                elif current_end_time:
+                    current_end_time = current_end_time - time_delta
+
+        elif event.event_type == 'time_wheel_decrease':
+            # 回退减时：加回之前减少的时间
+            if event.time_change_minutes:
+                # time_change_minutes 对于减时是负数，所以要取绝对值
+                time_delta = timedelta(minutes=abs(event.time_change_minutes))
+
+                if current_is_frozen and current_frozen_end_time:
+                    current_frozen_end_time = current_frozen_end_time + time_delta
+                elif current_end_time:
+                    current_end_time = current_end_time + time_delta
+
+        elif event.event_type == 'task_frozen':
+            # 回退冻结：恢复到未冻结状态
+            current_is_frozen = False
+            current_frozen_at = None
+            current_frozen_end_time = None
+
+        elif event.event_type in ['task_unfrozen', 'system_freeze']:
+            # 回退解冻或系统冻结：恢复到冻结状态
+            current_is_frozen = True
+
+            # 从元数据中恢复冻结状态信息
+            if 'frozen_at' in metadata:
+                try:
+                    from datetime import datetime
+                    current_frozen_at = datetime.fromisoformat(metadata['frozen_at'].replace('Z', '+00:00'))
+                except (ValueError, AttributeError):
+                    current_frozen_at = None
+
+            if 'frozen_end_time' in metadata:
+                try:
+                    from datetime import datetime
+                    current_frozen_end_time = datetime.fromisoformat(metadata['frozen_end_time'].replace('Z', '+00:00'))
+                except (ValueError, AttributeError):
+                    current_frozen_end_time = None
+
+        elif event.event_type == 'vote_failed':
+            # 回退投票失败加时：减去失败惩罚时间
+            if event.time_change_minutes:
+                time_delta = timedelta(minutes=event.time_change_minutes)
+
+                if current_is_frozen and current_frozen_end_time:
+                    current_frozen_end_time = current_frozen_end_time - time_delta
+                elif current_end_time:
+                    current_end_time = current_end_time - time_delta
+
+    return {
+        'end_time': current_end_time,
+        'is_frozen': current_is_frozen,
+        'frozen_at': current_frozen_at,
+        'frozen_end_time': current_frozen_end_time
+    }

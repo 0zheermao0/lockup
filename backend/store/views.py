@@ -108,6 +108,7 @@ def purchase_item(request):
                             'error': f'今日购买限制：{store_item.daily_limit}个，已购买{today_purchases}个'
                         }, status=status.HTTP_400_BAD_REQUEST)
 
+
                 # 检查用户积分
                 total_cost = store_item.price * quantity
                 if hasattr(user, 'coins') and user.coins < total_cost:
@@ -151,6 +152,7 @@ def purchase_item(request):
                         price_paid=store_item.price
                     )
                     items_created.append(item)
+
 
                 # 返回购买结果
                 return Response({
@@ -1647,8 +1649,8 @@ def create_share_link(request):
                 status='available'
             )
 
-            # 检查物品类型是否可分享 (photo, note, key, little_treasury, detection_radar, blizzard_bottle, sun_bottle)
-            if item.item_type.name not in ['photo', 'note', 'key', 'little_treasury', 'detection_radar', 'blizzard_bottle', 'sun_bottle']:
+            # 检查物品类型是否可分享 (photo, note, key, little_treasury, detection_radar, blizzard_bottle, sun_bottle, time_hourglass)
+            if item.item_type.name not in ['photo', 'note', 'key', 'little_treasury', 'detection_radar', 'blizzard_bottle', 'sun_bottle', 'time_hourglass']:
                 return Response({
                     'error': f'{item.item_type.display_name} 不支持分享'
                 }, status=status.HTTP_400_BAD_REQUEST)

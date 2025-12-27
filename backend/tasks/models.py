@@ -460,3 +460,41 @@ class PinnedUser(models.Model):
         if self.pinned_user != self.task.user:
             raise ValueError("被置顶用户必须是任务的创建者")
         super().save(*args, **kwargs)
+
+
+class TaskTimeRollback(models.Model):
+    """任务时间回退记录"""
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    task = models.ForeignKey(LockTask, on_delete=models.CASCADE, related_name='rollbacks')
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
+
+    # 回退范围
+    rollback_start_time = models.DateTimeField(help_text='回退操作的起始时间（30分钟前）')
+    rollback_end_time = models.DateTimeField(help_text='回退操作的结束时间（使用时间沙漏的时间）')
+
+    # 状态变化
+    original_end_time = models.DateTimeField(null=True, blank=True, help_text='回退前的任务结束时间')
+    original_is_frozen = models.BooleanField(default=False, help_text='回退前的冻结状态')
+    original_frozen_at = models.DateTimeField(null=True, blank=True, help_text='回退前的冻结开始时间')
+    original_frozen_end_time = models.DateTimeField(null=True, blank=True, help_text='回退前的冻结时保存的结束时间')
+
+    restored_end_time = models.DateTimeField(null=True, blank=True, help_text='回退后的任务结束时间')
+    restored_is_frozen = models.BooleanField(default=False, help_text='回退后的冻结状态')
+    restored_frozen_at = models.DateTimeField(null=True, blank=True, help_text='回退后的冻结开始时间')
+    restored_frozen_end_time = models.DateTimeField(null=True, blank=True, help_text='回退后的冻结时保存的结束时间')
+
+    # 回退的操作详情
+    reverted_events = models.JSONField(default=list, help_text='被回退的时间线事件列表')
+    reverted_events_count = models.IntegerField(default=0, help_text='回退的事件数量')
+
+    # 元数据
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-created_at']
+        verbose_name = '任务时间回退记录'
+        verbose_name_plural = '任务时间回退记录'
+
+    def __str__(self):
+        return f"{self.user.username} 回退任务 {self.task.title} ({self.reverted_events_count}个操作)"
