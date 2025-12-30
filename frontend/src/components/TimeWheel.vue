@@ -101,12 +101,13 @@
         <div class="wheel-controls">
           <div class="bet-section">
             <label>投入积分：</label>
-            <select v-model="betAmount" :disabled="isSpinning">
-              <option value="1">1 积分</option>
-              <option value="2">2 积分</option>
-              <option value="3">3 积分</option>
-              <option value="5">5 积分</option>
-            </select>
+            <input
+              v-model.number="betAmount"
+              type="number"
+              min="1"
+              :disabled="isSpinning"
+              class="bet-input"
+            />
           </div>
 
           <button
@@ -448,12 +449,14 @@ const animateWheel = async (spinResult: { isIncrease: boolean, baseTime: number 
   font-weight: bold;
 }
 
-.bet-section select {
+.bet-section select,
+.bet-input {
   padding: 0.5rem;
   border: 2px solid #000;
   border-radius: 4px;
   font-weight: bold;
   background: white;
+  min-width: 100px;
 }
 
 .spin-btn {

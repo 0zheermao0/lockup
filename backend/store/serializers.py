@@ -135,7 +135,7 @@ class PurchaseItemSerializer(serializers.Serializer):
 
 
 class TimeWheelPlaySerializer(serializers.Serializer):
-    bet_amount = serializers.IntegerField(min_value=1, max_value=10)
+    bet_amount = serializers.IntegerField(min_value=1)  # 移除max_value限制
     task_id = serializers.UUIDField()
 
 

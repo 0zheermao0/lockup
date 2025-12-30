@@ -63,7 +63,6 @@
                     v-model.number="newGameBet"
                     type="number"
                     min="1"
-                    max="10"
                     class="form-input"
                     :disabled="creatingGame"
                   >
@@ -98,7 +97,6 @@
               </div>
               <div v-if="!canCreateGameWithChoice" class="restrictions">
                 <p v-if="userCoins < newGameBet">积分不足</p>
-                <p v-else-if="newGameBet > 10">每次最多下注10积分</p>
                 <p v-else-if="newGameBet < 1">至少下注1积分</p>
                 <p v-else-if="!selectedChoice">请选择你的出拳</p>
               </div>
@@ -370,8 +368,7 @@ const hasActiveLockTask = computed(() => {
 const canCreateGame = computed(() => {
   return hasActiveLockTask.value &&
          userCoins.value >= newGameBet.value &&
-         newGameBet.value >= 1 &&
-         newGameBet.value <= 10
+         newGameBet.value >= 1
 })
 
 const canCreateGameWithChoice = computed(() => {
