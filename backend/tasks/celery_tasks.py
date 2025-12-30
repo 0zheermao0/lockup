@@ -11,10 +11,11 @@ Created: 2024-12-19
 
 import logging
 import math
+from datetime import timedelta
 from celery import shared_task
 from django.utils import timezone
 from django.db import transaction
-from .models import LockTask, HourlyReward, TaskTimelineEvent, TaskParticipant, PinnedUser
+from .models import LockTask, HourlyReward, TaskTimelineEvent, TaskParticipant, PinnedUser, TaskDeadlineReminder
 from users.models import Notification
 
 # Configure logger for Celery tasks
@@ -1531,3 +1532,100 @@ def process_expired_board_tasks(self):
         # Final failure notification
         logger.error("Expired board tasks settlement failed after all retries")
         raise exc
+
+
+@shared_task(bind=True, max_retries=3, default_retry_delay=60)
+def process_deadline_reminders_8h(self):
+    """
+    处理8小时截止提醒 - 每30分钟运行
+    查找7.5-8.5小时内到期的任务，向未提交参与者发送提醒
+    """
+    logger.info("Starting 8h deadline reminders processing")
+
+    try:
+        with transaction.atomic():
+            now = timezone.now()
+            start_window = now + timedelta(hours=7.5)
+            end_window = now + timedelta(hours=8.5)
+
+            # 查找即将到期的任务板任务
+            expiring_tasks = LockTask.objects.filter(
+                task_type='board',
+                status__in=['taken', 'submitted'],
+                deadline__gte=start_window,
+                deadline__lte=end_window
+            ).select_related('user').prefetch_related('participants__participant')
+
+            logger.info(f"Found {len(expiring_tasks)} tasks expiring between {start_window} and {end_window}")
+
+            reminder_count = 0
+            tasks_processed = 0
+
+            for task in expiring_tasks:
+                tasks_processed += 1
+                logger.info(f"Processing task {task.id} ({task.title}) - deadline: {task.deadline}")
+
+                # 获取未提交的参与者
+                unsubmitted_participants = task.participants.filter(
+                    status='joined'  # 仅joined状态，未提交
+                ).select_related('participant')
+
+                logger.info(f"Task {task.id} has {len(unsubmitted_participants)} unsubmitted participants")
+
+                for participant_obj in unsubmitted_participants:
+                    participant_user = participant_obj.participant
+
+                    # 使用get_or_create防止重复提醒
+                    reminder, created = TaskDeadlineReminder.objects.get_or_create(
+                        task=task,
+                        participant=participant_user,
+                        reminder_type='8h'
+                    )
+
+                    if created:
+                        # 计算剩余时间
+                        time_remaining = task.deadline - now
+                        hours_remaining = int(time_remaining.total_seconds() // 3600)
+
+                        logger.info(f"Sending 8h reminder to {participant_user.username} for task {task.id}")
+
+                        # 创建通知
+                        Notification.create_notification(
+                            recipient=participant_user,
+                            notification_type='task_deadline_reminder_8h',
+                            actor=None,  # 系统通知
+                            related_object_type='task',
+                            related_object_id=task.id,
+                            extra_data={
+                                'task_title': task.title,
+                                'task_id': str(task.id),
+                                'deadline': task.deadline.isoformat(),
+                                'hours_remaining': hours_remaining,
+                                'task_reward': task.reward,
+                                'reminder_type': '8h_before_deadline',
+                                'participant_status': participant_obj.status
+                            },
+                            priority='high'
+                        )
+
+                        reminder_count += 1
+                        logger.info(f"Successfully sent reminder to {participant_user.username}")
+                    else:
+                        logger.info(f"Reminder already sent to {participant_user.username} for task {task.id}")
+
+            result = {
+                'status': 'success',
+                'reminders_sent': reminder_count,
+                'tasks_processed': tasks_processed,
+                'timestamp': now.isoformat()
+            }
+
+            logger.info(f"8h deadline reminders processing completed: {result}")
+            return result
+
+    except Exception as exc:
+        logger.error(f"Failed to process 8h deadline reminders: {exc}", exc_info=True)
+        raise self.retry(
+            exc=exc,
+            countdown=min(60 * (2 ** self.request.retries), 300)
+        )

@@ -525,6 +525,7 @@ class Notification(models.Model):
         ('task_board_submitted', '任务板任务被提交'),
         ('task_board_approved', '任务板任务被审核通过'),
         ('task_board_rejected', '任务板任务被拒绝'),
+        ('task_deadline_reminder_8h', '任务截止前8小时提醒'),
 
         # 打卡投票系统类
         ('checkin_vote_cast', '打卡投票'),
@@ -775,6 +776,7 @@ class Notification(models.Model):
             'task_board_submitted': f"{actor_name}提交了任务完成证明",
             'task_board_approved': "任务审核通过",
             'task_board_rejected': "任务被拒绝",
+            'task_deadline_reminder_8h': "任务即将截止提醒",
             'task_board_ended': f"{actor_name}结束了任务",
             'task_board_reward': "获得任务奖励",
             'checkin_vote_cast': f"{actor_name}对你的打卡投票了",
@@ -820,6 +822,7 @@ class Notification(models.Model):
             'task_board_submitted': f"{actor_name}已提交任务完成证明，请及时审核",
             'task_board_approved': "你的任务已通过审核，奖励已到账",
             'task_board_rejected': "很遗憾，你的任务未通过审核",
+            'task_deadline_reminder_8h': "您参与的任务即将在8小时内截止，请及时提交完成证明",
             'checkin_vote_cast': f"{actor_name}对你的打卡动态投了票",
             'checkin_vote_passed': "你的打卡动态投票通过，任务继续进行",
             'checkin_vote_rejected': "你的打卡动态投票被拒绝，任务已被冻结或失败",
