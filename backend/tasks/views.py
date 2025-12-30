@@ -336,6 +336,11 @@ class LockTaskListCreateView(generics.ListCreateAPIView):
             # 每日首次任务板发布奖励
             self._handle_daily_board_post_reward(task)
 
+        # 处理自动发布动态
+        auto_publish = serializer.context.get('auto_publish', False)
+        if auto_publish:
+            self._handle_auto_publish_post(task)
+
     def _handle_daily_board_post_reward(self, task):
         """处理每日首次发布任务板奖励"""
         from django.utils import timezone
@@ -368,6 +373,87 @@ class LockTaskListCreateView(generics.ListCreateAPIView):
                 },
                 priority='low'
             )
+
+    def _handle_auto_publish_post(self, task):
+        """处理自动发布动态"""
+        from django.conf import settings
+        from posts.models import Post
+        import logging
+
+        logger = logging.getLogger(__name__)
+
+        try:
+            # 生成动态内容
+            post_content = self._generate_post_content(task)
+
+            # 创建动态
+            post = Post.objects.create(
+                user=task.user,
+                content=post_content,
+                post_type='normal'
+            )
+
+            # 关联动态到任务
+            task.auto_created_post = post
+
+            # 在任务描述后追加动态链接（HTML格式）
+            frontend_url = getattr(settings, 'FRONTEND_URL', 'http://localhost:5173')
+            post_url = f"{frontend_url}/posts/{post.id}"
+            link_text = f'<br><br>📌 <a href="{post_url}" target="_blank" style="color: #007bff; text-decoration: none;">查看相关动态</a>'
+
+            task.description = task.description + link_text
+            task.save()
+
+            logger.info(f"Auto-published post {post.id} for task {task.id}")
+
+        except Exception as e:
+            # 记录错误但不影响任务创建
+            logger.error(f"Auto-publish post creation failed for task {task.id}: {e}")
+
+    def _generate_post_content(self, task):
+        """生成动态内容"""
+        task_type_name = "带锁任务" if task.task_type == 'lock' else "任务板"
+
+        content = f"🎯 我刚刚创建了一个{task_type_name}：《{task.title}》\n\n"
+
+        if task.description:
+            # 移除可能已存在的链接部分，只保留原始描述
+            original_description = task.description.split('\n\n📌')[0]
+            # 截取描述的前100个字符作为预览
+            preview = original_description[:100]
+            if len(original_description) > 100:
+                preview += "..."
+            content += f"📝 {preview}\n\n"
+
+        if task.task_type == 'lock':
+            if task.difficulty:
+                difficulty_text = {
+                    'easy': '简单',
+                    'normal': '普通',
+                    'hard': '困难',
+                    'hell': '地狱'
+                }.get(task.difficulty, task.difficulty)
+                content += f"⚡ 难度：{difficulty_text}\n"
+
+            if task.duration_value:
+                hours = task.duration_value // 60
+                minutes = task.duration_value % 60
+                if hours > 0:
+                    content += f"⏱️ 时长：{hours}小时{minutes}分钟\n"
+                else:
+                    content += f"⏱️ 时长：{minutes}分钟\n"
+
+            unlock_text = "投票解锁" if task.unlock_type == 'vote' else "定时解锁"
+            content += f"🔒 解锁方式：{unlock_text}\n"
+
+        elif task.task_type == 'board':
+            if task.reward:
+                content += f"💰 奖励：{task.reward}积分\n"
+            if task.max_duration:
+                content += f"⏱️ 最长完成时间：{task.max_duration}小时\n"
+
+        content += "\n💪 一起来完成任务吧！\n\n#任务创建 #自律挑战"
+        return content
 
     def generate_strict_code(self):
         """Generate 4-character code like A1B2"""
