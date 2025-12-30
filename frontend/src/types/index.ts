@@ -410,6 +410,9 @@ export interface TaskCreateRequest {
   task_type: 'lock' | 'board'
   title: string
   description: string
+  // 自动发布动态字段
+  autoPost?: boolean // 前端字段
+  auto_publish?: boolean // 后端字段
   // 带锁任务字段
   duration_type?: 'fixed' | 'random'
   duration_value?: number

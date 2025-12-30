@@ -320,7 +320,7 @@ const toastData = ref({
   details: {} as Record<string, any>
 })
 
-const form = reactive<TaskCreateRequest & { autoPost?: boolean }>({
+const form = reactive<TaskCreateRequest>({
   task_type: 'lock',
   title: '',
   description: '',
