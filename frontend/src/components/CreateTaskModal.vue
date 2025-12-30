@@ -289,6 +289,7 @@ import type { TaskCreateRequest } from '../types/index'
 import DurationSelector from './DurationSelector.vue'
 import RichTextEditor from './RichTextEditor.vue'
 import NotificationToast from './NotificationToast.vue'
+import { handleApiError, formatErrorForNotification } from '../utils/errorHandling'
 
 interface Props {
   isVisible: boolean
@@ -398,7 +399,17 @@ const handleImageUpload = (event: Event) => {
 
   // Validate file size (5MB max)
   if (file.size > 5 * 1024 * 1024) {
-    alert('图片大小不能超过 5MB')
+    showToast.value = true
+    const errorData = formatErrorForNotification({
+      title: '文件过大',
+      message: '上传的图片超过了5MB大小限制',
+      actionSuggestion: '请压缩图片或选择较小的文件',
+      severity: 'error'
+    })
+    toastData.value = {
+      ...errorData,
+      details: {}
+    }
     return
   }
 
@@ -499,35 +510,84 @@ const handleSubmit = async () => {
 
   // 基础验证
   if (!form.title.trim()) {
-    alert('请填写任务标题')
+    showToast.value = true
+    const errorData = formatErrorForNotification({
+      title: '标题不能为空',
+      message: '请输入任务标题',
+      actionSuggestion: '请填写一个描述性的任务标题',
+      severity: 'error'
+    })
+    toastData.value = {
+      ...errorData,
+      details: {}
+    }
     return
   }
 
   // 带锁任务验证
   if (form.task_type === 'lock') {
     if (form.duration_type === 'random' && (!form.duration_max || !form.duration_value || form.duration_max <= form.duration_value)) {
-      alert('最长时间必须大于最短时间')
+      showToast.value = true
+      const errorData = formatErrorForNotification({
+        title: '最大时间设置错误',
+        message: '随机时间类型的最大时间必须大于最小时间',
+        actionSuggestion: '请重新设置时间范围，确保最大时间大于最小时间',
+        severity: 'error'
+      })
+      toastData.value = {
+        ...errorData,
+        details: {}
+      }
       return
     }
 
     if (form.unlock_type === 'vote') {
       if (!form.vote_agreement_ratio) {
-        alert('请设置投票同意比例')
+        showToast.value = true
+        const errorData = formatErrorForNotification({
+          title: '投票比例必填',
+          message: '投票解锁必须设置同意比例',
+          actionSuggestion: '请设置投票通过所需的同意比例',
+          severity: 'error'
+        })
+        toastData.value = {
+          ...errorData,
+          details: {}
+        }
         return
       }
     }
-
   }
 
   // 任务板验证
   if (form.task_type === 'board') {
     if (!form.reward || form.reward < 1) {
-      alert('请设置有效的奖励金额')
+      showToast.value = true
+      const errorData = formatErrorForNotification({
+        title: '奖励积分无效',
+        message: '任务板必须设置有效的奖励积分',
+        actionSuggestion: '请设置合理的奖励积分数量（至少1积分）',
+        severity: 'error'
+      })
+      toastData.value = {
+        ...errorData,
+        details: {}
+      }
       return
     }
 
     if (!form.max_duration || form.max_duration < 1) {
-      alert('请设置最大完成时间')
+      showToast.value = true
+      const errorData = formatErrorForNotification({
+        title: '最大完成时间必填',
+        message: '任务板必须设置最大完成时间',
+        actionSuggestion: '请设置任务的最大完成时间（至少1小时）',
+        severity: 'error'
+      })
+      toastData.value = {
+        ...errorData,
+        details: {}
+      }
       return
     }
   }
@@ -571,15 +631,20 @@ const handleSubmit = async () => {
         console.log('Auto-post created successfully')
       } catch (postError: any) {
         console.error('Failed to create auto-post:', postError)
+
+        // 使用新的错误处理工具函数处理动态发布错误
+        const userFriendlyError = handleApiError(postError, 'post')
+
         // Show notification for auto-post failure but don't fail the entire task creation
         showToast.value = true
         toastData.value = {
           type: 'warning',
           title: '自动发布动态失败',
-          message: '任务创建成功，但自动发布动态失败',
-          secondaryMessage: '您可以手动发布动态分享任务',
+          message: `任务创建成功，但自动发布动态失败：${userFriendlyError.message}`,
+          secondaryMessage: userFriendlyError.actionSuggestion || '您可以手动发布动态分享任务',
           details: {
-            '错误信息': postError.message || '未知错误'
+            '错误时间': new Date().toLocaleString(),
+            '错误详情': postError.message || '未知错误'
           }
         }
       }
@@ -601,39 +666,22 @@ const handleSubmit = async () => {
 
   } catch (error: any) {
     console.error('Error creating task:', error)
-    let errorData = {
-      type: 'error' as const,
-      title: '创建失败',
-      message: '创建任务时发生错误',
-      secondaryMessage: '请检查输入信息后重试',
-      details: {} as Record<string, any>
-    }
 
-    if (error.status === 400) {
-      errorData.title = '任务信息验证失败'
-      errorData.message = error.data?.error || error.data?.message || '任务信息格式有误'
-      errorData.details['状态码'] = '400'
-      if (error.data?.details) {
-        Object.assign(errorData.details, error.data.details)
-      }
-    } else if (error.status === 401) {
-      errorData.title = '身份验证失败'
-      errorData.message = '请先登录后再创建任务'
-      errorData.details['状态码'] = '401'
-    } else if (error.status >= 500) {
-      errorData.title = '服务器错误'
-      errorData.message = error.data?.error || error.data?.message || '服务器内部发生错误'
-      errorData.details['状态码'] = error.status?.toString()
-      errorData.details['错误时间'] = new Date().toLocaleString()
-    } else {
-      errorData.message = error.data?.error || error.data?.message || error.message || '创建任务失败'
-      if (error.status) {
-        errorData.details['状态码'] = error.status.toString()
-      }
-    }
+    // 使用新的错误处理工具函数
+    const userFriendlyError = handleApiError(error, 'task')
+    const formattedError = formatErrorForNotification(userFriendlyError)
 
     showToast.value = true
-    toastData.value = errorData
+    toastData.value = {
+      type: formattedError.type,
+      title: formattedError.title,
+      message: formattedError.message,
+      secondaryMessage: '如果问题持续存在，请联系管理员',
+      details: {
+        '错误时间': new Date().toLocaleString(),
+        '错误详情': error.message || '未知错误'
+      }
+    }
   } finally {
     submitting.value = false
   }
