@@ -1439,3 +1439,95 @@ def process_activity_decay(self):
         # Final failure notification
         logger.error("Activity decay processing failed after all retries")
         raise exc
+
+
+@shared_task(bind=True, max_retries=3, default_retry_delay=60)
+def process_expired_board_tasks(self):
+    """
+    处理过期的任务板任务自动结算 - 每5分钟执行一次
+
+    查找所有过期但未结算的任务板任务，并自动进行结算：
+    - 已提交未审核的参与者自动通过
+    - 未提交的参与者标记为失败
+    - 发放奖励或退还积分给发布者
+
+    Returns:
+        dict: 处理结果
+    """
+    try:
+        logger.info("Starting expired board tasks settlement processing...")
+
+        with transaction.atomic():
+            now = timezone.now()
+
+            # 查找所有过期但未结算的任务板任务
+            expired_tasks = LockTask.objects.select_for_update().filter(
+                task_type='board',
+                deadline__isnull=False,
+                deadline__lt=now,
+                status__in=['open', 'taken', 'submitted']
+            ).order_by('deadline')
+
+            if not expired_tasks.exists():
+                logger.info("No expired board tasks found that need settlement")
+                return {
+                    'status': 'success',
+                    'processed_count': 0,
+                    'message': 'No expired tasks to process',
+                    'timestamp': now.isoformat()
+                }
+
+            logger.info(f"Found {expired_tasks.count()} expired board tasks to settle")
+
+            settled_tasks = []
+            failed_tasks = []
+
+            for task in expired_tasks:
+                try:
+                    logger.info(f"Processing expired task: {task.title} (ID: {task.id})")
+
+                    # 调用现有的自动结算逻辑
+                    result = _auto_settle_expired_task_internal(task, now)
+
+                    settled_tasks.append({
+                        'task_id': str(task.id),
+                        'task_title': task.title,
+                        'action': result.get('action', 'unknown'),
+                        'deadline': task.deadline.isoformat(),
+                        'settlement_result': result
+                    })
+
+                    logger.info(f"Successfully settled task {task.id}: {result.get('action', 'unknown')}")
+
+                except Exception as e:
+                    logger.error(f"Failed to settle expired task {task.id}: {e}")
+                    failed_tasks.append({
+                        'task_id': str(task.id),
+                        'task_title': task.title,
+                        'error': str(e)
+                    })
+
+            result = {
+                'status': 'success',
+                'processed_count': len(settled_tasks),
+                'failed_count': len(failed_tasks),
+                'settled_tasks': settled_tasks,
+                'failed_tasks': failed_tasks,
+                'timestamp': now.isoformat()
+            }
+
+            logger.info(f"Expired board tasks settlement completed: {result}")
+            return result
+
+    except Exception as exc:
+        logger.error(f"Expired board tasks settlement failed: {exc}", exc_info=True)
+
+        # Retry with exponential backoff
+        if self.request.retries < self.max_retries:
+            retry_countdown = 2 ** self.request.retries * 60  # 1min, 2min, 4min
+            logger.info(f"Retrying expired board tasks settlement in {retry_countdown} seconds")
+            raise self.retry(countdown=retry_countdown, exc=exc)
+
+        # Final failure notification
+        logger.error("Expired board tasks settlement failed after all retries")
+        raise exc
