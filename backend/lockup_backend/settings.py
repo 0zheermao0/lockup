@@ -54,6 +54,7 @@ INSTALLED_APPS = [
     'tasks',
     'store',
     'telegram_bot',
+    'events',
 ]
 
 MIDDLEWARE = [
