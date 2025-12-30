@@ -202,6 +202,7 @@ class TaskTimelineEvent(models.Model):
         ('task_unfrozen', '任务解冻'),
         ('radar_detection', '探测雷达检测'),
         ('system_freeze', '系统冻结'),
+        ('verification_code_updated', '验证码更新'),
     ]
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
@@ -498,3 +499,35 @@ class TaskTimeRollback(models.Model):
 
     def __str__(self):
         return f"{self.user.username} 回退任务 {self.task.title} ({self.reverted_events_count}个操作)"
+
+
+class TaskDeadlineReminder(models.Model):
+    """任务截止提醒记录 - 防止重复发送提醒"""
+
+    REMINDER_TYPE_CHOICES = [
+        ('8h', '8小时前'),
+    ]
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    task = models.ForeignKey(LockTask, on_delete=models.CASCADE, related_name='deadline_reminders',
+                            help_text='任务')
+    participant = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE,
+                                   related_name='deadline_reminders', help_text='参与者')
+    reminder_type = models.CharField(max_length=10, choices=REMINDER_TYPE_CHOICES,
+                                    help_text='提醒类型')
+    sent_at = models.DateTimeField(auto_now_add=True, help_text='发送时间')
+    created_at = models.DateTimeField(auto_now_add=True, help_text='创建时间')
+
+    class Meta:
+        unique_together = ['task', 'participant', 'reminder_type']
+        ordering = ['-sent_at']
+        indexes = [
+            models.Index(fields=['task', 'reminder_type']),
+            models.Index(fields=['sent_at']),
+            models.Index(fields=['participant', 'reminder_type']),
+        ]
+        verbose_name = '任务截止提醒记录'
+        verbose_name_plural = '任务截止提醒记录'
+
+    def __str__(self):
+        return f"{self.participant.username} - {self.task.title} ({self.get_reminder_type_display()})"

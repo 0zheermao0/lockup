@@ -11,10 +11,11 @@ Created: 2024-12-19
 
 import logging
 import math
+from datetime import timedelta
 from celery import shared_task
 from django.utils import timezone
 from django.db import transaction
-from .models import LockTask, HourlyReward, TaskTimelineEvent, TaskParticipant, PinnedUser
+from .models import LockTask, HourlyReward, TaskTimelineEvent, TaskParticipant, PinnedUser, TaskDeadlineReminder
 from users.models import Notification
 
 # Configure logger for Celery tasks
@@ -969,10 +970,17 @@ def process_checkin_voting_results(self):
 
             logger.info(f"Successfully processed {len(processed_sessions)} voting sessions")
 
+            # ========================================================================
+            # 每日验证码更新 - 为所有活跃的严格模式带锁任务生成新验证码
+            # ========================================================================
+
+            verification_code_update_result = _update_strict_mode_verification_codes(now)
+
             return {
                 'status': 'success',
                 'processed_count': len(processed_sessions),
                 'processed_sessions': processed_sessions,
+                'verification_code_update': verification_code_update_result,
                 'timestamp': now.isoformat()
             }
 
@@ -1156,7 +1164,7 @@ def _handle_voting_rejected(post, session, current_time):
 
 def _handle_voting_passed(post, session, pass_votes, current_time):
     """
-    处理投票通过的情况：分配积分给通过投票者
+    处理投票通过的情况：将全部收集的积分奖励给被投票的用户（打卡者）
 
     Args:
         post: Post实例
@@ -1169,41 +1177,46 @@ def _handle_voting_passed(post, session, pass_votes, current_time):
     user = post.user
     pass_count = pass_votes.count()
 
-    if pass_count > 0 and session.total_coins_collected > 0:
-        # 计算每个投票者应得的积分（向下取整，余数给前几个投票者）
-        coins_per_voter = session.total_coins_collected // pass_count
-        remainder = session.total_coins_collected % pass_count
+    if session.total_coins_collected > 0:
+        # 将全部收集的积分奖励给被投票的用户（打卡者）
+        user.coins += session.total_coins_collected
+        user.save()
 
-        # 按投票时间排序，让早投票的用户获得余数
-        ordered_pass_votes = pass_votes.order_by('created_at')
+        # 通知被投票用户获得奖励
+        Notification.create_notification(
+            recipient=user,
+            notification_type='checkin_vote_reward',
+            related_object_type='post',
+            related_object_id=post.id,
+            extra_data={
+                'reward_amount': session.total_coins_collected,
+                'total_pass_votes': pass_count,
+                'total_reject_votes': CheckinVote.objects.filter(post=post, vote_type='reject').count(),
+                'post_content_preview': post.content[:50] + '...' if len(post.content) > 50 else post.content,
+                'reward_reason': 'voting_passed'
+            },
+            priority='normal'
+        )
 
-        total_distributed = 0
-        for i, vote in enumerate(ordered_pass_votes):
-            reward = coins_per_voter
-            if i < remainder:  # 前几个投票者获得额外的1积分
-                reward += 1
+        logger.info(f"Distributed {session.total_coins_collected} coins to post author {user.username} for passed check-in vote")
 
-            # 给投票者分配积分
-            vote.voter.coins += reward
-            vote.voter.save()
-            total_distributed += reward
-
-            # 通知投票者获得奖励
+        # 通知所有投通过票的用户，投票成功但他们不获得积分奖励
+        for vote in pass_votes:
             Notification.create_notification(
                 recipient=vote.voter,
-                notification_type='checkin_vote_reward',
+                notification_type='checkin_vote_passed_voter',
                 related_object_type='post',
                 related_object_id=post.id,
                 extra_data={
-                    'reward_amount': reward,
                     'post_author': user.username,
+                    'total_coins_rewarded': session.total_coins_collected,
                     'total_pass_votes': pass_count,
                     'post_content_preview': post.content[:50] + '...' if len(post.content) > 50 else post.content
                 },
-                priority='normal'
+                priority='low'
             )
 
-            logger.info(f"Distributed {reward} coins to voter {vote.voter.username} for passed check-in vote")
+        logger.info(f"Notified {pass_count} voters about successful voting for post {post.id}")
 
     # 通知动态作者投票通过
     Notification.create_notification(
@@ -1219,6 +1232,97 @@ def _handle_voting_passed(post, session, pass_votes, current_time):
         },
         priority='normal'
     )
+
+
+def _update_strict_mode_verification_codes(current_time):
+    """
+    为所有活跃的严格模式带锁任务更新验证码
+
+    Args:
+        current_time: 当前时间
+
+    Returns:
+        dict: 更新结果统计
+    """
+    try:
+        logger.info("Starting daily strict mode verification code update...")
+
+        # 查找所有活跃的严格模式带锁任务
+        active_strict_tasks = LockTask.objects.select_for_update().filter(
+            task_type='lock',
+            status__in=['active', 'voting'],  # 活跃状态和投票期
+            strict_mode=True
+        )
+
+        updated_count = 0
+        updated_tasks = []
+
+        for task in active_strict_tasks:
+            old_code = task.strict_code
+
+            # 生成新的验证码
+            new_code = _generate_strict_code()
+            task.strict_code = new_code
+            task.save(update_fields=['strict_code'])
+
+            # 记录时间线事件
+            TaskTimelineEvent.objects.create(
+                task=task,
+                event_type='verification_code_updated',
+                user=None,  # 系统事件
+                description=f'每日验证码更新：{old_code} → {new_code}',
+                metadata={
+                    'old_code': old_code,
+                    'new_code': new_code,
+                    'update_reason': 'daily_auto_update',
+                    'update_time': current_time.isoformat(),
+                    'processed_by': 'celery_task'
+                }
+            )
+
+            updated_tasks.append({
+                'task_id': str(task.id),
+                'task_title': task.title,
+                'user': task.user.username,
+                'old_code': old_code,
+                'new_code': new_code
+            })
+
+            updated_count += 1
+            logger.info(f"Updated verification code for task {task.id} (user: {task.user.username}): {old_code} → {new_code}")
+
+        result = {
+            'status': 'success',
+            'updated_count': updated_count,
+            'total_active_strict_tasks': active_strict_tasks.count(),
+            'updated_tasks': updated_tasks,
+            'timestamp': current_time.isoformat()
+        }
+
+        logger.info(f"Verification code update completed: {updated_count} tasks updated")
+        return result
+
+    except Exception as exc:
+        logger.error(f"Verification code update failed: {exc}", exc_info=True)
+        return {
+            'status': 'error',
+            'error': str(exc),
+            'timestamp': current_time.isoformat()
+        }
+
+
+def _generate_strict_code():
+    """
+    生成4位严格模式验证码（格式：字母数字字母数字，如A1B2）
+
+    Returns:
+        str: 4位验证码
+    """
+    import random
+    import string
+    letters = random.choices(string.ascii_uppercase, k=2)
+    digits = random.choices(string.digits, k=2)
+    return f"{letters[0]}{digits[0]}{letters[1]}{digits[1]}"
 
 
 @shared_task(bind=True, max_retries=3)
@@ -1531,3 +1635,100 @@ def process_expired_board_tasks(self):
         # Final failure notification
         logger.error("Expired board tasks settlement failed after all retries")
         raise exc
+
+
+@shared_task(bind=True, max_retries=3, default_retry_delay=60)
+def process_deadline_reminders_8h(self):
+    """
+    处理8小时截止提醒 - 每30分钟运行
+    查找7.5-8.5小时内到期的任务，向未提交参与者发送提醒
+    """
+    logger.info("Starting 8h deadline reminders processing")
+
+    try:
+        with transaction.atomic():
+            now = timezone.now()
+            start_window = now + timedelta(hours=7.5)
+            end_window = now + timedelta(hours=8.5)
+
+            # 查找即将到期的任务板任务
+            expiring_tasks = LockTask.objects.filter(
+                task_type='board',
+                status__in=['taken', 'submitted'],
+                deadline__gte=start_window,
+                deadline__lte=end_window
+            ).select_related('user').prefetch_related('participants__participant')
+
+            logger.info(f"Found {len(expiring_tasks)} tasks expiring between {start_window} and {end_window}")
+
+            reminder_count = 0
+            tasks_processed = 0
+
+            for task in expiring_tasks:
+                tasks_processed += 1
+                logger.info(f"Processing task {task.id} ({task.title}) - deadline: {task.deadline}")
+
+                # 获取未提交的参与者
+                unsubmitted_participants = task.participants.filter(
+                    status='joined'  # 仅joined状态，未提交
+                ).select_related('participant')
+
+                logger.info(f"Task {task.id} has {len(unsubmitted_participants)} unsubmitted participants")
+
+                for participant_obj in unsubmitted_participants:
+                    participant_user = participant_obj.participant
+
+                    # 使用get_or_create防止重复提醒
+                    reminder, created = TaskDeadlineReminder.objects.get_or_create(
+                        task=task,
+                        participant=participant_user,
+                        reminder_type='8h'
+                    )
+
+                    if created:
+                        # 计算剩余时间
+                        time_remaining = task.deadline - now
+                        hours_remaining = int(time_remaining.total_seconds() // 3600)
+
+                        logger.info(f"Sending 8h reminder to {participant_user.username} for task {task.id}")
+
+                        # 创建通知
+                        Notification.create_notification(
+                            recipient=participant_user,
+                            notification_type='task_deadline_reminder_8h',
+                            actor=None,  # 系统通知
+                            related_object_type='task',
+                            related_object_id=task.id,
+                            extra_data={
+                                'task_title': task.title,
+                                'task_id': str(task.id),
+                                'deadline': task.deadline.isoformat(),
+                                'hours_remaining': hours_remaining,
+                                'task_reward': task.reward,
+                                'reminder_type': '8h_before_deadline',
+                                'participant_status': participant_obj.status
+                            },
+                            priority='high'
+                        )
+
+                        reminder_count += 1
+                        logger.info(f"Successfully sent reminder to {participant_user.username}")
+                    else:
+                        logger.info(f"Reminder already sent to {participant_user.username} for task {task.id}")
+
+            result = {
+                'status': 'success',
+                'reminders_sent': reminder_count,
+                'tasks_processed': tasks_processed,
+                'timestamp': now.isoformat()
+            }
+
+            logger.info(f"8h deadline reminders processing completed: {result}")
+            return result
+
+    except Exception as exc:
+        logger.error(f"Failed to process 8h deadline reminders: {exc}", exc_info=True)
+        raise self.retry(
+            exc=exc,
+            countdown=min(60 * (2 ** self.request.retries), 300)
+        )

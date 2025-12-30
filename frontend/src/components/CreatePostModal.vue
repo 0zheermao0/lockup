@@ -148,6 +148,7 @@ import { tasksApi } from '../lib/api'
 import RichTextEditor from './RichTextEditor.vue'
 import NotificationToast from './NotificationToast.vue'
 import type { LockTask } from '../types/index'
+import { handleApiError, formatErrorForNotification } from '../utils/errorHandling'
 
 interface Props {
   isVisible: boolean
@@ -292,16 +293,77 @@ const handleImageSelect = (event: Event) => {
 
   for (let i = 0; i < files.length; i++) {
     const file = files[i]
-    if (file && file.type.startsWith('image/')) {
-      const reader = new FileReader()
-      reader.onload = (e) => {
-        selectedImages.value.push({
-          file: file,
-          preview: e.target?.result as string
-        })
+    if (!file) continue
+
+    // 验证文件类型
+    if (!file.type.startsWith('image/')) {
+      showToast.value = true
+      const errorData = formatErrorForNotification({
+        title: '文件类型不支持',
+        message: `不支持 ${file.name} 的文件类型`,
+        actionSuggestion: '请选择图片文件（JPG、PNG、GIF等）',
+        severity: 'error'
+      })
+      toastData.value = {
+        ...errorData,
+        details: {}
       }
-      reader.readAsDataURL(file)
+      continue
     }
+
+    // 验证文件大小（5MB限制）
+    if (file.size > 5 * 1024 * 1024) {
+      showToast.value = true
+      const errorData = formatErrorForNotification({
+        title: '文件过大',
+        message: `图片 ${file.name} 超过了5MB大小限制`,
+        actionSuggestion: '请压缩图片或选择较小的文件',
+        severity: 'error'
+      })
+      toastData.value = {
+        ...errorData,
+        details: {}
+      }
+      continue
+    }
+
+    // 检查图片数量限制（最多9张）
+    if (selectedImages.value.length >= 9) {
+      showToast.value = true
+      const errorData = formatErrorForNotification({
+        title: '图片数量过多',
+        message: '最多只能上传9张图片',
+        actionSuggestion: '请删除一些图片后再添加新的',
+        severity: 'warning'
+      })
+      toastData.value = {
+        ...errorData,
+        details: {}
+      }
+      break
+    }
+
+    const reader = new FileReader()
+    reader.onload = (e) => {
+      selectedImages.value.push({
+        file: file,
+        preview: e.target?.result as string
+      })
+    }
+    reader.onerror = () => {
+      showToast.value = true
+      const errorData = formatErrorForNotification({
+        title: '图片读取失败',
+        message: `无法读取图片 ${file.name}`,
+        actionSuggestion: '请检查文件是否损坏或重新选择',
+        severity: 'error'
+      })
+      toastData.value = {
+        ...errorData,
+        details: {}
+      }
+    }
+    reader.readAsDataURL(file)
   }
 
   // 清空input值，允许重复选择同一文件
@@ -317,7 +379,39 @@ const removeImage = (index: number) => {
 
 // 提交处理
 const handleSubmit = async () => {
-  if (isLoading.value || !form.content.trim()) return
+  if (isLoading.value) return
+
+  // 内容验证
+  if (!form.content.trim()) {
+    showToast.value = true
+    const errorData = formatErrorForNotification({
+      title: '内容不能为空',
+      message: '请输入动态内容',
+      actionSuggestion: '请填写动态的具体内容',
+      severity: 'error'
+    })
+    toastData.value = {
+      ...errorData,
+      details: {}
+    }
+    return
+  }
+
+  // 内容长度验证
+  if (form.content.trim().length > 1000) {
+    showToast.value = true
+    const errorData = formatErrorForNotification({
+      title: '内容过长',
+      message: '动态内容超过了1000字符的限制',
+      actionSuggestion: '请缩短动态内容',
+      severity: 'error'
+    })
+    toastData.value = {
+      ...errorData,
+      details: {}
+    }
+    return
+  }
 
   successMessage.value = ''
   showToast.value = false
@@ -343,35 +437,23 @@ const handleSubmit = async () => {
       }
     }, 1500)
   } catch (error: any) {
-    let errorData = {
-      type: 'error' as const,
-      title: '发布失败',
-      message: '发布动态时发生错误',
-      secondaryMessage: '请稍后重试或联系管理员',
-      details: {} as Record<string, any>
-    }
+    console.error('Error creating post:', error)
 
-    if (error.status === 400) {
-      errorData.title = '内容验证失败'
-      errorData.message = error.data?.error || error.data?.message || '提交的内容格式有误'
-      errorData.details['状态码'] = '400'
-      if (error.data?.details) {
-        Object.assign(errorData.details, error.data.details)
-      }
-    } else if (error.status >= 500) {
-      errorData.title = '服务器错误'
-      errorData.message = error.data?.error || error.data?.message || '服务器内部发生错误'
-      errorData.details['状态码'] = error.status?.toString()
-      errorData.details['错误时间'] = new Date().toLocaleString()
-    } else {
-      errorData.message = error.data?.error || error.data?.message || error.message || '发布失败'
-      if (error.status) {
-        errorData.details['状态码'] = error.status.toString()
-      }
-    }
+    // 使用新的错误处理工具函数
+    const userFriendlyError = handleApiError(error, 'post')
+    const formattedError = formatErrorForNotification(userFriendlyError)
 
     showToast.value = true
-    toastData.value = errorData
+    toastData.value = {
+      type: formattedError.type,
+      title: formattedError.title,
+      message: formattedError.message,
+      secondaryMessage: '如果问题持续存在，请联系管理员',
+      details: {
+        '错误时间': new Date().toLocaleString(),
+        '错误详情': error.message || '未知错误'
+      }
+    }
   } finally {
     isLoading.value = false
   }

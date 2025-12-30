@@ -10,6 +10,7 @@ This command sets up ALL periodic tasks in the django-celery-beat database sched
 - Check-in voting results processing: runs daily at 4:00 AM to process expired voting sessions
 - Pinning queue processing: runs every minute to manage user pinning queue
 - Pinning system health check: runs every 5 minutes to monitor pinning system
+- Deadline reminders 8h: runs every 30 minutes to send 8-hour deadline reminders for board tasks
 
 Author: Claude Code
 Created: 2024-12-19
@@ -22,7 +23,7 @@ import json
 
 
 class Command(BaseCommand):
-    help = 'Set up ALL Celery Beat periodic tasks for the complete system (rewards, auto-freeze, promotions, activity decay, voting, pinning)'
+    help = 'Set up ALL Celery Beat periodic tasks for the complete system (rewards, auto-freeze, promotions, activity decay, voting, pinning, deadline reminders)'
 
     def add_arguments(self, parser):
         parser.add_argument(
@@ -630,6 +631,87 @@ class Command(BaseCommand):
                         self.style.WARNING(f'Periodic task "{pinning_health_task_name}" already exists and is up to date')
                     )
 
+        # ========================================================================
+        # Deadline Reminders 8h Task Setup
+        # ========================================================================
+
+        self.stdout.write('\n' + '=' * 60)
+        self.stdout.write(self.style.SUCCESS('Setting up deadline reminders 8h task...'))
+
+        # Create every-30-minutes interval schedule
+        deadline_reminders_schedule, created = IntervalSchedule.objects.get_or_create(
+            every=30,  # 30 minutes
+            period=IntervalSchedule.MINUTES,
+        )
+
+        if created and not dry_run:
+            self.stdout.write(f'Created deadline reminders interval schedule: {deadline_reminders_schedule}')
+        elif created:
+            self.stdout.write(f'[DRY RUN] Would create deadline reminders interval schedule: {deadline_reminders_schedule}')
+        else:
+            self.stdout.write(f'Using existing deadline reminders interval schedule: {deadline_reminders_schedule}')
+
+        # Create periodic task for deadline reminders
+        deadline_reminders_task_name = 'process-deadline-reminders-8h'
+        deadline_reminders_task_function = 'tasks.celery_tasks.process_deadline_reminders_8h'
+
+        if dry_run:
+            existing_deadline_reminders_task = PeriodicTask.objects.filter(name=deadline_reminders_task_name).first()
+            if existing_deadline_reminders_task:
+                self.stdout.write(
+                    self.style.WARNING(f'[DRY RUN] Task "{deadline_reminders_task_name}" already exists')
+                )
+            else:
+                self.stdout.write(
+                    self.style.SUCCESS(f'[DRY RUN] Would create periodic task: {deadline_reminders_task_name}')
+                )
+        else:
+            deadline_reminders_periodic_task, created = PeriodicTask.objects.get_or_create(
+                name=deadline_reminders_task_name,
+                defaults={
+                    'interval': deadline_reminders_schedule,
+                    'task': deadline_reminders_task_function,
+                    'kwargs': json.dumps({}),
+                    'enabled': True,
+                    'description': 'Send 8-hour deadline reminders for board task participants (Every 30 minutes)',
+                    'queue': 'default',
+                }
+            )
+
+            if created:
+                self.stdout.write(
+                    self.style.SUCCESS(f'Created periodic task: {deadline_reminders_task_name}')
+                )
+                self.stdout.write(f'  Task: {deadline_reminders_task_function}')
+                self.stdout.write(f'  Schedule: {deadline_reminders_schedule}')
+                self.stdout.write(f'  Queue: default')
+                self.stdout.write(f'  Enabled: {deadline_reminders_periodic_task.enabled}')
+            else:
+                # Update existing task if needed
+                updated = False
+                if deadline_reminders_periodic_task.task != deadline_reminders_task_function:
+                    deadline_reminders_periodic_task.task = deadline_reminders_task_function
+                    updated = True
+                if deadline_reminders_periodic_task.interval != deadline_reminders_schedule:
+                    deadline_reminders_periodic_task.interval = deadline_reminders_schedule
+                    updated = True
+                if not deadline_reminders_periodic_task.enabled:
+                    deadline_reminders_periodic_task.enabled = True
+                    updated = True
+                if getattr(deadline_reminders_periodic_task, 'queue', None) != 'default':
+                    deadline_reminders_periodic_task.queue = 'default'
+                    updated = True
+
+                if updated:
+                    deadline_reminders_periodic_task.save()
+                    self.stdout.write(
+                        self.style.SUCCESS(f'Updated existing periodic task: {deadline_reminders_task_name}')
+                    )
+                else:
+                    self.stdout.write(
+                        self.style.WARNING(f'Periodic task "{deadline_reminders_task_name}" already exists and is up to date')
+                    )
+
         # Show final task configurations
         self.stdout.write('\n' + '=' * 60)
         self.stdout.write(self.style.SUCCESS('Periodic Tasks Configuration:'))
@@ -690,6 +772,14 @@ class Command(BaseCommand):
             self.stdout.write(f'Enabled: {pinning_health_periodic_task.enabled}')
             self.stdout.write(f'Queue: {getattr(pinning_health_periodic_task, "queue", "default")}')
             self.stdout.write(f'Last Run: {pinning_health_periodic_task.last_run_at or "Never"}')
+
+            self.stdout.write('\n--- Deadline Reminders 8h Task ---')
+            self.stdout.write(f'Name: {deadline_reminders_periodic_task.name}')
+            self.stdout.write(f'Task: {deadline_reminders_periodic_task.task}')
+            self.stdout.write(f'Schedule: {deadline_reminders_periodic_task.interval}')
+            self.stdout.write(f'Enabled: {deadline_reminders_periodic_task.enabled}')
+            self.stdout.write(f'Queue: {getattr(deadline_reminders_periodic_task, "queue", "default")}')
+            self.stdout.write(f'Last Run: {deadline_reminders_periodic_task.last_run_at or "Never"}')
         else:
             self.stdout.write('\n[DRY RUN] Task configuration details not available in dry-run mode')
 
@@ -715,7 +805,8 @@ class Command(BaseCommand):
             'process-activity-decay',
             'process-checkin-voting-results',
             'process-pinning-queue',
-            'pinning-health-check'
+            'pinning-health-check',
+            'process-deadline-reminders-8h'
         ]
 
         if dry_run:
