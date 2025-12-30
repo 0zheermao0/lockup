@@ -108,6 +108,8 @@ class LockTaskListSerializer(serializers.ModelSerializer):
             'unlock_type', 'vote_threshold', 'vote_agreement_ratio',
             # 投票期相关字段
             'voting_start_time', 'voting_end_time', 'voting_duration',
+            # 严格模式字段
+            'strict_mode', 'strict_code',
             # 任务板字段
             'reward', 'deadline', 'max_duration', 'taker', 'taken_at',
             'completed_at',

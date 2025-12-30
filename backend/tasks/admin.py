@@ -18,6 +18,7 @@ class LockTaskAdmin(admin.ModelAdmin):
         'user',
         'status_badge',
         'difficulty_badge',
+        'strict_mode_badge',
         'created_at',
         'is_active'
     ]
@@ -25,6 +26,7 @@ class LockTaskAdmin(admin.ModelAdmin):
         'task_type',
         'status',
         'difficulty',
+        'strict_mode',
         'unlock_type',
         'duration_type',
         'created_at',
@@ -49,7 +51,8 @@ class LockTaskAdmin(admin.ModelAdmin):
             'fields': (
                 'duration_type', 'duration_value', 'duration_max',
                 'unlock_type', 'vote_threshold', 'vote_agreement_ratio',
-                'overtime_multiplier', 'overtime_duration'
+                'overtime_multiplier', 'overtime_duration',
+                'strict_mode', 'strict_code'
             ),
             'classes': ('collapse',)
         }),
@@ -151,6 +154,23 @@ class LockTaskAdmin(admin.ModelAdmin):
         )
     is_active.short_description = '活跃'
     # Removed: is_active.boolean = True  # This was causing the error
+
+    def strict_mode_badge(self, obj):
+        """显示严格模式徽章"""
+        if obj.task_type != 'lock':
+            return '-'
+
+        if obj.strict_mode:
+            return format_html(
+                '<span style="background-color: #dc3545; color: white; padding: 2px 8px; '
+                'border-radius: 12px; font-size: 11px; font-weight: bold;">严格</span>'
+            )
+        return format_html(
+            '<span style="background-color: #6c757d; color: white; padding: 2px 8px; '
+            'border-radius: 12px; font-size: 11px; font-weight: bold;">普通</span>'
+        )
+    strict_mode_badge.short_description = '模式'
+    strict_mode_badge.admin_order_field = 'strict_mode'
 
     list_per_page = 20
 
