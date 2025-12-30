@@ -970,10 +970,17 @@ def process_checkin_voting_results(self):
 
             logger.info(f"Successfully processed {len(processed_sessions)} voting sessions")
 
+            # ========================================================================
+            # 每日验证码更新 - 为所有活跃的严格模式带锁任务生成新验证码
+            # ========================================================================
+
+            verification_code_update_result = _update_strict_mode_verification_codes(now)
+
             return {
                 'status': 'success',
                 'processed_count': len(processed_sessions),
                 'processed_sessions': processed_sessions,
+                'verification_code_update': verification_code_update_result,
                 'timestamp': now.isoformat()
             }
 
@@ -1220,6 +1227,97 @@ def _handle_voting_passed(post, session, pass_votes, current_time):
         },
         priority='normal'
     )
+
+
+def _update_strict_mode_verification_codes(current_time):
+    """
+    为所有活跃的严格模式带锁任务更新验证码
+
+    Args:
+        current_time: 当前时间
+
+    Returns:
+        dict: 更新结果统计
+    """
+    try:
+        logger.info("Starting daily strict mode verification code update...")
+
+        # 查找所有活跃的严格模式带锁任务
+        active_strict_tasks = LockTask.objects.select_for_update().filter(
+            task_type='lock',
+            status__in=['active', 'voting'],  # 活跃状态和投票期
+            strict_mode=True
+        )
+
+        updated_count = 0
+        updated_tasks = []
+
+        for task in active_strict_tasks:
+            old_code = task.strict_code
+
+            # 生成新的验证码
+            new_code = _generate_strict_code()
+            task.strict_code = new_code
+            task.save(update_fields=['strict_code'])
+
+            # 记录时间线事件
+            TaskTimelineEvent.objects.create(
+                task=task,
+                event_type='verification_code_updated',
+                user=None,  # 系统事件
+                description=f'每日验证码更新：{old_code} → {new_code}',
+                metadata={
+                    'old_code': old_code,
+                    'new_code': new_code,
+                    'update_reason': 'daily_auto_update',
+                    'update_time': current_time.isoformat(),
+                    'processed_by': 'celery_task'
+                }
+            )
+
+            updated_tasks.append({
+                'task_id': str(task.id),
+                'task_title': task.title,
+                'user': task.user.username,
+                'old_code': old_code,
+                'new_code': new_code
+            })
+
+            updated_count += 1
+            logger.info(f"Updated verification code for task {task.id} (user: {task.user.username}): {old_code} → {new_code}")
+
+        result = {
+            'status': 'success',
+            'updated_count': updated_count,
+            'total_active_strict_tasks': active_strict_tasks.count(),
+            'updated_tasks': updated_tasks,
+            'timestamp': current_time.isoformat()
+        }
+
+        logger.info(f"Verification code update completed: {updated_count} tasks updated")
+        return result
+
+    except Exception as exc:
+        logger.error(f"Verification code update failed: {exc}", exc_info=True)
+        return {
+            'status': 'error',
+            'error': str(exc),
+            'timestamp': current_time.isoformat()
+        }
+
+
+def _generate_strict_code():
+    """
+    生成4位严格模式验证码（格式：字母数字字母数字，如A1B2）
+
+    Returns:
+        str: 4位验证码
+    """
+    import random
+    import string
+    letters = random.choices(string.ascii_uppercase, k=2)
+    digits = random.choices(string.digits, k=2)
+    return f"{letters[0]}{digits[0]}{letters[1]}{digits[1]}"
 
 
 @shared_task(bind=True, max_retries=3)

@@ -202,6 +202,7 @@ class TaskTimelineEvent(models.Model):
         ('task_unfrozen', '任务解冻'),
         ('radar_detection', '探测雷达检测'),
         ('system_freeze', '系统冻结'),
+        ('verification_code_updated', '验证码更新'),
     ]
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
