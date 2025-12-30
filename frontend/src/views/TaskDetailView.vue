@@ -3757,6 +3757,19 @@ onUnmounted(() => {
   font-style: italic;
 }
 
+.task-description-content a {
+  color: #007bff;
+  text-decoration: none;
+  border-bottom: 1px solid transparent;
+  transition: all 0.2s ease;
+}
+
+.task-description-content a:hover {
+  color: #0056b3;
+  border-bottom-color: #0056b3;
+  text-decoration: none;
+}
+
 .no-description {
   color: #999;
   font-style: italic;

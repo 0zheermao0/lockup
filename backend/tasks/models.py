@@ -105,6 +105,17 @@ class LockTask(models.Model):
     strict_mode = models.BooleanField(default=False, help_text='是否为严格模式')
     strict_code = models.CharField(max_length=4, blank=True, null=True, help_text='严格模式随机码')
 
+    # 自动发布动态字段
+    auto_publish = models.BooleanField(default=False, help_text='是否自动发布动态')
+    auto_created_post = models.ForeignKey(
+        'posts.Post',
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name='created_from_task',
+        help_text='自动创建的动态'
+    )
+
     class Meta:
         ordering = ['-created_at']
 

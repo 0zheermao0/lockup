@@ -313,6 +313,7 @@ class LockTaskCreateSerializer(serializers.ModelSerializer):
     """创建任务的序列化器"""
 
     description = serializers.CharField(required=False, allow_blank=True, default='')
+    auto_publish = serializers.BooleanField(default=False, write_only=True)
 
     class Meta:
         model = LockTask
@@ -327,18 +328,26 @@ class LockTaskCreateSerializer(serializers.ModelSerializer):
             # 任务板字段
             'reward', 'deadline', 'max_duration',
             # 多人任务字段
-            'max_participants'
+            'max_participants',
+            # 自动发布动态字段
+            'auto_publish'
         ]
         read_only_fields = ['id', 'status', 'strict_code']
 
     def create(self, validated_data):
         validated_data['user'] = self.context['request'].user
 
+        # 提取auto_publish字段，不保存到数据库
+        auto_publish = validated_data.pop('auto_publish', False)
+
         # 处理 max_participants 字段：如果为空或None，设置为1（单人任务）
         if validated_data.get('task_type') == 'board':
             max_participants = validated_data.get('max_participants')
             if max_participants is None or max_participants == 0:
                 validated_data['max_participants'] = 1
+
+        # 将auto_publish存储在上下文中，供视图使用
+        self.context['auto_publish'] = auto_publish
 
         return super().create(validated_data)
 

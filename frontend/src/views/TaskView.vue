@@ -877,17 +877,28 @@ const formatDateTime = (dateTime: string) => {
 const stripHtmlAndTruncate = (html: string, maxLength: number = 150): string => {
   if (!html) return ''
 
+  // Check if there's an auto-generated post link
+  const hasAutoPostLink = html.includes('📌') && html.includes('查看相关动态')
+
   // Create a temporary div to strip HTML tags
   const tempDiv = document.createElement('div')
   tempDiv.innerHTML = html
   const textContent = tempDiv.textContent || tempDiv.innerText || ''
 
+  let result = ''
   // Truncate text if it's too long
   if (textContent.length <= maxLength) {
-    return textContent
+    result = textContent
+  } else {
+    result = textContent.slice(0, maxLength) + '...'
   }
 
-  return textContent.slice(0, maxLength) + '...'
+  // Add indicator if there's an auto-generated post link
+  if (hasAutoPostLink) {
+    result += ' 📌'
+  }
+
+  return result
 }
 
 const getProgressPercent = (task: Task) => {

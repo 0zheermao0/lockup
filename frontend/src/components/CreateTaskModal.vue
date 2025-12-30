@@ -431,79 +431,6 @@ const removeImage = () => {
   }
 }
 
-const createAutoPost = async (task: any) => {
-  // Create post content
-  const taskTypeText = form.task_type === 'lock' ? '带锁任务' : '任务板'
-  let postContent = `🎯 我刚刚创建了一个${taskTypeText}：《${task.title}》`
-
-  if (task.description && task.description.trim()) {
-    // Strip HTML tags from description for plain text post
-    const tempDiv = document.createElement('div')
-    tempDiv.innerHTML = task.description
-    const plainDescription = tempDiv.textContent || tempDiv.innerText || ''
-    if (plainDescription.trim()) {
-      postContent += `\n\n${plainDescription}`
-    }
-  }
-
-  if (form.task_type === 'lock') {
-    const difficultyMap: Record<string, string> = {
-      easy: '简单',
-      normal: '普通',
-      hard: '困难',
-      hell: '地狱'
-    }
-    const difficultyText = difficultyMap[task.difficulty] || task.difficulty
-
-    const unlockText = task.unlock_type === 'vote' ? '投票解锁' : '定时解锁'
-
-    postContent += `\n\n🔒 解锁方式：${unlockText}`
-    postContent += `\n⚡ 难度等级：${difficultyText}`
-
-    if (task.duration_value) {
-      const hours = Math.floor(task.duration_value / 60)
-      const minutes = task.duration_value % 60
-      const durationText = hours > 0
-        ? (minutes > 0 ? `${hours}小时${minutes}分钟` : `${hours}小时`)
-        : `${minutes}分钟`
-
-      if (task.duration_type === 'random' && task.duration_max) {
-        const maxHours = Math.floor(task.duration_max / 60)
-        const maxMinutes = task.duration_max % 60
-        const maxDurationText = maxHours > 0
-          ? (maxMinutes > 0 ? `${maxHours}小时${maxMinutes}分钟` : `${maxHours}小时`)
-          : `${maxMinutes}分钟`
-        postContent += `\n⏰ 持续时间：${durationText} - ${maxDurationText}`
-      } else {
-        postContent += `\n⏰ 持续时间：${durationText}`
-      }
-    }
-  } else if (form.task_type === 'board') {
-    if (task.reward) {
-      postContent += `\n💰 奖励：${task.reward}积分`
-    }
-    if (task.max_duration) {
-      postContent += `\n⏱️ 最长完成时间：${task.max_duration}小时`
-    }
-  }
-
-  postContent += '\n\n#任务创建 #自律挑战'
-
-  // Prepare images for post
-  const images: File[] = []
-  if (imageFile.value) {
-    images.push(imageFile.value)
-  }
-
-  // Create the post
-  const postData = {
-    content: postContent,
-    post_type: 'normal' as const,
-    images: images.length > 0 ? images : undefined
-  }
-
-  await postsApi.createPost(postData)
-}
 
 const handleSubmit = async () => {
   if (submitting.value) return
@@ -598,7 +525,10 @@ const handleSubmit = async () => {
     // Clean up form data based on task type
     const cleanedForm = { ...form }
 
-    // Remove auto-post field as it's not part of the task API
+    // Map frontend field to backend field
+    if (form.autoPost !== undefined) {
+      cleanedForm.auto_publish = form.autoPost
+    }
     delete cleanedForm.autoPost
 
     if (form.task_type === 'lock') {
@@ -620,35 +550,9 @@ const handleSubmit = async () => {
     console.log('Form data before cleaning:', form)
     console.log('Cleaned form data being sent:', cleanedForm)
 
-    // Create the task through API
+    // Create the task through API (auto-publish is now handled on backend)
     const newTask = await tasksApi.createTask(cleanedForm)
     console.log('Task created successfully:', newTask)
-
-    // Auto-post functionality
-    if (form.autoPost) {
-      try {
-        await createAutoPost(newTask)
-        console.log('Auto-post created successfully')
-      } catch (postError: any) {
-        console.error('Failed to create auto-post:', postError)
-
-        // 使用新的错误处理工具函数处理动态发布错误
-        const userFriendlyError = handleApiError(postError, 'post')
-
-        // Show notification for auto-post failure but don't fail the entire task creation
-        showToast.value = true
-        toastData.value = {
-          type: 'warning',
-          title: '自动发布动态失败',
-          message: `任务创建成功，但自动发布动态失败：${userFriendlyError.message}`,
-          secondaryMessage: userFriendlyError.actionSuggestion || '您可以手动发布动态分享任务',
-          details: {
-            '错误时间': new Date().toLocaleString(),
-            '错误详情': postError.message || '未知错误'
-          }
-        }
-      }
-    }
 
     // 显示成功消息
     const successMsg = form.autoPost
