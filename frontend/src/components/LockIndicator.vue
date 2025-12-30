@@ -76,9 +76,13 @@ const indicatorType = computed(() => {
                    (userLockTask.value.hasOwnProperty('is_expired') && !userLockTask.value.is_expired)
 
   if (isLocked) {
-    // Check if task is frozen
+    // Check if task is frozen (highest priority)
     if (userLockTask.value.is_frozen) {
       return 'frozen'
+    }
+    // Check if time is hidden (second priority)
+    if (userLockTask.value.time_display_hidden) {
+      return 'time-hidden'
     }
     // Check if time is running out (less than 30 minutes)
     if (timeRemaining.value > 0 && timeRemaining.value < 30 * 60 * 1000) {
@@ -113,6 +117,8 @@ const lockIcon = computed(() => {
       return '⏰'
     case 'frozen':
       return '❄️'
+    case 'time-hidden':
+      return '🌫️'
     default:
       return ''
   }
@@ -130,6 +136,12 @@ const tooltipText = computed(() => {
     // Check if task is frozen
     if (userLockTask.value.is_frozen) {
       return `${userLockTask.value.title} - 已冻结`
+    }
+
+    // Check if time is hidden
+    if (userLockTask.value.time_display_hidden) {
+      const statusText = userLockTask.value.status === 'voting' ? ' (投票中)' : ''
+      return `${userLockTask.value.title}${statusText} - 时间已隐藏`
     }
 
     const timeText = timeRemaining.value > 0
@@ -344,6 +356,12 @@ watch(() => props.user, () => {
   animation: pulse-frozen 2s infinite;
 }
 
+.lock-indicator.time-hidden {
+  background: linear-gradient(135deg, #343a40, #495057);
+  color: white;
+  animation: pulse-time-hidden 2.5s infinite;
+}
+
 .lock-indicator.unlocked {
   background: linear-gradient(135deg, #28a745, #218838);
   color: white;
@@ -407,6 +425,17 @@ watch(() => props.user, () => {
   50% {
     opacity: 0.7;
     transform: scale(0.98);
+  }
+}
+
+@keyframes pulse-time-hidden {
+  0%, 100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.6;
+    transform: scale(0.97);
   }
 }
 
