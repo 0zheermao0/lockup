@@ -326,9 +326,9 @@ def play_time_wheel(request):
             }, status=status.HTTP_400_BAD_REQUEST)
 
         # 验证数据合理性
-        if bet_amount <= 0 or bet_amount > 10:
+        if bet_amount <= 0:
             return Response({
-                'error': '投注金额必须在1-10之间'
+                'error': '投注金额必须大于0'
             }, status=status.HTTP_400_BAD_REQUEST)
 
         if base_time not in [5, 15, 30, 60]:
@@ -690,15 +690,26 @@ def join_game(request, game_id):
                                 game.status = 'waiting'
                                 game.save()
 
+                                # 平局时返还发起人（游戏创建者）的积分
+                                creator = game.creator
+                                if hasattr(creator, 'coins'):
+                                    creator.coins += game.bet_amount
+                                    creator.save()
+
                                 # 给双方发送平局通知
                                 for participant in valid_participants:
                                     opponent = valid_participants[1] if participant == valid_participants[0] else valid_participants[0]
+                                    is_creator = participant.user == creator
+                                    message = f'与 {opponent.user.username} 的石头剪刀布游戏平局，游戏重新开始'
+                                    if is_creator:
+                                        message += f'，已返还 {game.bet_amount} 积分'
+
                                     NotificationModel.create_notification(
                                         recipient=participant.user,
                                         notification_type='game_result',
                                         actor=opponent.user,
                                         title='石头剪刀布平局',
-                                        message=f'与 {opponent.user.username} 的石头剪刀布游戏平局，游戏重新开始',
+                                        message=message,
                                         related_object_type='game',
                                         related_object_id=game.id,
                                         extra_data={
@@ -708,14 +719,16 @@ def join_game(request, game_id):
                                             'opponent_choice': opponent.action['choice'],
                                             'opponent_username': opponent.user.username,
                                             'opponent_id': opponent.user.id,
-                                            'bet_amount': game.bet_amount
+                                            'bet_amount': game.bet_amount,
+                                            'coins_refunded': game.bet_amount if is_creator else 0
                                         },
                                         priority='normal'
                                     )
 
                                 return Response({
-                                    'message': '平局！游戏重新开始',
-                                    'results': results
+                                    'message': '平局！游戏重新开始，发起人积分已返还',
+                                    'results': results,
+                                    'coins_refunded': game.bet_amount
                                 })
                             elif (choice1 == 'rock' and choice2 == 'scissors') or \
                                  (choice1 == 'paper' and choice2 == 'rock') or \

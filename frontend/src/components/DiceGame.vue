@@ -13,9 +13,8 @@
             v-model.number="createForm.bet_amount"
             type="number"
             min="1"
-            max="10"
             class="form-input"
-            placeholder="1-10积分"
+            placeholder="下注积分"
           />
         </div>
 
@@ -340,7 +339,7 @@ const availableItems = computed(() => {
 })
 
 const canCreate = computed(() => {
-  return createForm.value.bet_amount >= 1 && createForm.value.bet_amount <= 10
+  return createForm.value.bet_amount >= 1
 })
 
 // Methods

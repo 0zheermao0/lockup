@@ -11,6 +11,10 @@ This command sets up ALL periodic tasks in the django-celery-beat database sched
 - Pinning queue processing: runs every minute to manage user pinning queue
 - Pinning system health check: runs every 5 minutes to monitor pinning system
 - Deadline reminders 8h: runs every 30 minutes to send 8-hour deadline reminders for board tasks
+- Event system scheduling: runs every minute to schedule pending events
+- Event system execution: runs every minute to execute scheduled events
+- Event system cleanup: runs every hour to process expired effects
+- Event system health check: runs every 5 minutes to monitor event system health
 
 Author: Claude Code
 Created: 2024-12-19
@@ -23,7 +27,7 @@ import json
 
 
 class Command(BaseCommand):
-    help = 'Set up ALL Celery Beat periodic tasks for the complete system (rewards, auto-freeze, promotions, activity decay, voting, pinning, deadline reminders)'
+    help = 'Set up ALL Celery Beat periodic tasks for the complete system (rewards, auto-freeze, promotions, activity decay, voting, pinning, deadline reminders, event system)'
 
     def add_arguments(self, parser):
         parser.add_argument(
@@ -712,6 +716,296 @@ class Command(BaseCommand):
                         self.style.WARNING(f'Periodic task "{deadline_reminders_task_name}" already exists and is up to date')
                     )
 
+        # ========================================================================
+        # Event System Tasks Setup
+        # ========================================================================
+
+        self.stdout.write('\n' + '=' * 60)
+        self.stdout.write(self.style.SUCCESS('Setting up event system tasks...'))
+
+        # Create every-minute interval schedule for event scheduling and execution
+        event_minute_schedule, created = IntervalSchedule.objects.get_or_create(
+            every=60,  # 60 seconds = 1 minute
+            period=IntervalSchedule.SECONDS,
+        )
+
+        if created and not dry_run:
+            self.stdout.write(f'Created event system minute interval schedule: {event_minute_schedule}')
+        elif created:
+            self.stdout.write(f'[DRY RUN] Would create event system minute interval schedule: {event_minute_schedule}')
+        else:
+            self.stdout.write(f'Using existing event system minute interval schedule: {event_minute_schedule}')
+
+        # Create hourly interval schedule for event cleanup
+        event_hourly_schedule, created = IntervalSchedule.objects.get_or_create(
+            every=1,
+            period=IntervalSchedule.HOURS,
+        )
+
+        if created and not dry_run:
+            self.stdout.write(f'Created event system hourly interval schedule: {event_hourly_schedule}')
+        elif created:
+            self.stdout.write(f'[DRY RUN] Would create event system hourly interval schedule: {event_hourly_schedule}')
+        else:
+            self.stdout.write(f'Using existing event system hourly interval schedule: {event_hourly_schedule}')
+
+        # Create every-5-minutes interval schedule for event health check
+        event_health_schedule, created = IntervalSchedule.objects.get_or_create(
+            every=300,  # 300 seconds = 5 minutes
+            period=IntervalSchedule.SECONDS,
+        )
+
+        if created and not dry_run:
+            self.stdout.write(f'Created event system health interval schedule: {event_health_schedule}')
+        elif created:
+            self.stdout.write(f'[DRY RUN] Would create event system health interval schedule: {event_health_schedule}')
+        else:
+            self.stdout.write(f'Using existing event system health interval schedule: {event_health_schedule}')
+
+        # Event System Task 1: Schedule Pending Events
+        event_schedule_task_name = 'schedule-pending-events'
+        event_schedule_task_function = 'events.celery_tasks.schedule_pending_events'
+
+        if dry_run:
+            existing_event_schedule_task = PeriodicTask.objects.filter(name=event_schedule_task_name).first()
+            if existing_event_schedule_task:
+                self.stdout.write(
+                    self.style.WARNING(f'[DRY RUN] Task "{event_schedule_task_name}" already exists')
+                )
+            else:
+                self.stdout.write(
+                    self.style.SUCCESS(f'[DRY RUN] Would create periodic task: {event_schedule_task_name}')
+                )
+        else:
+            event_schedule_periodic_task, created = PeriodicTask.objects.get_or_create(
+                name=event_schedule_task_name,
+                defaults={
+                    'interval': event_minute_schedule,
+                    'task': event_schedule_task_function,
+                    'kwargs': json.dumps({}),
+                    'enabled': True,
+                    'description': 'Schedule pending events based on their configured intervals (Every minute)',
+                    'queue': 'events',
+                }
+            )
+
+            if created:
+                self.stdout.write(
+                    self.style.SUCCESS(f'Created periodic task: {event_schedule_task_name}')
+                )
+                self.stdout.write(f'  Task: {event_schedule_task_function}')
+                self.stdout.write(f'  Schedule: {event_minute_schedule}')
+                self.stdout.write(f'  Queue: events')
+                self.stdout.write(f'  Enabled: {event_schedule_periodic_task.enabled}')
+            else:
+                # Update existing task if needed
+                updated = False
+                if event_schedule_periodic_task.task != event_schedule_task_function:
+                    event_schedule_periodic_task.task = event_schedule_task_function
+                    updated = True
+                if event_schedule_periodic_task.interval != event_minute_schedule:
+                    event_schedule_periodic_task.interval = event_minute_schedule
+                    updated = True
+                if not event_schedule_periodic_task.enabled:
+                    event_schedule_periodic_task.enabled = True
+                    updated = True
+                if getattr(event_schedule_periodic_task, 'queue', None) != 'events':
+                    event_schedule_periodic_task.queue = 'events'
+                    updated = True
+
+                if updated:
+                    event_schedule_periodic_task.save()
+                    self.stdout.write(
+                        self.style.SUCCESS(f'Updated existing periodic task: {event_schedule_task_name}')
+                    )
+                else:
+                    self.stdout.write(
+                        self.style.WARNING(f'Periodic task "{event_schedule_task_name}" already exists and is up to date')
+                    )
+
+        # Event System Task 2: Execute Pending Events
+        event_execute_task_name = 'execute-pending-events'
+        event_execute_task_function = 'events.celery_tasks.execute_pending_events'
+
+        if dry_run:
+            existing_event_execute_task = PeriodicTask.objects.filter(name=event_execute_task_name).first()
+            if existing_event_execute_task:
+                self.stdout.write(
+                    self.style.WARNING(f'[DRY RUN] Task "{event_execute_task_name}" already exists')
+                )
+            else:
+                self.stdout.write(
+                    self.style.SUCCESS(f'[DRY RUN] Would create periodic task: {event_execute_task_name}')
+                )
+        else:
+            event_execute_periodic_task, created = PeriodicTask.objects.get_or_create(
+                name=event_execute_task_name,
+                defaults={
+                    'interval': event_minute_schedule,
+                    'task': event_execute_task_function,
+                    'kwargs': json.dumps({}),
+                    'enabled': True,
+                    'description': 'Execute scheduled events and apply their effects to users (Every minute)',
+                    'queue': 'events',
+                }
+            )
+
+            if created:
+                self.stdout.write(
+                    self.style.SUCCESS(f'Created periodic task: {event_execute_task_name}')
+                )
+                self.stdout.write(f'  Task: {event_execute_task_function}')
+                self.stdout.write(f'  Schedule: {event_minute_schedule}')
+                self.stdout.write(f'  Queue: events')
+                self.stdout.write(f'  Enabled: {event_execute_periodic_task.enabled}')
+            else:
+                # Update existing task if needed
+                updated = False
+                if event_execute_periodic_task.task != event_execute_task_function:
+                    event_execute_periodic_task.task = event_execute_task_function
+                    updated = True
+                if event_execute_periodic_task.interval != event_minute_schedule:
+                    event_execute_periodic_task.interval = event_minute_schedule
+                    updated = True
+                if not event_execute_periodic_task.enabled:
+                    event_execute_periodic_task.enabled = True
+                    updated = True
+                if getattr(event_execute_periodic_task, 'queue', None) != 'events':
+                    event_execute_periodic_task.queue = 'events'
+                    updated = True
+
+                if updated:
+                    event_execute_periodic_task.save()
+                    self.stdout.write(
+                        self.style.SUCCESS(f'Updated existing periodic task: {event_execute_task_name}')
+                    )
+                else:
+                    self.stdout.write(
+                        self.style.WARNING(f'Periodic task "{event_execute_task_name}" already exists and is up to date')
+                    )
+
+        # Event System Task 3: Process Expired Effects
+        event_cleanup_task_name = 'process-expired-effects'
+        event_cleanup_task_function = 'events.celery_tasks.process_expired_effects'
+
+        if dry_run:
+            existing_event_cleanup_task = PeriodicTask.objects.filter(name=event_cleanup_task_name).first()
+            if existing_event_cleanup_task:
+                self.stdout.write(
+                    self.style.WARNING(f'[DRY RUN] Task "{event_cleanup_task_name}" already exists')
+                )
+            else:
+                self.stdout.write(
+                    self.style.SUCCESS(f'[DRY RUN] Would create periodic task: {event_cleanup_task_name}')
+                )
+        else:
+            event_cleanup_periodic_task, created = PeriodicTask.objects.get_or_create(
+                name=event_cleanup_task_name,
+                defaults={
+                    'interval': event_hourly_schedule,
+                    'task': event_cleanup_task_function,
+                    'kwargs': json.dumps({}),
+                    'enabled': True,
+                    'description': 'Process expired event effects and perform cleanup/rollback (Every hour)',
+                    'queue': 'events',
+                }
+            )
+
+            if created:
+                self.stdout.write(
+                    self.style.SUCCESS(f'Created periodic task: {event_cleanup_task_name}')
+                )
+                self.stdout.write(f'  Task: {event_cleanup_task_function}')
+                self.stdout.write(f'  Schedule: {event_hourly_schedule}')
+                self.stdout.write(f'  Queue: events')
+                self.stdout.write(f'  Enabled: {event_cleanup_periodic_task.enabled}')
+            else:
+                # Update existing task if needed
+                updated = False
+                if event_cleanup_periodic_task.task != event_cleanup_task_function:
+                    event_cleanup_periodic_task.task = event_cleanup_task_function
+                    updated = True
+                if event_cleanup_periodic_task.interval != event_hourly_schedule:
+                    event_cleanup_periodic_task.interval = event_hourly_schedule
+                    updated = True
+                if not event_cleanup_periodic_task.enabled:
+                    event_cleanup_periodic_task.enabled = True
+                    updated = True
+                if getattr(event_cleanup_periodic_task, 'queue', None) != 'events':
+                    event_cleanup_periodic_task.queue = 'events'
+                    updated = True
+
+                if updated:
+                    event_cleanup_periodic_task.save()
+                    self.stdout.write(
+                        self.style.SUCCESS(f'Updated existing periodic task: {event_cleanup_task_name}')
+                    )
+                else:
+                    self.stdout.write(
+                        self.style.WARNING(f'Periodic task "{event_cleanup_task_name}" already exists and is up to date')
+                    )
+
+        # Event System Task 4: Event System Health Check
+        event_health_task_name = 'event-system-health-check'
+        event_health_task_function = 'events.celery_tasks.event_system_health_check'
+
+        if dry_run:
+            existing_event_health_task = PeriodicTask.objects.filter(name=event_health_task_name).first()
+            if existing_event_health_task:
+                self.stdout.write(
+                    self.style.WARNING(f'[DRY RUN] Task "{event_health_task_name}" already exists')
+                )
+            else:
+                self.stdout.write(
+                    self.style.SUCCESS(f'[DRY RUN] Would create periodic task: {event_health_task_name}')
+                )
+        else:
+            event_health_periodic_task, created = PeriodicTask.objects.get_or_create(
+                name=event_health_task_name,
+                defaults={
+                    'interval': event_health_schedule,
+                    'task': event_health_task_function,
+                    'kwargs': json.dumps({}),
+                    'enabled': True,
+                    'description': 'Monitor event system health and detect issues (Every 5 minutes)',
+                    'queue': 'events',
+                }
+            )
+
+            if created:
+                self.stdout.write(
+                    self.style.SUCCESS(f'Created periodic task: {event_health_task_name}')
+                )
+                self.stdout.write(f'  Task: {event_health_task_function}')
+                self.stdout.write(f'  Schedule: {event_health_schedule}')
+                self.stdout.write(f'  Queue: events')
+                self.stdout.write(f'  Enabled: {event_health_periodic_task.enabled}')
+            else:
+                # Update existing task if needed
+                updated = False
+                if event_health_periodic_task.task != event_health_task_function:
+                    event_health_periodic_task.task = event_health_task_function
+                    updated = True
+                if event_health_periodic_task.interval != event_health_schedule:
+                    event_health_periodic_task.interval = event_health_schedule
+                    updated = True
+                if not event_health_periodic_task.enabled:
+                    event_health_periodic_task.enabled = True
+                    updated = True
+                if getattr(event_health_periodic_task, 'queue', None) != 'events':
+                    event_health_periodic_task.queue = 'events'
+                    updated = True
+
+                if updated:
+                    event_health_periodic_task.save()
+                    self.stdout.write(
+                        self.style.SUCCESS(f'Updated existing periodic task: {event_health_task_name}')
+                    )
+                else:
+                    self.stdout.write(
+                        self.style.WARNING(f'Periodic task "{event_health_task_name}" already exists and is up to date')
+                    )
+
         # Show final task configurations
         self.stdout.write('\n' + '=' * 60)
         self.stdout.write(self.style.SUCCESS('Periodic Tasks Configuration:'))
@@ -780,6 +1074,38 @@ class Command(BaseCommand):
             self.stdout.write(f'Enabled: {deadline_reminders_periodic_task.enabled}')
             self.stdout.write(f'Queue: {getattr(deadline_reminders_periodic_task, "queue", "default")}')
             self.stdout.write(f'Last Run: {deadline_reminders_periodic_task.last_run_at or "Never"}')
+
+            self.stdout.write('\n--- Event System: Schedule Pending Events Task ---')
+            self.stdout.write(f'Name: {event_schedule_periodic_task.name}')
+            self.stdout.write(f'Task: {event_schedule_periodic_task.task}')
+            self.stdout.write(f'Schedule: {event_schedule_periodic_task.interval}')
+            self.stdout.write(f'Enabled: {event_schedule_periodic_task.enabled}')
+            self.stdout.write(f'Queue: {getattr(event_schedule_periodic_task, "queue", "default")}')
+            self.stdout.write(f'Last Run: {event_schedule_periodic_task.last_run_at or "Never"}')
+
+            self.stdout.write('\n--- Event System: Execute Pending Events Task ---')
+            self.stdout.write(f'Name: {event_execute_periodic_task.name}')
+            self.stdout.write(f'Task: {event_execute_periodic_task.task}')
+            self.stdout.write(f'Schedule: {event_execute_periodic_task.interval}')
+            self.stdout.write(f'Enabled: {event_execute_periodic_task.enabled}')
+            self.stdout.write(f'Queue: {getattr(event_execute_periodic_task, "queue", "default")}')
+            self.stdout.write(f'Last Run: {event_execute_periodic_task.last_run_at or "Never"}')
+
+            self.stdout.write('\n--- Event System: Process Expired Effects Task ---')
+            self.stdout.write(f'Name: {event_cleanup_periodic_task.name}')
+            self.stdout.write(f'Task: {event_cleanup_periodic_task.task}')
+            self.stdout.write(f'Schedule: {event_cleanup_periodic_task.interval}')
+            self.stdout.write(f'Enabled: {event_cleanup_periodic_task.enabled}')
+            self.stdout.write(f'Queue: {getattr(event_cleanup_periodic_task, "queue", "default")}')
+            self.stdout.write(f'Last Run: {event_cleanup_periodic_task.last_run_at or "Never"}')
+
+            self.stdout.write('\n--- Event System: Health Check Task ---')
+            self.stdout.write(f'Name: {event_health_periodic_task.name}')
+            self.stdout.write(f'Task: {event_health_periodic_task.task}')
+            self.stdout.write(f'Schedule: {event_health_periodic_task.interval}')
+            self.stdout.write(f'Enabled: {event_health_periodic_task.enabled}')
+            self.stdout.write(f'Queue: {getattr(event_health_periodic_task, "queue", "default")}')
+            self.stdout.write(f'Last Run: {event_health_periodic_task.last_run_at or "Never"}')
         else:
             self.stdout.write('\n[DRY RUN] Task configuration details not available in dry-run mode')
 
@@ -806,7 +1132,11 @@ class Command(BaseCommand):
             'process-checkin-voting-results',
             'process-pinning-queue',
             'pinning-health-check',
-            'process-deadline-reminders-8h'
+            'process-deadline-reminders-8h',
+            'schedule-pending-events',
+            'execute-pending-events',
+            'process-expired-effects',
+            'event-system-health-check'
         ]
 
         if dry_run:

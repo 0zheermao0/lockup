@@ -560,6 +560,7 @@ class Notification(models.Model):
         # 系统类
         ('level_upgraded', '等级提升'),
         ('system_announcement', '系统公告'),
+        ('system_event_occurred', '系统事件发生'),
     ]
 
     PRIORITY_CHOICES = [
@@ -805,6 +806,7 @@ class Notification(models.Model):
             'level_upgraded': "恭喜你等级提升！",
             'item_shared': f"{actor_name}分享了物品给你",
             'game_result': "游戏结果通知",
+            'system_event_occurred': "系统事件发生",
         }
 
         return title_mapping.get(notification_type, "新通知")
@@ -852,6 +854,7 @@ class Notification(models.Model):
             'friend_request': f"{actor_name}想要和你成为好友",
             'friend_accepted': f"你们现在是好友了，可以开始聊天",
             'level_upgraded': "你的等级已经提升，解锁了新功能",
+            'system_event_occurred': "系统事件已触发，可能对你的游戏体验产生影响",
         }
 
         return message_mapping.get(notification_type, "你有新的通知")
