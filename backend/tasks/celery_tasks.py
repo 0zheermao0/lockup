@@ -1164,7 +1164,7 @@ def _handle_voting_rejected(post, session, current_time):
 
 def _handle_voting_passed(post, session, pass_votes, current_time):
     """
-    处理投票通过的情况：分配积分给通过投票者
+    处理投票通过的情况：将全部收集的积分奖励给被投票的用户（打卡者）
 
     Args:
         post: Post实例
@@ -1177,41 +1177,46 @@ def _handle_voting_passed(post, session, pass_votes, current_time):
     user = post.user
     pass_count = pass_votes.count()
 
-    if pass_count > 0 and session.total_coins_collected > 0:
-        # 计算每个投票者应得的积分（向下取整，余数给前几个投票者）
-        coins_per_voter = session.total_coins_collected // pass_count
-        remainder = session.total_coins_collected % pass_count
+    if session.total_coins_collected > 0:
+        # 将全部收集的积分奖励给被投票的用户（打卡者）
+        user.coins += session.total_coins_collected
+        user.save()
 
-        # 按投票时间排序，让早投票的用户获得余数
-        ordered_pass_votes = pass_votes.order_by('created_at')
+        # 通知被投票用户获得奖励
+        Notification.create_notification(
+            recipient=user,
+            notification_type='checkin_vote_reward',
+            related_object_type='post',
+            related_object_id=post.id,
+            extra_data={
+                'reward_amount': session.total_coins_collected,
+                'total_pass_votes': pass_count,
+                'total_reject_votes': CheckinVote.objects.filter(post=post, vote_type='reject').count(),
+                'post_content_preview': post.content[:50] + '...' if len(post.content) > 50 else post.content,
+                'reward_reason': 'voting_passed'
+            },
+            priority='normal'
+        )
 
-        total_distributed = 0
-        for i, vote in enumerate(ordered_pass_votes):
-            reward = coins_per_voter
-            if i < remainder:  # 前几个投票者获得额外的1积分
-                reward += 1
+        logger.info(f"Distributed {session.total_coins_collected} coins to post author {user.username} for passed check-in vote")
 
-            # 给投票者分配积分
-            vote.voter.coins += reward
-            vote.voter.save()
-            total_distributed += reward
-
-            # 通知投票者获得奖励
+        # 通知所有投通过票的用户，投票成功但他们不获得积分奖励
+        for vote in pass_votes:
             Notification.create_notification(
                 recipient=vote.voter,
-                notification_type='checkin_vote_reward',
+                notification_type='checkin_vote_passed_voter',
                 related_object_type='post',
                 related_object_id=post.id,
                 extra_data={
-                    'reward_amount': reward,
                     'post_author': user.username,
+                    'total_coins_rewarded': session.total_coins_collected,
                     'total_pass_votes': pass_count,
                     'post_content_preview': post.content[:50] + '...' if len(post.content) > 50 else post.content
                 },
-                priority='normal'
+                priority='low'
             )
 
-            logger.info(f"Distributed {reward} coins to voter {vote.voter.username} for passed check-in vote")
+        logger.info(f"Notified {pass_count} voters about successful voting for post {post.id}")
 
     # 通知动态作者投票通过
     Notification.create_notification(
