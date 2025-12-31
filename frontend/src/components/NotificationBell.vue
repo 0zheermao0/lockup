@@ -35,8 +35,8 @@
       </div>
 
       <!-- 通知列表 -->
-      <div class="notification-list">
-        <div v-if="loading" class="loading">
+      <div class="notification-list" ref="notificationListRef">
+        <div v-if="loading && notifications.length === 0" class="loading">
           <div class="spinner">⏳</div>
           <span>加载中...</span>
         </div>
@@ -48,7 +48,7 @@
 
         <div v-else>
           <div
-            v-for="notification in displayNotifications"
+            v-for="notification in notifications"
             :key="notification.id"
             :class="['notification-item', { 'is-read': notification.is_read }]"
             @click="handleNotificationClick(notification)"
@@ -249,6 +249,25 @@
               </button>
             </div>
           </div>
+
+          <!-- 懒加载控制区域 -->
+          <div v-if="hasMore" class="load-more-section">
+            <button
+              v-if="!isLoadingMore"
+              @click="loadMoreNotifications"
+              class="load-more-btn"
+            >
+              加载更多通知...
+            </button>
+            <div v-else class="loading-more">
+              <div class="spinner">⏳</div>
+              <span>加载中...</span>
+            </div>
+          </div>
+
+          <div v-else-if="notifications.length > 0" class="no-more">
+            已显示所有通知
+          </div>
         </div>
       </div>
 
@@ -268,11 +287,14 @@ const notificationStore = useNotificationStore()
 
 // 响应式数据
 const showDropdown = ref(false)
-const loading = ref(false)
-const notifications = ref<NotificationItem[]>([])
-const limit = ref(10)
+const notificationListRef = ref<HTMLElement>()
 
-// 计算属性
+// 使用store的状态和计算属性
+const notifications = computed(() => notificationStore.notifications)
+const hasMore = computed(() => notificationStore.hasMore)
+const isLoadingMore = computed(() => notificationStore.isLoadingMore)
+const loading = computed(() => notificationStore.isLoading)
+
 const unreadCount = computed(() => {
   // 使用store中的unreadCount，确保即使没有加载通知列表也能显示正确的未读数量
   return notificationStore.unreadCount
@@ -280,10 +302,6 @@ const unreadCount = computed(() => {
 
 const hasNotifications = computed(() => notifications.value.length > 0)
 const hasUnreadNotifications = computed(() => unreadCount.value > 0)
-
-const displayNotifications = computed(() => {
-  return notifications.value.slice(0, limit.value)
-})
 
 // 通知图标映射
 const getNotificationIcon = (type: string) => {
@@ -352,30 +370,29 @@ const toggleDropdown = async () => {
 }
 
 const loadNotifications = async () => {
-  if (loading.value) return
-
-  loading.value = true
   try {
-    const newNotifications = await notificationStore.fetchNotifications({
-      limit: limit.value,
-      is_read: 'false' // 优先加载未读通知
+    // 重置并加载第一页
+    await notificationStore.fetchNotificationsPage({
+      is_read: 'false',
+      reset: true
     })
 
-    if (newNotifications.length < limit.value) {
-      // 如果未读通知不足，加载已读通知
-      const readNotifications = await notificationStore.fetchNotifications({
-        limit: limit.value - newNotifications.length,
+    // 如果未读通知不足一页，加载已读通知补充
+    if (notifications.value.length < 10) {
+      await notificationStore.loadMoreNotifications({
         is_read: 'true'
       })
-      notifications.value = [...newNotifications, ...readNotifications]
-    } else {
-      notifications.value = newNotifications
     }
-
   } catch (error) {
     console.error('加载通知失败:', error)
-  } finally {
-    loading.value = false
+  }
+}
+
+const loadMoreNotifications = async () => {
+  try {
+    await notificationStore.loadMoreNotifications()
+  } catch (error) {
+    console.error('加载更多通知失败:', error)
   }
 }
 
@@ -425,11 +442,7 @@ const getChoiceEmoji = (choice: string) => {
 const markAsRead = async (notificationId: string) => {
   try {
     await notificationStore.markAsRead(notificationId)
-    const notification = notifications.value.find(n => n.id === notificationId)
-    if (notification) {
-      notification.is_read = true
-      notification.read_at = new Date().toISOString()
-    }
+    // Store中的markAsRead已经更新了本地状态，无需手动更新
   } catch (error) {
     console.error('标记已读失败:', error)
   }
@@ -438,10 +451,7 @@ const markAsRead = async (notificationId: string) => {
 const markAllAsRead = async () => {
   try {
     await notificationStore.markAllAsRead()
-    notifications.value.forEach(n => {
-      n.is_read = true
-      n.read_at = new Date().toISOString()
-    })
+    // Store中的markAllAsRead已经更新了本地状态，无需手动更新
   } catch (error) {
     console.error('标记全部已读失败:', error)
   }
@@ -450,7 +460,7 @@ const markAllAsRead = async () => {
 const deleteNotification = async (notificationId: string) => {
   try {
     await notificationStore.deleteNotification(notificationId)
-    notifications.value = notifications.value.filter(n => n.id !== notificationId)
+    // Store中的deleteNotification已经更新了本地状态，无需手动更新
   } catch (error) {
     console.error('删除通知失败:', error)
   }
@@ -459,7 +469,7 @@ const deleteNotification = async (notificationId: string) => {
 const clearReadNotifications = async () => {
   try {
     await notificationStore.clearReadNotifications()
-    notifications.value = notifications.value.filter(n => !n.is_read)
+    // Store中的clearReadNotifications已经更新了本地状态，无需手动更新
   } catch (error) {
     console.error('清理已读通知失败:', error)
   }
@@ -480,20 +490,9 @@ onMounted(() => {
   const interval = setInterval(async () => {
     if (!showDropdown.value) {
       try {
-        const stats = await notificationStore.fetchNotificationStats()
-        // 更新徽章数量（通过重新加载少量通知）
-        if (stats.unread_notifications > 0) {
-          const unreadNotifications = await notificationStore.fetchNotifications({
-            limit: Math.min(stats.unread_notifications, 5),
-            is_read: 'false'
-          })
-          const existingIds = new Set(notifications.value.map(n => n.id))
-          unreadNotifications.forEach(n => {
-            if (!existingIds.has(n.id)) {
-              notifications.value.unshift(n)
-            }
-          })
-        }
+        await notificationStore.fetchNotificationStats()
+        // 如果下拉框未打开，只刷新统计信息，不刷新通知列表
+        // 通知列表会在用户打开下拉框时重新加载
       } catch (error) {
         console.error('刷新通知失败:', error)
       }
@@ -1203,6 +1202,71 @@ onUnmounted(() => {
   box-shadow: 1px 1px 0 rgba(23, 162, 184, 0.2);
 }
 
+/* 懒加载相关样式 */
+.load-more-section {
+  padding: 1rem;
+  text-align: center;
+  border-top: 1px solid #e9ecef;
+}
+
+.load-more-btn {
+  background: linear-gradient(135deg, #007bff, #0056b3);
+  color: white;
+  border: none;
+  border-radius: 4px;
+  padding: 0.5rem 1rem;
+  cursor: pointer;
+  font-weight: 500;
+  transition: all 0.2s ease;
+  font-size: 0.875rem;
+}
+
+.load-more-btn:hover {
+  transform: translateY(-1px);
+  box-shadow: 2px 2px 0 #000;
+}
+
+.loading-more {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  color: #6c757d;
+  font-size: 0.875rem;
+}
+
+.no-more {
+  text-align: center;
+  padding: 1rem;
+  color: #6c757d;
+  font-size: 0.875rem;
+  border-top: 1px solid #e9ecef;
+}
+
+.notification-list {
+  max-height: 400px;  /* 增加高度以适应更多通知 */
+  overflow-y: auto;
+}
+
+/* 滚动条样式 */
+.notification-list::-webkit-scrollbar {
+  width: 6px;
+}
+
+.notification-list::-webkit-scrollbar-track {
+  background: #f1f1f1;
+  border-radius: 3px;
+}
+
+.notification-list::-webkit-scrollbar-thumb {
+  background: #c1c1c1;
+  border-radius: 3px;
+}
+
+.notification-list::-webkit-scrollbar-thumb:hover {
+  background: #a8a8a8;
+}
+
 /* 移动端响应式 */
 @media (max-width: 768px) {
   .notification-bell {
@@ -1298,6 +1362,26 @@ onUnmounted(() => {
   .action-btn {
     width: 28px;
     height: 28px;
+    font-size: 0.8rem;
+  }
+
+  /* 移动端懒加载样式 */
+  .load-more-section {
+    padding: 0.75rem;
+  }
+
+  .load-more-btn {
+    width: 100%;
+    padding: 0.625rem 1rem;
+    font-size: 0.8rem;
+  }
+
+  .loading-more {
+    font-size: 0.8rem;
+  }
+
+  .no-more {
+    padding: 0.75rem;
     font-size: 0.8rem;
   }
 }
@@ -1403,6 +1487,26 @@ onUnmounted(() => {
   .approval-time {
     padding: 0.2rem 0.4rem;
     font-size: 0.7rem;
+  }
+
+  /* 超小屏幕懒加载样式 */
+  .load-more-section {
+    padding: 0.5rem;
+  }
+
+  .load-more-btn {
+    width: 100%;
+    padding: 0.5rem 0.75rem;
+    font-size: 0.75rem;
+  }
+
+  .loading-more {
+    font-size: 0.75rem;
+  }
+
+  .no-more {
+    padding: 0.5rem;
+    font-size: 0.75rem;
   }
 }
 </style>

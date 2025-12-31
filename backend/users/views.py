@@ -7,6 +7,7 @@ from django.contrib.auth import login, logout
 from django.db.models import Q, Count
 from django.utils import timezone
 from datetime import timedelta
+from tasks.pagination import DynamicPageNumberPagination
 from .models import User, Friendship, UserLevelUpgrade, DailyLoginReward, Notification
 from .serializers import (
     UserSerializer, UserPublicSerializer, UserRegistrationSerializer,
@@ -447,6 +448,7 @@ class NotificationListView(generics.ListAPIView):
     """通知列表视图"""
     serializer_class = NotificationSerializer
     permission_classes = [permissions.IsAuthenticated]
+    pagination_class = DynamicPageNumberPagination
 
     def get_queryset(self):
         user = self.request.user
@@ -454,7 +456,6 @@ class NotificationListView(generics.ListAPIView):
         # 获取查询参数
         is_read = self.request.query_params.get('is_read', None)
         notification_type = self.request.query_params.get('type', None)
-        limit = self.request.query_params.get('limit', None)
 
         queryset = Notification.objects.filter(recipient=user)
 
@@ -466,18 +467,8 @@ class NotificationListView(generics.ListAPIView):
         if notification_type:
             queryset = queryset.filter(notification_type=notification_type)
 
-        # 先排序，再限制数量（避免切片后重排序的错误）
-        queryset = queryset.order_by('-created_at')
-
-        # 限制返回数量
-        if limit:
-            try:
-                limit_int = int(limit)
-                queryset = queryset[:limit_int]
-            except ValueError:
-                pass
-
-        return queryset
+        # 排序（移除手动limit处理，让DRF pagination处理）
+        return queryset.order_by('-created_at')
 
 
 @api_view(['POST'])

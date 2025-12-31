@@ -21,6 +21,13 @@ export const useNotificationStore = defineStore('notifications', () => {
   const isLoading = ref(false)
   const error = ref<string | null>(null)
 
+  // 新增分页状态
+  const currentPage = ref(1)
+  const hasMore = ref(true)
+  const isLoadingMore = ref(false)
+  const pageSize = ref(10)
+  const totalCount = ref(0)
+
   // Getters
   const hasUnreadNotifications = computed(() => unreadCount.value > 0)
   const unreadNotifications = computed(() =>
@@ -46,9 +53,9 @@ export const useNotificationStore = defineStore('notifications', () => {
     error.value = null
 
     try {
-      const fetchedNotifications = await notificationsApi.getNotifications(params)
-      notifications.value = fetchedNotifications
-      return fetchedNotifications
+      const response = await notificationsApi.getNotifications(params)
+      notifications.value = response.results || []
+      return response.results || []
     } catch (err) {
       error.value = err instanceof Error ? err.message : '获取通知失败'
       console.error('Failed to fetch notifications:', err)
@@ -56,6 +63,63 @@ export const useNotificationStore = defineStore('notifications', () => {
     } finally {
       isLoading.value = false
     }
+  }
+
+  // 新增分页方法
+  const fetchNotificationsPage = async (params?: {
+    is_read?: string
+    type?: string
+    page?: number
+    reset?: boolean  // 是否重置列表
+  }) => {
+    if (isLoadingMore.value && !params?.reset) return
+
+    isLoadingMore.value = true
+    error.value = null
+
+    try {
+      const page = params?.page || currentPage.value
+      const response = await notificationsApi.getNotifications({
+        ...params,
+        page,
+        limit: pageSize.value
+      })
+
+      if (params?.reset) {
+        notifications.value = response.results || []
+        currentPage.value = 1
+      } else {
+        notifications.value.push(...(response.results || []))
+      }
+
+      hasMore.value = response.next !== null
+      currentPage.value = page + 1
+      totalCount.value = response.count || 0
+
+      return response.results || []
+    } catch (err) {
+      error.value = err instanceof Error ? err.message : '获取通知失败'
+      throw err
+    } finally {
+      isLoadingMore.value = false
+    }
+  }
+
+  const loadMoreNotifications = async (params?: {
+    is_read?: string
+    type?: string
+  }) => {
+    if (!hasMore.value || isLoadingMore.value) return
+    return fetchNotificationsPage({ ...params, page: currentPage.value })
+  }
+
+  // 重置分页状态
+  const resetPagination = () => {
+    currentPage.value = 1
+    hasMore.value = true
+    isLoadingMore.value = false
+    notifications.value = []
+    totalCount.value = 0
   }
 
   const fetchNotificationStats = async () => {
@@ -240,6 +304,13 @@ export const useNotificationStore = defineStore('notifications', () => {
     isLoading,
     error,
 
+    // 分页状态
+    currentPage,
+    hasMore,
+    isLoadingMore,
+    pageSize,
+    totalCount,
+
     // Getters
     hasUnreadNotifications,
     unreadNotifications,
@@ -260,6 +331,11 @@ export const useNotificationStore = defineStore('notifications', () => {
     clearNotifications,
     initNotifications,
     startAutoRefresh,
-    stopAutoRefresh
+    stopAutoRefresh,
+
+    // 分页方法
+    fetchNotificationsPage,
+    loadMoreNotifications,
+    resetPagination
   }
 })
