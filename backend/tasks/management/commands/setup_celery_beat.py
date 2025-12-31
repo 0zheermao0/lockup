@@ -484,8 +484,8 @@ class Command(BaseCommand):
 
         # Create daily crontab schedule (Daily 4:05 AM Asia/Shanghai)
         strict_code_schedule, created = CrontabSchedule.objects.get_or_create(
-            minute='*/1',
-            hour='*',
+            minute='5',
+            hour='4',
             day_of_week='*',
             day_of_month='*',
             month_of_year='*',
