@@ -214,6 +214,8 @@ class TaskTimelineEvent(models.Model):
         ('radar_detection', '探测雷达检测'),
         ('system_freeze', '系统冻结'),
         ('verification_code_updated', '验证码更新'),
+        ('exclusive_task_created', '专属任务创建'),
+        ('board_task_taken', '任务板接取'),
     ]
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)

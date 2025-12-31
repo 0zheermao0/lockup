@@ -495,9 +495,14 @@ const boardTasks = computed(() => tasks.value) // Not needed anymore since we fi
 
 // Filter tabs based on task type
 const lockFilterTabs = computed(() => {
+  // Check if user is staff or superadmin
+  const isStaffOrSuperAdmin = authStore.user?.is_staff || authStore.user?.is_superuser
+
+  let tabs = []
+
   if (!taskCounts.value) {
     // Fallback to showing counts without numbers when API data is not available
-    return [
+    tabs = [
       { key: 'all', label: '全部', count: 0 },
       { key: 'active', label: '进行中', count: 0 },
       { key: 'voting', label: '投票中', count: 0 },
@@ -505,33 +510,49 @@ const lockFilterTabs = computed(() => {
       { key: 'my-tasks', label: '我的任务', count: 0 },
       { key: 'can-overtime', label: '可以加时的绒布球', count: 0 }
     ]
+  } else {
+    tabs = [
+      { key: 'all', label: '全部', count: taskCounts.value.lock_tasks.all },
+      { key: 'active', label: '进行中', count: taskCounts.value.lock_tasks.active },
+      { key: 'voting', label: '投票中', count: taskCounts.value.lock_tasks.voting },
+      { key: 'completed', label: '已完成', count: taskCounts.value.lock_tasks.completed },
+      { key: 'my-tasks', label: '我的任务', count: taskCounts.value.lock_tasks.my_tasks },
+      { key: 'can-overtime', label: '可以加时的绒布球', count: taskCounts.value.lock_tasks.can_overtime || 0 }
+    ]
   }
-  return [
-    { key: 'all', label: '全部', count: taskCounts.value.lock_tasks.all },
-    { key: 'active', label: '进行中', count: taskCounts.value.lock_tasks.active },
-    { key: 'voting', label: '投票中', count: taskCounts.value.lock_tasks.voting },
-    { key: 'completed', label: '已完成', count: taskCounts.value.lock_tasks.completed },
-    { key: 'my-tasks', label: '我的任务', count: taskCounts.value.lock_tasks.my_tasks },
-    { key: 'can-overtime', label: '可以加时的绒布球', count: taskCounts.value.lock_tasks.can_overtime || 0 }
-  ]
+
+  // Hide "全部" (all) and "已完成" (completed) tabs for non-staff and non-superadmin users
+  if (!isStaffOrSuperAdmin) {
+    tabs = tabs.filter(tab => tab.key !== 'all' && tab.key !== 'completed')
+  }
+
+  return tabs
 })
 
 const boardFilterTabs = computed(() => {
+  let tabs = []
+
   if (!taskCounts.value) {
     // Fallback to showing counts without numbers when API data is not available
-    return [
+    tabs = [
       { key: 'all', label: '全部', count: 0 },
       { key: 'available', label: '可接取', count: 0 },
       { key: 'my-published', label: '我发布的', count: 0 },
       { key: 'my-taken', label: '我接取的', count: 0 }
     ]
+  } else {
+    tabs = [
+      { key: 'all', label: '全部', count: taskCounts.value.board_tasks.all },
+      { key: 'available', label: '可接取', count: taskCounts.value.board_tasks.open },
+      { key: 'my-published', label: '我发布的', count: taskCounts.value.board_tasks.my_published },
+      { key: 'my-taken', label: '我接取的', count: taskCounts.value.board_tasks.my_taken }
+    ]
   }
-  return [
-    { key: 'all', label: '全部', count: taskCounts.value.board_tasks.all },
-    { key: 'available', label: '可接取', count: taskCounts.value.board_tasks.open },
-    { key: 'my-published', label: '我发布的', count: taskCounts.value.board_tasks.my_published },
-    { key: 'my-taken', label: '我接取的', count: taskCounts.value.board_tasks.my_taken }
-  ]
+
+  // Hide "全部" (all) tab for all users in board tasks
+  tabs = tabs.filter(tab => tab.key !== 'all')
+
+  return tabs
 })
 
 const currentFilterTabs = computed(() => {
@@ -1238,6 +1259,26 @@ watch(activeFilter, () => {
     return
   }
   refresh()
+})
+
+// Watch for filter tab changes and ensure activeFilter is valid
+watch(currentFilterTabs, (newTabs) => {
+  // Skip validation if we're currently restoring state
+  if (isRestoringState.value) {
+    return
+  }
+
+  // Check if current activeFilter is still available in the new tabs
+  const isCurrentFilterValid = newTabs.some(tab => tab.key === activeFilter.value)
+
+  if (!isCurrentFilterValid && newTabs.length > 0) {
+    // Set to the first available tab
+    const firstTab = newTabs[0]
+    if (firstTab) {
+      console.log('🔄 Current filter not available, switching to:', firstTab.key)
+      activeFilter.value = firstTab.key
+    }
+  }
 })
 
 // Restore state from TasksViewState
