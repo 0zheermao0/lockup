@@ -971,16 +971,13 @@ def process_checkin_voting_results(self):
             logger.info(f"Successfully processed {len(processed_sessions)} voting sessions")
 
             # ========================================================================
-            # 每日验证码更新 - 为所有活跃的严格模式带锁任务生成新验证码
+            # 每日验证码更新已移至用户首次打卡时触发 - 不再在此处定时更新
             # ========================================================================
-
-            verification_code_update_result = _update_strict_mode_verification_codes(now)
 
             return {
                 'status': 'success',
                 'processed_count': len(processed_sessions),
                 'processed_sessions': processed_sessions,
-                'verification_code_update': verification_code_update_result,
                 'timestamp': now.isoformat()
             }
 

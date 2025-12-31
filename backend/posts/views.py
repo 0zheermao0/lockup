@@ -106,7 +106,7 @@ class PostListCreateView(generics.ListCreateAPIView):
         logger.info(f"Created voting session for check-in post {post.id}, deadline: {deadline}")
 
     def _process_daily_checkin_reward(self, post):
-        """处理带锁任务状态下的每日首次打卡奖励"""
+        """处理带锁任务状态下的每日首次打卡奖励和验证码更新"""
         # 只处理打卡类型的动态
         if post.post_type != 'checkin':
             return
@@ -127,14 +127,19 @@ class PostListCreateView(generics.ListCreateAPIView):
                 return
 
             # 检查今天是否已经发布过打卡动态
+            # 使用时间范围查询而不是 created_at__date，避免时区问题
+            start_of_day = timezone.now().replace(hour=0, minute=0, second=0, microsecond=0)
+            end_of_day = start_of_day + timezone.timedelta(days=1)
+
             today_checkins = Post.objects.filter(
                 user=user,
                 post_type='checkin',
-                created_at__date=today
+                created_at__gte=start_of_day,
+                created_at__lt=end_of_day
             ).exclude(id=post.id)  # 排除当前创建的这条动态
 
             if today_checkins.exists():
-                logger.info(f"User {user.username} already has checkin posts today, skipping daily reward")
+                logger.info(f"User {user.username} already has checkin posts today, skipping daily reward and verification code update")
                 return
 
             # 符合条件：用户有活跃带锁任务且今日首次打卡
@@ -160,8 +165,78 @@ class PostListCreateView(generics.ListCreateAPIView):
 
             logger.info(f"Daily checkin reward granted to user {user.username}: +1 coin for first daily checkin with active lock task")
 
+            # 2. 新增：更新严格模式任务验证码
+            self._update_strict_mode_verification_codes(user)
+
         except Exception as e:
-            logger.error(f"Error processing daily checkin reward for user {user.username}: {e}")
+            logger.error(f"Error processing daily checkin reward and verification code update for user {user.username}: {e}")
+
+    def _update_strict_mode_verification_codes(self, user):
+        """更新用户的严格模式任务验证码"""
+        from tasks.models import LockTask, TaskTimelineEvent
+
+        try:
+            # 获取用户的所有活跃严格模式任务
+            strict_tasks = LockTask.objects.filter(
+                user=user,
+                strict_mode=True,
+                status='active'
+            )
+
+            if not strict_tasks.exists():
+                logger.info(f"User {user.username} has no active strict mode tasks")
+                return
+
+            updated_count = 0
+            for task in strict_tasks:
+                # 生成新验证码（复用celery_tasks中的逻辑）
+                old_code = task.strict_code
+                new_code = self._generate_verification_code()
+
+                # 更新任务验证码
+                task.strict_code = new_code
+                task.save(update_fields=['strict_code'])
+
+                # 创建时间线事件
+                self._create_verification_update_timeline_event(task, old_code, new_code)
+
+                updated_count += 1
+                logger.info(f"Updated verification code for task {task.title}: {old_code} -> {new_code}")
+
+            logger.info(f"Updated verification codes for {updated_count} strict mode tasks for user {user.username}")
+
+        except Exception as e:
+            logger.error(f"Error updating strict mode verification codes for user {user.username}: {e}")
+
+    def _generate_verification_code(self):
+        """生成4位验证码（格式：字母数字字母数字，如A1B2）"""
+        import random
+        import string
+        letters = random.choices(string.ascii_uppercase, k=2)
+        digits = random.choices(string.digits, k=2)
+        return f"{letters[0]}{digits[0]}{letters[1]}{digits[1]}"
+
+    def _create_verification_update_timeline_event(self, task, old_code, new_code):
+        """创建验证码更新的时间线事件"""
+        from tasks.models import TaskTimelineEvent
+
+        try:
+            TaskTimelineEvent.objects.create(
+                task=task,
+                user=task.user,
+                event_type='verification_code_updated',
+                description='验证码已更新（首次打卡触发）',
+                metadata={
+                    'old_verification_code': old_code,
+                    'new_verification_code': new_code,
+                    'trigger_reason': 'first_daily_checkin',
+                    'update_time': timezone.now().isoformat()
+                }
+            )
+            logger.info(f"Created verification update timeline event for task {task.title}")
+
+        except Exception as e:
+            logger.error(f"Error creating verification update timeline event: {e}")
 
     def get_queryset(self):
         queryset = Post.objects.select_related('user').prefetch_related(
