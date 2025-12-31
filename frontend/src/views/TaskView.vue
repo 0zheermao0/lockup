@@ -530,6 +530,9 @@ const lockFilterTabs = computed(() => {
 })
 
 const boardFilterTabs = computed(() => {
+  // Check if user is staff or superadmin
+  const isStaffOrSuperAdmin = authStore.user?.is_staff || authStore.user?.is_superuser
+
   let tabs = []
 
   if (!taskCounts.value) {
@@ -549,8 +552,10 @@ const boardFilterTabs = computed(() => {
     ]
   }
 
-  // Hide "全部" (all) tab for all users in board tasks
-  tabs = tabs.filter(tab => tab.key !== 'all')
+  // Hide "全部" (all) tab for non-staff and non-superadmin users in board tasks
+  if (!isStaffOrSuperAdmin) {
+    tabs = tabs.filter(tab => tab.key !== 'all')
+  }
 
   return tabs
 })
