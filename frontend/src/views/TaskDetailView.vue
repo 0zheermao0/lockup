@@ -146,6 +146,9 @@
                   <span class="task-difficulty" :class="taskDifficulty">
                     {{ getDifficultyText(taskDifficulty) }}
                   </span>
+                  <span v-if="task.task_type === 'lock' && task.strict_mode" class="task-strict-mode">
+                    严格模式
+                  </span>
                   <span class="task-status" :class="task.status">
                     {{ getStatusText(task.status) }}
                   </span>
@@ -3940,7 +3943,7 @@ onUnmounted(() => {
   flex-wrap: wrap;
 }
 
-.task-type, .task-difficulty, .task-status {
+.task-type, .task-difficulty, .task-status, .task-strict-mode {
   padding: 0.25rem 0.75rem;
   border-radius: 4px;
   font-size: 0.875rem;
@@ -3970,6 +3973,11 @@ onUnmounted(() => {
 
 .task-difficulty.hell {
   background-color: #dc3545;
+  color: white;
+}
+
+.task-strict-mode {
+  background-color: #6f42c1;
   color: white;
 }
 

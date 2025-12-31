@@ -37,6 +37,9 @@
           <span v-if="task.task_type === 'lock' && task.difficulty" class="task-difficulty" :class="task.difficulty">
             {{ getDifficultyText(task.difficulty) }}
           </span>
+          <span v-if="task.task_type === 'lock' && (task as any).strict_mode" class="task-strict-mode">
+            严格模式
+          </span>
           <span v-if="task.task_type === 'board' && (task as any).reward" class="task-reward">
             {{ (task as any).reward }} 积分
           </span>
@@ -591,7 +594,7 @@ onUnmounted(() => {
   flex-wrap: wrap;
 }
 
-.task-type, .task-difficulty, .task-status, .task-reward {
+.task-type, .task-difficulty, .task-status, .task-reward, .task-strict-mode {
   padding: 0.25rem 0.5rem;
   border-radius: 4px;
   font-size: 0.75rem;
@@ -626,6 +629,11 @@ onUnmounted(() => {
 
 .task-difficulty.hell {
   background-color: #dc3545;
+  color: white;
+}
+
+.task-strict-mode {
+  background-color: #6f42c1;
   color: white;
 }
 
@@ -1004,7 +1012,8 @@ onUnmounted(() => {
   .task-type,
   .task-difficulty,
   .task-status,
-  .task-reward {
+  .task-reward,
+  .task-strict-mode {
     font-size: 0.65rem;
     padding: 0.15rem 0.3rem;
   }
