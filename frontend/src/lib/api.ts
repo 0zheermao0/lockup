@@ -855,14 +855,26 @@ export const notificationsApi = {
     is_read?: string;
     type?: string;
     limit?: number;
-  }): Promise<NotificationItem[]> {
+    page?: number;
+  }): Promise<PaginatedResponse<NotificationItem>> {
     const query = new URLSearchParams();
     if (params?.is_read !== undefined) query.append('is_read', params.is_read);
     if (params?.type) query.append('type', params.type);
-    if (params?.limit) query.append('limit', params.limit.toString());
+    if (params?.limit) query.append('page_size', params.limit.toString());
+    if (params?.page) query.append('page', params.page.toString());
 
     const queryString = query.toString();
-    const response = await apiRequest<PaginatedResponse<NotificationItem>>(`/auth/notifications/${queryString ? `?${queryString}` : ''}`);
+    return apiRequest<PaginatedResponse<NotificationItem>>(`/auth/notifications/${queryString ? `?${queryString}` : ''}`);
+  },
+
+  // 保持向后兼容的简化方法
+  async getNotificationsList(params?: {
+    is_read?: string;
+    type?: string;
+    limit?: number;
+    page?: number;
+  }): Promise<NotificationItem[]> {
+    const response = await this.getNotifications(params);
     return response.results || [];
   },
 
