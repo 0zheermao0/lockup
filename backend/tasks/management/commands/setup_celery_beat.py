@@ -1248,7 +1248,8 @@ class Command(BaseCommand):
             'schedule-pending-events',
             'execute-pending-events',
             'process-expired-effects',
-            'event-system-health-check'
+            'event-system-health-check',
+            'update-strict-mode-verification-codes',
         ]
 
         if dry_run:
