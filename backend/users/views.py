@@ -1,6 +1,7 @@
 from rest_framework import generics, permissions, status
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
+from rest_framework.views import APIView
 from rest_framework.authtoken.models import Token
 from django.contrib.auth import login, logout
 from django.db.models import Q, Count
@@ -11,7 +12,7 @@ from .serializers import (
     UserSerializer, UserPublicSerializer, UserRegistrationSerializer,
     UserLoginSerializer, UserProfileUpdateSerializer, FriendshipSerializer,
     FriendRequestSerializer, UserLevelUpgradeSerializer, UserStatsSerializer,
-    PasswordChangeSerializer, NotificationSerializer, NotificationCreateSerializer
+    PasswordChangeSerializer, SimplePasswordChangeSerializer, NotificationSerializer, NotificationCreateSerializer
 )
 
 
@@ -334,6 +335,30 @@ class PasswordChangeView(generics.GenericAPIView):
         serializer.save()
 
         return Response({'message': '密码修改成功'})
+
+
+class SimplePasswordChangeView(APIView):
+    """简化密码修改视图（无需原密码验证）"""
+
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request):
+        """处理密码修改请求"""
+        serializer = SimplePasswordChangeSerializer(
+            data=request.data,
+            context={'request': request}
+        )
+
+        if serializer.is_valid():
+            serializer.save()
+            return Response({
+                'message': '密码修改成功'
+            }, status=status.HTTP_200_OK)
+
+        return Response(
+            serializer.errors,
+            status=status.HTTP_400_BAD_REQUEST
+        )
 
 
 @api_view(['POST'])

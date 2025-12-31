@@ -1,7 +1,8 @@
 import type {
   User, Post, Comment, LoginRequest, RegisterRequest, PaginatedResponse,
   StoreItem, UserInventory, Item, Purchase, Game, GameParticipant,
-  DriftBottleItem, BuriedTreasure, GameSession, ExplorationZone, NotificationItem
+  DriftBottleItem, BuriedTreasure, GameSession, ExplorationZone, NotificationItem,
+  SimplePasswordChangeRequest
 } from '../types/index';
 import { API_BASE_URL } from '../config/index.js';
 
@@ -100,6 +101,13 @@ export const authApi = {
     });
 
     return handleResponse<{ message: string; avatar_url: string }>(response);
+  },
+
+  async changePasswordSimple(passwordData: SimplePasswordChangeRequest): Promise<{ message: string }> {
+    return apiRequest('/auth/password/change-simple/', {
+      method: 'POST',
+      body: JSON.stringify(passwordData),
+    });
   },
 };
 

@@ -402,6 +402,33 @@ class PasswordChangeSerializer(serializers.Serializer):
         return user
 
 
+class SimplePasswordChangeSerializer(serializers.Serializer):
+    """简化密码修改序列化器（无需原密码验证）"""
+
+    new_password = serializers.CharField(write_only=True)
+    new_password_confirm = serializers.CharField(write_only=True)
+
+    def validate_new_password(self, value):
+        """验证新密码强度，提供详细的错误信息"""
+        user = self.context['request'].user
+        return validate_password_with_detailed_messages(value, user=user)
+
+    def validate(self, attrs):
+        """验证密码确认匹配"""
+        if attrs['new_password'] != attrs['new_password_confirm']:
+            raise serializers.ValidationError({
+                "new_password_confirm": "新密码确认不匹配"
+            })
+        return attrs
+
+    def save(self):
+        """保存新密码"""
+        user = self.context['request'].user
+        user.set_password(self.validated_data['new_password'])
+        user.save()
+        return user
+
+
 class NotificationSerializer(serializers.ModelSerializer):
     """通知序列化器"""
 
