@@ -119,10 +119,11 @@ class LockTaskListCreateView(generics.ListCreateAPIView):
             from datetime import timedelta
             from .models import OvertimeAction
 
-            # 基础条件：带锁任务、活跃状态、不是自己的任务
+            # 基础条件：带锁任务、活跃状态、不是自己的任务、未开启防护罩
             queryset = queryset.filter(
                 task_type='lock',
-                status='active'
+                status='active',
+                shield_active=False  # 排除开启防护罩的任务
             ).exclude(user=self.request.user)
 
             # 排除两小时内已经对同一发布者加过时的任务
@@ -2466,7 +2467,8 @@ def get_task_counts(request):
         # 计算可以加时的任务数量
         can_overtime_queryset = lock_tasks.filter(
             task_type='lock',
-            status='active'
+            status='active',
+            shield_active=False  # 排除开启防护罩的任务
         ).exclude(user=request.user)
 
         # 排除两小时内已经对同一发布者加过时的任务
@@ -3894,3 +3896,117 @@ def create_exclusive_task_for_key_holder(request, pk):
         'assigned_to': target_user.username,
         'coins_remaining': request.user.coins
     }, status=status.HTTP_201_CREATED)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def toggle_shield(request, pk):
+    """切换防护罩状态 - 需要钥匙持有者权限"""
+    task = get_object_or_404(LockTask, pk=pk)
+
+    # 检查任务类型
+    if task.task_type != 'lock':
+        return Response(
+            {'error': '只能为带锁任务切换防护罩'},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+
+    # 检查任务状态
+    if task.status not in ['active', 'voting']:
+        return Response(
+            {'error': '任务不在可切换防护罩的状态'},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+
+    # 检查用户是否持有对应的钥匙道具
+    task_key_item = Item.objects.filter(
+        item_type__name='key',
+        owner=request.user,
+        status='available',
+        properties__task_id=str(task.id)
+    ).first()
+
+    if not task_key_item:
+        return Response(
+            {'error': '只有钥匙持有者可以切换防护罩'},
+            status=status.HTTP_403_FORBIDDEN
+        )
+
+    # 检查用户积分是否足够（每次操作消耗15积分）
+    cost = 15
+    if request.user.coins < cost:
+        return Response(
+            {'error': f'积分不足，需要{cost}积分，当前{request.user.coins}积分'},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+
+    # 切换防护罩状态
+    new_shield_status = not task.shield_active
+    task.shield_active = new_shield_status
+
+    if new_shield_status:
+        # 开启防护罩
+        task.shield_activated_at = timezone.now()
+        task.shield_activated_by = request.user
+        action = '开启'
+        event_type = 'shield_activated'
+    else:
+        # 关闭防护罩
+        task.shield_activated_at = None
+        task.shield_activated_by = None
+        action = '关闭'
+        event_type = 'shield_deactivated'
+
+    task.save()
+
+    # 扣除用户积分
+    request.user.coins -= cost
+    request.user.save()
+
+    # 创建时间线事件
+    description = f'钥匙持有者{action}防护罩（消耗{cost}积分）'
+
+    TaskTimelineEvent.objects.create(
+        task=task,
+        event_type=event_type,
+        user=request.user,
+        description=description,
+        metadata={
+            'action': 'toggle_shield',
+            'shield_active': task.shield_active,
+            'cost': cost,
+            'user_remaining_coins': request.user.coins,
+            'key_holder_action': True,
+            'shield_activated_at': task.shield_activated_at.isoformat() if task.shield_activated_at else None
+        }
+    )
+
+    # 发送通知给任务创建者
+    if task.user != request.user:  # 避免给自己发送通知
+        Notification.create_notification(
+            recipient=task.user,
+            actor=request.user,
+            notification_type='task_shield_toggled',
+            title=f'🛡️ 防护罩{action}',
+            message=f'钥匙持有者{request.user.username}为您的任务《{task.title}》{action}了防护罩',
+            related_object_type='task',
+            related_object_id=str(task.id),
+            extra_data={
+                'task_title': task.title,
+                'shield_active': task.shield_active,
+                'action': action,
+                'key_holder': request.user.username,
+                'cost': cost
+            },
+            priority='normal'
+        )
+
+    logger.info(f"Key holder {request.user.username} toggled shield for task {task.id}: {action}")
+
+    return Response({
+        'message': f'成功{action}防护罩',
+        'shield_active': task.shield_active,
+        'cost': cost,
+        'remaining_coins': request.user.coins,
+        'activated_at': task.shield_activated_at.isoformat() if task.shield_activated_at else None
+    })

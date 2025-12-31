@@ -1,5 +1,5 @@
 import type { LockTask, TaskCreateRequest, PinningQueueStatus, PinningCarouselData, SunBottleResponse } from '../types/index'
-import { API_BASE_URL } from '../config/index.js';
+import { API_BASE_URL } from '../config/index';
 
 class ApiError extends Error {
   constructor(
@@ -14,7 +14,18 @@ class ApiError extends Error {
 
 async function handleResponse<T>(response: Response): Promise<T> {
   if (!response.ok) {
-    const errorData = await response.json().catch(() => ({}));
+    let errorData: any = {};
+    try {
+      if (response.headers.get('content-type')?.includes('application/json')) {
+        errorData = await response.json();
+      } else {
+        const text = await response.text();
+        errorData = { message: text || response.statusText };
+      }
+    } catch (parseError) {
+      errorData = { message: response.statusText };
+    }
+
     throw new ApiError(
       errorData.message || `HTTP ${response.status}: ${response.statusText}`,
       response.status,
@@ -29,13 +40,23 @@ async function handleResponse<T>(response: Response): Promise<T> {
 
   // Check if response has content to parse
   const contentType = response.headers.get('content-type');
+
   if (contentType && contentType.includes('application/json')) {
-    return response.json();
+    try {
+      const jsonData = await response.json();
+      return jsonData;
+    } catch (jsonError) {
+      throw new Error(`Failed to parse JSON response: ${(jsonError as any)?.message || String(jsonError)}`);
+    }
   }
 
   // For non-JSON responses, return text
-  const text = await response.text();
-  return (text ? text : null) as T;
+  try {
+    const text = await response.text();
+    return (text ? text : null) as T;
+  } catch (textError) {
+    throw new Error(`Failed to read response: ${(textError as any)?.message || String(textError)}`);
+  }
 }
 
 async function apiRequest<T>(
@@ -43,6 +64,7 @@ async function apiRequest<T>(
   options: RequestInit = {}
 ): Promise<T> {
   const token = localStorage.getItem('token');
+  const fullUrl = `${API_BASE_URL}${endpoint}`;
 
   const config: RequestInit = {
     headers: {
@@ -53,8 +75,12 @@ async function apiRequest<T>(
     ...options,
   };
 
-  const response = await fetch(`${API_BASE_URL}${endpoint}`, config);
-  return handleResponse<T>(response);
+  try {
+    const response = await fetch(fullUrl, config);
+    return await handleResponse<T>(response);
+  } catch (fetchError) {
+    throw new Error(`Network error: ${(fetchError as any)?.message || String(fetchError)}`);
+  }
 }
 
 // Tasks API
@@ -298,6 +324,19 @@ export const tasksApi = {
   // 解冻任务倒计时
   unfreezeTask: async (id: string): Promise<any> => {
     return apiRequest(`/tasks/${id}/unfreeze/`, {
+      method: 'POST'
+    })
+  },
+
+  // 切换防护罩状态
+  toggleShield: async (id: string): Promise<{
+    message: string
+    shield_active: boolean
+    cost: number
+    remaining_coins: number
+    activated_at: string | null
+  }> => {
+    return apiRequest(`/tasks/${id}/toggle-shield/`, {
       method: 'POST'
     })
   },

@@ -182,16 +182,14 @@ class PostCreateSerializer(serializers.ModelSerializer):
             # 只为有活跃严格模式带锁任务的用户创建投票会话
             from tasks.models import LockTask
             from django.utils import timezone
-            from datetime import timedelta
 
-            # 检查用户是否有在24小时内开始的活跃严格模式任务
-            yesterday = timezone.now() - timedelta(hours=24)
+            # 检查用户是否有活跃的严格模式任务（移除24小时限制）
             active_strict_tasks = LockTask.objects.filter(
                 user=user,
                 task_type='lock',
                 status__in=['pending', 'active', 'voting'],
-                strict_mode=True,
-                start_time__gte=yesterday  # 任务必须在24小时内开始
+                strict_mode=True
+                # 移除 start_time__gte=yesterday 限制，只要任务活跃就创建投票会话
             )
 
             if active_strict_tasks.exists():

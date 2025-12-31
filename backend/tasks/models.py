@@ -116,6 +116,18 @@ class LockTask(models.Model):
         help_text='自动创建的动态'
     )
 
+    # 防护罩字段
+    shield_active = models.BooleanField(default=False, help_text='是否开启防护罩')
+    shield_activated_at = models.DateTimeField(blank=True, null=True, help_text='防护罩开启时间')
+    shield_activated_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        blank=True,
+        null=True,
+        on_delete=models.SET_NULL,
+        related_name='activated_shields',
+        help_text='开启防护罩的钥匙持有者'
+    )
+
     class Meta:
         ordering = ['-created_at']
 
@@ -216,6 +228,8 @@ class TaskTimelineEvent(models.Model):
         ('verification_code_updated', '验证码更新'),
         ('exclusive_task_created', '专属任务创建'),
         ('board_task_taken', '任务板接取'),
+        ('shield_activated', '防护罩开启'),
+        ('shield_deactivated', '防护罩关闭'),
     ]
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
