@@ -72,6 +72,47 @@
                 />
               </div>
 
+              <!-- Password Change Section (only in edit mode) -->
+              <div v-if="editMode && isOwnProfile" class="password-change-section">
+                <h4 class="password-section-title">修改密码</h4>
+                <p class="password-help-text">留空表示不修改密码</p>
+
+                <div class="info-row">
+                  <span class="label">新密码</span>
+                  <div class="password-input-wrapper">
+                    <input
+                      v-model="passwordForm.new_password"
+                      :type="showPassword ? 'text' : 'password'"
+                      class="edit-input password-input"
+                      placeholder="输入新密码"
+                      autocomplete="new-password"
+                    />
+                    <button
+                      type="button"
+                      class="password-toggle"
+                      @click="showPassword = !showPassword"
+                    >
+                      {{ showPassword ? '👁️' : '🙈' }}
+                    </button>
+                  </div>
+                </div>
+
+                <div class="info-row">
+                  <span class="label">确认新密码</span>
+                  <input
+                    v-model="passwordForm.new_password_confirm"
+                    :type="showPassword ? 'text' : 'password'"
+                    class="edit-input"
+                    placeholder="再次输入新密码"
+                    autocomplete="new-password"
+                  />
+                </div>
+
+                <div v-if="passwordError" class="error-message">
+                  {{ passwordError }}
+                </div>
+              </div>
+
               <!-- Bio -->
               <div class="info-row">
                 <span class="label">个人简介</span>
@@ -287,7 +328,7 @@ import { telegramApi, type TelegramStatus } from '../lib/api-telegram'
 import { smartGoBack } from '../utils/navigation'
 import LockStatus from '../components/LockStatus.vue'
 import UserAvatar from '../components/UserAvatar.vue'
-import type { User } from '../types/index'
+import type { User, SimplePasswordChangeRequest } from '../types/index'
 
 const route = useRoute()
 const router = useRouter()
@@ -312,6 +353,16 @@ const editForm = reactive({
   location_precision: 1,
   show_telegram_account: false
 })
+
+// 密码修改相关状态
+const passwordForm = reactive<SimplePasswordChangeRequest>({
+  new_password: '',
+  new_password_confirm: ''
+})
+
+const showPassword = ref(false)
+const passwordError = ref('')
+const passwordLoading = ref(false)
 
 const isOwnProfile = computed(() => {
   if (!userProfile.value || !authStore.user) return false
@@ -367,6 +418,7 @@ const toggleEditMode = () => {
   if (editMode.value) {
     // 取消编辑，恢复原始数据
     initEditForm()
+    resetPasswordForm()
   }
   editMode.value = !editMode.value
 }
@@ -413,11 +465,85 @@ const handleAvatarUpload = async (event: Event) => {
   }
 }
 
+// 重置密码表单
+const resetPasswordForm = () => {
+  passwordForm.new_password = ''
+  passwordForm.new_password_confirm = ''
+  passwordError.value = ''
+  showPassword.value = false
+}
+
+// 验证密码表单
+const validatePasswordForm = (): boolean => {
+  if (!passwordForm.new_password && !passwordForm.new_password_confirm) {
+    return true // 两个都为空表示不修改密码
+  }
+
+  if (!passwordForm.new_password) {
+    passwordError.value = '请输入新密码'
+    return false
+  }
+
+  if (passwordForm.new_password.length < 8) {
+    passwordError.value = '密码长度至少8位'
+    return false
+  }
+
+  if (passwordForm.new_password !== passwordForm.new_password_confirm) {
+    passwordError.value = '两次输入的密码不一致'
+    return false
+  }
+
+  passwordError.value = ''
+  return true
+}
+
+// 修改密码
+const changePassword = async (): Promise<boolean> => {
+  if (!validatePasswordForm()) {
+    return false
+  }
+
+  // 如果密码字段为空，跳过密码修改
+  if (!passwordForm.new_password) {
+    return true
+  }
+
+  try {
+    passwordLoading.value = true
+    await authApi.changePasswordSimple(passwordForm)
+    resetPasswordForm()
+    console.log('密码修改成功')
+    return true
+  } catch (error: any) {
+    try {
+      const errorData = JSON.parse(error.message)
+      if (errorData.new_password) {
+        passwordError.value = Array.isArray(errorData.new_password)
+          ? errorData.new_password[0]
+          : errorData.new_password
+      } else if (errorData.new_password_confirm) {
+        passwordError.value = Array.isArray(errorData.new_password_confirm)
+          ? errorData.new_password_confirm[0]
+          : errorData.new_password_confirm
+      } else {
+        passwordError.value = '密码修改失败，请重试'
+      }
+    } catch {
+      passwordError.value = '密码修改失败，请重试'
+    }
+    return false
+  } finally {
+    passwordLoading.value = false
+  }
+}
+
 const saveProfile = async () => {
   if (!userProfile.value) return
 
   saving.value = true
   try {
+    // 先保存用户资料
     const updatedProfile = await authApi.updateProfile({
       username: editForm.username,
       bio: editForm.bio,
@@ -425,14 +551,19 @@ const saveProfile = async () => {
       show_telegram_account: editForm.show_telegram_account
     })
 
-    // 更新本地数据
-    userProfile.value = { ...userProfile.value, ...updatedProfile }
+    // 然后处理密码修改（如果有）
+    const passwordSuccess = await changePassword()
 
-    // 更新全局用户状态
-    authStore.user = userProfile.value
+    if (passwordSuccess) {
+      // 更新本地数据
+      userProfile.value = { ...userProfile.value, ...updatedProfile }
 
-    editMode.value = false
-    console.log('资料更新成功')
+      // 更新全局用户状态
+      authStore.user = userProfile.value
+
+      editMode.value = false
+      console.log('资料更新成功')
+    }
   } catch (error: any) {
     console.error('Error updating profile:', error)
     alert('保存失败，请重试')
@@ -805,6 +936,66 @@ onMounted(async () => {
 .edit-textarea {
   resize: vertical;
   min-height: 80px;
+}
+
+/* Password Change Section Styles */
+.password-change-section {
+  margin: 1.5rem 0;
+  padding: 1.5rem;
+  border: 2px solid #e9ecef;
+  border-radius: 8px;
+  background-color: #f8f9fa;
+}
+
+.password-section-title {
+  margin: 0 0 0.5rem 0;
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: #333;
+}
+
+.password-help-text {
+  margin: 0 0 1rem 0;
+  font-size: 0.875rem;
+  color: #666;
+  font-style: italic;
+}
+
+.password-input-wrapper {
+  position: relative;
+  display: flex;
+  align-items: center;
+  flex: 1;
+}
+
+.password-input {
+  padding-right: 3rem !important;
+}
+
+.password-toggle {
+  position: absolute;
+  right: 0.5rem;
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 1.2rem;
+  padding: 0.25rem;
+  border-radius: 4px;
+  transition: background-color 0.2s;
+}
+
+.password-toggle:hover {
+  background-color: rgba(0, 0, 0, 0.1);
+}
+
+.error-message {
+  margin-top: 0.5rem;
+  padding: 0.5rem;
+  background-color: #f8d7da;
+  color: #721c24;
+  border: 1px solid #f5c6cb;
+  border-radius: 4px;
+  font-size: 0.875rem;
 }
 
 .level-badge {

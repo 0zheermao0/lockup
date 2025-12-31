@@ -431,6 +431,11 @@ export interface TaskCreateRequest {
   max_participants?: number
 }
 
+export interface SimplePasswordChangeRequest {
+  new_password: string
+  new_password_confirm: string
+}
+
 // Store Types (Pinia stores)
 export interface UserStore {
   user: User | null
