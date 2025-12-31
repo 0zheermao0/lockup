@@ -1003,6 +1003,32 @@
                 </div>
               </div>
 
+              <!-- Shield Control -->
+              <div class="key-action-card">
+                <div class="action-header">
+                  <h4>🛡️ 防护罩控制</h4>
+                  <span class="action-cost">消耗 15 积分</span>
+                </div>
+                <p class="action-description">
+                  当前状态: {{ (task?.task_type === 'lock' && task?.shield_active) ? '🛡️ 防护罩已开启' : '🔓 防护罩已关闭' }}
+                  <br>
+                  <small>开启后任务将从"可加时的绒布球"列表中隐藏</small>
+                </p>
+                <div class="action-buttons">
+                  <button
+                    @click="toggleShield"
+                    :disabled="!canAffordShield || shieldToggling"
+                    class="key-action-btn shield-toggle"
+                    :class="{
+                      'disabled': !canAffordShield || shieldToggling,
+                      'shield-active': task?.task_type === 'lock' && task?.shield_active
+                    }"
+                  >
+                    {{ shieldToggling ? '切换中...' : ((task?.task_type === 'lock' && task?.shield_active) ? '🔓 关闭防护罩' : '🛡️ 开启防护罩') }}
+                  </button>
+                </div>
+              </div>
+
               <!-- Key Return Option -->
               <div v-if="taskKey && taskKey.original_owner && taskKey.original_owner.id !== authStore.user?.id" class="key-action-card">
                 <div class="action-header">
@@ -1228,6 +1254,9 @@ const pinningInProgress = ref(false)
 
 // Freeze state
 const freezingInProgress = ref(false)
+
+// Shield state
+const shieldToggling = ref(false)
 
 // Exclusive task state
 const showExclusiveTaskModal = ref(false)
@@ -1747,6 +1776,11 @@ const canAffordFreeze = computed(() => {
 const canAffordExclusiveTask = computed(() => {
   if (!authStore.user || !canManageKeyActions.value) return false
   return authStore.user.coins >= 15 // 专属任务需要15积分
+})
+
+const canAffordShield = computed(() => {
+  if (!authStore.user || !canManageKeyActions.value) return false
+  return authStore.user.coins >= 15 // 防护罩切换需要15积分
 })
 
 const isExclusiveTaskFormValid = computed(() => {
@@ -3243,6 +3277,134 @@ const unfreezeTask = async () => {
     }
   } finally {
     freezingInProgress.value = false
+  }
+}
+
+// Shield toggle method
+const toggleShield = async () => {
+  if (!task.value || !canAffordShield.value) {
+    showToast.value = true
+    toastData.value = {
+      type: 'error',
+      title: '操作失败',
+      message: '积分不足或无权限切换防护罩',
+      secondaryMessage: '防护罩切换需要15积分，请检查您的余额'
+    }
+    return
+  }
+
+  shieldToggling.value = true
+
+  try {
+    // Validate API method exists
+    if (!tasksApi || typeof tasksApi.toggleShield !== 'function') {
+      throw new Error('toggleShield API method is not available')
+    }
+
+    const result = await tasksApi.toggleShield(task.value.id)
+
+    // Validate API response
+    if (!result || typeof result !== 'object') {
+      throw new Error('Invalid API response')
+    }
+
+    // Check required properties exist
+    const requiredProps = ['shield_active', 'cost', 'remaining_coins', 'message']
+    for (const prop of requiredProps) {
+      if (!(prop in result)) {
+        throw new Error(`Missing required property: ${prop}`)
+      }
+    }
+
+    // 更新任务的防护罩状态
+    if (task.value && typeof task.value === 'object' && task.value.task_type === 'lock') {
+      task.value.shield_active = result.shield_active
+
+      if (result.activated_at) {
+        task.value.shield_activated_at = result.activated_at
+        if (authStore && authStore.user) {
+          task.value.shield_activated_by = authStore.user
+        }
+      } else {
+        task.value.shield_activated_at = null
+        task.value.shield_activated_by = null
+      }
+    }
+
+    // 刷新用户数据以更新积分
+    try {
+      if (authStore && typeof authStore.refreshUser === 'function') {
+        await authStore.refreshUser()
+      }
+    } catch (refreshError) {
+      // Continue with the operation even if user refresh fails
+    }
+
+    // 刷新任务时间线
+    try {
+      if (typeof fetchTimeline === 'function') {
+        await fetchTimeline()
+      }
+    } catch (timelineError) {
+      // Continue with the operation even if timeline refresh fails
+    }
+
+    // 显示成功消息
+    const statusText = result.shield_active ? '开启' : '关闭'
+    const statusIcon = result.shield_active ? '🛡️' : '🔓'
+
+    showToast.value = true
+    toastData.value = {
+      type: 'success',
+      title: `防护罩${statusText}成功`,
+      message: `${statusIcon} 防护罩已${statusText}`,
+      secondaryMessage: `消耗了 ${result.cost} 积分`,
+      details: {
+        '当前状态': result.shield_active ? '🛡️ 防护罩已开启' : '🔓 防护罩已关闭',
+        '消耗积分': `${result.cost} 积分`,
+        '剩余积分': `${result.remaining_coins} 积分`,
+        '生效说明': result.shield_active ? '任务已从"可加时的绒布球"列表中隐藏' : '任务将重新在"可加时的绒布球"列表中显示'
+      }
+    }
+  } catch (error: any) {
+    console.error('Shield toggle error:', error)
+
+    // 处理特定错误消息
+    let errorMessage = '防护罩切换失败，请重试'
+    let secondaryMessage = '请稍后重试或联系管理员'
+
+    if (error && typeof error === 'object') {
+      if (error.response?.data?.error) {
+        errorMessage = error.response.data.error
+      } else if (error.data?.error) {
+        errorMessage = error.data.error
+      } else if (error.response?.status === 404 || error.status === 404) {
+        errorMessage = '任务不存在或已被删除'
+      } else if (error.response?.status === 403 || error.status === 403) {
+        errorMessage = '您没有权限切换此任务的防护罩'
+      } else if (error.response?.status === 400 || error.status === 400) {
+        errorMessage = '积分不足或操作无效'
+        secondaryMessage = '请检查您的积分余额'
+      } else if (error.response?.status === 500 || error.status === 500) {
+        errorMessage = '服务器内部错误，请稍后重试'
+      } else if (error.message) {
+        errorMessage = `网络错误：${error.message}`
+      }
+    } else if (typeof error === 'string') {
+      errorMessage = `错误：${error}`
+    } else {
+      errorMessage = `未知错误：${String(error)}`
+    }
+
+    showToast.value = true
+    toastData.value = {
+      type: 'error',
+      title: '操作失败',
+      message: errorMessage,
+      secondaryMessage: secondaryMessage
+    }
+  } finally {
+    shieldToggling.value = false
   }
 }
 
@@ -5690,6 +5852,36 @@ onUnmounted(() => {
 
 .key-action-btn.exclusive-task:hover:not(.disabled) {
   background: linear-gradient(135deg, #5a2d91, #4c2a85);
+}
+
+.key-action-btn.shield-toggle {
+  background: linear-gradient(135deg, #28a745, #20c997);
+  min-width: 160px;
+}
+
+.key-action-btn.shield-toggle:hover:not(.disabled) {
+  background: linear-gradient(135deg, #218838, #1e9b85);
+}
+
+.key-action-btn.shield-toggle.shield-active {
+  background: linear-gradient(135deg, #dc3545, #c82333);
+  animation: pulse-shield-active 2s ease-in-out infinite;
+}
+
+.key-action-btn.shield-toggle.shield-active:hover:not(.disabled) {
+  background: linear-gradient(135deg, #c82333, #bd2130);
+}
+
+@keyframes pulse-shield-active {
+  0%, 100% {
+    opacity: 1;
+    box-shadow: 3px 3px 0 #000;
+  }
+  50% {
+    opacity: 0.8;
+    box-shadow: 5px 5px 0 #000;
+    transform: translate(-1px, -1px);
+  }
 }
 
 @keyframes pulse-hidden-mode {

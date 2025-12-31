@@ -28,6 +28,7 @@ urlpatterns = [
     # 钥匙玩法 - 手动时间调整和时间显示切换
     path('<uuid:pk>/manual-time-adjustment/', views.manual_time_adjustment, name='task-manual-time-adjustment'),
     path('<uuid:pk>/toggle-time-display/', views.toggle_time_display, name='task-toggle-time-display'),
+    path('<uuid:pk>/toggle-shield/', views.toggle_shield, name='task-toggle-shield'),
     path('<uuid:pk>/use-detection-radar/', views.use_detection_radar, name='use-detection-radar'),
     path('<uuid:pk>/use-time-hourglass/', views.use_time_hourglass, name='use-time-hourglass'),
     path('<uuid:pk>/create-exclusive-task/', views.create_exclusive_task_for_key_holder, name='create-exclusive-task'),

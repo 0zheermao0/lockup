@@ -183,6 +183,7 @@ class LockTaskSerializer(serializers.ModelSerializer):
     """任务详情序列化器（完整版，用于详情显示）"""
     user = UserPublicSerializer(read_only=True)
     taker = UserPublicSerializer(read_only=True)
+    shield_activated_by = UserPublicSerializer(read_only=True)
     key_holder = serializers.SerializerMethodField()
     vote_count = serializers.SerializerMethodField()
     vote_agreement_count = serializers.SerializerMethodField()
@@ -216,6 +217,8 @@ class LockTaskSerializer(serializers.ModelSerializer):
             'time_display_hidden',
             # 冻结/解冻字段
             'is_frozen', 'frozen_at', 'frozen_end_time', 'total_frozen_duration',
+            # 防护罩字段
+            'shield_active', 'shield_activated_at', 'shield_activated_by',
             # 计算字段
             'key_holder', 'vote_count', 'vote_agreement_count', 'submission_files',
             'participants', 'participant_count', 'submitted_count', 'approved_count', 'can_take'

@@ -176,6 +176,10 @@ export interface LockTask extends BaseLockTask {
   // 严格模式字段
   strict_mode?: boolean // 是否为严格模式
   strict_code?: string | null // 严格模式随机码
+  // 防护罩字段
+  shield_active?: boolean // 是否开启防护罩
+  shield_activated_at?: string | null // 防护罩开启时间
+  shield_activated_by?: User | null // 开启防护罩的钥匙持有者
   // 任务完成相关字段
   taker?: User
   completion_proof?: string
