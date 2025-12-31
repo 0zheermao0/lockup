@@ -970,17 +970,11 @@ def process_checkin_voting_results(self):
 
             logger.info(f"Successfully processed {len(processed_sessions)} voting sessions")
 
-            # ========================================================================
-            # 每日验证码更新 - 为所有活跃的严格模式带锁任务生成新验证码
-            # ========================================================================
-
-            verification_code_update_result = _update_strict_mode_verification_codes(now)
 
             return {
                 'status': 'success',
                 'processed_count': len(processed_sessions),
                 'processed_sessions': processed_sessions,
-                'verification_code_update': verification_code_update_result,
                 'timestamp': now.isoformat()
             }
 
@@ -993,6 +987,44 @@ def process_checkin_voting_results(self):
             countdown=min(60 * (2 ** self.request.retries), 300)  # Max 5 minutes
         )
 
+
+@shared_task(bind=True, max_retries=3, default_retry_delay=60)
+def update_strict_mode_verification_codes(self):
+    """
+    每日更新严格模式带锁任务的验证码 - 独立任务版本
+
+    Returns:
+        dict: 更新结果
+    """
+    try:
+        logger.info("Starting strict mode verification code update...")
+
+        now = timezone.now()
+        
+        # ========================================================================
+        # 每日验证码更新 - 为所有活跃的严格模式带锁任务生成新验证码
+        # ========================================================================
+
+        verification_code_update_result = _update_strict_mode_verification_codes(now)
+
+        logger.info("Successfully updated strict mode verification codes")
+
+        return {
+            'status': 'success',
+            'updated_count': verification_code_update_result['updated_count'],
+            'verification_code_update': verification_code_update_result,
+            'timestamp': now.isoformat()
+        }
+
+    except Exception as exc:
+        logger.error(f"Strict mode verification code update failed: {exc}", exc_info=True)
+
+        # Retry the task with exponential backoff
+        raise self.retry(
+            exc=exc,
+            countdown=min(60 * (2 ** self.request.retries), 300)  # Max 5 minutes
+        )
+        
 
 def _process_single_voting_session(session, current_time):
     """

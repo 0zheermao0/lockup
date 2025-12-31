@@ -472,6 +472,118 @@ class Command(BaseCommand):
                     self.stdout.write(
                         self.style.WARNING(f'Periodic task "{voting_results_task_name}" already exists and is up to date')
                     )
+                    
+        # ========================================================================
+        # Strict Mode Verification Code Update Task Setup
+        # ========================================================================
+
+        self.stdout.write('\n' + '=' * 60)
+        self.stdout.write(self.style.SUCCESS(
+            'Setting up strict mode verification code update task...'
+        ))
+
+        # Create daily crontab schedule (Daily 4:05 AM Asia/Shanghai)
+        strict_code_schedule, created = CrontabSchedule.objects.get_or_create(
+            minute='*/1',
+            hour='*',
+            day_of_week='*',
+            day_of_month='*',
+            month_of_year='*',
+            timezone='Asia/Shanghai',
+        )
+
+        if created and not dry_run:
+            self.stdout.write(
+                f'Created strict code update crontab schedule: {strict_code_schedule}'
+            )
+        elif created:
+            self.stdout.write(
+                f'[DRY RUN] Would create strict code update crontab schedule: {strict_code_schedule}'
+            )
+        else:
+            self.stdout.write(
+                f'Using existing strict code update crontab schedule: {strict_code_schedule}'
+            )
+
+        # Create periodic task for strict mode verification code update
+        strict_code_task_name = 'update-strict-mode-verification-codes'
+        strict_code_task_function = (
+            'tasks.celery_tasks.update_strict_mode_verification_codes'
+        )
+
+        if dry_run:
+            existing_strict_code_task = PeriodicTask.objects.filter(
+                name=strict_code_task_name
+            ).first()
+            if existing_strict_code_task:
+                self.stdout.write(
+                    self.style.WARNING(
+                        f'[DRY RUN] Task "{strict_code_task_name}" already exists'
+                    )
+                )
+            else:
+                self.stdout.write(
+                    self.style.SUCCESS(
+                        f'[DRY RUN] Would create periodic task: {strict_code_task_name}'
+                    )
+                )
+        else:
+            strict_code_periodic_task, created = PeriodicTask.objects.get_or_create(
+                name=strict_code_task_name,
+                defaults={
+                    'crontab': strict_code_schedule,
+                    'task': strict_code_task_function,
+                    'kwargs': json.dumps({}),
+                    'enabled': True,
+                    'description': (
+                        'Update verification codes for active strict mode locked tasks '
+                        '(Daily 4:05 AM Asia/Shanghai)'
+                    ),
+                    'queue': 'default',
+                }
+            )
+
+            if created:
+                self.stdout.write(
+                    self.style.SUCCESS(
+                        f'Created periodic task: {strict_code_task_name}'
+                    )
+                )
+                self.stdout.write(f'  Task: {strict_code_task_function}')
+                self.stdout.write(f'  Schedule: {strict_code_schedule}')
+                self.stdout.write(f'  Queue: default')
+                self.stdout.write(
+                    f'  Enabled: {strict_code_periodic_task.enabled}'
+                )
+            else:
+                updated = False
+                if strict_code_periodic_task.task != strict_code_task_function:
+                    strict_code_periodic_task.task = strict_code_task_function
+                    updated = True
+                if strict_code_periodic_task.crontab != strict_code_schedule:
+                    strict_code_periodic_task.crontab = strict_code_schedule
+                    updated = True
+                if not strict_code_periodic_task.enabled:
+                    strict_code_periodic_task.enabled = True
+                    updated = True
+                if getattr(strict_code_periodic_task, 'queue', None) != 'default':
+                    strict_code_periodic_task.queue = 'default'
+                    updated = True
+
+                if updated:
+                    strict_code_periodic_task.save()
+                    self.stdout.write(
+                        self.style.SUCCESS(
+                            f'Updated existing periodic task: {strict_code_task_name}'
+                        )
+                    )
+                else:
+                    self.stdout.write(
+                        self.style.WARNING(
+                            f'Periodic task "{strict_code_task_name}" already exists and is up to date'
+                        )
+                    )
+
 
         # ========================================================================
         # Pinning Queue Processing Task Setup
