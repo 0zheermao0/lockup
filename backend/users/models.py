@@ -525,6 +525,7 @@ class Notification(models.Model):
         ('task_board_submitted', '任务板任务被提交'),
         ('task_board_approved', '任务板任务被审核通过'),
         ('task_board_rejected', '任务板任务被拒绝'),
+        ('task_board_assigned_exclusive', '专属任务指派'),
         ('task_deadline_reminder_8h', '任务截止前8小时提醒'),
 
         # 打卡投票系统类

@@ -216,6 +216,8 @@
               <span v-else>🗝️ 使用万能钥匙</span>
             </button>
 
+            <!-- Exclusive Task Creation for Regular Keys -->
+
             <!-- Treasury Item usage -->
             <button
               v-if="canUseTreasury(selectedItem)"
@@ -576,6 +578,7 @@
           </div>
         </div>
       </div>
+
 
       <!-- Treasury Item modal -->
       <TreasuryItemModal
@@ -991,16 +994,20 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { storeApi, tasksApi } from '../lib/api'
 import { tasksApi as tasksApiDetailed } from '../lib/api-tasks'
 import { smartGoBack } from '../utils/navigation'
+import { useAuthStore } from '../stores/auth'
 import type { UserInventory, Item } from '../types'
 import TreasuryItemModal from '../components/TreasuryItemModal.vue'
 
 // Router
 const router = useRouter()
+
+// Stores
+const authStore = useAuthStore()
 
 // Reactive data
 const inventory = ref<UserInventory | null>(null)
@@ -1077,6 +1084,7 @@ const showTimeHourglassModal = ref(false)
 const usingTimeHourglass = ref(false)
 const hourglassResults = ref<any>(null)
 const availableHourglassTasks = ref<any[]>([])
+
 
 // Methods
 const goBack = () => {
@@ -1280,6 +1288,7 @@ const canUseTimeHourglass = (item: Item): boolean => {
   return item.status === 'available' && item.item_type.name === 'time_hourglass'
 }
 
+
 const shareItem = async () => {
   if (!selectedItem.value) return
 
@@ -1453,6 +1462,7 @@ const closeUniversalKeyModal = () => {
   availableTasks.value = []
   selectedItem.value = null
 }
+
 
 const viewOwnerProfile = (owner: any) => {
   // Navigate to user profile page
@@ -4154,6 +4164,197 @@ onMounted(() => {
 
   .hint-action {
     font-size: 0.75rem;
+  }
+}
+
+/* Exclusive Task Styles */
+.action-btn.exclusive-task-btn {
+  background: linear-gradient(135deg, #ff6b6b, #ee5a52);
+  color: white;
+  border: 3px solid #000;
+  font-weight: bold;
+
+  &:hover:not(:disabled) {
+    background: linear-gradient(135deg, #ee5a52, #dc3545);
+    transform: translateY(-2px);
+  }
+
+  &:disabled {
+    background: #ccc;
+    cursor: not-allowed;
+  }
+}
+
+.exclusive-task-modal {
+  background: #fff;
+  border: 4px solid #000;
+  border-radius: 0;
+  box-shadow: 8px 8px 0 rgba(0, 0, 0, 0.3);
+  max-width: 500px;
+  width: 90%;
+  max-height: 80vh;
+  overflow-y: auto;
+
+  .modal-header {
+    background: #ff6b6b;
+    color: white;
+    padding: 1rem;
+    border-bottom: 3px solid #000;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+
+    .modal-title {
+      margin: 0;
+      font-size: 1.25rem;
+      font-weight: bold;
+    }
+
+    .close-btn {
+      background: none;
+      border: none;
+      color: white;
+      font-size: 1.5rem;
+      cursor: pointer;
+      padding: 0;
+      width: 30px;
+      height: 30px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+
+      &:hover {
+        background: rgba(255, 255, 255, 0.1);
+        border-radius: 50%;
+      }
+    }
+  }
+
+  .modal-body {
+    padding: 1.5rem;
+  }
+
+  .task-info-section {
+    background: #f8f9fa;
+    border: 2px solid #000;
+    padding: 1rem;
+    margin-bottom: 1.5rem;
+
+    .info-text {
+      margin: 0 0 0.5rem 0;
+      font-size: 1rem;
+    }
+
+    .cost-info, .reward-info {
+      margin: 0.25rem 0;
+      font-size: 0.9rem;
+    }
+
+    .cost-amount, .reward-amount {
+      color: #ff6b6b;
+      font-weight: bold;
+    }
+  }
+
+  .task-form {
+    .form-group {
+      margin-bottom: 1rem;
+
+      .form-label {
+        display: block;
+        margin-bottom: 0.5rem;
+        font-weight: bold;
+        color: #333;
+      }
+
+      .form-input, .form-textarea, .form-select {
+        width: 100%;
+        padding: 0.75rem;
+        border: 2px solid #000;
+        border-radius: 0;
+        font-size: 1rem;
+        background: white;
+
+        &:focus {
+          outline: none;
+          border-color: #ff6b6b;
+          box-shadow: 0 0 0 2px rgba(255, 107, 107, 0.2);
+        }
+      }
+
+      .form-textarea {
+        resize: vertical;
+        min-height: 100px;
+      }
+    }
+
+    .form-actions {
+      display: flex;
+      gap: 1rem;
+      margin-top: 1.5rem;
+
+      .cancel-btn, .submit-btn {
+        flex: 1;
+        padding: 0.75rem 1.5rem;
+        border: 2px solid #000;
+        border-radius: 0;
+        font-weight: bold;
+        cursor: pointer;
+        transition: all 0.2s ease;
+
+        &:disabled {
+          opacity: 0.6;
+          cursor: not-allowed;
+        }
+      }
+
+      .cancel-btn {
+        background: white;
+        color: #333;
+
+        &:hover:not(:disabled) {
+          background: #f8f9fa;
+          transform: translateY(-1px);
+        }
+      }
+
+      .submit-btn {
+        background: #ff6b6b;
+        color: white;
+
+        &:hover:not(:disabled) {
+          background: #ee5a52;
+          transform: translateY(-1px);
+        }
+      }
+    }
+  }
+}
+
+/* Mobile responsive for exclusive task modal */
+@media (max-width: 768px) {
+  .exclusive-task-modal {
+    width: 95%;
+    margin: 1rem;
+    max-height: 90vh;
+
+    .modal-body {
+      padding: 1rem;
+    }
+
+    .task-info-section {
+      padding: 0.75rem;
+      margin-bottom: 1rem;
+    }
+
+    .form-actions {
+      flex-direction: column;
+      gap: 0.75rem;
+
+      .cancel-btn, .submit-btn {
+        padding: 0.75rem;
+      }
+    }
   }
 }
 </style>

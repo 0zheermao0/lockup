@@ -871,6 +871,21 @@ def take_board_task(request, pk):
             participant=request.user
         )
 
+        # 创建时间线事件 - 多人任务参与
+        TaskTimelineEvent.objects.create(
+            task=task,
+            user=request.user,
+            event_type='board_task_taken',
+            description=f'{request.user.username} 参与了多人任务板 ({current_participants + 1}/{task.max_participants})',
+            metadata={
+                'participant': request.user.username,
+                'task_type': 'multi_person',
+                'current_participants': current_participants + 1,
+                'max_participants': task.max_participants,
+                'is_first_participant': current_participants == 0
+            }
+        )
+
         # 如果是第一个参与者，更新任务状态为taken
         if current_participants == 0 and task.status == 'open':
             task.status = 'taken'
@@ -938,6 +953,20 @@ def take_board_task(request, pk):
         TaskParticipant.objects.create(
             task=task,
             participant=request.user
+        )
+
+        # 创建时间线事件 - 单人任务接取
+        TaskTimelineEvent.objects.create(
+            task=task,
+            user=request.user,
+            event_type='board_task_taken',
+            description=f'{request.user.username} 接取了任务板',
+            metadata={
+                'taker': request.user.username,
+                'task_type': 'single_person',
+                'deadline': task.deadline.isoformat() if task.deadline else None,
+                'max_duration': task.max_duration
+            }
         )
 
         notification_type = 'task_board_taken'
@@ -3730,3 +3759,138 @@ def use_time_hourglass(request, pk):
         },
         'item_destroyed': True
     })
+
+
+# ============================================================================
+# 钥匙持有者专属任务创建 API - Key Holder Exclusive Task Creation
+# ============================================================================
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def create_exclusive_task_for_key_holder(request, pk):
+    """钥匙持有者创建专属任务"""
+    task = get_object_or_404(LockTask, pk=pk)
+
+    # 1. 验证钥匙持有者身份
+    task_key_item = Item.objects.filter(
+        item_type__name='key',
+        owner=request.user,
+        status='available',
+        properties__task_id=str(task.id)
+    ).first()
+
+    if not task_key_item:
+        return Response(
+            {'error': '只有钥匙持有者可以创建专属任务'},
+            status=status.HTTP_403_FORBIDDEN
+        )
+
+    # 2. 验证积分足够(15积分)
+    if request.user.coins < 15:
+        return Response(
+            {'error': '积分不足，需要15积分'},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+
+    # 3. 获取钥匙对应的任务用户(被指派人)
+    target_user = task.user
+
+    # 4. 验证任务数据
+    serializer = LockTaskCreateSerializer(data={
+        'title': request.data.get('title'),
+        'description': request.data.get('description'),
+        'task_type': 'board',
+        'max_participants': 1,  # 自动设置为1
+        'reward': 15,  # 自动设置为15积分
+        'max_duration': request.data.get('max_duration'),
+        # 不设置deadline，稍后根据max_duration和taken_at计算
+    }, context={'request': request})
+
+    if not serializer.is_valid():
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+    # 5. 扣除积分并创建任务
+    request.user.coins -= 15
+    request.user.save(update_fields=['coins'])
+
+    # 6. 创建任务
+    taken_at = timezone.now()
+    exclusive_task = serializer.save(
+        user=request.user,  # 发布者是钥匙持有者
+        status='taken',     # 直接设置为taken状态
+        taker=target_user,  # 自动指派给钥匙对应用户
+        taken_at=taken_at
+    )
+
+    # 7. 设置任务截止时间（基于max_duration和taken_at计算）
+    if exclusive_task.max_duration:
+        exclusive_task.deadline = taken_at + timezone.timedelta(hours=exclusive_task.max_duration)
+        exclusive_task.save(update_fields=['deadline'])
+
+    # 8. 创建TaskParticipant记录
+    TaskParticipant.objects.create(
+        task=exclusive_task,
+        participant=target_user,
+        status='joined'
+    )
+
+    # 9. 创建时间线事件 - 专属任务创建
+    TaskTimelineEvent.objects.create(
+        task=exclusive_task,
+        user=request.user,
+        event_type='exclusive_task_created',
+        description=f'钥匙持有者为 {target_user.username} 创建专属任务',
+        metadata={
+            'key_holder': request.user.username,
+            'assigned_to': target_user.username,
+            'original_task_id': str(task.id),
+            'original_task_title': task.title,
+            'cost': 15,
+            'reward': 15
+        }
+    )
+
+    # 10. 创建时间线事件 - 自动接取
+    TaskTimelineEvent.objects.create(
+        task=exclusive_task,
+        user=target_user,
+        event_type='board_task_taken',
+        description=f'{target_user.username} 被自动指派专属任务',
+        metadata={
+            'taker': target_user.username,
+            'task_type': 'exclusive',
+            'auto_assigned': True,
+            'key_holder': request.user.username,
+            'deadline': exclusive_task.deadline.isoformat() if exclusive_task.deadline else None,
+            'max_duration': exclusive_task.max_duration
+        }
+    )
+
+    # 11. 发送urgent优先级通知
+    Notification.create_notification(
+        recipient=target_user,
+        actor=request.user,
+        notification_type='task_board_assigned_exclusive',
+        title='🔑 专属任务通知',
+        message=f'{request.user.username} 为您创建了专属任务: {exclusive_task.title}',
+        related_object_type='task',
+        related_object_id=str(exclusive_task.id),
+        extra_data={
+            'task_title': exclusive_task.title,
+            'task_type': 'exclusive',
+            'key_holder': request.user.username,
+            'reward': 15,
+            'deadline': exclusive_task.deadline.isoformat() if exclusive_task.deadline else None,
+            'action_required': True
+        },
+        priority='urgent'  # 紧急优先级
+    )
+
+    logger.info(f"Key holder {request.user.username} created exclusive task {exclusive_task.id} for {target_user.username}")
+
+    return Response({
+        'message': '专属任务创建成功',
+        'task_id': str(exclusive_task.id),
+        'assigned_to': target_user.username,
+        'coins_remaining': request.user.coins
+    }, status=status.HTTP_201_CREATED)

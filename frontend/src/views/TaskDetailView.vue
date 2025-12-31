@@ -982,6 +982,27 @@
                 </div>
               </div>
 
+              <!-- Exclusive Task Creation -->
+              <div class="key-action-card">
+                <div class="action-header">
+                  <h4>🎯 专属任务</h4>
+                  <span class="action-cost">消耗 15 积分</span>
+                </div>
+                <p class="action-description">
+                  为任务创建者 <strong>{{ task?.user?.username }}</strong> 创建专属任务，自动指派无需揭榜
+                </p>
+                <div class="action-buttons">
+                  <button
+                    @click="openExclusiveTaskModal"
+                    :disabled="!canAffordExclusiveTask || creatingExclusiveTask"
+                    class="key-action-btn exclusive-task"
+                    :class="{ 'disabled': !canAffordExclusiveTask || creatingExclusiveTask }"
+                  >
+                    {{ creatingExclusiveTask ? '创建中...' : '🎯 创建专属任务' }}
+                  </button>
+                </div>
+              </div>
+
               <!-- Key Return Option -->
               <div v-if="taskKey && taskKey.original_owner && taskKey.original_owner.id !== authStore.user?.id" class="key-action-card">
                 <div class="action-header">
@@ -1041,6 +1062,80 @@
       :task-status="task?.status"
       @close="closeShareModal"
     />
+
+    <!-- Exclusive Task Creation Modal -->
+    <div v-if="showExclusiveTaskModal" class="exclusive-task-modal-overlay" @click="closeExclusiveTaskModal">
+      <div class="exclusive-task-modal" @click.stop>
+        <div class="modal-header">
+          <h3 class="modal-title">🔑 创建专属任务</h3>
+          <button @click="closeExclusiveTaskModal" class="close-btn">×</button>
+        </div>
+
+        <div class="modal-body">
+          <!-- 任务信息显示 -->
+          <div class="task-info-section">
+            <p class="info-text">
+              为 <strong>{{ task?.user?.username }}</strong> 创建专属任务
+            </p>
+            <p class="cost-info">消耗: <span class="cost-amount">15积分</span></p>
+            <p class="reward-info">奖励: <span class="reward-amount">15积分</span></p>
+            <p class="auto-assign-info">自动指派: <span class="assign-target">无需揭榜，直接指派</span></p>
+          </div>
+
+          <!-- 任务表单 -->
+          <form @submit.prevent="createExclusiveTask" class="task-form">
+            <div class="form-group">
+              <label class="form-label">任务标题 *</label>
+              <input
+                v-model="exclusiveTaskForm.title"
+                type="text"
+                class="form-input"
+                placeholder="请输入任务标题"
+                maxlength="100"
+                required
+              >
+            </div>
+
+            <div class="form-group">
+              <label class="form-label">任务描述 *</label>
+              <textarea
+                v-model="exclusiveTaskForm.description"
+                class="form-textarea"
+                placeholder="详细描述任务需求和要求..."
+                rows="4"
+                maxlength="500"
+                required
+              ></textarea>
+            </div>
+
+            <div class="form-group">
+              <label class="form-label">最大完成时间 (小时) *</label>
+              <input
+                v-model.number="exclusiveTaskForm.max_duration"
+                type="number"
+                class="form-input"
+                min="1"
+                placeholder="任务最长完成时间"
+                required
+              >
+            </div>
+
+            <div class="form-actions">
+              <button type="button" @click="closeExclusiveTaskModal" class="cancel-btn">
+                取消
+              </button>
+              <button
+                type="submit"
+                class="submit-btn"
+                :disabled="!isExclusiveTaskFormValid || creatingExclusiveTask"
+              >
+                {{ creatingExclusiveTask ? '创建中...' : '创建专属任务 (15积分)' }}
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
 
     <!-- Image Modal -->
     <div v-if="showImageModal && selectedImage" class="image-modal-overlay" @click="closeImageModal">
@@ -1133,6 +1228,15 @@ const pinningInProgress = ref(false)
 
 // Freeze state
 const freezingInProgress = ref(false)
+
+// Exclusive task state
+const showExclusiveTaskModal = ref(false)
+const creatingExclusiveTask = ref(false)
+const exclusiveTaskForm = ref({
+  title: '',
+  description: '',
+  max_duration: 0
+})
 
 // Image modal state
 const showImageModal = ref(false)
@@ -1638,6 +1742,17 @@ const canAffordPinning = computed(() => {
 const canAffordFreeze = computed(() => {
   if (!authStore.user || !canManageKeyActions.value) return false
   return authStore.user.coins >= 25 // 冻结/解冻需要25积分
+})
+
+const canAffordExclusiveTask = computed(() => {
+  if (!authStore.user || !canManageKeyActions.value) return false
+  return authStore.user.coins >= 15 // 专属任务需要15积分
+})
+
+const isExclusiveTaskFormValid = computed(() => {
+  return exclusiveTaskForm.value.title.trim() &&
+         exclusiveTaskForm.value.description.trim() &&
+         exclusiveTaskForm.value.max_duration > 0
 })
 
 // Multi-person task computed properties (review mode removed)
@@ -2900,6 +3015,102 @@ const pinTaskOwner = async () => {
   }
 }
 
+// Exclusive Task methods
+const openExclusiveTaskModal = () => {
+  // 重置表单
+  exclusiveTaskForm.value = {
+    title: '',
+    description: '',
+    max_duration: 0
+  }
+  showExclusiveTaskModal.value = true
+}
+
+const closeExclusiveTaskModal = () => {
+  showExclusiveTaskModal.value = false
+}
+
+const createExclusiveTask = async () => {
+  if (!task.value || !isExclusiveTaskFormValid.value || !canAffordExclusiveTask.value) {
+    showToast.value = true
+    toastData.value = {
+      type: 'error',
+      title: '创建失败',
+      message: '表单信息不完整或积分不足',
+      secondaryMessage: '专属任务需要15积分，请检查您的余额'
+    }
+    return
+  }
+
+  creatingExclusiveTask.value = true
+
+  try {
+    // Convert max_duration from number to string for API compatibility
+    const taskData = {
+      title: exclusiveTaskForm.value.title,
+      description: exclusiveTaskForm.value.description,
+      max_duration: exclusiveTaskForm.value.max_duration > 0 ? exclusiveTaskForm.value.max_duration.toString() : undefined
+    }
+    const result = await tasksApi.createExclusiveTask(task.value.id, taskData)
+
+    // 刷新用户数据以更新积分
+    await authStore.refreshUser()
+
+    // 关闭模态框
+    closeExclusiveTaskModal()
+
+    // 显示成功消息
+    showToast.value = true
+    toastData.value = {
+      type: 'success',
+      title: '专属任务创建成功',
+      message: `🎯 已为 ${result.assigned_to} 创建专属任务`,
+      secondaryMessage: '任务已自动指派，对方将收到urgent优先级通知',
+      details: {
+        '任务标题': exclusiveTaskForm.value.title,
+        '指派给': result.assigned_to,
+        '消耗积分': '15积分',
+        '剩余积分': `${result.coins_remaining}积分`,
+        '任务ID': result.task_id
+      }
+    }
+
+    console.log('专属任务创建成功:', result)
+  } catch (error: any) {
+    console.error('Error creating exclusive task:', error)
+
+    // 处理特定错误消息
+    let errorMessage = '专属任务创建失败，请重试'
+    let secondaryMessage = '请稍后重试或联系管理员'
+
+    if (error.data?.error) {
+      errorMessage = error.data.error
+    } else if (error.status === 404) {
+      errorMessage = '任务不存在或已被删除'
+    } else if (error.status === 403) {
+      errorMessage = '您没有权限为此任务创建专属任务'
+      secondaryMessage = '只有钥匙持有者可以创建专属任务'
+    } else if (error.status === 400) {
+      errorMessage = '积分不足或表单信息无效'
+      secondaryMessage = '请检查您的积分余额和表单内容'
+    } else if (error.status === 500) {
+      errorMessage = '服务器内部错误，请稍后重试'
+    } else if (error.message) {
+      errorMessage = `网络错误：${error.message}`
+    }
+
+    showToast.value = true
+    toastData.value = {
+      type: 'error',
+      title: '创建失败',
+      message: errorMessage,
+      secondaryMessage: secondaryMessage
+    }
+  } finally {
+    creatingExclusiveTask.value = false
+  }
+}
+
 // Freeze/Unfreeze methods
 const freezeTask = async () => {
   if (!task.value || !canAffordFreeze.value) {
@@ -3286,7 +3497,9 @@ const getEventTypeClass = (eventType: string) => {
     'time_wheel_decrease': 'time-decrease',
     'overtime_added': 'overtime',
     'task_voted': 'vote',
-    'task_failed': 'failed'
+    'task_failed': 'failed',
+    'board_task_taken': 'board-taken',
+    'exclusive_task_created': 'exclusive-created'
   }
   return classMap[eventType] || 'default'
 }
@@ -5098,6 +5311,16 @@ onUnmounted(() => {
   background-color: #dc3545;
 }
 
+.timeline-dot.board-taken {
+  background-color: #17a2b8;
+  animation: pulse-success 2s infinite;
+}
+
+.timeline-dot.exclusive-created {
+  background-color: #6f42c1;
+  animation: pulse-success 2s infinite;
+}
+
 .timeline-dot.default {
   background-color: #6c757d;
 }
@@ -5460,6 +5683,15 @@ onUnmounted(() => {
   background: linear-gradient(135deg, #ee5a24, #e74c3c);
 }
 
+.key-action-btn.exclusive-task {
+  background: linear-gradient(135deg, #6f42c1, #5a2d91);
+  min-width: 160px;
+}
+
+.key-action-btn.exclusive-task:hover:not(.disabled) {
+  background: linear-gradient(135deg, #5a2d91, #4c2a85);
+}
+
 @keyframes pulse-hidden-mode {
   0%, 100% {
     opacity: 1;
@@ -5491,6 +5723,80 @@ onUnmounted(() => {
   .key-action-btn {
     flex: 1;
     min-width: auto;
+  }
+
+  /* Mobile responsive for exclusive task modal */
+  .exclusive-task-modal-overlay {
+    padding: 1rem;
+  }
+
+  .exclusive-task-modal {
+    width: 95%;
+    max-width: none;
+    border-width: 3px;
+    box-shadow: 8px 8px 0 #000;
+    max-height: 90vh;
+  }
+
+  .exclusive-task-modal .modal-header {
+    padding: 1rem;
+    flex-direction: column;
+    gap: 1rem;
+    text-align: center;
+  }
+
+  .exclusive-task-modal .modal-title {
+    font-size: 1.1rem;
+  }
+
+  .exclusive-task-modal .close-btn {
+    width: 35px;
+    height: 35px;
+    font-size: 1.25rem;
+    position: absolute;
+    top: 1rem;
+    right: 1rem;
+  }
+
+  .exclusive-task-modal .modal-body {
+    padding: 1.5rem;
+  }
+
+  .exclusive-task-modal .task-info-section {
+    padding: 1rem;
+    margin-bottom: 1.5rem;
+    border-width: 2px;
+    box-shadow: 3px 3px 0 #000;
+  }
+
+  .exclusive-task-modal .form-input,
+  .exclusive-task-modal .form-textarea,
+  .exclusive-task-modal .form-select {
+    padding: 0.625rem;
+    border-width: 2px;
+    box-shadow: 2px 2px 0 #000;
+    font-size: 0.9rem;
+  }
+
+  .exclusive-task-modal .form-actions {
+    flex-direction: column;
+    gap: 0.75rem;
+  }
+
+  .exclusive-task-modal .cancel-btn,
+  .exclusive-task-modal .submit-btn {
+    width: 100%;
+    flex: none;
+    padding: 0.875rem 1rem;
+    font-size: 0.9rem;
+    border-width: 2px;
+    box-shadow: 2px 2px 0 #000;
+  }
+
+  .exclusive-task-modal .cancel-btn:hover,
+  .exclusive-task-modal .submit-btn:hover:not(:disabled) {
+    transform: none;
+    box-shadow: 2px 2px 0 #000;
   }
 }
 
@@ -5918,6 +6224,215 @@ onUnmounted(() => {
   line-height: 1.4;
 }
 
+/* Exclusive Task Modal Overlay - Fixed positioning like NotificationToast */
+.exclusive-task-modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  animation: fadeIn 0.2s ease-out;
+}
+
+/* Exclusive Task Modal Styles */
+.exclusive-task-modal {
+  background: white;
+  border: 4px solid #000;
+  border-radius: 12px;
+  box-shadow: 12px 12px 0 #000;
+  max-width: 500px;
+  width: 90%;
+  max-height: 80vh;
+  overflow-y: auto;
+  animation: slideInModal 0.3s ease-out;
+  position: relative;
+}
+
+.exclusive-task-modal .modal-header {
+  background: linear-gradient(135deg, #6f42c1, #5a2d91);
+  color: white;
+  padding: 1.5rem;
+  border-bottom: 4px solid #000;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.exclusive-task-modal .modal-title {
+  margin: 0;
+  font-size: 1.3rem;
+  font-weight: 900;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+.exclusive-task-modal .close-btn {
+  background: #dc3545;
+  color: white;
+  border: 3px solid #000;
+  border-radius: 50%;
+  width: 40px;
+  height: 40px;
+  cursor: pointer;
+  font-size: 1.5rem;
+  font-weight: 900;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 3px 3px 0 #000;
+  transition: all 0.2s ease;
+}
+
+.exclusive-task-modal .close-btn:hover {
+  background: #c82333;
+  transform: translate(-1px, -1px);
+  box-shadow: 4px 4px 0 #000;
+}
+
+.exclusive-task-modal .modal-body {
+  padding: 2rem;
+}
+
+.exclusive-task-modal .task-info-section {
+  background: linear-gradient(135deg, #f8f9fa, #e9ecef);
+  border: 3px solid #000;
+  border-radius: 8px;
+  padding: 1.5rem;
+  margin-bottom: 2rem;
+  box-shadow: 4px 4px 0 #000;
+}
+
+.exclusive-task-modal .info-text {
+  margin: 0 0 1rem 0;
+  font-size: 1rem;
+  color: #333;
+  text-align: center;
+}
+
+.exclusive-task-modal .cost-info,
+.exclusive-task-modal .reward-info {
+  margin: 0.5rem 0;
+  text-align: center;
+  font-weight: 600;
+}
+
+.exclusive-task-modal .cost-amount {
+  color: #dc3545;
+  font-weight: 900;
+}
+
+.exclusive-task-modal .reward-amount {
+  color: #28a745;
+  font-weight: 900;
+}
+
+.exclusive-task-modal .task-form {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.exclusive-task-modal .form-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.exclusive-task-modal .form-label {
+  font-weight: 700;
+  color: #333;
+  font-size: 0.9rem;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.exclusive-task-modal .form-input,
+.exclusive-task-modal .form-textarea,
+.exclusive-task-modal .form-select {
+  padding: 0.75rem;
+  border: 3px solid #000;
+  border-radius: 6px;
+  font-size: 1rem;
+  background: white;
+  box-shadow: 2px 2px 0 #000;
+  transition: all 0.2s ease;
+}
+
+.exclusive-task-modal .form-input:focus,
+.exclusive-task-modal .form-textarea:focus,
+.exclusive-task-modal .form-select:focus {
+  outline: none;
+  transform: translate(-1px, -1px);
+  box-shadow: 3px 3px 0 #000;
+}
+
+.exclusive-task-modal .form-textarea {
+  resize: vertical;
+  min-height: 100px;
+  font-family: inherit;
+}
+
+.exclusive-task-modal .form-actions {
+  display: flex;
+  gap: 1rem;
+  margin-top: 1rem;
+}
+
+.exclusive-task-modal .cancel-btn {
+  background: #6c757d;
+  color: white;
+  border: 3px solid #000;
+  border-radius: 8px;
+  padding: 0.75rem 1.5rem;
+  font-weight: 700;
+  font-size: 1rem;
+  cursor: pointer;
+  box-shadow: 3px 3px 0 #000;
+  transition: all 0.2s ease;
+  flex: 1;
+}
+
+.exclusive-task-modal .cancel-btn:hover {
+  background: #5a6268;
+  transform: translate(-1px, -1px);
+  box-shadow: 4px 4px 0 #000;
+}
+
+.exclusive-task-modal .submit-btn {
+  background: linear-gradient(135deg, #6f42c1, #5a2d91);
+  color: white;
+  border: 3px solid #000;
+  border-radius: 8px;
+  padding: 0.75rem 1.5rem;
+  font-weight: 700;
+  font-size: 1rem;
+  cursor: pointer;
+  box-shadow: 3px 3px 0 #000;
+  transition: all 0.2s ease;
+  flex: 2;
+}
+
+.exclusive-task-modal .submit-btn:hover:not(:disabled) {
+  background: linear-gradient(135deg, #5a2d91, #4c2a85);
+  transform: translate(-1px, -1px);
+  box-shadow: 4px 4px 0 #000;
+}
+
+.exclusive-task-modal .submit-btn:disabled {
+  background: #6c757d;
+  cursor: not-allowed;
+  opacity: 0.6;
+  transform: none;
+  box-shadow: 3px 3px 0 #000;
+}
+
 /* Image Modal Styles */
 .image-modal-overlay {
   position: fixed;
@@ -5994,6 +6509,15 @@ onUnmounted(() => {
 }
 
 /* Modal Animations */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
 @keyframes slideInModal {
   from {
     opacity: 0;

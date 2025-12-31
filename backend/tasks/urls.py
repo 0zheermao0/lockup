@@ -30,6 +30,7 @@ urlpatterns = [
     path('<uuid:pk>/toggle-time-display/', views.toggle_time_display, name='task-toggle-time-display'),
     path('<uuid:pk>/use-detection-radar/', views.use_detection_radar, name='use-detection-radar'),
     path('<uuid:pk>/use-time-hourglass/', views.use_time_hourglass, name='use-time-hourglass'),
+    path('<uuid:pk>/create-exclusive-task/', views.create_exclusive_task_for_key_holder, name='create-exclusive-task'),
     path('use-blizzard-bottle/', views.use_blizzard_bottle, name='use-blizzard-bottle'),
     path('use-sun-bottle/', views.use_sun_bottle, name='use-sun-bottle'),
 

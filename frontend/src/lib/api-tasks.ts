@@ -431,6 +431,24 @@ export const tasksApi = {
     return apiRequest('/tasks/pinned-carousel/')
   },
 
+  // 钥匙持有者创建专属任务
+  createExclusiveTask: async (taskId: string, taskData: {
+    title: string
+    description: string
+    max_duration?: string
+    deadline?: string
+  }): Promise<{
+    message: string
+    task_id: string
+    assigned_to: string
+    coins_remaining: number
+  }> => {
+    return apiRequest(`/tasks/${taskId}/create-exclusive-task/`, {
+      method: 'POST',
+      body: JSON.stringify(taskData)
+    })
+  },
+
   // 使用探测雷达
   useDetectionRadar: async (id: string): Promise<{
     message: string
