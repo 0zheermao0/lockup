@@ -554,7 +554,7 @@ def complete_task(request, pk):
     task = get_object_or_404(LockTask, pk=pk)
 
     # 检查任务状态
-    if task.status not in ['active', 'voting']:
+    if task.status not in ['active', 'voting', 'voting_passed']:
         return Response(
             {'error': '任务不在可完成状态'},
             status=status.HTTP_400_BAD_REQUEST
@@ -573,8 +573,8 @@ def complete_task(request, pk):
         # 重新获取任务状态
         task.refresh_from_db()
 
-        # 如果处理后任务不是active状态，说明投票失败了
-        if task.status != 'active':
+        # 如果处理后任务不是active或voting_passed状态，说明投票失败了
+        if task.status not in ['active', 'voting_passed']:
             return Response(
                 {'error': '投票未通过，任务已加时，请等待新的倒计时结束'},
                 status=status.HTTP_400_BAD_REQUEST
@@ -598,8 +598,11 @@ def complete_task(request, pk):
 
         # 条件2: 投票解锁类型的任务需要检查投票是否通过
         if task.unlock_type == 'vote':
-            # 检查是否有投票记录且投票通过
-            if not task.voting_end_time:
+            # 检查是否处于投票已通过状态或有投票记录
+            if task.status == 'voting_passed' or task.voting_end_time:
+                # 投票已通过，可以完成
+                pass
+            else:
                 return Response(
                     {'error': '投票解锁任务必须先发起投票'},
                     status=status.HTTP_400_BAD_REQUEST
@@ -1613,15 +1616,15 @@ def _process_voting_results_internal():
                       agreement_ratio >= required_ratio)
 
         if vote_passed:
-            # 投票通过 - 回到活跃状态，等待实际时间结束后才能完成
-            task.status = 'active'
+            # 投票通过 - 设置为投票已通过状态，等待实际时间结束后才能完成
+            task.status = 'voting_passed'
             # 不设置 completed_at，因为任务还未完成
             # 不销毁钥匙道具，因为任务还未完成
             # 不发放完成奖励，因为任务还未完成
 
-            # 清理投票状态字段，投票已结束
-            task.voting_start_time = None
-            task.voting_end_time = None
+            # 保留投票状态字段，用于后续完成时验证
+            # task.voting_start_time = None  # 保留
+            # task.voting_end_time = None    # 保留
 
             task.save()
 

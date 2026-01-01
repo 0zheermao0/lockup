@@ -54,11 +54,11 @@ def add_overtime_to_task(task, user, minutes=None):
             'task': task
         }
 
-    # 检查任务状态 - 允许对活跃状态和投票状态的任务加时
-    if task.status not in ['active', 'voting']:
+    # 检查任务状态 - 允许对活跃状态、投票状态和投票已通过状态的任务加时
+    if task.status not in ['active', 'voting', 'voting_passed']:
         return {
             'success': False,
-            'message': '只能为进行中的任务（包括投票期）加时',
+            'message': '只能为进行中的任务（包括投票期和投票已通过）加时',
             'overtime_minutes': 0,
             'new_end_time': None,
             'task': task
@@ -133,6 +133,12 @@ def add_overtime_to_task(task, user, minutes=None):
     original_overtime = overtime_minutes
     if is_pinned:
         overtime_minutes *= 10  # 10倍惩罚效果
+
+    # 处理投票已通过状态的任务加时
+    if task.status == 'voting_passed':
+        # 投票已通过的任务被加时后，保持voting_passed状态和投票记录
+        # 一次投票通过后，无论被加时多少次，都不需要重新投票
+        pass  # 保持状态和投票记录不变
 
     # 记录时间变化前的状态
     previous_end_time = task.end_time
