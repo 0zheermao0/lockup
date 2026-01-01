@@ -902,6 +902,7 @@ const getStatusText = (status: string) => {
     pending: '待开始',
     active: '进行中',
     voting: '投票中',
+    voting_passed: '投票已通过',
     completed: '已完成',
     failed: '已失败',
     open: '开放中',
@@ -1810,6 +1811,12 @@ onUnmounted(() => {
   background-color: #ffc107;
   color: #212529;
   animation: pulse 2s infinite;
+}
+
+.task-status.voting_passed {
+  background-color: #28a745;
+  color: white;
+  animation: pulse-ready 2s infinite;
 }
 
 .task-status.completed {
