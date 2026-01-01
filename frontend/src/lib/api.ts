@@ -19,9 +19,18 @@ class ApiError extends Error {
 
 async function handleResponse<T>(response: Response): Promise<T> {
   if (!response.ok) {
-    const errorData = await response.json().catch(() => ({}));
+    const errorData = await response.json().catch((e) => {
+      console.log('JSON parse error:', e);
+      return {};
+    });
+    console.log('API Error Response:', {
+      status: response.status,
+      statusText: response.statusText,
+      errorData: errorData
+    });
     // 优先使用后端返回的 error 字段，其次是 message 字段，最后才是 HTTP 状态
     const errorMessage = errorData.error || errorData.message || `HTTP ${response.status}: ${response.statusText}`;
+    console.log('Final error message:', errorMessage);
     throw new ApiError(
       errorMessage,
       response.status,

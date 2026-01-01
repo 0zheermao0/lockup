@@ -27,7 +27,7 @@ async function handleResponse<T>(response: Response): Promise<T> {
     }
 
     throw new ApiError(
-      errorData.message || `HTTP ${response.status}: ${response.statusText}`,
+      errorData.error || errorData.message || `HTTP ${response.status}: ${response.statusText}`,
       response.status,
       errorData
     );
@@ -79,6 +79,11 @@ async function apiRequest<T>(
     const response = await fetch(fullUrl, config);
     return await handleResponse<T>(response);
   } catch (fetchError) {
+    // If it's already an ApiError from handleResponse, re-throw it as-is
+    if (fetchError instanceof ApiError) {
+      throw fetchError;
+    }
+    // Only wrap actual network errors
     throw new Error(`Network error: ${(fetchError as any)?.message || String(fetchError)}`);
   }
 }

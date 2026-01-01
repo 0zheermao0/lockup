@@ -1187,14 +1187,31 @@ const addOvertimeForPinnedTask = async (task: Task, event: Event) => {
 
   } catch (error: any) {
     console.error('Error adding overtime to pinned task:', error)
+    console.log('Error details:', {
+      message: error.message,
+      status: error.status,
+      data: error.data,
+      response: error.response
+    })
 
     // Handle specific error messages
     let errorMessage = '置顶任务加时失败，请重试'
 
-    // Check for specific error messages in the response data
+    // 优先检查多个可能的错误信息来源
     if (error.data?.error) {
       // 直接显示后端返回的具体错误信息
       errorMessage = error.data.error
+    } else if (error.response?.data?.error) {
+      // 检查 response.data.error（某些情况下错误数据可能在这里）
+      errorMessage = error.response.data.error
+    } else if (error.message && error.message.includes('两小时内')) {
+      // 特殊处理：如果错误消息包含具体的业务错误信息，直接使用
+      errorMessage = error.message
+    } else if (error.message && !error.message.includes('Network error') && !error.message.includes('HTTP ') && error.message.length > 10) {
+      // 如果error.message包含有用信息且不是通用错误，使用它
+      errorMessage = error.message
+    } else if (error.status === 400) {
+      errorMessage = '请求参数错误或操作不被允许'
     } else if (error.status === 404) {
       errorMessage = '任务不存在或已被删除'
     } else if (error.status === 403) {
