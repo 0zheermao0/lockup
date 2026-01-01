@@ -17,7 +17,7 @@
         >
           <div class="compact-icon">📌</div>
           <div class="compact-info">
-            <span class="compact-text">{{ task.pinned_user.username }} 的任务「{{ task.task.title }}」被置顶</span>
+            <span class="compact-text">{{ task.pinned_user.username }} 的任务「{{ truncateTitle(task.task.title) }}」被置顶</span>
           </div>
         </div>
         <!-- Navigation dots for compact mode -->
@@ -84,7 +84,7 @@
 
             <!-- Task Info -->
             <div class="task-section">
-              <div class="task-title">{{ task.task.title }}</div>
+              <div class="task-title" :title="task.task.title">{{ truncateTitle(task.task.title) }}</div>
               <div class="task-meta">
                 <span class="task-type">🔒 {{ getDifficultyText(task.task.difficulty) }}</span>
                 <span class="task-status" :class="task.task.status">
@@ -228,6 +228,13 @@ const stopRefresh = () => {
 }
 
 // Utility functions
+// Utility function to truncate task title to 16 characters
+const truncateTitle = (title: string): string => {
+  if (!title) return ''
+  if (title.length <= 16) return title
+  return title.slice(0, 16) + '...'
+}
+
 const getDifficultyText = (difficulty: string) => {
   const texts = {
     easy: '简单',

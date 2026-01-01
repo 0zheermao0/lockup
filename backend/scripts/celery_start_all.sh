@@ -36,7 +36,7 @@ usage() {
     echo ""
     echo "EXAMPLES:"
     echo "  $0                    # Start all components in foreground"
-    echo "  $0 worker             # Start only worker (all queues: rewards,default,activity,events)"
+    echo "  $0 worker             # Start only worker (all queues: rewards,default,activity,events,settlements,voting)"
     echo "  $0 -d all             # Start all as daemons"
     echo "  $0 --dev worker beat  # Start worker and beat in dev mode"
     echo ""

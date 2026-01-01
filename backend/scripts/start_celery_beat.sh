@@ -21,7 +21,7 @@ sleep 2
 
 # 启动Celery Beat，明确指定DatabaseScheduler
 echo "启动Celery Beat (使用DatabaseScheduler)..."
-celery -A celery_app beat \
+celery -A lockup_backend beat \
     --scheduler=django_celery_beat.schedulers:DatabaseScheduler \
     --loglevel=info \
     --logfile=logs/celery_beat.log \

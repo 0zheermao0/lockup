@@ -13,7 +13,7 @@
         🔒
       </div>
       <div class="lock-info">
-        <div class="lock-title">{{ lockTask.title }}</div>
+        <div class="lock-title" :title="lockTask.title">{{ truncateTitle(lockTask.title) }}</div>
         <div class="lock-meta">
           <span class="difficulty" :class="lockTask.difficulty">
             {{ getDifficultyText(lockTask.difficulty) }}
@@ -129,6 +129,13 @@ const handleClick = (event: Event) => {
         router.push({ name: 'task-detail', params: { id: taskId } })
       })
   }, 200)
+}
+
+// Utility function to truncate task title to 16 characters
+const truncateTitle = (title: string): string => {
+  if (!title) return ''
+  if (title.length <= 16) return title
+  return title.slice(0, 16) + '...'
 }
 
 const getDifficultyText = (difficulty: string) => {

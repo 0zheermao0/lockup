@@ -159,7 +159,7 @@
                 </div>
                 <div class="task-header">
                   <div class="task-info">
-                    <h3 class="task-title">{{ task.title }}</h3>
+                    <h3 class="task-title" :title="task.title">{{ truncateTitle(task.title) }}</h3>
                     <div class="task-meta">
                       <span v-if="task.task_type === 'lock' && task.unlock_type" class="task-type">
                         {{ getTaskTypeText(task.unlock_type) }}
@@ -328,6 +328,13 @@
       :details="toastData.details"
       @close="showToast = false"
     />
+
+    <!-- Back to Top Button -->
+    <BackToTopButton
+      :scroll-threshold="300"
+      @refresh="handleRefreshData"
+      @scroll-to-top="handleScrollToTop"
+    />
   </div>
 </template>
 
@@ -345,6 +352,7 @@ import CreateTaskModal from '../components/CreateTaskModal.vue'
 import NotificationBell from '../components/NotificationBell.vue'
 import NotificationToast from '../components/NotificationToast.vue'
 import UserAvatar from '../components/UserAvatar.vue'
+import BackToTopButton from '../components/BackToTopButton.vue'
 import type { Task, PinningQueueStatus, PinnedUser, User } from '../types/index'
 import type { LockTask } from '../types'
 
@@ -836,6 +844,39 @@ const goToTaskDetail = (taskId: string) => {
 
   console.log('💾 Saved tasks state before navigation')
   router.push({ name: 'task-detail', params: { id: taskId } })
+}
+
+// Utility function to truncate task title to 16 characters
+const truncateTitle = (title: string): string => {
+  if (!title) return ''
+  if (title.length <= 16) return title
+  return title.slice(0, 16) + '...'
+}
+
+// 回到顶部按钮处理函数
+const handleRefreshData = async () => {
+  try {
+    console.log('🔄 刷新任务管理数据...')
+
+    // 刷新任务数据
+    await tasksStore.fetchTasks({ page: 1 }) // 强制刷新第一页
+
+    // 刷新任务统计数据
+    await fetchTaskCounts()
+
+    // 如果有置顶任务，刷新置顶数据
+    if (pinnedStatus.value) {
+      await fetchPinningStatus()
+    }
+
+    console.log('✅ 任务管理数据刷新完成')
+  } catch (error) {
+    console.error('❌ 刷新数据失败:', error)
+  }
+}
+
+const handleScrollToTop = () => {
+  console.log('⬆️ 滚动到顶部')
 }
 
 const getTaskTypeText = (type: string) => {
