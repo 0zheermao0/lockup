@@ -78,9 +78,12 @@ export const useNotificationStore = defineStore('notifications', () => {
     error.value = null
 
     try {
-      const page = params?.page || currentPage.value
+      // 如果是reset模式，强制从第1页开始；否则使用指定页码或当前页码
+      const page = params?.reset ? 1 : (params?.page || currentPage.value)
+      // 提取API需要的参数，排除reset参数
+      const { reset, ...apiParams } = params || {}
       const response = await notificationsApi.getNotifications({
-        ...params,
+        ...apiParams,
         page,
         limit: pageSize.value
       })
@@ -93,7 +96,10 @@ export const useNotificationStore = defineStore('notifications', () => {
       }
 
       hasMore.value = response.next !== null
-      currentPage.value = page + 1
+      // 只有在非reset模式下才增加页码
+      if (!params?.reset) {
+        currentPage.value = page + 1
+      }
       totalCount.value = response.count || 0
 
       return response.results || []

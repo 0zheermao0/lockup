@@ -20,7 +20,7 @@ PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
 WORKER_NAME="${CELERY_WORKER_NAME:-lockup-worker}"
 LOG_LEVEL="${CELERY_LOG_LEVEL:-info}"
 CONCURRENCY="${CELERY_WORKER_CONCURRENCY:-2}"
-QUEUES="${CELERY_QUEUES:-rewards,default}"
+QUEUES="${CELERY_QUEUES:-rewards,default,activity,events}"
 LOG_DIR="${PROJECT_DIR}/logs"
 PID_DIR="${PROJECT_DIR}/run"
 
@@ -50,7 +50,7 @@ if [ -f "venv/bin/activate" ]; then
 fi
 
 # Start Celery worker
-exec celery -A celery_app worker \
+exec celery -A lockup_backend worker \
     --loglevel="$LOG_LEVEL" \
     --concurrency="$CONCURRENCY" \
     --queues="$QUEUES" \

@@ -1193,6 +1193,7 @@ const addOvertimeForPinnedTask = async (task: Task, event: Event) => {
 
     // Check for specific error messages in the response data
     if (error.data?.error) {
+      // 直接显示后端返回的具体错误信息
       errorMessage = error.data.error
     } else if (error.status === 404) {
       errorMessage = '任务不存在或已被删除'
@@ -1200,8 +1201,6 @@ const addOvertimeForPinnedTask = async (task: Task, event: Event) => {
       errorMessage = '您没有权限为此任务加时'
     } else if (error.status === 500) {
       errorMessage = '服务器内部错误，请稍后重试'
-    } else if (error.message && !error.message.includes('HTTP')) {
-      errorMessage = error.message
     } else if (error.message) {
       errorMessage = `网络错误：${error.message}`
     }
