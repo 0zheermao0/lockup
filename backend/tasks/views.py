@@ -96,7 +96,11 @@ class LockTaskListCreateView(generics.ListCreateAPIView):
                     time_condition & (single_person_condition | multi_person_condition)
                 )
             else:
-                queryset = queryset.filter(status=status)
+                # 对于 'active' 状态，包含 voting_passed 状态的任务
+                if status == 'active':
+                    queryset = queryset.filter(status__in=['active', 'voting_passed'])
+                else:
+                    queryset = queryset.filter(status=status)
 
         # 按用户筛选（我的任务）
         my_tasks = self.request.query_params.get('my_tasks')
@@ -119,10 +123,10 @@ class LockTaskListCreateView(generics.ListCreateAPIView):
             from datetime import timedelta
             from .models import OvertimeAction
 
-            # 基础条件：带锁任务、活跃状态、不是自己的任务、未开启防护罩
+            # 基础条件：带锁任务、活跃状态（包括voting_passed）、不是自己的任务、未开启防护罩
             queryset = queryset.filter(
                 task_type='lock',
-                status='active',
+                status__in=['active', 'voting_passed'],
                 shield_active=False  # 排除开启防护罩的任务
             ).exclude(user=self.request.user)
 
@@ -2033,7 +2037,7 @@ def manual_time_adjustment(request, pk):
         )
 
     # 检查任务状态
-    if task.status not in ['active', 'voting']:
+    if task.status not in ['active', 'voting', 'voting_passed']:
         return Response(
             {'error': '任务不在可调整时间的状态'},
             status=status.HTTP_400_BAD_REQUEST
@@ -2470,7 +2474,7 @@ def get_task_counts(request):
         # 计算可以加时的任务数量
         can_overtime_queryset = lock_tasks.filter(
             task_type='lock',
-            status='active',
+            status__in=['active', 'voting_passed'],
             shield_active=False  # 排除开启防护罩的任务
         ).exclude(user=request.user)
 
@@ -2489,7 +2493,7 @@ def get_task_counts(request):
         # 带锁任务统计
         lock_counts = {
             'all': lock_tasks.count(),
-            'active': lock_tasks.filter(status='active').count(),
+            'active': lock_tasks.filter(status__in=['active', 'voting_passed']).count(),
             'voting': lock_tasks.filter(status='voting').count(),
             'completed': lock_tasks.filter(status='completed').count(),
             'my_tasks': lock_tasks.filter(user=request.user).count(),

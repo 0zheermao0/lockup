@@ -53,14 +53,14 @@
                   🚀 开始任务
                 </button>
                 <button
-                  v-if="task.status === 'active' && canCompleteTask"
+                  v-if="(task.status === 'active' || task.status === 'voting_passed') && canCompleteTask"
                   @click="completeTask"
                   class="quick-action-btn success large"
                 >
                   ✅ 完成任务
                 </button>
                 <button
-                  v-if="(task.status === 'active' || task.status === 'voting') && canManageLockTask"
+                  v-if="(task.status === 'active' || task.status === 'voting' || task.status === 'voting_passed') && canManageLockTask"
                   @click="stopTask"
                   class="quick-action-btn danger large"
                 >
@@ -564,7 +564,7 @@
             </div>
 
             <!-- Progress Bar for Active Lock Tasks or Taken Board Tasks -->
-            <div v-if="(task.task_type === 'lock' && task.status === 'active') || (task.task_type === 'board' && task.status === 'taken')" class="task-progress-section">
+            <div v-if="(task.task_type === 'lock' && (task.status === 'active' || task.status === 'voting_passed')) || (task.task_type === 'board' && task.status === 'taken')" class="task-progress-section">
               <h3>进度</h3>
               <div v-if="taskFrozen" class="progress-frozen-section">
                 <span class="frozen-time-placeholder">❄️ 进度已冻结</span>
@@ -656,7 +656,7 @@
 
 
           <!-- Voting Section for Vote-based Tasks -->
-          <section v-if="taskUnlockType === 'vote' && (task.status === 'active' || task.status === 'voting')" class="voting-section">
+          <section v-if="taskUnlockType === 'vote' && (task.status === 'active' || task.status === 'voting' || task.status === 'voting_passed')" class="voting-section">
             <h3>投票解锁</h3>
 
             <!-- Task in active state, waiting for countdown -->
@@ -695,6 +695,27 @@
                 </div>
                 <div v-else class="voting-schedule">
                   <span class="hidden-time-placeholder">🔒 投票时间已隐藏</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- Task voting passed, waiting for completion -->
+            <div v-else-if="task.status === 'voting_passed'" class="voting-passed">
+              <div class="voting-passed-info">
+                <h4>✅ 投票已通过</h4>
+                <div class="voting-passed-notice">
+                  🎉 投票已通过！任务现在等待倒计时结束后完成。
+                </div>
+                <div v-if="timeRemaining > 0" class="completion-countdown">
+                  <span v-if="!taskTimeDisplayHidden">
+                    ⏳ 完成倒计时: {{ formatTimeRemaining(timeRemaining) }}
+                  </span>
+                  <span v-else>
+                    ⏳ 完成倒计时: <span class="hidden-time-placeholder">🔒 时间已隐藏</span>
+                  </span>
+                </div>
+                <div v-else class="completion-ready">
+                  ✅ 倒计时已结束，任务可以完成了！
                 </div>
               </div>
             </div>
@@ -1500,7 +1521,7 @@ const canAddOvertime = computed(() => {
   if (!task.value) return false
   // Can add overtime if it's a lock task, status is active, and not own task
   return task.value.task_type === 'lock' &&
-         task.value.status === 'active' &&
+         (task.value.status === 'active' || task.value.status === 'voting_passed') &&
          !isOwnTask.value
 })
 
@@ -1593,7 +1614,7 @@ const progressPercent = computed(() => {
   if (!task.value) return 0
 
   // Lock tasks progress
-  if (task.value.task_type === 'lock' && task.value.status === 'active' && task.value.start_time && task.value.end_time) {
+  if (task.value.task_type === 'lock' && (task.value.status === 'active' || task.value.status === 'voting_passed') && task.value.start_time && task.value.end_time) {
     const start = new Date(task.value.start_time).getTime()
     const end = new Date(task.value.end_time).getTime()
     const now = currentTime.value
@@ -1626,7 +1647,7 @@ const timeRemaining = computed(() => {
   if (!task.value) return 0
 
   // Lock tasks time remaining
-  if (task.value.task_type === 'lock' && task.value.status === 'active' && task.value.end_time) {
+  if (task.value.task_type === 'lock' && (task.value.status === 'active' || task.value.status === 'voting_passed') && task.value.end_time) {
     // If task is frozen, return the frozen remaining time
     if (taskFrozen.value && (task.value as any).frozen_end_time && (task.value as any).frozen_at) {
       const frozenEndTime = new Date((task.value as any).frozen_end_time).getTime()
@@ -1707,7 +1728,7 @@ const isTaskCompleted = computed(() => {
 })
 
 const isTaskActive = computed(() => {
-  return task.value?.status === 'active'
+  return task.value?.status === 'active' || task.value?.status === 'voting_passed'
 })
 
 const showVotingResults = computed(() => {
@@ -1999,7 +2020,7 @@ const fetchTask = async () => {
 
     // 如果是活跃任务或已接取的任务板，启动进度更新
     const taskValue = task.value as any
-    if ((taskValue.task_type === 'lock' && taskValue.status === 'active') ||
+    if ((taskValue.task_type === 'lock' && (taskValue.status === 'active' || taskValue.status === 'voting_passed')) ||
         (taskValue.task_type === 'board' && taskValue.status === 'taken')) {
       startProgressUpdate()
     }
@@ -2061,7 +2082,7 @@ const fetchTask = async () => {
 
     // 如果是活跃任务或已接取的任务板，启动进度更新
     const taskValue = task.value as any
-    if ((taskValue.task_type === 'lock' && taskValue.status === 'active') ||
+    if ((taskValue.task_type === 'lock' && (taskValue.status === 'active' || taskValue.status === 'voting_passed')) ||
         (taskValue.task_type === 'board' && taskValue.status === 'taken')) {
       startProgressUpdate()
     }
@@ -3603,6 +3624,7 @@ const getStatusText = (status: string) => {
       pending: '待开始',
       active: '进行中',
       voting: '投票期',
+      voting_passed: '投票已通过',
       completed: '已完成',
       failed: '已失败',
       open: '招募中',
@@ -3616,6 +3638,7 @@ const getStatusText = (status: string) => {
       pending: '待开始',
       active: '进行中',
       voting: '投票期',
+      voting_passed: '投票已通过',
       completed: '已完成',
       failed: '已失败',
       open: '开放中',
@@ -4031,6 +4054,12 @@ onUnmounted(() => {
   background-color: #ffc107;
   color: #212529;
   animation: pulse 2s infinite;
+}
+
+.task-status.voting_passed {
+  background-color: #28a745;
+  color: white;
+  animation: pulse-ready 2s infinite;
 }
 
 .task-user {
@@ -4565,6 +4594,50 @@ onUnmounted(() => {
   color: #28a745;
   font-weight: 500;
   font-size: 1.1rem;
+}
+
+.voting-passed {
+  margin-bottom: 1rem;
+}
+
+.voting-passed-info h4 {
+  color: #28a745;
+  margin-bottom: 0.75rem;
+  font-size: 1.2rem;
+}
+
+.voting-passed-notice {
+  padding: 1rem;
+  background: linear-gradient(135deg, #d4edda, #a3d977);
+  border: 2px solid #28a745;
+  border-radius: 8px;
+  color: #155724;
+  font-weight: 500;
+  text-align: center;
+  margin-bottom: 1rem;
+  animation: pulse-success 2s infinite;
+}
+
+.completion-countdown {
+  padding: 0.75rem;
+  background: linear-gradient(135deg, #fff3cd, #ffeaa7);
+  border: 1px solid #ffc107;
+  border-radius: 6px;
+  color: #856404;
+  font-weight: 500;
+  text-align: center;
+  margin-bottom: 0.5rem;
+}
+
+.completion-ready {
+  padding: 0.75rem;
+  background: linear-gradient(135deg, #d4edda, #a3d977);
+  border: 1px solid #28a745;
+  border-radius: 6px;
+  color: #155724;
+  font-weight: 600;
+  text-align: center;
+  animation: pulse-ready 2s infinite;
 }
 
 .vote-countdown-notice {

@@ -237,7 +237,7 @@
                       {{ formatTimeRemaining(getTimeRemaining(task)) }}
                     </span>
                   </div>
-                  <div v-else-if="(task.status === 'active' && task.task_type === 'lock') || (task.status === 'taken' && task.task_type === 'board')" class="task-time-remaining">
+                  <div v-else-if="((task.status === 'active' || task.status === 'voting_passed') && task.task_type === 'lock') || (task.status === 'taken' && task.task_type === 'board')" class="task-time-remaining">
                     <span class="label">状态:</span>
                     <span v-if="isTaskFrozen(task)" class="value frozen-time-placeholder">
                       <span class="frozen-time-indicator">❄️ 已冻结</span>
@@ -263,7 +263,7 @@
 
                 <div class="task-progress">
                   <!-- 显示进度条当任务未冻结且时间未隐藏时 -->
-                  <div v-if="((task.task_type === 'lock' && task.status === 'active') || (task.task_type === 'board' && task.status === 'taken')) && !isTaskFrozen(task) && !isTaskTimeHidden(task)" class="progress-bar mobile-progress-container">
+                  <div v-if="((task.task_type === 'lock' && (task.status === 'active' || task.status === 'voting_passed')) || (task.task_type === 'board' && task.status === 'taken')) && !isTaskFrozen(task) && !isTaskTimeHidden(task)" class="progress-bar mobile-progress-container">
                     <div
                       class="progress-fill mobile-progress-fill"
                       :class="getProgressColorClass(task)"
@@ -279,7 +279,7 @@
                     </div>
                   </div>
                   <!-- 冻结或时间隐藏时显示占位符 -->
-                  <div v-else-if="((task.task_type === 'lock' && task.status === 'active') || (task.task_type === 'board' && task.status === 'taken'))" class="progress-hidden-placeholder">
+                  <div v-else-if="((task.task_type === 'lock' && (task.status === 'active' || task.status === 'voting_passed')) || (task.task_type === 'board' && task.status === 'taken'))" class="progress-hidden-placeholder">
                     <span v-if="(task as any).is_frozen" class="frozen-time-indicator">❄️ 进度已冻结</span>
                     <span v-else class="hidden-time-indicator">🔒 进度已隐藏</span>
                   </div>
@@ -902,6 +902,7 @@ const getStatusText = (status: string) => {
     pending: '待开始',
     active: '进行中',
     voting: '投票中',
+    voting_passed: '投票已通过',
     completed: '已完成',
     failed: '已失败',
     open: '开放中',
@@ -970,7 +971,7 @@ const stripHtmlAndTruncate = (html: string, maxLength: number = 150): string => 
 
 const getProgressPercent = (task: Task) => {
   // Handle lock tasks
-  if (task.task_type === 'lock' && task.status === 'active') {
+  if (task.task_type === 'lock' && (task.status === 'active' || task.status === 'voting_passed')) {
     const lockTask = task as any
 
     // If task is frozen, show progress based on frozen state
@@ -1021,7 +1022,7 @@ const getProgressColorClass = (task: Task) => {
   }
 
   // Check if task is active (lock tasks) or taken (board tasks)
-  const isProgressActive = (task.task_type === 'lock' && task.status === 'active') ||
+  const isProgressActive = (task.task_type === 'lock' && (task.status === 'active' || task.status === 'voting_passed')) ||
                           (task.task_type === 'board' && task.status === 'taken')
 
   if (!isProgressActive) {
@@ -1051,7 +1052,7 @@ const getTimeRemaining = (task: Task) => {
   if (!task) return 0
 
   // Lock tasks time remaining
-  if (task.task_type === 'lock' && task.status === 'active') {
+  if (task.task_type === 'lock' && (task.status === 'active' || task.status === 'voting_passed')) {
     const lockTask = task as any
 
     // If task is frozen, show the frozen time remaining
@@ -1101,7 +1102,7 @@ const canAddOvertime = (task: Task) => {
   if (!task) return false
   // Can add overtime if it's a lock task, status is active, and not own task
   return task.task_type === 'lock' &&
-         task.status === 'active' &&
+         (task.status === 'active' || task.status === 'voting_passed') &&
          task.user.id !== authStore.user?.id
 }
 
@@ -1810,6 +1811,12 @@ onUnmounted(() => {
   background-color: #ffc107;
   color: #212529;
   animation: pulse 2s infinite;
+}
+
+.task-status.voting_passed {
+  background-color: #28a745;
+  color: white;
+  animation: pulse-ready 2s infinite;
 }
 
 .task-status.completed {
