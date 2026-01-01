@@ -136,7 +136,7 @@ export interface BaseLockTask {
   user: User
   title: string
   description?: string
-  status: 'pending' | 'active' | 'voting' | 'completed' | 'failed' | 'open' | 'taken' | 'submitted'
+  status: 'pending' | 'active' | 'voting' | 'voting_passed' | 'completed' | 'failed' | 'open' | 'taken' | 'submitted'
   created_at: string
   updated_at: string
   // 计算字段

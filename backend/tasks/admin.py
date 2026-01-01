@@ -107,6 +107,7 @@ class LockTaskAdmin(admin.ModelAdmin):
             'pending': '#6c757d',
             'active': '#007bff',
             'voting': '#ffc107',
+            'voting_passed': '#28a745',
             'completed': '#28a745',
             'failed': '#dc3545',
             'open': '#28a745',
@@ -145,7 +146,7 @@ class LockTaskAdmin(admin.ModelAdmin):
 
     def is_active(self, obj):
         """显示是否活跃"""
-        if obj.status in ['active', 'voting', 'taken', 'submitted', 'open']:
+        if obj.status in ['active', 'voting', 'voting_passed', 'taken', 'submitted', 'open']:
             return format_html(
                 '<span style="color: #28a745; font-weight: bold;">✓</span>'
             )

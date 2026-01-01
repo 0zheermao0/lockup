@@ -1521,7 +1521,7 @@ const canAddOvertime = computed(() => {
   if (!task.value) return false
   // Can add overtime if it's a lock task, status is active, and not own task
   return task.value.task_type === 'lock' &&
-         task.value.status === 'active' &&
+         (task.value.status === 'active' || task.value.status === 'voting_passed') &&
          !isOwnTask.value
 })
 
@@ -1614,7 +1614,7 @@ const progressPercent = computed(() => {
   if (!task.value) return 0
 
   // Lock tasks progress
-  if (task.value.task_type === 'lock' && task.value.status === 'active' && task.value.start_time && task.value.end_time) {
+  if (task.value.task_type === 'lock' && (task.value.status === 'active' || task.value.status === 'voting_passed') && task.value.start_time && task.value.end_time) {
     const start = new Date(task.value.start_time).getTime()
     const end = new Date(task.value.end_time).getTime()
     const now = currentTime.value
@@ -1647,7 +1647,7 @@ const timeRemaining = computed(() => {
   if (!task.value) return 0
 
   // Lock tasks time remaining
-  if (task.value.task_type === 'lock' && task.value.status === 'active' && task.value.end_time) {
+  if (task.value.task_type === 'lock' && (task.value.status === 'active' || task.value.status === 'voting_passed') && task.value.end_time) {
     // If task is frozen, return the frozen remaining time
     if (taskFrozen.value && (task.value as any).frozen_end_time && (task.value as any).frozen_at) {
       const frozenEndTime = new Date((task.value as any).frozen_end_time).getTime()
@@ -1728,7 +1728,7 @@ const isTaskCompleted = computed(() => {
 })
 
 const isTaskActive = computed(() => {
-  return task.value?.status === 'active'
+  return task.value?.status === 'active' || task.value?.status === 'voting_passed'
 })
 
 const showVotingResults = computed(() => {
@@ -2020,7 +2020,7 @@ const fetchTask = async () => {
 
     // 如果是活跃任务或已接取的任务板，启动进度更新
     const taskValue = task.value as any
-    if ((taskValue.task_type === 'lock' && taskValue.status === 'active') ||
+    if ((taskValue.task_type === 'lock' && (taskValue.status === 'active' || taskValue.status === 'voting_passed')) ||
         (taskValue.task_type === 'board' && taskValue.status === 'taken')) {
       startProgressUpdate()
     }
@@ -2082,7 +2082,7 @@ const fetchTask = async () => {
 
     // 如果是活跃任务或已接取的任务板，启动进度更新
     const taskValue = task.value as any
-    if ((taskValue.task_type === 'lock' && taskValue.status === 'active') ||
+    if ((taskValue.task_type === 'lock' && (taskValue.status === 'active' || taskValue.status === 'voting_passed')) ||
         (taskValue.task_type === 'board' && taskValue.status === 'taken')) {
       startProgressUpdate()
     }

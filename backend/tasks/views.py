@@ -2037,7 +2037,7 @@ def manual_time_adjustment(request, pk):
         )
 
     # 检查任务状态
-    if task.status not in ['active', 'voting']:
+    if task.status not in ['active', 'voting', 'voting_passed']:
         return Response(
             {'error': '任务不在可调整时间的状态'},
             status=status.HTTP_400_BAD_REQUEST
