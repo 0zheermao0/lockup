@@ -26,7 +26,7 @@
     <!-- Task Header - Same as normal task card -->
     <div class="task-header">
       <div class="task-info">
-        <h3 class="task-title">{{ task.title }}</h3>
+        <h3 class="task-title" :title="task.title">{{ truncateTitle(task.title) }}</h3>
         <div class="task-meta">
           <span v-if="task.task_type === 'lock' && (task as any).unlock_type" class="task-type">
             {{ getTaskTypeText((task as any).unlock_type) }}
@@ -189,6 +189,13 @@ const handleClick = () => {
   if (props.clickable) {
     emit('click', props.task)
   }
+}
+
+// Utility function to truncate task title to 16 characters
+const truncateTitle = (title: string): string => {
+  if (!title) return ''
+  if (title.length <= 16) return title
+  return title.slice(0, 16) + '...'
 }
 
 const getTaskTypeText = (type: string) => {

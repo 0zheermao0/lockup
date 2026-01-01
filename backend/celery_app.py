@@ -39,8 +39,19 @@ app.conf.update(
 
     # Task routing - separate queues for different task types
     task_routes={
+        # Core reward and activity tasks
         'tasks.celery_tasks.process_hourly_rewards': {'queue': 'rewards'},
         'tasks.celery_tasks.process_activity_decay': {'queue': 'activity'},
+
+        # Event-driven tasks (high frequency, real-time)
+        'tasks.celery_tasks.process_pinning_queue': {'queue': 'events'},
+
+        # Settlement tasks (financial operations, require reliability)
+        'tasks.celery_tasks.auto_settle_expired_board_task': {'queue': 'settlements'},
+        'tasks.celery_tasks.process_expired_board_tasks': {'queue': 'settlements'},
+
+        # Voting and verification tasks (community operations)
+        'tasks.celery_tasks.process_checkin_voting_results': {'queue': 'voting'},
     },
 
     # Worker configuration

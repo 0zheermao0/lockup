@@ -20,7 +20,7 @@ PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
 WORKER_NAME="${CELERY_WORKER_NAME:-lockup-worker}"
 LOG_LEVEL="${CELERY_LOG_LEVEL:-info}"
 CONCURRENCY="${CELERY_WORKER_CONCURRENCY:-2}"
-QUEUES="${CELERY_QUEUES:-rewards,default,activity,events}"
+QUEUES="${CELERY_QUEUES:-rewards,default,activity,events,settlements,voting}"
 LOG_DIR="${PROJECT_DIR}/logs"
 PID_DIR="${PROJECT_DIR}/run"
 

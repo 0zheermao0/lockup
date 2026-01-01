@@ -23,6 +23,26 @@
 | **process-expired-effects** | 每5分钟 | events | 处理过期的事件效果 |
 | **event-system-health-check** | 每5分钟 | events | 事件系统健康状态检查 |
 
+## 📋 队列说明
+
+| 队列名称 | 用途 | 特点 | 默认并发数 |
+|---------|------|------|-----------|
+| **default** | 默认队列，处理常规任务 | 通用任务处理 | 1 |
+| **rewards** | 奖励处理队列 | 高频率，涉及积分发放 | 1 |
+| **activity** | 活跃度处理队列 | 低频率，用户活跃度计算 | 1 |
+| **events** | 事件处理队列 | 高频率，实时事件处理 | 1 |
+| **settlements** | 结算处理队列 | 财务操作，要求高可靠性 | 1 |
+| **voting** | 投票处理队列 | 社区操作，投票结果处理 | 1 |
+
+### 队列任务分配
+
+- **rewards**: `process_hourly_rewards`
+- **activity**: `process_activity_decay`
+- **events**: `process_pinning_queue`
+- **settlements**: `auto_settle_expired_board_task`, `process_expired_board_tasks`
+- **voting**: `process_checkin_voting_results`
+- **default**: 其他所有任务
+
 ## 🚀 使用方法
 
 ### 基本命令
@@ -108,13 +128,63 @@ python manage.py setup_celery_beat
 celery -A lockup_backend beat -l info --scheduler django_celery_beat.schedulers:DatabaseScheduler
 
 # 4. 启动 Celery Worker (所有队列)
-celery -A lockup_backend worker -l info -Q default,rewards,activity,events -c 1
+celery -A lockup_backend worker -l info -Q default,rewards,activity,events,settlements,voting -c 1
 
-# 5. 或者按队列启动多个 Worker
-celery -A lockup_backend worker -Q rewards -c 2 -l info &
-celery -A lockup_backend worker -Q activity -c 1 -l info &
-celery -A lockup_backend worker -Q events -c 1 -l info &
-celery -A lockup_backend worker -Q default -c 4 -l info &
+# 5. 使用脚本启动 (推荐)
+./scripts/celery_start_all.sh                    # 启动所有组件
+./scripts/celery_workers_multi.sh -d             # 启动多队列专用workers (后台运行)
+
+# 6. 或者手动按队列启动多个 Worker
+celery -A lockup_backend worker -Q rewards -c 2 -l info &       # 奖励处理队列
+celery -A lockup_backend worker -Q activity -c 1 -l info &      # 活跃度处理队列
+celery -A lockup_backend worker -Q events -c 2 -l info &        # 事件处理队列 (高频)
+celery -A lockup_backend worker -Q settlements -c 1 -l info &   # 结算处理队列 (可靠性)
+celery -A lockup_backend worker -Q voting -c 1 -l info &        # 投票处理队列
+celery -A lockup_backend worker -Q default -c 4 -l info &       # 默认队列
+```
+
+### 脚本使用方法
+
+#### 🚀 一键启动所有组件
+```bash
+# 启动所有组件 (worker + beat + flower)
+./scripts/celery_start_all.sh
+
+# 后台运行所有组件
+./scripts/celery_start_all.sh -d
+
+# 仅启动worker
+./scripts/celery_start_all.sh worker
+
+# 开发模式 (更详细日志)
+./scripts/celery_start_all.sh --dev
+```
+
+#### ⚡ 多队列专用Workers
+```bash
+# 启动多队列专用workers (推荐生产环境)
+./scripts/celery_workers_multi.sh -d
+
+# 检查worker状态
+./scripts/celery_workers_multi.sh --status
+
+# 停止所有workers
+./scripts/celery_workers_multi.sh --stop
+
+# 重启所有workers
+./scripts/celery_workers_multi.sh --restart
+```
+
+#### 📊 单独启动组件
+```bash
+# 仅启动Beat调度器
+./scripts/celery_beat.sh
+
+# 仅启动Worker (所有队列)
+./scripts/celery_worker.sh
+
+# 仅启动Flower监控
+./scripts/celery_flower.sh
 ```
 
 ### 更新现有部署
@@ -124,7 +194,7 @@ celery -A lockup_backend worker -Q default -c 4 -l info &
 python manage.py setup_celery_beat
 
 # 2. 重启 Celery 服务
-# (Celery Beat 会自动检测数据库中的任务变化)
+./scripts/celery_workers_multi.sh --restart
 ```
 
 ### 添加新的定时任务

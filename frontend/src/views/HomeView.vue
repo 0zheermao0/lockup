@@ -317,6 +317,13 @@
       :user="selectedUser"
       @close="closeProfileModal"
     />
+
+    <!-- Back to Top Button -->
+    <BackToTopButton
+      :scroll-threshold="300"
+      @refresh="handleRefreshData"
+      @scroll-to-top="handleScrollToTop"
+    />
   </div>
 </template>
 
@@ -338,6 +345,7 @@ import NotificationBell from '../components/NotificationBell.vue'
 import TaskBroadcast from '../components/TaskBroadcast.vue'
 import PinnedUserCarousel from '../components/PinnedUserCarousel.vue'
 import UserAvatar from '../components/UserAvatar.vue'
+import BackToTopButton from '../components/BackToTopButton.vue'
 import type { Post } from '../types/index'
 
 const router = useRouter()
@@ -659,6 +667,27 @@ const truncateTitle = (title: string) => {
   if (!title) return ''
   if (title.length <= 6) return title
   return title.substring(0, 6) + '...'
+}
+
+// 回到顶部按钮处理函数
+const handleRefreshData = async () => {
+  try {
+    console.log('🔄 刷新首页数据...')
+
+    // 刷新动态数据
+    await postsStore.fetchPosts({ page: 1 }) // 强制刷新第一页
+
+    // 刷新用户信息
+    await authStore.refreshUser()
+
+    console.log('✅ 首页数据刷新完成')
+  } catch (error) {
+    console.error('❌ 刷新数据失败:', error)
+  }
+}
+
+const handleScrollToTop = () => {
+  console.log('⬆️ 滚动到顶部')
 }
 
 onMounted(async () => {

@@ -159,7 +159,7 @@
                 </div>
                 <div class="task-header">
                   <div class="task-info">
-                    <h3 class="task-title">{{ task.title }}</h3>
+                    <h3 class="task-title" :title="task.title">{{ truncateTitle(task.title) }}</h3>
                     <div class="task-meta">
                       <span v-if="task.task_type === 'lock' && task.unlock_type" class="task-type">
                         {{ getTaskTypeText(task.unlock_type) }}
@@ -328,6 +328,13 @@
       :details="toastData.details"
       @close="showToast = false"
     />
+
+    <!-- Back to Top Button -->
+    <BackToTopButton
+      :scroll-threshold="300"
+      @refresh="handleRefreshData"
+      @scroll-to-top="handleScrollToTop"
+    />
   </div>
 </template>
 
@@ -345,6 +352,7 @@ import CreateTaskModal from '../components/CreateTaskModal.vue'
 import NotificationBell from '../components/NotificationBell.vue'
 import NotificationToast from '../components/NotificationToast.vue'
 import UserAvatar from '../components/UserAvatar.vue'
+import BackToTopButton from '../components/BackToTopButton.vue'
 import type { Task, PinningQueueStatus, PinnedUser, User } from '../types/index'
 import type { LockTask } from '../types'
 
@@ -838,6 +846,39 @@ const goToTaskDetail = (taskId: string) => {
   router.push({ name: 'task-detail', params: { id: taskId } })
 }
 
+// Utility function to truncate task title to 16 characters
+const truncateTitle = (title: string): string => {
+  if (!title) return ''
+  if (title.length <= 16) return title
+  return title.slice(0, 16) + '...'
+}
+
+// 回到顶部按钮处理函数
+const handleRefreshData = async () => {
+  try {
+    console.log('🔄 刷新任务管理数据...')
+
+    // 刷新任务数据
+    await tasksStore.fetchTasks({ page: 1 }) // 强制刷新第一页
+
+    // 刷新任务统计数据
+    await fetchTaskCounts()
+
+    // 如果有置顶任务，刷新置顶数据
+    if (pinnedStatus.value) {
+      await fetchPinningStatus()
+    }
+
+    console.log('✅ 任务管理数据刷新完成')
+  } catch (error) {
+    console.error('❌ 刷新数据失败:', error)
+  }
+}
+
+const handleScrollToTop = () => {
+  console.log('⬆️ 滚动到顶部')
+}
+
 const getTaskTypeText = (type: string) => {
   const texts = {
     time: '定时解锁',
@@ -1187,14 +1228,31 @@ const addOvertimeForPinnedTask = async (task: Task, event: Event) => {
 
   } catch (error: any) {
     console.error('Error adding overtime to pinned task:', error)
+    console.log('Error details:', {
+      message: error.message,
+      status: error.status,
+      data: error.data,
+      response: error.response
+    })
 
     // Handle specific error messages
     let errorMessage = '置顶任务加时失败，请重试'
 
-    // Check for specific error messages in the response data
+    // 优先检查多个可能的错误信息来源
     if (error.data?.error) {
       // 直接显示后端返回的具体错误信息
       errorMessage = error.data.error
+    } else if (error.response?.data?.error) {
+      // 检查 response.data.error（某些情况下错误数据可能在这里）
+      errorMessage = error.response.data.error
+    } else if (error.message && error.message.includes('两小时内')) {
+      // 特殊处理：如果错误消息包含具体的业务错误信息，直接使用
+      errorMessage = error.message
+    } else if (error.message && !error.message.includes('Network error') && !error.message.includes('HTTP ') && error.message.length > 10) {
+      // 如果error.message包含有用信息且不是通用错误，使用它
+      errorMessage = error.message
+    } else if (error.status === 400) {
+      errorMessage = '请求参数错误或操作不被允许'
     } else if (error.status === 404) {
       errorMessage = '任务不存在或已被删除'
     } else if (error.status === 403) {
