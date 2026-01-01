@@ -36,6 +36,7 @@ class LockTask(models.Model):
         ('pending', '待开始'),
         ('active', '进行中'),
         ('voting', '投票期'),  # 新增：投票解锁任务的投票期状态
+        ('voting_passed', '投票已通过，等待时间结束'),  # 新增：投票通过但未完成状态
         ('completed', '已完成'),
         ('failed', '已失败'),
         # 任务板特有状态
