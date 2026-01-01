@@ -164,8 +164,13 @@ def add_overtime_to_task(task, user, minutes=None):
         if task.end_time:
             # 如果倒计时已经结束，从现在开始加时；否则从原结束时间加时
             if now >= task.end_time:
-                # 倒计时已结束，从现在开始延长
-                task.end_time = now + timezone.timedelta(minutes=overtime_minutes)
+                # 倒计时已结束
+                if task.strict_mode:
+                    # 严格模式下，加时后任务立即结束
+                    task.end_time = now + timezone.timedelta(minutes=overtime_minutes)
+                else:
+                    # 普通模式下，从原结束时间延长
+                    task.end_time = task.end_time + timezone.timedelta(minutes=overtime_minutes)
             else:
                 # 倒计时未结束，从原结束时间延长
                 task.end_time = task.end_time + timezone.timedelta(minutes=overtime_minutes)
