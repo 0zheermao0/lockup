@@ -45,7 +45,7 @@ if [ -f "venv/bin/activate" ]; then
 fi
 
 # Start Flower
-exec celery -A celery_app flower \
+exec celery -A lockup_backend flower \
     --address="$FLOWER_ADDRESS" \
     --port="$FLOWER_PORT" \
     --logging=info \

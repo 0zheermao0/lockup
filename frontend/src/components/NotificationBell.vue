@@ -24,13 +24,6 @@
           >
             全部已读
           </button>
-          <button
-            v-if="hasNotifications"
-            @click="clearReadNotifications"
-            class="clear-btn"
-          >
-            清理已读
-          </button>
         </div>
       </div>
 
@@ -371,20 +364,14 @@ const toggleDropdown = async () => {
 
 const loadNotifications = async () => {
   try {
-    // 重置并加载第一页
+    // 重置并加载第一页通知（包括已读和未读）
     await notificationStore.fetchNotificationsPage({
-      is_read: 'false',
       reset: true
     })
-
-    // 如果未读通知不足一页，加载已读通知补充
-    if (notifications.value.length < 10) {
-      await notificationStore.loadMoreNotifications({
-        is_read: 'true'
-      })
-    }
   } catch (error) {
     console.error('加载通知失败:', error)
+    // 如果加载失败，可能是认证问题或网络问题
+    // 可以在这里添加错误处理逻辑
   }
 }
 
@@ -466,14 +453,6 @@ const deleteNotification = async (notificationId: string) => {
   }
 }
 
-const clearReadNotifications = async () => {
-  try {
-    await notificationStore.clearReadNotifications()
-    // Store中的clearReadNotifications已经更新了本地状态，无需手动更新
-  } catch (error) {
-    console.error('清理已读通知失败:', error)
-  }
-}
 
 // 点击外部关闭下拉
 const handleClickOutside = (event: MouseEvent) => {

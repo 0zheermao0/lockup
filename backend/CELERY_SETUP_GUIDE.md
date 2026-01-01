@@ -11,12 +11,17 @@
 | 任务名称 | 执行频率 | 队列 | 功能描述 |
 |---------|---------|------|----------|
 | **process-hourly-rewards** | 每小时 | rewards | 处理活跃带锁任务的小时奖励 |
-| **auto-freeze-strict-mode-tasks** | 每日 4:15 AM (UTC) | default | 自动冻结24小时内无打卡的严格模式任务 |
-| **process-level-promotions** | 每周三 4:30 AM (UTC) | default | 批量处理用户等级晋升 |
+| **auto-freeze-strict-mode-tasks** | 每日 4:15 AM (Asia/Shanghai) | default | 自动冻结24小时内无打卡的严格模式任务 |
+| **process-level-promotions** | 每周三 4:30 AM (Asia/Shanghai) | default | 批量处理用户等级晋升 |
 | **process-activity-decay** | 每日 4:45 AM (Asia/Shanghai) | activity | 基于斐波那契数列的活跃度衰减处理 |
-| **process-checkin-voting-results** | 每日 4:00 AM (Asia/Shanghai) | default | 处理过期的打卡投票会话并分发奖励 |
+| **process-checkin-voting-results** | 每日 4:00 AM (Asia/Shanghai) | default | 处理过期的打卡投票会话 |
 | **process-pinning-queue** | 每分钟 | default | 处理用户置顶队列，移除过期用户，激活等待用户 |
 | **pinning-health-check** | 每5分钟 | default | 监控置顶系统健康状态并检测问题 |
+| **process-deadline-reminders-8h** | 每30分钟 | default | 处理8小时截止提醒通知 |
+| **schedule-pending-events** | 每分钟 | events | 调度待处理的事件系统事件 |
+| **execute-pending-events** | 每小时 | events | 执行待处理的事件系统事件 |
+| **process-expired-effects** | 每5分钟 | events | 处理过期的事件效果 |
+| **event-system-health-check** | 每5分钟 | events | 事件系统健康状态检查 |
 
 ## 🚀 使用方法
 
@@ -57,12 +62,19 @@ rewards 队列:
 activity 队列:
 ├── process-activity-decay (用户数据处理，独立队列)
 
+events 队列:
+├── schedule-pending-events (事件调度)
+├── execute-pending-events (事件执行)
+├── process-expired-effects (效果处理)
+└── event-system-health-check (事件系统监控)
+
 default 队列:
 ├── auto-freeze-strict-mode-tasks
 ├── process-level-promotions
 ├── process-checkin-voting-results
 ├── process-pinning-queue
-└── pinning-health-check
+├── pinning-health-check
+└── process-deadline-reminders-8h
 ```
 
 ### 时间安排设计
@@ -70,14 +82,15 @@ default 队列:
 ```
 每日时间线 (Asia/Shanghai):
 04:00 - 打卡投票结果处理
-04:15 - 自动冻结严格模式任务 (UTC)
-04:30 - 用户等级晋升 (UTC, 仅周三)
+04:15 - 自动冻结严格模式任务
+04:30 - 用户等级晋升 (仅周三)
 04:45 - 活跃度衰减处理
 
 高频任务:
-每分钟 - 置顶队列处理
-每5分钟 - 置顶系统健康检查
-每小时 - 小时奖励处理
+每分钟 - 置顶队列处理、事件调度
+每5分钟 - 置顶系统健康检查、事件系统健康检查、过期效果处理
+每30分钟 - 截止提醒处理
+每小时 - 小时奖励处理、事件执行
 ```
 
 ## 🔧 开发者使用指南
@@ -91,16 +104,17 @@ python manage.py migrate
 # 2. 设置所有定时任务
 python manage.py setup_celery_beat
 
-# 3. 启动 Celery Beat 调度器
-celery -A celery_app beat -l info
+# 3. 启动 Celery Beat 调度器 (必须指定DatabaseScheduler)
+celery -A lockup_backend beat -l info --scheduler django_celery_beat.schedulers:DatabaseScheduler
 
-# 4. 启动 Celery Worker
-celery -A celery_app worker -l info
+# 4. 启动 Celery Worker (所有队列)
+celery -A lockup_backend worker -l info -Q default,rewards,activity,events -c 1
 
 # 5. 或者按队列启动多个 Worker
-celery -A celery_app worker -Q rewards -l info &
-celery -A celery_app worker -Q activity -l info &
-celery -A celery_app worker -Q default -l info &
+celery -A lockup_backend worker -Q rewards -c 2 -l info &
+celery -A lockup_backend worker -Q activity -c 1 -l info &
+celery -A lockup_backend worker -Q events -c 1 -l info &
+celery -A lockup_backend worker -Q default -c 4 -l info &
 ```
 
 ### 更新现有部署
@@ -192,13 +206,13 @@ python manage.py process_level_promotions --dry-run
 
 ```bash
 # 查看 Celery Beat 日志
-celery -A celery_app beat -l info
+celery -A lockup_backend beat -l info --scheduler django_celery_beat.schedulers:DatabaseScheduler
 
 # 查看 Worker 日志
-celery -A celery_app worker -l info
+celery -A lockup_backend worker -l info
 
 # 查看特定队列的 Worker 日志
-celery -A celery_app worker -Q rewards -l info
+celery -A lockup_backend worker -Q rewards -l info
 ```
 
 ## 🛠️ 故障排除
@@ -217,10 +231,10 @@ celery -A celery_app worker -Q rewards -l info
 2. **队列阻塞**
    ```bash
    # 检查 Worker 状态
-   celery -A celery_app inspect active
+   celery -A lockup_backend inspect active
 
    # 重启特定队列的 Worker
-   celery -A celery_app worker -Q rewards --purge
+   celery -A lockup_backend worker -Q rewards --purge
    ```
 
 3. **时区问题**
@@ -248,9 +262,10 @@ python manage.py setup_celery_beat --dry-run
 
 ```bash
 # 针对不同队列优化并发数
-celery -A celery_app worker -Q rewards -c 2 -l info    # 奖励队列：低并发
-celery -A celery_app worker -Q activity -c 1 -l info   # 活跃度队列：单线程
-celery -A celery_app worker -Q default -c 4 -l info    # 默认队列：高并发
+celery -A lockup_backend worker -Q rewards -c 2 -l info    # 奖励队列：低并发
+celery -A lockup_backend worker -Q activity -c 1 -l info   # 活跃度队列：单线程
+celery -A lockup_backend worker -Q events -c 1 -l info     # 事件队列：单线程
+celery -A lockup_backend worker -Q default -c 4 -l info    # 默认队列：高并发
 ```
 
 ### 监控指标

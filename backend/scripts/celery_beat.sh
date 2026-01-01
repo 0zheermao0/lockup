@@ -46,7 +46,7 @@ if [ -f "venv/bin/activate" ]; then
 fi
 
 # Start Celery Beat
-exec celery -A celery_app beat \
+exec celery -A lockup_backend beat \
     --loglevel="$LOG_LEVEL" \
     --scheduler=django_celery_beat.schedulers:DatabaseScheduler \
     --logfile="$BEAT_LOG" \
