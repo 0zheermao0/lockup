@@ -99,6 +99,7 @@ try:
     django.setup()
     # Import all task modules to register them with Celery
     from tasks.celery_tasks import *
+    from utils.email import send_email_task
 except Exception as e:
     print(f"Warning: Could not import tasks: {e}")
 
