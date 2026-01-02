@@ -45,6 +45,7 @@ INSTALLED_APPS = [
     'rest_framework',
     'rest_framework.authtoken',
     'corsheaders',
+    'anymail',
     # Celery apps
     'django_celery_beat',
     'django_celery_results',
@@ -55,7 +56,7 @@ INSTALLED_APPS = [
     'store',
     'telegram_bot',
     'events',
-    'anymail',
+    "mail",
 ]
 
 MIDDLEWARE = [
@@ -450,6 +451,3 @@ SERVER_EMAIL = "server@lock-up.domain.name"
 FALLBACK_EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
 FALLBACK_EMAIL_HOST = 'localhost'
 FALLBACK_EMAIL_PORT = 25
-FALLBACK_EMAIL_USE_TLS = False
-FALLBACK_EMAIL_HOST_USER = ''
-FALLBACK_EMAIL_HOST_PASSWORD = ''
