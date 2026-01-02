@@ -55,6 +55,7 @@ INSTALLED_APPS = [
     'store',
     'telegram_bot',
     'events',
+    'anymail',
 ]
 
 MIDDLEWARE = [
@@ -428,3 +429,13 @@ LOGGING = {
         },
     },
 }
+
+
+# Email Configuration
+EMAIL_BACKEND = "anymail.backends.mailgun.EmailBackend"
+ANYMAIL = {
+   "MAILGUN_API_KEY": "",
+   "MAILGUN_SENDER_DOMAIN": "lock-up.domain.name", 
+}
+DEFAULT_FROM_EMAIL = "noreply@lock-up.domain.name"
+SERVER_EMAIL = "server@lock-up.domain.name"
