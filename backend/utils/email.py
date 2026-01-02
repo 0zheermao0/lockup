@@ -13,10 +13,17 @@ class EMailSendStatus(models.TextChoices):
     FAILURE = "failure", "Fail"
     
 @dataclass
-class MailSendResult:
+class EMailSendResult:
     backend: str
     status: EMailSendStatus
     error_message: str | None
+    
+    def to_dict(self) -> dict:
+        return {
+            "backend": self.backend,
+            "status": self.status,
+            "error_message": self.error_message,
+        }
     
 def _send_email(
     *,
@@ -25,7 +32,7 @@ def _send_email(
     to: list[str]|str,
     from_email: str = None,
     is_html: bool = False,
-) -> MailSendResult:
+) -> EMailSendResult:
     if isinstance(to, str):
         to = [to]
         
@@ -45,7 +52,7 @@ def _send_email(
         )
         email.send()
 
-        return MailSendResult(
+        return EMailSendResult(
             backend=main_backend,
             status=EMailSendStatus.SUCCESS,
             error_message=None,
@@ -66,14 +73,14 @@ def _send_email(
         )
         email.send()
 
-        return MailSendResult(
+        return EMailSendResult(
             backend=fallback_backend,
             status=EMailSendStatus.FALLBACK,
             error_message=str(mailgun_error),
         )
         
     except smtplib.SMTPException as exc:
-        return MailSendResult(
+        return EMailSendResult(
             backend=fallback_backend,
             status=EMailSendStatus.FAILURE,
             error_message=f"main:{str(mailgun_error)} fallback:{str(exc)}",
@@ -94,7 +101,7 @@ def send_email_task(
     to: list[str]|str,
     from_email: str|None = None,
     is_html: bool = False,
-) -> MailSendResult:
+) -> EMailSendResult:
 
     result = _send_email(
         subject=subject,
@@ -107,6 +114,6 @@ def send_email_task(
     if result.status == EMailSendStatus.FAILURE:
         raise Exception(result.error_message)
 
-    return result
+    return result.to_dict()
     
     
