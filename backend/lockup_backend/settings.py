@@ -448,5 +448,8 @@ SERVER_EMAIL = "server@lock-up.domain.name"
 
 # fallback SMTP relay: Local SMTP server postfix
 FALLBACK_EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
-FALLBACK_EMAIL_HOST = 'localhost'
-FALLBACK_EMAIL_PORT = 25
+FALLBACK_EMAIL_HOST = 'smtp.gmail.com'
+FALLBACK_EMAIL_PORT = 587
+FALLBACK_EMAIL_USE_TLS = True
+FALLBACK_EMAIL_HOST_USER = ""
+FALLBACK_EMAIL_HOST_PASSWORD = ''
