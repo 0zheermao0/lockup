@@ -931,6 +931,8 @@ def process_checkin_voting_results(self):
     """
     处理所有过期的打卡投票结果（每天凌晨4点执行）
 
+    优化版本：使用小批次处理，避免SQLite数据库锁定问题
+
     对于每个过期的投票会话：
     - 如果拒绝票 > 通过票：冻结用户活跃任务或标记最近任务失败
     - 如果通过票 >= 拒绝票：将收集的积分平分给通过投票者
@@ -939,56 +941,102 @@ def process_checkin_voting_results(self):
         dict: 处理结果
     """
     try:
+        import time
         logger.info("Starting check-in voting results processing...")
 
-        with transaction.atomic():
-            now = timezone.now()
-            from posts.models import CheckinVotingSession
+        now = timezone.now()
+        from posts.models import CheckinVotingSession
 
-            # 查找所有投票期已过但未处理的会话
-            pending_sessions = CheckinVotingSession.objects.select_for_update().filter(
-                voting_deadline__lte=now,
-                is_processed=False
-            )
+        # 获取需要处理的会话ID列表（只查询ID，避免锁定）
+        pending_session_ids = list(CheckinVotingSession.objects.filter(
+            voting_deadline__lte=now,
+            is_processed=False
+        ).values_list('id', flat=True))
 
-            processed_sessions = []
+        total_sessions = len(pending_session_ids)
+        logger.info(f"Found {total_sessions} voting sessions to process")
 
-            for session in pending_sessions:
-                try:
-                    result = _process_single_voting_session(session, now)
-                    processed_sessions.append(result)
-                    logger.info(f"Processed voting session for post {session.post.id}: {result['result']}")
-                except Exception as e:
-                    logger.error(f"Failed to process voting session {session.id}: {e}")
-                    # 继续处理其他会话，不让单个失败影响整体处理
-                    processed_sessions.append({
-                        'session_id': str(session.id),
-                        'post_id': str(session.post.id),
-                        'result': 'error',
-                        'error': str(e)
-                    })
-
-            logger.info(f"Successfully processed {len(processed_sessions)} voting sessions")
-
-            # ========================================================================
-            # 每日验证码更新已移至用户首次打卡时触发 - 不再在此处定时更新
-            # ========================================================================
-
+        if total_sessions == 0:
             return {
                 'status': 'success',
-                'processed_count': len(processed_sessions),
-                'processed_sessions': processed_sessions,
+                'processed_count': 0,
+                'processed_sessions': [],
+                'message': 'No sessions to process',
                 'timestamp': now.isoformat()
             }
+
+        # 分批处理，避免长时间锁定数据库
+        BATCH_SIZE = 10  # 每批处理10个会话
+        processed_sessions = []
+        failed_count = 0
+
+        # 分批处理会话
+        for i in range(0, total_sessions, BATCH_SIZE):
+            batch_ids = pending_session_ids[i:i + BATCH_SIZE]
+            batch_number = i // BATCH_SIZE + 1
+            total_batches = (total_sessions + BATCH_SIZE - 1) // BATCH_SIZE
+
+            try:
+                # 使用独立的事务处理每个批次
+                with transaction.atomic():
+                    batch_sessions = CheckinVotingSession.objects.select_for_update().filter(
+                        id__in=batch_ids,
+                        is_processed=False  # 再次检查避免重复处理
+                    )
+
+                    for session in batch_sessions:
+                        try:
+                            result = _process_single_voting_session(session, now)
+                            processed_sessions.append(result)
+                            logger.debug(f"Processed voting session for post {session.post.id}: {result['result']}")
+                        except Exception as e:
+                            logger.error(f"Failed to process voting session {session.id}: {e}")
+                            failed_count += 1
+                            # 继续处理其他会话，不让单个失败影响整体处理
+                            processed_sessions.append({
+                                'session_id': str(session.id),
+                                'post_id': str(session.post.id) if hasattr(session, 'post') else 'unknown',
+                                'result': 'error',
+                                'error': str(e)
+                            })
+
+                logger.info(f"Completed batch {batch_number}/{total_batches}: processed {len(batch_ids)} sessions")
+
+                # 批次间短暂休息，释放数据库锁，让其他操作有机会执行
+                if i + BATCH_SIZE < total_sessions:  # 不是最后一批
+                    time.sleep(0.1)  # 100ms休息
+
+            except Exception as batch_error:
+                logger.error(f"Error processing batch {batch_number}: {batch_error}")
+                failed_count += len(batch_ids)
+                # 继续处理下一批次，不中断整个流程
+                continue
+
+        result = {
+            'status': 'success',
+            'processed_count': len(processed_sessions),
+            'failed_count': failed_count,
+            'total_sessions': total_sessions,
+            'batches_processed': total_batches,
+            'processed_sessions': processed_sessions,
+            'timestamp': now.isoformat()
+        }
+
+        logger.info(f"Check-in voting results processing completed: {result}")
+        return result
 
     except Exception as exc:
         logger.error(f"Check-in voting results processing failed: {exc}", exc_info=True)
 
-        # Retry the task with exponential backoff
-        raise self.retry(
-            exc=exc,
-            countdown=min(60 * (2 ** self.request.retries), 300)  # Max 5 minutes
-        )
+        # Retry with longer delay for SQLite
+        if self.request.retries < self.max_retries:
+            retry_countdown = 60 + (self.request.retries * 60)  # 1min, 2min, 3min
+            logger.info(f"Retrying check-in voting results processing in {retry_countdown} seconds")
+            raise self.retry(countdown=retry_countdown, exc=exc)
+
+        # Final failure notification
+        logger.error("Check-in voting results processing failed after all retries")
+        raise exc
 
 
 def _process_single_voting_session(session, current_time):
@@ -1322,19 +1370,21 @@ def _generate_strict_code():
     return f"{letters[0]}{digits[0]}{letters[1]}{digits[1]}"
 
 
-@shared_task(bind=True, max_retries=3)
+@shared_task(bind=True, max_retries=3, default_retry_delay=300)
 def process_level_promotions(self):
     """
     Weekly task to process user level promotions
     Runs every Wednesday at 4:30 AM
+
+    优化版本：使用小批次处理，避免SQLite数据库锁定问题
     """
     try:
         logger.info("Starting weekly level promotion task")
 
         from users.services.level_promotion import LevelPromotionService
 
-        # Process all eligible users
-        result = LevelPromotionService.bulk_process_level_promotions()
+        # Process all eligible users with optimized batch processing
+        result = LevelPromotionService.bulk_process_level_promotions(batch_size=50)
 
         logger.info(f"Level promotion task completed successfully: {result}")
         return result
@@ -1342,9 +1392,9 @@ def process_level_promotions(self):
     except Exception as exc:
         logger.error(f"Level promotion task failed: {str(exc)}")
 
-        # Retry with exponential backoff
+        # Retry with longer delay for SQLite
         if self.request.retries < self.max_retries:
-            retry_countdown = 2 ** self.request.retries * 60  # 1min, 2min, 4min
+            retry_countdown = 300 + (self.request.retries * 300)  # 5min, 10min, 15min
             logger.info(f"Retrying level promotion task in {retry_countdown} seconds")
             raise self.retry(countdown=retry_countdown, exc=exc)
 
@@ -1353,114 +1403,166 @@ def process_level_promotions(self):
         raise exc
 
 
-@shared_task(bind=True, max_retries=3)
+@shared_task(bind=True, max_retries=3, default_retry_delay=300)
 def auto_freeze_strict_mode_tasks(self):
     """
     Daily task to automatically freeze strict mode lock tasks without check-in posts
     Runs daily at 4:00 AM to check for tasks that need to be frozen
+
+    优化版本：使用小批次处理，避免SQLite数据库锁定问题
     """
     try:
+        import time
         logger.info("Starting auto-freeze strict mode tasks check")
 
         from posts.models import Post
         from datetime import timedelta
 
-        with transaction.atomic():
-            now = timezone.now()
-            yesterday_4am = now.replace(hour=4, minute=0, second=0, microsecond=0) - timedelta(days=1)
+        now = timezone.now()
+        yesterday_4am = now.replace(hour=4, minute=0, second=0, microsecond=0) - timedelta(days=1)
 
-            # Find all strict mode lock tasks that are active and not frozen
-            strict_tasks = LockTask.objects.select_for_update().filter(
-                task_type='lock',
-                status='active',
-                strict_mode=True,
-                is_frozen=False,
-                start_time__lt=yesterday_4am  # Task must have been started before yesterday 4 AM
-            )
+        # 获取需要检查的严格模式任务ID列表（只查询ID，避免锁定）
+        strict_task_ids = list(LockTask.objects.filter(
+            task_type='lock',
+            status='active',
+            strict_mode=True,
+            is_frozen=False,
+            start_time__lt=yesterday_4am  # Task must have been started before yesterday 4 AM
+        ).values_list('id', flat=True))
 
-            logger.info(f"Found {strict_tasks.count()} strict mode tasks to check")
+        total_tasks = len(strict_task_ids)
+        logger.info(f"Found {total_tasks} strict mode tasks to check")
 
-            frozen_tasks = []
-
-            for task in strict_tasks:
-                # Check if user made any check-in post since yesterday 4 AM
-                checkin_posts = Post.objects.filter(
-                    user=task.user,
-                    post_type='checkin',
-                    created_at__gte=yesterday_4am,
-                    created_at__lt=now
-                ).exists()
-
-                if not checkin_posts:
-                    # No check-in post found, auto-freeze the task
-                    logger.info(f"Auto-freezing task {task.id} for user {task.user.username} - no check-in post found")
-
-                    # Freeze the task (similar to manual freeze but without key/coin requirements)
-                    task.is_frozen = True
-                    task.frozen_at = now
-                    task.frozen_end_time = task.end_time
-                    task.save()
-
-                    # Create timeline event
-                    TaskTimelineEvent.objects.create(
-                        task=task,
-                        event_type='task_frozen',
-                        user=None,  # System action
-                        description='系统自动冻结任务（严格模式未打卡）',
-                        metadata={
-                            'action': 'auto_freeze',
-                            'reason': 'strict_mode_no_checkin',
-                            'check_period_start': yesterday_4am.isoformat(),
-                            'check_period_end': now.isoformat(),
-                            'frozen_at': task.frozen_at.isoformat(),
-                            'frozen_end_time': task.frozen_end_time.isoformat() if task.frozen_end_time else None,
-                            'system_action': True
-                        }
-                    )
-
-                    # Create notification for user
-                    Notification.create_notification(
-                        recipient=task.user,
-                        notification_type='task_frozen_auto_strict',
-                        related_object_type='task',
-                        related_object_id=task.id,
-                        extra_data={
-                            'task_title': task.title,
-                            'task_id': str(task.id),
-                            'freeze_reason': 'strict_mode_no_checkin',
-                            'check_period_hours': 24,
-                            'frozen_at': task.frozen_at.isoformat()
-                        },
-                        priority='high'
-                    )
-
-                    frozen_tasks.append({
-                        'task_id': str(task.id),
-                        'task_title': task.title,
-                        'user_id': task.user.id,
-                        'username': task.user.username
-                    })
-                else:
-                    logger.debug(f"Task {task.id} for user {task.user.username} has check-in post, skipping freeze")
-
-            result = {
+        if total_tasks == 0:
+            return {
                 'status': 'success',
-                'total_checked': strict_tasks.count(),
-                'total_frozen': len(frozen_tasks),
-                'frozen_tasks': frozen_tasks,
+                'total_checked': 0,
+                'total_frozen': 0,
+                'frozen_tasks': [],
+                'message': 'No tasks to check',
                 'check_time': now.isoformat(),
                 'check_period_start': yesterday_4am.isoformat()
             }
 
-            logger.info(f"Auto-freeze task completed: {result}")
-            return result
+        # 分批处理，避免长时间锁定数据库
+        BATCH_SIZE = 20  # 每批处理20个任务
+        frozen_tasks = []
+        failed_count = 0
+
+        # 分批处理任务
+        for i in range(0, total_tasks, BATCH_SIZE):
+            batch_ids = strict_task_ids[i:i + BATCH_SIZE]
+            batch_number = i // BATCH_SIZE + 1
+            total_batches = (total_tasks + BATCH_SIZE - 1) // BATCH_SIZE
+
+            try:
+                # 使用独立的事务处理每个批次
+                with transaction.atomic():
+                    batch_tasks = LockTask.objects.select_for_update().filter(
+                        id__in=batch_ids,
+                        status='active',  # 再次检查避免状态变化
+                        is_frozen=False
+                    )
+
+                    for task in batch_tasks:
+                        try:
+                            # Check if user made any check-in post since yesterday 4 AM
+                            checkin_posts = Post.objects.filter(
+                                user=task.user,
+                                post_type='checkin',
+                                created_at__gte=yesterday_4am,
+                                created_at__lt=now
+                            ).exists()
+
+                            if not checkin_posts:
+                                # No check-in post found, auto-freeze the task
+                                logger.info(f"Auto-freezing task {task.id} for user {task.user.username} - no check-in post found")
+
+                                # Freeze the task (similar to manual freeze but without key/coin requirements)
+                                task.is_frozen = True
+                                task.frozen_at = now
+                                task.frozen_end_time = task.end_time
+                                task.save()
+
+                                # Create timeline event
+                                TaskTimelineEvent.objects.create(
+                                    task=task,
+                                    event_type='task_frozen',
+                                    user=None,  # System action
+                                    description='系统自动冻结任务（严格模式未打卡）',
+                                    metadata={
+                                        'action': 'auto_freeze',
+                                        'reason': 'strict_mode_no_checkin',
+                                        'check_period_start': yesterday_4am.isoformat(),
+                                        'check_period_end': now.isoformat(),
+                                        'frozen_at': task.frozen_at.isoformat(),
+                                        'frozen_end_time': task.frozen_end_time.isoformat() if task.frozen_end_time else None,
+                                        'system_action': True
+                                    }
+                                )
+
+                                # Create notification for user
+                                Notification.create_notification(
+                                    recipient=task.user,
+                                    notification_type='task_frozen_auto_strict',
+                                    related_object_type='task',
+                                    related_object_id=task.id,
+                                    extra_data={
+                                        'task_title': task.title,
+                                        'task_id': str(task.id),
+                                        'freeze_reason': 'strict_mode_no_checkin',
+                                        'check_period_hours': 24,
+                                        'frozen_at': task.frozen_at.isoformat()
+                                    },
+                                    priority='high'
+                                )
+
+                                frozen_tasks.append({
+                                    'task_id': str(task.id),
+                                    'task_title': task.title,
+                                    'user_id': task.user.id,
+                                    'username': task.user.username
+                                })
+                            else:
+                                logger.debug(f"Task {task.id} for user {task.user.username} has check-in post, skipping freeze")
+
+                        except Exception as e:
+                            logger.error(f"Failed to process task {task.id}: {e}")
+                            failed_count += 1
+                            continue
+
+                logger.info(f"Completed batch {batch_number}/{total_batches}: processed {len(batch_ids)} tasks")
+
+                # 批次间短暂休息，释放数据库锁，让其他操作有机会执行
+                if i + BATCH_SIZE < total_tasks:  # 不是最后一批
+                    time.sleep(0.1)  # 100ms休息
+
+            except Exception as batch_error:
+                logger.error(f"Error processing batch {batch_number}: {batch_error}")
+                failed_count += len(batch_ids)
+                # 继续处理下一批次，不中断整个流程
+                continue
+
+        result = {
+            'status': 'success',
+            'total_checked': total_tasks,
+            'total_frozen': len(frozen_tasks),
+            'failed_count': failed_count,
+            'frozen_tasks': frozen_tasks,
+            'batches_processed': total_batches,
+            'check_time': now.isoformat(),
+            'check_period_start': yesterday_4am.isoformat()
+        }
+
+        logger.info(f"Auto-freeze task completed: {result}")
+        return result
 
     except Exception as exc:
         logger.error(f"Auto-freeze strict mode tasks failed: {str(exc)}")
 
-        # Retry with exponential backoff
+        # Retry with longer delay for SQLite
         if self.request.retries < self.max_retries:
-            retry_countdown = 2 ** self.request.retries * 60  # 1min, 2min, 4min
+            retry_countdown = 300 + (self.request.retries * 300)  # 5min, 10min, 15min
             logger.info(f"Retrying auto-freeze task in {retry_countdown} seconds")
             raise self.retry(countdown=retry_countdown, exc=exc)
 
@@ -1469,10 +1571,12 @@ def auto_freeze_strict_mode_tasks(self):
         raise exc
 
 
-@shared_task(bind=True, max_retries=3, default_retry_delay=60)
+@shared_task(bind=True, max_retries=3, default_retry_delay=300)
 def process_activity_decay(self):
     """
     处理用户活跃度时间衰减 - 每日凌晨4:45执行
+
+    优化版本：使用小批次处理，避免SQLite数据库锁定问题
 
     基于用户最后活跃时间，按斐波那契数列衰减活跃度：
     - 1天未活跃: -1分
@@ -1485,43 +1589,86 @@ def process_activity_decay(self):
     活跃度不会低于0分。
     """
     try:
+        import time
         from users.models import User
         from datetime import timedelta
 
         logger.info("Starting daily activity decay processing")
 
-        # 获取需要处理衰减的用户（最后活跃时间超过1天）
+        # 获取需要处理衰减的用户ID列表（只查询ID，避免锁定）
         yesterday = timezone.now() - timedelta(days=1)
-        users_to_decay = User.objects.filter(
+        eligible_user_ids = list(User.objects.filter(
             last_active__lt=yesterday,
             activity_score__gt=0
         ).exclude(
             last_decay_processed__date=timezone.now().date()
-        )
+        ).values_list('id', flat=True))
 
+        total_users = len(eligible_user_ids)
+        logger.info(f"Found {total_users} users eligible for activity decay")
+
+        if total_users == 0:
+            return {
+                'processed_users': 0,
+                'total_decay_applied': 0,
+                'eligible_users': 0,
+                'process_time': timezone.now().isoformat()
+            }
+
+        # 分批处理，避免长时间锁定数据库
+        BATCH_SIZE = 20  # 每批处理20个用户
         processed_count = 0
         total_decay = 0
+        failed_count = 0
 
-        logger.info(f"Found {users_to_decay.count()} users eligible for activity decay")
+        # 分批处理用户
+        for i in range(0, total_users, BATCH_SIZE):
+            batch_ids = eligible_user_ids[i:i + BATCH_SIZE]
+            batch_number = i // BATCH_SIZE + 1
+            total_batches = (total_users + BATCH_SIZE - 1) // BATCH_SIZE
 
-        with transaction.atomic():
-            for user in users_to_decay:
-                old_score = user.activity_score
+            try:
+                # 使用独立的事务处理每个批次
+                with transaction.atomic():
+                    batch_users = User.objects.select_for_update().filter(id__in=batch_ids)
 
-                # 应用衰减
-                user.apply_time_decay()
+                    for user in batch_users:
+                        try:
+                            old_score = user.activity_score
 
-                if user.activity_score != old_score:
-                    processed_count += 1
-                    decay_amount = old_score - user.activity_score
-                    total_decay += decay_amount
+                            # 应用衰减
+                            user.apply_time_decay()
 
-                    logger.debug(f"User {user.username}: {old_score} -> {user.activity_score} (-{decay_amount})")
+                            if user.activity_score != old_score:
+                                processed_count += 1
+                                decay_amount = old_score - user.activity_score
+                                total_decay += decay_amount
+
+                                logger.debug(f"User {user.username}: {old_score} -> {user.activity_score} (-{decay_amount})")
+
+                        except Exception as user_error:
+                            logger.error(f"Error processing user {user.id}: {user_error}")
+                            failed_count += 1
+                            continue
+
+                logger.info(f"Completed batch {batch_number}/{total_batches}: processed {len(batch_ids)} users")
+
+                # 批次间短暂休息，释放数据库锁，让其他操作有机会执行
+                if i + BATCH_SIZE < total_users:  # 不是最后一批
+                    time.sleep(0.2)  # 200ms休息
+
+            except Exception as batch_error:
+                logger.error(f"Error processing batch {batch_number}: {batch_error}")
+                failed_count += len(batch_ids)
+                # 继续处理下一批次，不中断整个流程
+                continue
 
         result = {
             'processed_users': processed_count,
             'total_decay_applied': total_decay,
-            'eligible_users': users_to_decay.count(),
+            'eligible_users': total_users,
+            'failed_users': failed_count,
+            'batches_processed': total_batches,
             'process_time': timezone.now().isoformat()
         }
 
@@ -1531,9 +1678,9 @@ def process_activity_decay(self):
     except Exception as exc:
         logger.error(f"Activity decay processing failed: {str(exc)}")
 
-        # Retry with exponential backoff
+        # Retry with longer delay for SQLite
         if self.request.retries < self.max_retries:
-            retry_countdown = 2 ** self.request.retries * 60  # 1min, 2min, 4min
+            retry_countdown = 300 + (self.request.retries * 300)  # 5min, 10min, 15min
             logger.info(f"Retrying activity decay processing in {retry_countdown} seconds")
             raise self.retry(countdown=retry_countdown, exc=exc)
 

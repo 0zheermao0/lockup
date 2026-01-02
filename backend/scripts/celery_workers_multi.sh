@@ -133,6 +133,7 @@ start_worker() {
 
     echo "Starting $queue worker (concurrency: $concurrency, priority: $priority)..."
 
+    # SQLite optimization: Use solo pool to avoid database locking issues
     local cmd="celery -A lockup_backend worker \
         --loglevel=info \
         --concurrency=$concurrency \
@@ -140,13 +141,14 @@ start_worker() {
         --hostname=${worker_name}@%h \
         --logfile=$log_file \
         --pidfile=$pid_file \
-        --time-limit=600 \
-        --soft-time-limit=300 \
-        --max-tasks-per-child=1000 \
+        --time-limit=1200 \
+        --soft-time-limit=600 \
+        --max-tasks-per-child=500 \
         --prefetch-multiplier=1 \
         --without-gossip \
         --without-mingle \
-        --without-heartbeat"
+        --without-heartbeat \
+        --pool=solo"
 
     if [ "$DAEMON_MODE" = true ]; then
         nohup $cmd > "${LOG_DIR}/celery_worker_${queue}_startup.log" 2>&1 &

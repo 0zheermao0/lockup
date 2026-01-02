@@ -101,13 +101,37 @@ if DATABASE_URL:
         'default': dj_database_url.parse(DATABASE_URL)
     }
 else:
-    # Development: Use SQLite
+    # Development: Use SQLite with optimizations for Celery tasks
     DATABASES = {
         'default': {
             'ENGINE': 'django.db.backends.sqlite3',
             'NAME': BASE_DIR / 'db.sqlite3',
+            # SQLite optimizations for concurrent access
+            'OPTIONS': {
+                'init_command': (
+                    "PRAGMA journal_mode=WAL; "
+                    "PRAGMA synchronous=NORMAL; "
+                    "PRAGMA temp_store=MEMORY; "
+                    "PRAGMA mmap_size=268435456; "  # 256MB
+                    "PRAGMA cache_size=2000; "
+                    "PRAGMA busy_timeout=30000;"  # 30 seconds
+                ),
+                'timeout': 30,  # 30 seconds timeout for database operations
+            },
         }
     }
+
+# Database connection settings for SQLite optimization
+if not DATABASE_URL:  # Only apply to SQLite
+    # Close database connections after each request to avoid locking issues
+    DATABASES['default']['CONN_MAX_AGE'] = 0
+
+    # Additional database settings for better SQLite performance
+    DATABASE_OPTIONS = {
+        'timeout': 30,  # 30 second timeout for database operations
+        'check_same_thread': False,  # Allow SQLite to be accessed from multiple threads
+    }
+    DATABASES['default']['OPTIONS'].update(DATABASE_OPTIONS)
 
 
 # Password validation
@@ -307,16 +331,21 @@ CELERY_RESULT_SERIALIZER = 'json'
 CELERY_TIMEZONE = TIME_ZONE
 CELERY_ENABLE_UTC = True
 
-# Celery Worker settings
-CELERY_WORKER_CONCURRENCY = int(os.getenv('CELERY_WORKER_CONCURRENCY', '2'))
+# Celery Worker settings - SQLite optimized
+# Use single process for SQLite to avoid database locking issues
+CELERY_WORKER_CONCURRENCY = int(os.getenv('CELERY_WORKER_CONCURRENCY', '1'))
 CELERY_WORKER_PREFETCH_MULTIPLIER = 1
-CELERY_WORKER_MAX_TASKS_PER_CHILD = 1000
+CELERY_WORKER_MAX_TASKS_PER_CHILD = 500  # Reduced for SQLite stability
 
-# Celery Task execution settings
-CELERY_TASK_SOFT_TIME_LIMIT = 300  # 5 minutes
-CELERY_TASK_TIME_LIMIT = 600       # 10 minutes
+# Celery Task execution settings - SQLite optimized
+CELERY_TASK_SOFT_TIME_LIMIT = 600   # 10 minutes (increased for SQLite)
+CELERY_TASK_TIME_LIMIT = 1200       # 20 minutes (increased for SQLite)
 CELERY_TASK_ACKS_LATE = True
 CELERY_TASK_REJECT_ON_WORKER_LOST = True
+
+# SQLite-specific task retry settings
+CELERY_TASK_RETRY_DELAY = 60        # 1 minute base retry delay
+CELERY_TASK_MAX_RETRIES = 3         # Maximum retry attempts
 
 # Celery Result settings
 CELERY_RESULT_EXPIRES = 3600  # 1 hour

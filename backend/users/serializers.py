@@ -64,11 +64,11 @@ class UserSerializer(serializers.ModelSerializer):
         """获取用户当前活跃的带锁任务"""
         from tasks.models import LockTask
 
-        # 查询所有进行中的带锁任务（包括active和voting状态）
+        # 查询所有进行中的带锁任务（包括active、voting和voting_passed状态）
         active_task = LockTask.objects.filter(
             user=obj,
             task_type='lock',
-            status__in=['active', 'voting']
+            status__in=['active', 'voting', 'voting_passed']
         ).first()
 
         if not active_task:
@@ -162,11 +162,11 @@ class UserPublicSerializer(serializers.ModelSerializer):
         """获取用户当前活跃的带锁任务"""
         from tasks.models import LockTask
 
-        # 查询所有进行中的带锁任务（包括active和voting状态）
+        # 查询所有进行中的带锁任务（包括active、voting和voting_passed状态）
         active_task = LockTask.objects.filter(
             user=obj,
             task_type='lock',
-            status__in=['active', 'voting']
+            status__in=['active', 'voting', 'voting_passed']
         ).first()
 
         if not active_task:

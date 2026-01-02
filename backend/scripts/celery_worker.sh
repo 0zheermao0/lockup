@@ -19,7 +19,8 @@ PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
 # Configuration
 WORKER_NAME="${CELERY_WORKER_NAME:-lockup-worker}"
 LOG_LEVEL="${CELERY_LOG_LEVEL:-info}"
-CONCURRENCY="${CELERY_WORKER_CONCURRENCY:-2}"
+# SQLite optimization: Use single process to avoid database locking issues
+CONCURRENCY="${CELERY_WORKER_CONCURRENCY:-1}"
 QUEUES="${CELERY_QUEUES:-rewards,default,activity,events,settlements,voting}"
 LOG_DIR="${PROJECT_DIR}/logs"
 PID_DIR="${PROJECT_DIR}/run"
@@ -49,7 +50,7 @@ if [ -f "venv/bin/activate" ]; then
     source venv/bin/activate
 fi
 
-# Start Celery worker
+# Start Celery worker with SQLite-optimized settings
 exec celery -A lockup_backend worker \
     --loglevel="$LOG_LEVEL" \
     --concurrency="$CONCURRENCY" \
@@ -57,10 +58,11 @@ exec celery -A lockup_backend worker \
     --hostname="$WORKER_NAME@%h" \
     --logfile="$WORKER_LOG" \
     --pidfile="$PID_FILE" \
-    --time-limit=600 \
-    --soft-time-limit=300 \
-    --max-tasks-per-child=1000 \
+    --time-limit=1200 \
+    --soft-time-limit=600 \
+    --max-tasks-per-child=500 \
     --prefetch-multiplier=1 \
     --without-gossip \
     --without-mingle \
-    --without-heartbeat
+    --without-heartbeat \
+    --pool=solo
