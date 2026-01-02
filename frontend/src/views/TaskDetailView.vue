@@ -75,6 +75,21 @@
                 >
                   📋 揭榜任务
                 </button>
+
+                <!-- Completion rate warning -->
+                <div
+                  v-if="showCompletionRateWarning"
+                  class="completion-rate-warning"
+                >
+                  <div class="warning-icon">⚠️</div>
+                  <div class="warning-content">
+                    <div class="warning-title">完成率不足</div>
+                    <div class="warning-text">
+                      您的任务完成率为 {{ authStore.user?.task_completion_rate || 0 }}%，
+                      需要达到 {{ (task as any)?.completion_rate_threshold }}% 才能接取此任务
+                    </div>
+                  </div>
+                </div>
                 <button
                   v-if="canSubmitProof"
                   @click="openSubmissionModal"
@@ -232,6 +247,10 @@
               <div v-if="task.task_type === 'board' && task.max_duration" class="detail-item">
                 <span class="label">最大完成时间</span>
                 <span class="value">{{ task.max_duration }} 小时</span>
+              </div>
+              <div v-if="task.task_type === 'board' && task.completion_rate_threshold" class="detail-item">
+                <span class="label">完成率要求</span>
+                <span class="value">{{ task.completion_rate_threshold }}%</span>
               </div>
 
               <!-- Multi-person task details -->
@@ -1435,6 +1454,20 @@ const canClaimTask = computed(() => {
   return task.value.can_take === true
 })
 
+const showCompletionRateWarning = computed(() => {
+  if (!task.value || !authStore.user) return false
+
+  // 只对任务板显示，且不是自己的任务
+  if (task.value.task_type !== 'board' || isOwnTask.value) return false
+
+  // 只有设置了完成率门槛且大于0时才显示
+  if (!task.value.completion_rate_threshold || task.value.completion_rate_threshold <= 0) return false
+
+  // 检查用户完成率是否不足
+  const userCompletionRate = authStore.user.task_completion_rate || 0
+  return userCompletionRate < task.value.completion_rate_threshold
+})
+
 const canSubmitProof = computed(() => {
   if (!task.value || !authStore.user) return false
 
@@ -2459,9 +2492,33 @@ const claimTask = async () => {
     task.value = updatedTask
     console.log('任务揭榜成功')
     startProgressUpdate() // 开始进度更新
-  } catch (error) {
+  } catch (error: any) {
     console.error('Error claiming task:', error)
-    alert('揭榜失败，请重试')
+
+    // 处理完成率不足的特殊错误
+    if (error.response?.status === 400 && error.response?.data?.required_rate !== undefined) {
+      const errorData = error.response.data
+      showToast.value = true
+      toastData.value = {
+        type: 'warning',
+        title: '完成率不足',
+        message: errorData.error,
+        details: {
+          '您的完成率': `${errorData.user_rate}%`,
+          '要求完成率': `${errorData.required_rate}%`
+        }
+      }
+      return
+    }
+
+    // 处理其他错误
+    showToast.value = true
+    toastData.value = {
+      type: 'error',
+      title: '揭榜失败',
+      message: error.response?.data?.error || '网络错误，请重试',
+      secondaryMessage: '请检查网络连接后重试'
+    }
   }
 }
 
@@ -7591,6 +7648,65 @@ onUnmounted(() => {
 
   .file-size {
     font-size: 0.7rem;
+  }
+}
+
+/* Completion rate warning styles */
+.completion-rate-warning {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+  background: linear-gradient(135deg, #fff3cd, #ffeaa7);
+  border: 3px solid #f39c12;
+  border-radius: 8px;
+  padding: 1rem;
+  margin: 1rem 0;
+  box-shadow: 3px 3px 0 #e67e22;
+}
+
+.completion-rate-warning .warning-icon {
+  font-size: 1.25rem;
+  flex-shrink: 0;
+  margin-top: 0.125rem;
+}
+
+.completion-rate-warning .warning-content {
+  flex: 1;
+}
+
+.completion-rate-warning .warning-title {
+  font-weight: 700;
+  color: #d68910;
+  margin-bottom: 0.25rem;
+  font-size: 0.9rem;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.completion-rate-warning .warning-text {
+  color: #856404;
+  font-size: 0.875rem;
+  line-height: 1.4;
+}
+
+@media (max-width: 768px) {
+  .completion-rate-warning {
+    padding: 0.75rem;
+    margin: 0.75rem 0;
+    border-width: 2px;
+    box-shadow: 2px 2px 0 #e67e22;
+  }
+
+  .completion-rate-warning .warning-icon {
+    font-size: 1rem;
+  }
+
+  .completion-rate-warning .warning-title {
+    font-size: 0.8rem;
+  }
+
+  .completion-rate-warning .warning-text {
+    font-size: 0.8rem;
   }
 }
 

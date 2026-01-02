@@ -207,6 +207,7 @@ export interface BoardTask extends BaseLockTask {
   deadline?: string
   max_duration: number // 任务最大完成时间 (小时)
   max_participants: number // 最大参与人数
+  completion_rate_threshold?: number // 任务完成率门槛 (0-100)
   taker?: User
   taken_at?: string
   completion_proof?: string
@@ -433,6 +434,7 @@ export interface TaskCreateRequest {
   deadline?: string
   max_duration?: number
   max_participants?: number
+  completion_rate_threshold?: number
 }
 
 export interface SimplePasswordChangeRequest {

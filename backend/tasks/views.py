@@ -853,6 +853,19 @@ def take_board_task(request, pk):
             status=status.HTTP_400_BAD_REQUEST
         )
 
+    # 检查完成率门槛
+    if task.completion_rate_threshold is not None and task.completion_rate_threshold > 0:
+        user_completion_rate = request.user.get_task_completion_rate()
+        if user_completion_rate < task.completion_rate_threshold:
+            return Response(
+                {
+                    'error': f'您的任务完成率为{user_completion_rate:.1f}%，需要达到{task.completion_rate_threshold}%才能接取此任务',
+                    'required_rate': task.completion_rate_threshold,
+                    'user_rate': user_completion_rate
+                },
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
     # 判断是单人还是多人任务
     is_multi_person = task.max_participants and task.max_participants > 1
 
