@@ -1857,9 +1857,9 @@ def use_universal_key(request):
                 }, status=status.HTTP_400_BAD_REQUEST)
 
             # 检查任务状态是否可以使用万能钥匙
-            if lock_task.status not in ['active', 'voting']:
+            if lock_task.status not in ['active', 'voting', 'voting_passed']:
                 return Response({
-                    'error': f'任务状态为 {lock_task.status}，只能在活跃或投票状态下使用万能钥匙'
+                    'error': f'任务状态为 {lock_task.status}，只能在活跃、投票或投票通过状态下使用万能钥匙'
                 }, status=status.HTTP_400_BAD_REQUEST)
 
             # 记录使用前状态
