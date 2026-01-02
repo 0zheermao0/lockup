@@ -56,7 +56,6 @@ INSTALLED_APPS = [
     'store',
     'telegram_bot',
     'events',
-    "mail",
 ]
 
 MIDDLEWARE = [
