@@ -1752,8 +1752,26 @@ const timelineReversed = computed(() => {
 
 // 钥匙玩法相关计算属性
 const taskTimeDisplayHidden = computed(() => {
+  // not a lock task or not a task
   if (!task.value || task.value.task_type !== 'lock') return false
-  return (task.value as any).time_display_hidden || false
+
+  // task display hidden is false
+  const task_display_hidden = (task.value as any).time_display_hidden || false
+  if (!task_display_hidden)
+    return false
+
+  // If hidden, then "non-original key owner" can see time
+  const userId = authStore.user?.id
+  const key = taskKey.value
+  if (
+    hasTaskKey &&               // current user is key owner
+    key?.original_owner &&      // key has original owner
+    key.original_owner.id !== userId       // current key owner is not the original user
+  ) 
+    return false
+
+  // others are not
+  return true
 })
 
 const taskFrozen = computed(() => {
