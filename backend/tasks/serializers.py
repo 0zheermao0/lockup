@@ -1,6 +1,7 @@
 from rest_framework import serializers
 from .models import LockTask, TaskKey, TaskVote, TaskTimelineEvent, TaskSubmissionFile, TaskParticipant
 from users.serializers import UserSerializer, UserMinimalSerializer, UserPublicSerializer
+from .utils import calculate_weighted_vote_counts
 
 
 class TaskSubmissionFileSerializer(serializers.ModelSerializer):
@@ -128,12 +129,14 @@ class LockTaskListSerializer(serializers.ModelSerializer):
         read_only_fields = ['id', 'user', 'created_at']
 
     def get_vote_count(self, obj):
-        """获取总投票数"""
-        return obj.votes.count()
+        """获取总投票数（包含影响力王冠权重）"""
+        vote_counts = calculate_weighted_vote_counts(obj)
+        return vote_counts['total_votes']
 
     def get_vote_agreement_count(self, obj):
-        """获取同意票数"""
-        return obj.votes.filter(agree=True).count()
+        """获取同意票数（包含影响力王冠权重）"""
+        vote_counts = calculate_weighted_vote_counts(obj)
+        return vote_counts['agree_votes']
 
     def get_participant_count(self, obj):
         """获取参与者数量"""
@@ -238,12 +241,14 @@ class LockTaskSerializer(serializers.ModelSerializer):
         return None
 
     def get_vote_count(self, obj):
-        """获取总投票数"""
-        return obj.votes.count()
+        """获取总投票数（包含影响力王冠权重）"""
+        vote_counts = calculate_weighted_vote_counts(obj)
+        return vote_counts['total_votes']
 
     def get_vote_agreement_count(self, obj):
-        """获取同意票数"""
-        return obj.votes.filter(agree=True).count()
+        """获取同意票数（包含影响力王冠权重）"""
+        vote_counts = calculate_weighted_vote_counts(obj)
+        return vote_counts['agree_votes']
 
     def get_participant_count(self, obj):
         """获取参与者数量"""

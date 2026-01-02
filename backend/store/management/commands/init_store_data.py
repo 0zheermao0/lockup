@@ -134,6 +134,42 @@ class Command(BaseCommand):
                 'description': '将当前带锁任务状态回退到30分钟前，撤销最近30分钟内的加减时、冻结等操作，每个用户终身只能购买一次',
                 'icon': '⏳',
                 'is_consumable': True
+            },
+            # 新增道具类型
+            {
+                'name': 'lucky_charm',
+                'display_name': '幸运符',
+                'description': '为下一个带锁任务提供+20%的小时奖励概率加成，使用后自动销毁',
+                'icon': '🍀',
+                'is_consumable': True
+            },
+            {
+                'name': 'energy_potion',
+                'display_name': '活力药水',
+                'description': '在24小时内将活跃度衰减减少50%，帮助维持进度，使用后自动销毁',
+                'icon': '⚡',
+                'is_consumable': True
+            },
+            {
+                'name': 'time_anchor',
+                'display_name': '时间锚点',
+                'description': '保存当前任务状态，如果任务失败可以恢复到保存点，每次使用限恢复一次，使用后自动销毁',
+                'icon': '⚓',
+                'is_consumable': True
+            },
+            {
+                'name': 'exploration_compass',
+                'display_name': '探索指南针',
+                'description': '显示指定区域内所有已埋藏宝物的相关信息（物品类型、难度、埋藏者），但不显示具体位置，让探索更加高效，使用后自动销毁',
+                'icon': '🧭',
+                'is_consumable': True
+            },
+            {
+                'name': 'influence_crown',
+                'display_name': '影响力皇冠',
+                'description': '在48小时内，所有投票的权重变为3倍，大幅提升社区影响力，使用后自动销毁',
+                'icon': '👑',
+                'is_consumable': True
             }
         ]
 
@@ -190,6 +226,12 @@ class Command(BaseCommand):
             blizzard_bottle_type = ItemType.objects.get(name='blizzard_bottle')
             sun_bottle_type = ItemType.objects.get(name='sun_bottle')
             time_hourglass_type = ItemType.objects.get(name='time_hourglass')
+            # 新增道具类型
+            lucky_charm_type = ItemType.objects.get(name='lucky_charm')
+            energy_potion_type = ItemType.objects.get(name='energy_potion')
+            time_anchor_type = ItemType.objects.get(name='time_anchor')
+            exploration_compass_type = ItemType.objects.get(name='exploration_compass')
+            influence_crown_type = ItemType.objects.get(name='influence_crown')
         except ItemType.DoesNotExist as e:
             self.stdout.write(
                 self.style.ERROR(f'❌ 道具类型不存在: {e}')
@@ -295,6 +337,62 @@ class Command(BaseCommand):
                 'is_available': True,
                 'stock': None,
                 'daily_limit': 1,  # 每日限制1个
+                'level_requirement': 2
+            },
+            # 新增商店商品
+            {
+                'item_type': lucky_charm_type,
+                'name': '幸运符',
+                'description': '为下一个带锁任务提供+20%的小时奖励概率加成，让你的努力更有回报！',
+                'price': 50,
+                'icon': '🍀',
+                'is_available': True,
+                'stock': None,
+                'daily_limit': 1,
+                'level_requirement': 1
+            },
+            {
+                'item_type': energy_potion_type,
+                'name': '活力药水',
+                'description': '在24小时内将活跃度衰减减少50%，帮助你在忙碌期间维持进度！',
+                'price': 10,
+                'icon': '⚡',
+                'is_available': True,
+                'stock': None,
+                'daily_limit': 1,
+                'level_requirement': 1
+            },
+            {
+                'item_type': time_anchor_type,
+                'name': '时间锚点',
+                'description': '保存当前任务状态，如果任务失败可以恢复到保存点，减少失败恐惧！',
+                'price': 100,
+                'icon': '⚓',
+                'is_available': True,
+                'stock': None,
+                'daily_limit': 1,
+                'level_requirement': 2
+            },
+            {
+                'item_type': exploration_compass_type,
+                'name': '探索指南针',
+                'description': '显示指定区域内所有已埋藏宝物的相关信息（物品类型、难度、埋藏者），但不显示具体位置，让探索更加高效！',
+                'price': 25,
+                'icon': '🧭',
+                'is_available': True,
+                'stock': None,
+                'daily_limit': 3,
+                'level_requirement': 1
+            },
+            {
+                'item_type': influence_crown_type,
+                'name': '影响力皇冠',
+                'description': '在48小时内，所有投票的权重变为3倍，大幅提升你的社区影响力！',
+                'price': 300,
+                'icon': '👑',
+                'is_available': True,
+                'stock': None,
+                'daily_limit': 1,
                 'level_requirement': 2
             }
         ]

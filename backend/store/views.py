@@ -13,7 +13,8 @@ from datetime import timedelta
 
 from .models import (
     ItemType, UserInventory, Item, StoreItem, Purchase,
-    Game, GameParticipant, DriftBottle, BuriedTreasure, GameSession, SharedItem
+    Game, GameParticipant, DriftBottle, BuriedTreasure, GameSession, SharedItem,
+    UserEffect, SharedTaskAccess, TaskSnapshot
 )
 from users.models import Notification
 from .serializers import (
@@ -2272,6 +2273,742 @@ def view_note(request, note_id):
     except Exception as e:
         return Response({
             'error': f'查看纸条失败: {str(e)}'
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def use_lucky_charm(request):
+    """使用幸运符 - 为下一个带锁任务提供+20%小时奖励概率"""
+    try:
+        item_id = request.data.get('item_id')
+        if not item_id:
+            return Response({
+                'error': '缺少道具ID'
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        with transaction.atomic():
+            user = request.user
+
+            # 获取幸运符道具
+            try:
+                lucky_charm = Item.objects.get(
+                    id=item_id,
+                    owner=user,
+                    item_type__name='lucky_charm',
+                    status='available'
+                )
+            except Item.DoesNotExist:
+                return Response({
+                    'error': '幸运符道具不存在或不可用'
+                }, status=status.HTTP_404_NOT_FOUND)
+
+            # 检查是否已有活跃的幸运符效果
+            existing_effect = UserEffect.objects.filter(
+                user=user,
+                effect_type='lucky_charm',
+                is_active=True
+            ).first()
+
+            if existing_effect:
+                return Response({
+                    'error': '您已经有活跃的幸运符效果，无法重复使用'
+                }, status=status.HTTP_400_BAD_REQUEST)
+
+            # 创建幸运符效果
+            UserEffect.objects.create(
+                user=user,
+                effect_type='lucky_charm',
+                item=lucky_charm,
+                properties={
+                    'luck_boost': 0.2,  # +20% 概率加成
+                    'used_at': timezone.now().isoformat(),
+                    'description': '下一个带锁任务的小时奖励概率+20%'
+                },
+                is_active=True
+            )
+
+            # 销毁幸运符道具
+            lucky_charm.status = 'used'
+            lucky_charm.used_at = timezone.now()
+            lucky_charm.inventory = None  # 从背包中移除
+            lucky_charm.save()
+
+            return Response({
+                'success': True,
+                'message': '幸运符使用成功！下一个带锁任务的小时奖励概率将提高20%',
+                'effect_description': '下一个带锁任务的小时奖励概率+20%',
+                'boost_percentage': 20
+            }, status=status.HTTP_200_OK)
+
+    except Exception as e:
+        return Response({
+            'error': f'使用幸运符失败: {str(e)}'
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def use_energy_potion(request):
+    """使用活力药水 - 在24小时内将活跃度衰减减少50%"""
+    try:
+        item_id = request.data.get('item_id')
+        if not item_id:
+            return Response({
+                'error': '缺少道具ID'
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        with transaction.atomic():
+            user = request.user
+
+            # 获取活力药水道具
+            try:
+                energy_potion = Item.objects.get(
+                    id=item_id,
+                    owner=user,
+                    item_type__name='energy_potion',
+                    status='available'
+                )
+            except Item.DoesNotExist:
+                return Response({
+                    'error': '活力药水道具不存在或不可用'
+                }, status=status.HTTP_404_NOT_FOUND)
+
+            # 检查是否已有活跃的活力药水效果
+            existing_effect = UserEffect.objects.filter(
+                user=user,
+                effect_type='energy_potion',
+                is_active=True,
+                expires_at__gt=timezone.now()
+            ).first()
+
+            if existing_effect:
+                remaining_time = existing_effect.expires_at - timezone.now()
+                remaining_hours = int(remaining_time.total_seconds() / 3600)
+                return Response({
+                    'error': f'您已经有活跃的活力药水效果，剩余时间：{remaining_hours}小时'
+                }, status=status.HTTP_400_BAD_REQUEST)
+
+            # 计算过期时间（24小时后）
+            expires_at = timezone.now() + timedelta(hours=24)
+
+            # 创建活力药水效果
+            UserEffect.objects.create(
+                user=user,
+                effect_type='energy_potion',
+                item=energy_potion,
+                properties={
+                    'decay_reduction': 0.5,  # 50% 衰减减少
+                    'duration_hours': 24,
+                    'used_at': timezone.now().isoformat(),
+                    'description': '24小时内活跃度衰减减少50%'
+                },
+                expires_at=expires_at,
+                is_active=True
+            )
+
+            # 销毁活力药水道具
+            energy_potion.status = 'used'
+            energy_potion.used_at = timezone.now()
+            energy_potion.inventory = None  # 从背包中移除
+            energy_potion.save()
+
+            return Response({
+                'success': True,
+                'message': '活力药水使用成功！在接下来的24小时内，您的活跃度衰减将减少50%',
+                'effect_description': '24小时内活跃度衰减减少50%',
+                'decay_reduction_percentage': 50,
+                'duration_hours': 24,
+                'expires_at': expires_at.isoformat()
+            }, status=status.HTTP_200_OK)
+
+    except Exception as e:
+        return Response({
+            'error': f'使用活力药水失败: {str(e)}'
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def get_shared_tasks(request):
+    """获取朋友分享给我的任务列表"""
+    try:
+        user = request.user
+
+        # 获取所有分享给我的活跃任务
+        shared_accesses = SharedTaskAccess.objects.filter(
+            viewer=user,
+            is_active=True,
+            expires_at__gt=timezone.now()
+        ).select_related('item').order_by('-created_at')
+
+        shared_tasks = []
+        for access in shared_accesses:
+            # 通过task_id获取任务
+            try:
+                from tasks.models import LockTask
+                task = LockTask.objects.get(id=access.task_id)
+            except LockTask.DoesNotExist:
+                continue
+
+            # 只显示仍然活跃的任务
+            if task.status in ['active', 'voting', 'voting_passed']:
+                shared_tasks.append({
+                    'access_id': str(access.id),
+                    'task': {
+                        'id': str(task.id),
+                        'title': task.title,
+                        'description': task.description,
+                        'difficulty': task.difficulty,
+                        'status': task.status,
+                        'start_time': task.start_time.isoformat() if task.start_time else None,
+                        'end_time': task.end_time.isoformat() if task.end_time else None,
+                        'is_frozen': task.is_frozen,
+                        'time_display_hidden': task.time_display_hidden,
+                        'total_hourly_rewards': task.total_hourly_rewards,
+                        'last_hourly_reward_at': task.last_hourly_reward_at.isoformat() if task.last_hourly_reward_at else None
+                    },
+                    'shared_by': {
+                        'username': access.sharer.username,
+                        'id': access.sharer.id
+                    },
+                    'shared_at': access.created_at.isoformat(),
+                    'expires_at': access.expires_at.isoformat(),
+                    'item_used': access.item.item_type.name if access.item else 'unknown'
+                })
+
+        return Response({
+            'shared_tasks': shared_tasks,
+            'count': len(shared_tasks)
+        }, status=status.HTTP_200_OK)
+
+    except Exception as e:
+        return Response({
+            'error': f'获取分享任务失败: {str(e)}'
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def use_time_anchor(request):
+    """使用时间锚点 - 保存任务状态或恢复任务状态"""
+    try:
+        item_id = request.data.get('item_id')
+        task_id = request.data.get('task_id')
+        action = request.data.get('action')  # 'save' 或 'restore'
+        recreate_key = request.data.get('recreate_key', False)  # 是否重新创建钥匙
+
+        if not all([item_id, task_id, action]):
+            return Response({
+                'error': '缺少必要参数：item_id、task_id、action'
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        if action not in ['save', 'restore']:
+            return Response({
+                'error': 'action 参数必须是 "save" 或 "restore"'
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        with transaction.atomic():
+            user = request.user
+
+            # 获取时间锚点道具
+            try:
+                anchor_item = Item.objects.get(
+                    id=item_id,
+                    owner=user,
+                    item_type__name='time_anchor',
+                    status='available'
+                )
+            except Item.DoesNotExist:
+                return Response({
+                    'error': '时间锚点道具不存在或不可用'
+                }, status=status.HTTP_404_NOT_FOUND)
+
+            # 获取要操作的任务
+            try:
+                from tasks.models import LockTask
+                lock_task = LockTask.objects.get(
+                    id=task_id,
+                    user=user,
+                    task_type='lock'
+                )
+            except LockTask.DoesNotExist:
+                return Response({
+                    'error': '指定的带锁任务不存在或不属于您'
+                }, status=status.HTTP_400_BAD_REQUEST)
+
+            if action == 'save':
+                # 保存任务状态
+                if lock_task.status not in ['active', 'voting', 'voting_passed']:
+                    return Response({
+                        'error': '只能保存活跃状态或投票期的任务状态'
+                    }, status=status.HTTP_400_BAD_REQUEST)
+
+                # 检查是否已经有保存的状态，如果有则删除旧的快照
+                existing_snapshot = TaskSnapshot.objects.filter(
+                    task_id=lock_task.id,
+                    item=anchor_item,
+                    used_at__isnull=True
+                ).first()
+
+                is_overwrite = existing_snapshot is not None
+                if existing_snapshot:
+                    # 删除旧的快照，允许覆盖保存
+                    existing_snapshot.delete()
+
+                # 创建任务快照
+                TaskSnapshot.objects.create(
+                    user=user,
+                    item=anchor_item,
+                    task_id=lock_task.id,
+                    snapshot_data={
+                        'status': lock_task.status,
+                        'start_time': lock_task.start_time.isoformat() if lock_task.start_time else None,
+                        'end_time': lock_task.end_time.isoformat() if lock_task.end_time else None,
+                        'is_frozen': lock_task.is_frozen,
+                        'frozen_at': lock_task.frozen_at.isoformat() if lock_task.frozen_at else None,
+                        'frozen_end_time': lock_task.frozen_end_time.isoformat() if lock_task.frozen_end_time else None,
+                        'total_frozen_duration': lock_task.total_frozen_duration.total_seconds() if lock_task.total_frozen_duration else 0,
+                        'last_hourly_reward_at': lock_task.last_hourly_reward_at.isoformat() if lock_task.last_hourly_reward_at else None,
+                        'total_hourly_rewards': lock_task.total_hourly_rewards,
+                        'time_display_hidden': lock_task.time_display_hidden,
+                        'shield_active': getattr(lock_task, 'shield_active', False),
+                        'shield_activated_at': getattr(lock_task, 'shield_activated_at', None),
+                        'shield_activated_by_id': getattr(lock_task, 'shield_activated_by', None)
+                    }
+                )
+
+                # 更新道具属性，标记已使用保存功能
+                anchor_item.properties.update({
+                    'saved_task_id': str(lock_task.id),
+                    'saved_at': timezone.now().isoformat(),
+                    'can_restore': True
+                })
+                anchor_item.save()
+
+                # 创建时间线事件
+                TaskTimelineEvent.objects.create(
+                    task=lock_task,
+                    event_type='item_effect_applied',
+                    user=user,
+                    description='使用时间锚点保存任务状态',
+                    metadata={
+                        'item_type': 'time_anchor',
+                        'action': 'save',
+                        'saved_status': lock_task.status,
+                        'saved_end_time': lock_task.end_time.isoformat() if lock_task.end_time else None,
+                        'anchor_item_id': str(anchor_item.id)
+                    }
+                )
+
+                save_message = '任务状态已重新保存！如果任务失败，可以使用恢复功能' if is_overwrite else '任务状态已保存！如果任务失败，可以使用恢复功能'
+
+                return Response({
+                    'success': True,
+                    'message': save_message,
+                    'task_title': lock_task.title,
+                    'saved_status': lock_task.status,
+                    'saved_at': timezone.now().isoformat(),
+                    'can_restore': True
+                }, status=status.HTTP_200_OK)
+
+            elif action == 'restore':
+                # 恢复任务状态
+                if lock_task.status != 'failed':
+                    return Response({
+                        'error': '只能恢复失败状态的任务'
+                    }, status=status.HTTP_400_BAD_REQUEST)
+
+                # 检查是否可以恢复
+                if not anchor_item.properties.get('can_restore', False):
+                    return Response({
+                        'error': '此时间锚点无法恢复任务，请先保存任务状态'
+                    }, status=status.HTTP_400_BAD_REQUEST)
+
+                # 获取保存的快照
+                snapshot = TaskSnapshot.objects.filter(
+                    task_id=lock_task.id,
+                    item=anchor_item,
+                    used_at__isnull=True
+                ).first()
+
+                if not snapshot:
+                    return Response({
+                        'error': '未找到保存的任务状态'
+                    }, status=status.HTTP_400_BAD_REQUEST)
+
+                # 恢复任务状态
+                old_status = lock_task.status
+                saved_data = snapshot.snapshot_data
+
+                lock_task.status = saved_data.get('status')
+                if saved_data.get('start_time'):
+                    lock_task.start_time = timezone.datetime.fromisoformat(saved_data['start_time'])
+                if saved_data.get('end_time'):
+                    lock_task.end_time = timezone.datetime.fromisoformat(saved_data['end_time'])
+                lock_task.is_frozen = saved_data.get('is_frozen', False)
+                if saved_data.get('frozen_at'):
+                    lock_task.frozen_at = timezone.datetime.fromisoformat(saved_data['frozen_at'])
+                if saved_data.get('frozen_end_time'):
+                    lock_task.frozen_end_time = timezone.datetime.fromisoformat(saved_data['frozen_end_time'])
+                total_seconds = saved_data.get('total_frozen_duration', 0)
+                lock_task.total_frozen_duration = timedelta(seconds=total_seconds)
+                if saved_data.get('last_hourly_reward_at'):
+                    lock_task.last_hourly_reward_at = timezone.datetime.fromisoformat(saved_data['last_hourly_reward_at'])
+                lock_task.total_hourly_rewards = saved_data.get('total_hourly_rewards', 0)
+                lock_task.time_display_hidden = saved_data.get('time_display_hidden', False)
+
+                lock_task.save()
+
+                # 标记快照为已使用
+                snapshot.used_at = timezone.now()
+                snapshot.save()
+
+                # 钥匙重新创建和返还逻辑
+                key_returned = False
+                returned_key_id = None
+                key_return_message = None
+                key_recreated = False
+
+                # 检查任务是否有钥匙
+                existing_key = Item.objects.filter(
+                    item_type__name='key',
+                    properties__task_id=str(lock_task.id),
+                    status='available'
+                ).first()
+
+                if not existing_key and recreate_key:
+                    # 重新创建任务钥匙
+                    try:
+                        # 获取钥匙物品类型
+                        key_item_type = ItemType.objects.get(name='key')
+
+                        # 获取用户背包
+                        user_inventory, created = UserInventory.objects.get_or_create(
+                            user=user,
+                            defaults={'max_slots': 6}
+                        )
+
+                        # 检查背包是否有空间
+                        current_items_count = user_inventory.items.filter(status='available').count()
+                        if current_items_count >= user_inventory.max_slots:
+                            key_return_message = '背包空间不足，无法返还钥匙'
+                        else:
+                            # 创建新的钥匙
+                            new_key = Item.objects.create(
+                                item_type=key_item_type,
+                                owner=user,
+                                inventory=user_inventory,
+                                status='available',
+                                properties={
+                                    'task_id': str(lock_task.id),
+                                    'task_title': lock_task.title,
+                                    'created_by_time_anchor': True,
+                                    'original_task_creator': user.id
+                                },
+                                original_owner=user
+                            )
+
+                            key_returned = True
+                            returned_key_id = str(new_key.id)
+                            key_return_message = '任务钥匙已重新创建并返还到背包'
+                            key_recreated = True
+
+                    except ItemType.DoesNotExist:
+                        key_return_message = '钥匙物品类型不存在，无法创建钥匙'
+                    except Exception as e:
+                        key_return_message = f'创建钥匙失败：{str(e)}'
+
+                elif existing_key:
+                    # 钥匙已存在，确保在用户背包中
+                    if existing_key.owner == user and existing_key.status == 'available':
+                        key_returned = True
+                        returned_key_id = str(existing_key.id)
+                        key_return_message = '任务钥匙已存在于背包中'
+                    else:
+                        key_return_message = '钥匙存在但状态异常'
+                else:
+                    key_return_message = '未请求钥匙重新创建'
+
+                # 销毁时间锚点道具
+                anchor_item.status = 'used'
+                anchor_item.used_at = timezone.now()
+                anchor_item.inventory = None  # 从背包中移除
+                anchor_item.save()
+
+                # 创建时间线事件
+                timeline_event = TaskTimelineEvent.objects.create(
+                    task=lock_task,
+                    event_type='item_effect_applied',
+                    user=user,
+                    description=f'使用时间锚点恢复任务状态：{old_status} → {lock_task.status}',
+                    metadata={
+                        'item_type': 'time_anchor',
+                        'action': 'restore',
+                        'old_status': old_status,
+                        'restored_status': lock_task.status,
+                        'restored_end_time': lock_task.end_time.isoformat() if lock_task.end_time else None,
+                        'anchor_item_id': str(anchor_item.id),
+                        'key_returned': key_returned,
+                        'key_recreated': key_recreated,
+                        'returned_key_id': returned_key_id
+                    }
+                )
+
+                response_data = {
+                    'success': True,
+                    'message': '任务状态已恢复！时间锚点已销毁',
+                    'task_title': lock_task.title,
+                    'old_status': old_status,
+                    'restored_status': lock_task.status,
+                    'restored_end_time': lock_task.end_time.isoformat() if lock_task.end_time else None,
+                    'key_returned': key_returned,
+                    'returned_key_id': returned_key_id,
+                    'key_return_message': key_return_message,
+                    'key_recreated': key_recreated,
+                    'timeline_event_created': True,
+                    'timeline_event_id': str(timeline_event.id)
+                }
+
+                return Response(response_data, status=status.HTTP_200_OK)
+
+    except Exception as e:
+        return Response({
+            'error': f'使用时间锚点失败: {str(e)}'
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def use_exploration_compass(request):
+    """使用探索指南针 - 显示指定区域的所有埋藏宝物相关信息（物品类型、难度、埋藏者）"""
+    try:
+        item_id = request.data.get('item_id')
+        zone_name = request.data.get('zone_name')
+
+        if not all([item_id, zone_name]):
+            return Response({
+                'error': '缺少必要参数：item_id、zone_name'
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        # 验证区域名称
+        valid_zones = ['beach', 'forest', 'mountain', 'desert', 'cave']
+        if zone_name not in valid_zones:
+            return Response({
+                'error': f'无效的区域名称，有效区域：{", ".join(valid_zones)}'
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        with transaction.atomic():
+            user = request.user
+
+            # 获取探索指南针道具
+            try:
+                compass_item = Item.objects.get(
+                    id=item_id,
+                    owner=user,
+                    item_type__name='exploration_compass',
+                    status='available'
+                )
+            except Item.DoesNotExist:
+                return Response({
+                    'error': '探索指南针道具不存在或不可用'
+                }, status=status.HTTP_404_NOT_FOUND)
+
+            # 查找指定区域的所有埋藏宝物（包括用户自己埋藏的）
+            buried_treasures = BuriedTreasure.objects.filter(
+                location_zone=zone_name,
+                status='buried',
+                expires_at__gt=timezone.now()
+            ).select_related('burier', 'item__item_type')
+
+            if not buried_treasures.exists():
+                # 即使没有宝物也要销毁道具
+                compass_item.status = 'used'
+                compass_item.used_at = timezone.now()
+                compass_item.inventory = None
+                compass_item.save()
+
+                return Response({
+                    'success': True,
+                    'message': f'{get_zone_display_name(zone_name)} 区域当前没有埋藏的宝物',
+                    'zone_name': zone_name,
+                    'zone_display_name': get_zone_display_name(zone_name),
+                    'treasures': [],
+                    'treasure_count': 0
+                }, status=status.HTTP_200_OK)
+
+            # 构建宝物信息 - 显示物品类型、难度、埋藏者，包括用户自己埋藏的宝物
+            treasures_info = []
+            for treasure in buried_treasures:
+                is_own_treasure = treasure.burier == user
+                burier_display = treasure.burier.username
+                if is_own_treasure:
+                    burier_display += " (您)"
+
+                treasures_info.append({
+                    'treasure_id': str(treasure.id),
+                    'difficulty': treasure.difficulty,
+                    'difficulty_display': getDifficultyText(treasure.difficulty),
+                    'item_type': treasure.item.item_type.name,
+                    'item_display_name': treasure.item.item_type.display_name,
+                    'item_icon': treasure.item.item_type.icon,
+                    'burier': {
+                        'username': treasure.burier.username,
+                        'id': treasure.burier.id
+                    },
+                    'is_own_treasure': is_own_treasure,
+                    'buried_at': treasure.created_at.isoformat(),
+                    'expires_at': treasure.expires_at.isoformat(),
+                    # 显示宝物相关信息而非位置信息，标识自己埋藏的宝物
+                    'treasure_info': f'🎁 物品：{treasure.item.item_type.display_name}\n⚡ 难度：{getDifficultyText(treasure.difficulty)}\n👤 埋藏者：{burier_display}'
+                })
+
+            # 销毁探索指南针道具
+            compass_item.status = 'used'
+            compass_item.used_at = timezone.now()
+            compass_item.inventory = None  # 从背包中移除
+            compass_item.save()
+
+            # 记录使用日志（不涉及特定任务，所以不创建时间线事件）
+            # 可以创建一个通用的道具使用记录
+            try:
+                from users.models import ActivityLog
+                ActivityLog.objects.create(
+                    user=user,
+                    action_type='item_used',
+                    points_change=0,
+                    new_total=user.activity_score,
+                    metadata={
+                        'item_type': 'exploration_compass',
+                        'item_id': str(compass_item.id),
+                        'zone_explored': zone_name,
+                        'treasures_found': len(treasures_info),
+                        'used_at': timezone.now().isoformat()
+                    }
+                )
+            except Exception:
+                # 如果ActivityLog模型还不存在，忽略错误
+                pass
+
+            return Response({
+                'success': True,
+                'message': f'探索指南针揭示了 {get_zone_display_name(zone_name)} 区域的 {len(treasures_info)} 个宝物信息！',
+                'zone_name': zone_name,
+                'zone_display_name': get_zone_display_name(zone_name),
+                'treasures': treasures_info,
+                'treasure_count': len(treasures_info),
+                'compass_used_at': timezone.now().isoformat(),
+                'description': '探索指南针显示了区域内所有宝物的相关信息（物品类型、难度、埋藏者），但不显示具体位置'
+            }, status=status.HTTP_200_OK)
+
+    except Exception as e:
+        return Response({
+            'error': f'使用探索指南针失败: {str(e)}'
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def use_influence_crown(request):
+    """使用影响力皇冠 - 在48小时内所有投票权重变为3倍"""
+    try:
+        item_id = request.data.get('item_id')
+
+        if not item_id:
+            return Response({
+                'error': '缺少必要参数：item_id'
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        with transaction.atomic():
+            user = request.user
+
+            # 获取影响力皇冠道具
+            try:
+                crown_item = Item.objects.get(
+                    id=item_id,
+                    owner=user,
+                    item_type__name='influence_crown',
+                    status='available'
+                )
+            except Item.DoesNotExist:
+                return Response({
+                    'error': '影响力皇冠道具不存在或不可用'
+                }, status=status.HTTP_404_NOT_FOUND)
+
+            # 检查是否已有活跃的影响力皇冠效果
+            existing_effect = UserEffect.objects.filter(
+                user=user,
+                effect_type='influence_crown',
+                is_active=True,
+                expires_at__gt=timezone.now()
+            ).first()
+
+            if existing_effect:
+                remaining_time = existing_effect.expires_at - timezone.now()
+                remaining_hours = int(remaining_time.total_seconds() / 3600)
+                return Response({
+                    'error': f'您已经有活跃的影响力皇冠效果，剩余时间：{remaining_hours}小时'
+                }, status=status.HTTP_400_BAD_REQUEST)
+
+            # 计算过期时间（48小时后）
+            expires_at = timezone.now() + timedelta(hours=48)
+
+            # 创建影响力皇冠效果
+            UserEffect.objects.create(
+                user=user,
+                effect_type='influence_crown',
+                item=crown_item,
+                properties={
+                    'vote_multiplier': 3,  # 3倍投票权重
+                    'duration_hours': 48,
+                    'used_at': timezone.now().isoformat(),
+                    'description': '48小时内所有投票权重变为3倍'
+                },
+                expires_at=expires_at,
+                is_active=True
+            )
+
+            # 销毁影响力皇冠道具
+            crown_item.status = 'used'
+            crown_item.used_at = timezone.now()
+            crown_item.inventory = None  # 从背包中移除
+            crown_item.save()
+
+            # 创建通知
+            Notification.create_notification(
+                recipient=user,
+                notification_type='item_effect_activated',
+                title='影响力皇冠激活',
+                message=f'影响力皇冠已激活！在接下来的48小时内，您的所有投票权重将变为3倍',
+                related_object_type='item',
+                related_object_id=crown_item.id,
+                extra_data={
+                    'item_type': 'influence_crown',
+                    'effect_duration_hours': 48,
+                    'vote_multiplier': 3,
+                    'expires_at': expires_at.isoformat(),
+                    'activated_at': timezone.now().isoformat()
+                },
+                priority='high'
+            )
+
+            return Response({
+                'success': True,
+                'message': '影响力皇冠激活成功！在接下来的48小时内，您的所有投票权重将变为3倍',
+                'effect_description': '48小时内所有投票权重变为3倍',
+                'vote_multiplier': 3,
+                'duration_hours': 48,
+                'expires_at': expires_at.isoformat(),
+                'activated_at': timezone.now().isoformat()
+            }, status=status.HTTP_200_OK)
+
+    except Exception as e:
+        return Response({
+            'error': f'使用影响力皇冠失败: {str(e)}'
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 

@@ -683,6 +683,117 @@ export const storeApi = {
       body: JSON.stringify({ content }),
     });
   },
+
+  // Lucky Charm
+  async useLuckyCharm(itemId: string): Promise<{
+    success: boolean;
+    message: string;
+    effect_description: string;
+    boost_percentage: number;
+  }> {
+    return apiRequest('/store/use-lucky-charm/', {
+      method: 'POST',
+      body: JSON.stringify({ item_id: itemId }),
+    });
+  },
+
+  // Energy Potion
+  async useEnergyPotion(itemId: string): Promise<{
+    success: boolean;
+    message: string;
+    effect_description: string;
+    decay_reduction_percentage: number;
+    duration_hours: number;
+    expires_at: string;
+  }> {
+    return apiRequest('/store/use-energy-potion/', {
+      method: 'POST',
+      body: JSON.stringify({ item_id: itemId }),
+    });
+  },
+
+
+  // Time Anchor
+  async useTimeAnchor(data: {
+    item_id: string;
+    task_id: string;
+    action: 'save' | 'restore';
+    recreate_key?: boolean; // Request key recreation if it doesn't exist
+  }): Promise<{
+    success: boolean;
+    message: string;
+    task_title: string;
+    saved_status?: string;
+    saved_at?: string;
+    can_restore?: boolean;
+    old_status?: string;
+    restored_status?: string;
+    restored_end_time?: string;
+    // Key return information for restore operations
+    key_returned?: boolean;
+    returned_key_id?: string;
+    key_return_message?: string;
+    key_recreated?: boolean; // Indicates if key was recreated
+    // Timeline event information
+    timeline_event_created?: boolean;
+    timeline_event_id?: string;
+  }> {
+    return apiRequest('/store/use-time-anchor/', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  },
+
+  // Exploration Compass
+  async useExplorationCompass(data: {
+    item_id: string;
+    zone_name: string;
+  }): Promise<{
+    success: boolean;
+    message: string;
+    zone_name: string;
+    zone_display_name: string;
+    treasures: Array<{
+      treasure_id: string;
+      location_hint: string;
+      difficulty: string;
+      difficulty_display: string;
+      item_type: string;
+      item_display_name: string;
+      item_icon: string;
+      burier: {
+        username: string;
+        id: number;
+      };
+      buried_at: string;
+      expires_at: string;
+      exploration_hint: string;
+    }>;
+    treasure_count: number;
+    compass_used_at: string;
+  }> {
+    return apiRequest('/store/use-exploration-compass/', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  },
+
+
+  // Influence Crown
+  async useInfluenceCrown(itemId: string): Promise<{
+    success: boolean;
+    message: string;
+    effect_description: string;
+    vote_multiplier: number;
+    duration_hours: number;
+    expires_at: string;
+    activated_at: string;
+  }> {
+    return apiRequest('/store/use-influence-crown/', {
+      method: 'POST',
+      body: JSON.stringify({ item_id: itemId }),
+    });
+  },
 };
 
 // Tasks API

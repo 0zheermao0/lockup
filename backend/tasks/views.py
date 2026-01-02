@@ -14,7 +14,7 @@ logger = logging.getLogger(__name__)
 from .models import LockTask, TaskKey, TaskVote, OvertimeAction, TaskTimelineEvent, HourlyReward, TaskParticipant, PinnedUser
 from store.models import ItemType, UserInventory, Item
 from users.models import Notification
-from .utils import destroy_task_keys
+from .utils import destroy_task_keys, calculate_weighted_vote_counts
 from .pinning_service import PinningQueueManager
 from .pagination import DynamicPageNumberPagination
 from .serializers import (
@@ -22,6 +22,7 @@ from .serializers import (
     TaskKeySerializer, TaskVoteSerializer, TaskVoteCreateSerializer,
     TaskTimelineEventSerializer
 )
+
 
 
 class IsOwnerOrAdmin(permissions.BasePermission):
@@ -277,6 +278,34 @@ class LockTaskListCreateView(generics.ListCreateAPIView):
                     'key_item_id': str(key_item.id)
                 }
             )
+
+            # 检查并激活幸运符效果（如果用户有的话）
+            from store.models import UserEffect
+            lucky_charm_effect = UserEffect.objects.filter(
+                user=task.user,
+                effect_type='lucky_charm',
+                is_active=True
+            ).first()
+
+            if lucky_charm_effect:
+                # 记录幸运符效果应用到此任务
+                lucky_charm_effect.properties['applied_to_task'] = str(task.id)
+                lucky_charm_effect.properties['applied_at'] = timezone.now().isoformat()
+                lucky_charm_effect.save()
+
+                # 创建幸运符效果应用事件
+                TaskTimelineEvent.objects.create(
+                    task=task,
+                    event_type='item_effect_applied',
+                    user=task.user,
+                    description=f'幸运符效果已激活：小时奖励概率+20%',
+                    metadata={
+                        'effect_type': 'lucky_charm',
+                        'luck_boost': 0.2,
+                        'item_id': str(lucky_charm_effect.item.id),
+                        'effect_description': '下一个带锁任务的小时奖励概率+20%'
+                    }
+                )
 
             # 如果是投票解锁类型，自动创建钥匙记录（兼容现有系统）
             if task.unlock_type == 'vote':
@@ -612,9 +641,10 @@ def complete_task(request, pk):
                     status=status.HTTP_400_BAD_REQUEST
                 )
 
-            # 检查投票是否通过
-            total_votes = task.votes.count()
-            agree_votes = task.votes.filter(agree=True).count()
+            # 检查投票是否通过（应用影响力皇冠效果）
+            vote_counts = calculate_weighted_vote_counts(task)
+            total_votes = vote_counts['total_votes']
+            agree_votes = vote_counts['agree_votes']
 
             # 检查投票数量是否达到门槛
             required_votes = task.vote_threshold or 1  # 如果没有设置门槛，默认需要1票
@@ -740,8 +770,9 @@ def complete_task(request, pk):
         })
 
         if task.unlock_type == 'vote':
-            total_votes = task.votes.count()
-            agree_votes = task.votes.filter(agree=True).count()
+            vote_counts = calculate_weighted_vote_counts(task)
+            total_votes = vote_counts['total_votes']
+            agree_votes = vote_counts['agree_votes']
             completion_metadata.update({
                 'total_votes': total_votes,
                 'agree_votes': agree_votes,
@@ -794,6 +825,35 @@ def stop_task(request, pk):
     task.status = 'failed'
     task.end_time = timezone.now()
     task.save()
+
+    # 检查并失效幸运符效果（如果应用到此任务）
+    from store.models import UserEffect
+    lucky_charm_effect = UserEffect.objects.filter(
+        user=task.user,
+        effect_type='lucky_charm',
+        is_active=True
+    ).first()
+
+    if lucky_charm_effect and lucky_charm_effect.properties.get('applied_to_task') == str(task.id):
+        # 幸运符应用到此任务，任务停止时应该失效
+        lucky_charm_effect.is_active = False
+        lucky_charm_effect.properties['used_on_task'] = str(task.id)
+        lucky_charm_effect.properties['used_at'] = timezone.now().isoformat()
+        lucky_charm_effect.properties['termination_reason'] = 'task_stopped'
+        lucky_charm_effect.save()
+
+        # 创建幸运符失效事件
+        TaskTimelineEvent.objects.create(
+            task=task,
+            event_type='item_effect_ended',
+            user=task.user,
+            description='任务停止，幸运符效果失效',
+            metadata={
+                'effect_type': 'lucky_charm',
+                'termination_reason': 'task_stopped',
+                'item_id': str(lucky_charm_effect.item.id)
+            }
+        )
 
     # 销毁任务相关的所有钥匙道具
     destroy_result = destroy_task_keys(task, reason="task_stopped", user=request.user, metadata={
@@ -1241,9 +1301,10 @@ def vote_task(request, pk):
     if serializer.is_valid():
         vote = serializer.save()
 
-        # 获取当前投票统计
-        total_votes = task.votes.count()
-        agree_votes = task.votes.filter(agree=True).count()
+        # 获取当前投票统计（应用影响力皇冠效果）
+        vote_counts = calculate_weighted_vote_counts(task)
+        total_votes = vote_counts['total_votes']
+        agree_votes = vote_counts['agree_votes']
 
         # 创建投票事件记录
         TaskTimelineEvent.objects.create(
@@ -1612,9 +1673,10 @@ def _process_voting_results_internal():
     processed_tasks = []
 
     for task in voting_ended_tasks:
-        # 统计投票结果
-        total_votes = task.votes.count()
-        agree_votes = task.votes.filter(agree=True).count()
+        # 统计投票结果（应用影响力皇冠效果）
+        vote_counts = calculate_weighted_vote_counts(task)
+        total_votes = vote_counts['total_votes']
+        agree_votes = vote_counts['agree_votes']
 
         # 统一的投票验证逻辑，与complete_task保持一致
         required_threshold = task.vote_threshold or 1  # 如果没有设置门槛，默认需要1票
@@ -1974,30 +2036,64 @@ def _process_task_hourly_rewards(task):
     if rewards_to_give <= 0:
         return 0
 
+    # 检查用户是否有幸运符效果
+    from store.models import UserEffect
+    lucky_charm_effect = UserEffect.objects.filter(
+        user=task.user,
+        effect_type='lucky_charm',
+        is_active=True
+    ).first()
+
+    luck_boost = 0.0
+    if lucky_charm_effect:
+        luck_boost = lucky_charm_effect.properties.get('luck_boost', 0.0)
+
     # 发放奖励
     next_reward_hour = task.total_hourly_rewards + 1
+    total_bonus_coins = 0
 
     for hour_num in range(next_reward_hour, next_reward_hour + rewards_to_give):
-        # 给用户增加1积分
-        task.user.coins += 1
+        # 基础奖励：1积分
+        base_reward = 1
+        actual_reward = base_reward
+
+        # 如果有幸运符效果，有概率获得额外奖励
+        bonus_reward = 0
+        if lucky_charm_effect and luck_boost > 0:
+            import random
+            if random.random() < luck_boost:  # 20% 概率获得额外奖励
+                bonus_reward = 1
+                actual_reward += bonus_reward
+                total_bonus_coins += bonus_reward
+
+        # 给用户增加积分
+        task.user.coins += actual_reward
         task.user.save()
 
         # 创建奖励记录
         HourlyReward.objects.create(
             task=task,
             user=task.user,
-            reward_amount=1,
+            reward_amount=actual_reward,
             hour_count=hour_num
         )
+
+        # 构建描述信息
+        description = f'任务完成时补发第{hour_num}小时奖励：{task.user.username}获得{actual_reward}积分'
+        if bonus_reward > 0:
+            description += f' (基础{base_reward}+幸运符{bonus_reward})'
 
         # 记录到时间线
         TaskTimelineEvent.objects.create(
             task=task,
             event_type='hourly_reward',
             user=None,  # 系统事件
-            description=f'任务完成时补发第{hour_num}小时奖励：{task.user.username}获得1积分',
+            description=description,
             metadata={
-                'reward_amount': 1,
+                'reward_amount': actual_reward,
+                'base_reward': base_reward,
+                'bonus_reward': bonus_reward,
+                'luck_boost_applied': bool(bonus_reward > 0),
                 'hour_count': hour_num,
                 'total_coins': task.user.coins,
                 'completion_catchup': True
@@ -2008,6 +2104,18 @@ def _process_task_hourly_rewards(task):
     task.total_hourly_rewards += rewards_to_give
     task.last_hourly_reward_at = now
     task.save()
+
+    # 如果使用了幸运符效果，在任务完成后将其标记为已使用（一次性效果）
+    if lucky_charm_effect:
+        # 记录使用次数
+        uses_count = lucky_charm_effect.properties.get('uses_count', 0)
+        lucky_charm_effect.properties['uses_count'] = uses_count + total_bonus_coins
+        lucky_charm_effect.properties['used_on_task'] = str(task.id)
+        lucky_charm_effect.properties['used_at'] = now.isoformat()
+
+        # 标记为已使用，因为幸运符只对下一个任务有效（无论是否触发额外奖励）
+        lucky_charm_effect.is_active = False
+        lucky_charm_effect.save()
 
     return rewards_to_give
 

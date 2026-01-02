@@ -122,28 +122,60 @@ def _process_task_hourly_rewards(task, now, next_reward_hour, rewards_to_give, p
         rewards_to_give: 需要发放的奖励数量
         processed_rewards: 处理结果列表（用于累积结果）
     """
+    # 检查用户是否有幸运符效果
+    from store.models import UserEffect
+    lucky_charm_effect = UserEffect.objects.filter(
+        user=task.user,
+        effect_type='lucky_charm',
+        is_active=True
+    ).first()
+
+    luck_boost = 0.0
+    if lucky_charm_effect:
+        luck_boost = lucky_charm_effect.properties.get('luck_boost', 0.0)
+
     for hour_num in range(next_reward_hour, next_reward_hour + rewards_to_give):
         try:
-            # 给用户增加1积分（coins）
-            task.user.coins += 1
+            # 基础奖励：1积分
+            base_reward = 1
+            actual_reward = base_reward
+
+            # 如果有幸运符效果，有概率获得额外奖励
+            bonus_reward = 0
+            if lucky_charm_effect and luck_boost > 0:
+                import random
+                if random.random() < luck_boost:  # 20% 概率获得额外奖励
+                    bonus_reward = 1
+                    actual_reward += bonus_reward
+
+            # 给用户增加积分（coins）
+            task.user.coins += actual_reward
             task.user.save()
 
             # 创建奖励记录
             hourly_reward = HourlyReward.objects.create(
                 task=task,
                 user=task.user,
-                reward_amount=1,
+                reward_amount=actual_reward,
                 hour_count=hour_num
             )
+
+            # 构建描述信息
+            description = f'第{hour_num}小时奖励：{task.user.username}获得{actual_reward}积分'
+            if bonus_reward > 0:
+                description += f' (基础{base_reward}+幸运符{bonus_reward})'
 
             # 记录到时间线
             TaskTimelineEvent.objects.create(
                 task=task,
                 event_type='hourly_reward',
                 user=None,  # 系统事件
-                description=f'第{hour_num}小时奖励：{task.user.username}获得1积分',
+                description=description,
                 metadata={
-                    'reward_amount': 1,
+                    'reward_amount': actual_reward,
+                    'base_reward': base_reward,
+                    'bonus_reward': bonus_reward,
+                    'luck_boost_applied': bool(bonus_reward > 0),
                     'hour_count': hour_num,
                     'total_coins': task.user.coins,
                     'auto_processed': True,
@@ -187,8 +219,17 @@ def _process_task_hourly_rewards(task, now, next_reward_hour, rewards_to_give, p
                 'task_title': task.title,
                 'user': task.user.username,
                 'hour_count': hour_num,
-                'reward_amount': 1
+                'reward_amount': actual_reward,
+                'base_reward': base_reward,
+                'bonus_reward': bonus_reward,
+                'luck_boost_applied': bool(bonus_reward > 0)
             })
+
+            # 如果使用了幸运符效果，记录使用次数
+            if lucky_charm_effect and bonus_reward > 0:
+                uses_count = lucky_charm_effect.properties.get('uses_count', 0)
+                lucky_charm_effect.properties['uses_count'] = uses_count + 1
+                lucky_charm_effect.save()
 
             logger.debug(f"Processed hour {hour_num} reward for task {task.id}")
 
@@ -1039,6 +1080,51 @@ def process_checkin_voting_results(self):
         raise exc
 
 
+def _calculate_weighted_checkin_vote_counts(post):
+    """
+    计算带有影响力皇冠效果的加权打卡投票统计
+
+    Args:
+        post: Post实例
+
+    Returns:
+        dict: 包含total_votes, pass_votes和reject_votes的字典，已应用影响力皇冠倍数
+    """
+    from store.models import UserEffect
+    from posts.models import CheckinVote
+
+    votes = CheckinVote.objects.filter(post=post)
+    total_weighted_votes = 0
+    pass_weighted_votes = 0
+    reject_weighted_votes = 0
+
+    for vote in votes:
+        # 检查投票者是否有活跃的影响力皇冠效果
+        crown_effect = UserEffect.objects.filter(
+            user=vote.voter,
+            effect_type='influence_crown',
+            is_active=True,
+            expires_at__gt=timezone.now()
+        ).first()
+
+        # 计算投票权重
+        vote_weight = 1
+        if crown_effect:
+            vote_weight = crown_effect.properties.get('vote_multiplier', 3)
+
+        total_weighted_votes += vote_weight
+        if vote.vote_type == 'pass':
+            pass_weighted_votes += vote_weight
+        elif vote.vote_type == 'reject':
+            reject_weighted_votes += vote_weight
+
+    return {
+        'total_votes': total_weighted_votes,
+        'pass_votes': pass_weighted_votes,
+        'reject_votes': reject_weighted_votes
+    }
+
+
 def _process_single_voting_session(session, current_time):
     """
     处理单个投票会话的结果
@@ -1053,13 +1139,15 @@ def _process_single_voting_session(session, current_time):
     from posts.models import CheckinVote
 
     post = session.post
+
+    # 使用加权投票统计（应用影响力皇冠效果）
+    vote_counts = _calculate_weighted_checkin_vote_counts(post)
+    pass_count = vote_counts['pass_votes']
+    reject_count = vote_counts['reject_votes']
+
+    # 为了向后兼容，还需要获取原始投票对象用于通知
     votes = CheckinVote.objects.filter(post=post)
-
     pass_votes = votes.filter(vote_type='pass')
-    reject_votes = votes.filter(vote_type='reject')
-
-    pass_count = pass_votes.count()
-    reject_count = reject_votes.count()
 
     # 判断结果：拒绝票必须大于通过票才算拒绝（不是大于等于）
     if reject_count > pass_count:
@@ -1155,6 +1243,37 @@ def _handle_voting_rejected(post, session, current_time):
 
         if recent_task:
             recent_task.status = 'failed'
+
+            # 检查并失效幸运符效果（如果应用到此任务）
+            from store.models import UserEffect
+            lucky_charm_effect = UserEffect.objects.filter(
+                user=recent_task.user,
+                effect_type='lucky_charm',
+                is_active=True
+            ).first()
+
+            if lucky_charm_effect and lucky_charm_effect.properties.get('applied_to_task') == str(recent_task.id):
+                # 幸运符应用到此任务，任务失败时应该失效
+                lucky_charm_effect.is_active = False
+                lucky_charm_effect.properties['used_on_task'] = str(recent_task.id)
+                lucky_charm_effect.properties['used_at'] = current_time.isoformat()
+                lucky_charm_effect.properties['termination_reason'] = 'task_failed_checkin_vote'
+                lucky_charm_effect.save()
+
+                # 创建幸运符失效事件
+                TaskTimelineEvent.objects.create(
+                    task=recent_task,
+                    event_type='item_effect_ended',
+                    user=None,  # 系统事件
+                    description='任务因打卡投票被拒绝而失败，幸运符效果失效',
+                    metadata={
+                        'effect_type': 'lucky_charm',
+                        'termination_reason': 'task_failed_checkin_vote',
+                        'item_id': str(lucky_charm_effect.item.id),
+                        'processed_by': 'celery_task'
+                    }
+                )
+
             recent_task.save()
 
             # 创建时间线事件
