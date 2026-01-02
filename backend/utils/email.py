@@ -1,3 +1,4 @@
+from dataclasses import dataclass
 import smtplib
 from celery import shared_task
 from django.db import models
@@ -6,11 +7,16 @@ from django.core.mail import EmailMessage, get_connection
 from anymail.exceptions import AnymailError
 
 
-class MailSendStatus(models.TextChoices):
+class EMailSendStatus(models.TextChoices):
     SUCCESS = "success", "Main Success"
     FALLBACK = "fallback", "Main Fail, Fallback Success"
     FAILURE = "failure", "Fail"
     
+@dataclass
+class MailSendResult:
+    backend: str
+    status: EMailSendStatus
+    error_message: str | None
     
 def _send_email(
     *,
@@ -19,7 +25,7 @@ def _send_email(
     to: list[str]|str,
     from_email: str = None,
     is_html: bool = False,
-) -> dict:
+) -> MailSendResult:
     if isinstance(to, str):
         to = [to]
         
@@ -39,12 +45,12 @@ def _send_email(
         )
         email.send()
 
-        return {
-            "backend": main_backend,
-            "status": MailSendStatus.SUCCESS,
-            "error_message": None,
-        }
-
+        return MailSendResult(
+            backend=main_backend,
+            status=EMailSendStatus.SUCCESS,
+            error_message=None,
+        )
+        
     except (AnymailError, smtplib.SMTPException) as exc:
         mailgun_error = exc  # keep for logging / error message
 
@@ -60,18 +66,18 @@ def _send_email(
         )
         email.send()
 
-        return {
-            "backend": fallback_backend,
-            "status": MailSendStatus.FALLBACK,
-            "error_message": str(mailgun_error),
-        }
-
+        return MailSendResult(
+            backend=fallback_backend,
+            status=EMailSendStatus.FALLBACK,
+            error_message=str(mailgun_error),
+        )
+        
     except smtplib.SMTPException as exc:
-        return {
-            "backend": fallback_backend,
-            "status": MailSendStatus.FAILURE,
-            "error_message": f"main:{str(mailgun_error)} fallback:{str(exc)}",
-        }
+        return MailSendResult(
+            backend=fallback_backend,
+            status=EMailSendStatus.FAILURE,
+            error_message=f"main:{str(mailgun_error)} fallback:{str(exc)}",
+        )
     
         
 @shared_task(
@@ -88,7 +94,7 @@ def send_email_task(
     to: list[str]|str,
     from_email: str|None = None,
     is_html: bool = False,
-) -> dict:
+) -> MailSendResult:
 
     result = _send_email(
         subject=subject,
@@ -98,8 +104,8 @@ def send_email_task(
         is_html=is_html,
     )
         
-    if result["status"] == MailSendStatus.FAILURE:
-        raise Exception(result["error_message"])
+    if result.status == EMailSendStatus.FAILURE:
+        raise Exception(result.error_message)
 
     return result
     
