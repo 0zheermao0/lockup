@@ -111,7 +111,7 @@ class LockTaskListSerializer(serializers.ModelSerializer):
             # 严格模式字段
             'strict_mode', 'strict_code',
             # 任务板字段
-            'reward', 'deadline', 'max_duration', 'taker', 'taken_at',
+            'reward', 'deadline', 'max_duration', 'completion_rate_threshold', 'taker', 'taken_at',
             'completed_at',
             # 多人任务字段
             'max_participants',
@@ -163,6 +163,12 @@ class LockTaskListSerializer(serializers.ModelSerializer):
         if obj.participants.filter(participant=user).exists():
             return False
 
+        # 检查完成率门槛（仅适用于任务板）
+        if obj.task_type == 'board' and obj.completion_rate_threshold is not None and obj.completion_rate_threshold > 0:
+            user_completion_rate = user.get_task_completion_rate()
+            if user_completion_rate < obj.completion_rate_threshold:
+                return False
+
         # 判断是单人还是多人任务
         is_multi_person = obj.max_participants and obj.max_participants > 1
 
@@ -205,7 +211,7 @@ class LockTaskSerializer(serializers.ModelSerializer):
             # 投票期相关字段
             'voting_start_time', 'voting_end_time', 'voting_duration', 'vote_failed_penalty_minutes',
             # 任务板字段
-            'reward', 'deadline', 'max_duration', 'taker', 'taken_at',
+            'reward', 'deadline', 'max_duration', 'completion_rate_threshold', 'taker', 'taken_at',
             'completion_proof', 'completed_at',
             # 多人任务字段
             'max_participants',
@@ -266,6 +272,12 @@ class LockTaskSerializer(serializers.ModelSerializer):
         # 检查是否已经参与过
         if obj.participants.filter(participant=user).exists():
             return False
+
+        # 检查完成率门槛（仅适用于任务板）
+        if obj.task_type == 'board' and obj.completion_rate_threshold is not None and obj.completion_rate_threshold > 0:
+            user_completion_rate = user.get_task_completion_rate()
+            if user_completion_rate < obj.completion_rate_threshold:
+                return False
 
         # 判断是单人还是多人任务
         is_multi_person = obj.max_participants and obj.max_participants > 1
@@ -329,7 +341,7 @@ class LockTaskCreateSerializer(serializers.ModelSerializer):
             # 严格模式字段
             'strict_mode', 'strict_code',
             # 任务板字段
-            'reward', 'deadline', 'max_duration',
+            'reward', 'deadline', 'max_duration', 'completion_rate_threshold',
             # 多人任务字段
             'max_participants',
             # 自动发布动态字段
@@ -417,6 +429,16 @@ class LockTaskCreateSerializer(serializers.ModelSerializer):
 
             if reward and reward < 1:
                 raise serializers.ValidationError("奖励金额至少为1积分")
+
+            # 验证完成率门槛
+            completion_rate_threshold = data.get('completion_rate_threshold')
+            if completion_rate_threshold is not None:
+                if not (0 <= completion_rate_threshold <= 100):
+                    raise serializers.ValidationError("完成率门槛必须在0%到100%之间")
+
+        elif data.get('completion_rate_threshold') is not None:
+            # 不允许带锁任务设置完成率门槛
+            raise serializers.ValidationError("完成率门槛仅适用于任务板")
 
         return data
 

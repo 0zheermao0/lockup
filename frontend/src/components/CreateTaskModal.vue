@@ -253,6 +253,28 @@
             </small>
           </div>
 
+          <div class="form-group">
+            <label for="completion_rate_threshold">
+              任务完成率门槛 <span class="optional">(可选，默认0%无限制)</span>
+            </label>
+            <div class="threshold-input-group">
+              <input
+                id="completion_rate_threshold"
+                v-model.number="form.completion_rate_threshold"
+                type="number"
+                min="0"
+                max="100"
+                step="1"
+                placeholder="0"
+              />
+              <span class="threshold-unit">%</span>
+            </div>
+            <small class="form-hint">
+              设置参与者的最低任务完成率要求。完成率低于此门槛的用户无法接取任务。
+              设置为0或留空表示无限制。
+            </small>
+          </div>
+
         </template>
 
         <div class="modal-footer">
@@ -335,7 +357,8 @@ const form = reactive<TaskCreateRequest>({
   // Board task fields
   reward: undefined,
   max_duration: 24, // 默认24小时
-  max_participants: 1 // 默认单人任务
+  max_participants: 1, // 默认单人任务
+  completion_rate_threshold: 0 // 默认0%（无限制）
 })
 
 // Watch for modal visibility changes
@@ -363,6 +386,7 @@ const resetForm = () => {
   form.reward = undefined
   form.max_duration = 24
   form.max_participants = 1
+  form.completion_rate_threshold = 0
   // Reset image
   imagePreview.value = ''
   imageFile.value = null
@@ -535,6 +559,7 @@ const handleSubmit = async () => {
       // Remove board-specific fields for lock tasks
       delete cleanedForm.reward
       delete cleanedForm.max_duration
+      delete cleanedForm.completion_rate_threshold
     } else if (form.task_type === 'board') {
       // Remove lock-specific fields for board tasks
       delete cleanedForm.duration_type
@@ -544,6 +569,13 @@ const handleSubmit = async () => {
       delete cleanedForm.unlock_type
       delete cleanedForm.vote_agreement_ratio
       delete cleanedForm.strict_mode
+
+      // Clean up completion_rate_threshold - remove if 0 or null/undefined
+      if (cleanedForm.completion_rate_threshold === 0 ||
+          cleanedForm.completion_rate_threshold === null ||
+          cleanedForm.completion_rate_threshold === undefined) {
+        delete cleanedForm.completion_rate_threshold
+      }
     }
 
     // Debug: Log the data being sent
@@ -598,6 +630,7 @@ watch(() => form.task_type, (newValue) => {
     form.reward = undefined
     form.max_duration = 24
     form.max_participants = 1
+    form.completion_rate_threshold = 0
     // Initialize lock fields
     form.duration_type = 'fixed'
     form.duration_value = 60
@@ -1486,5 +1519,31 @@ watch(() => form.duration_type, (newValue) => {
   .radio-option-compact {
     font-size: 0.85rem;
   }
+}
+
+/* Threshold input styles */
+.threshold-input-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.threshold-input-group input {
+  flex: 1;
+  max-width: 100px;
+}
+
+.threshold-unit {
+  font-weight: 500;
+  color: var(--text-secondary, #6c757d);
+  font-size: 0.9rem;
+}
+
+.form-hint {
+  display: block;
+  margin-top: 4px;
+  font-size: 0.875rem;
+  color: var(--text-muted, #6c757d);
+  line-height: 1.4;
 }
 </style>

@@ -6,10 +6,13 @@
       class="back-to-top-btn"
       :class="{ 'refreshing': isRefreshing }"
       :disabled="isRefreshing"
-      title="刷新数据并回到顶部"
+      title="🔄 点击刷新数据并回到顶部"
     >
-      <span v-if="isRefreshing" class="refresh-icon">🔄</span>
-      <span v-else class="arrow-icon">⬆️</span>
+      <div class="btn-content">
+        <span v-if="isRefreshing" class="refresh-icon">🔄</span>
+        <span v-else class="arrow-icon">⬆️</span>
+        <span class="refresh-hint" v-if="!isRefreshing">🔄</span>
+      </div>
     </button>
   </Transition>
 </template>
@@ -97,47 +100,64 @@ onUnmounted(() => {
   position: fixed;
   bottom: 24px;
   right: 24px;
-  width: 56px;
-  height: 56px;
+  width: 68px;
+  height: 68px;
   background: linear-gradient(135deg, #ff6b6b, #ee5a52);
   border: 4px solid #000;
-  border-radius: 0;
+  border-radius: 12px;
   box-shadow: 6px 6px 0 #000;
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
   font-size: 1.25rem;
-  transition: all 0.2s ease;
+  transition: all 0.25s cubic-bezier(0.34, 1.56, 0.64, 1);
   z-index: 1000;
   color: white;
   font-weight: 900;
+  overflow: hidden;
+  backdrop-filter: blur(8px);
 }
 
 .back-to-top-btn:hover:not(:disabled) {
-  transform: translate(-2px, -2px);
-  box-shadow: 8px 8px 0 #000;
+  transform: translate(-3px, -3px);
+  box-shadow: 9px 9px 0 #000;
   background: linear-gradient(135deg, #ee5a52, #dc3545);
+  border-color: #000;
 }
 
 .back-to-top-btn:active:not(:disabled) {
-  transform: translate(2px, 2px);
-  box-shadow: 2px 2px 0 #000;
+  transform: translate(1px, 1px);
+  box-shadow: 3px 3px 0 #000;
 }
 
 .back-to-top-btn:disabled {
   cursor: not-allowed;
   background: linear-gradient(135deg, #6c757d, #5a6268);
+  opacity: 0.7;
 }
 
 .back-to-top-btn.refreshing {
   background: linear-gradient(135deg, #17a2b8, #138496);
+  transform: scale(0.98);
+}
+
+/* 按钮内容容器 */
+.btn-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  width: 100%;
+  height: 100%;
 }
 
 .arrow-icon {
   display: inline-block;
   font-size: 1.5rem;
   line-height: 1;
+  transition: transform 0.2s ease;
 }
 
 .refresh-icon {
@@ -145,6 +165,25 @@ onUnmounted(() => {
   font-size: 1.25rem;
   line-height: 1;
   animation: spin 1s linear infinite;
+}
+
+.refresh-hint {
+  display: inline-block;
+  font-size: 0.75rem;
+  line-height: 1;
+  position: absolute;
+  bottom: 8px;
+  right: 8px;
+  opacity: 0.8;
+  transition: opacity 0.2s ease;
+}
+
+.back-to-top-btn:hover .refresh-hint {
+  opacity: 1;
+}
+
+.back-to-top-btn:hover .arrow-icon {
+  transform: translateY(-2px);
 }
 
 @keyframes spin {
@@ -177,20 +216,20 @@ onUnmounted(() => {
   .back-to-top-btn {
     bottom: 20px;
     right: 20px;
-    width: 48px;
-    height: 48px;
+    width: 52px;
+    height: 52px;
     border: 3px solid #000;
     box-shadow: 4px 4px 0 #000;
   }
 
   .back-to-top-btn:hover:not(:disabled) {
-    transform: translate(-1px, -1px);
-    box-shadow: 5px 5px 0 #000;
+    transform: translate(-2px, -2px);
+    box-shadow: 6px 6px 0 #000;
   }
 
   .back-to-top-btn:active:not(:disabled) {
     transform: translate(1px, 1px);
-    box-shadow: 1px 1px 0 #000;
+    box-shadow: 2px 2px 0 #000;
   }
 
   .arrow-icon {
@@ -200,14 +239,21 @@ onUnmounted(() => {
   .refresh-icon {
     font-size: 1rem;
   }
+
+  .refresh-hint {
+    font-size: 0.625rem;
+    bottom: 6px;
+    right: 6px;
+  }
 }
 
 @media (max-width: 480px) {
   .back-to-top-btn {
     bottom: 16px;
     right: 16px;
-    width: 44px;
-    height: 44px;
+    width: 48px;
+    height: 48px;
+    border-radius: 10px;
   }
 
   .arrow-icon {
@@ -217,6 +263,12 @@ onUnmounted(() => {
   .refresh-icon {
     font-size: 0.875rem;
   }
+
+  .refresh-hint {
+    font-size: 0.5rem;
+    bottom: 4px;
+    right: 4px;
+  }
 }
 
 /* 确保按钮不会被其他元素遮挡 */
@@ -224,28 +276,29 @@ onUnmounted(() => {
   z-index: 9999;
 }
 
-/* 暗色主题适配（如果需要） */
+/* 暗色主题适配 */
 @media (prefers-color-scheme: dark) {
   .back-to-top-btn {
     border-color: #fff;
     box-shadow: 6px 6px 0 #fff;
+    backdrop-filter: blur(12px);
   }
 
   .back-to-top-btn:hover:not(:disabled) {
-    box-shadow: 8px 8px 0 #fff;
+    box-shadow: 9px 9px 0 #fff;
   }
 
   .back-to-top-btn:active:not(:disabled) {
-    box-shadow: 2px 2px 0 #fff;
+    box-shadow: 3px 3px 0 #fff;
   }
 
   @media (max-width: 768px) {
     .back-to-top-btn:hover:not(:disabled) {
-      box-shadow: 5px 5px 0 #fff;
+      box-shadow: 6px 6px 0 #fff;
     }
 
     .back-to-top-btn:active:not(:disabled) {
-      box-shadow: 1px 1px 0 #fff;
+      box-shadow: 2px 2px 0 #fff;
     }
   }
 }

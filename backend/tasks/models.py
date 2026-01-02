@@ -1,5 +1,6 @@
 from django.db import models
 from django.conf import settings
+from django.core.validators import MinValueValidator, MaxValueValidator
 from datetime import timedelta
 import uuid
 from utils.file_upload import secure_task_file_upload_to
@@ -101,6 +102,15 @@ class LockTask(models.Model):
 
     # 多人任务字段
     max_participants = models.IntegerField(blank=True, null=True, help_text='最大参与人数（仅任务板）')
+
+    # 任务参与门槛字段
+    completion_rate_threshold = models.IntegerField(
+        default=0,
+        blank=True,
+        null=True,
+        validators=[MinValueValidator(0), MaxValueValidator(100)],
+        help_text='任务完成率门槛 (0-100)，仅适用于任务板'
+    )
 
     # 严格模式字段
     strict_mode = models.BooleanField(default=False, help_text='是否为严格模式')
