@@ -63,25 +63,26 @@ def _send_email(
 
     # ---- fallback to local SMTP ----
     try:
-        fallback_backend = settings.FALLBACK_EMAIL_BACKEND
-        fallback_host = settings.FALLBACK_EMAIL_HOST
-        fallback_port = settings.FALLBACK_EMAIL_PORT
         email.connection = get_connection(
-            backend=fallback_backend,
-            host=fallback_host,
-            port=fallback_port,
+            backend=settings.FALLBACK_EMAIL_BACKEND,
+            host=settings.FALLBACK_EMAIL_HOST,
+            port=settings.FALLBACK_EMAIL_PORT,
+            username=settings.FALLBACK_EMAIL_HOST_USER,
+            password=settings.FALLBACK_EMAIL_HOST_PASSWORD,
+            use_tls=settings.FALLBACK_EMAIL_USE_TLS,
         )
+
         email.send()
 
         return EMailSendResult(
-            backend=fallback_backend,
+            backend=settings.FALLBACK_EMAIL_BACKEND,
             status=EMailSendStatus.FALLBACK,
             error_message=str(mailgun_error),
         )
         
     except smtplib.SMTPException as exc:
         return EMailSendResult(
-            backend=fallback_backend,
+            backend=settings.FALLBACK_EMAIL_BACKEND,
             status=EMailSendStatus.FAILURE,
             error_message=f"main:{str(mailgun_error)} fallback:{str(exc)}",
         )
