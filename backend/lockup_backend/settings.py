@@ -431,11 +431,25 @@ LOGGING = {
 }
 
 
-# Email Configuration
+# =============================================================================
+# EMAIL CONFIGURATION
+# =============================================================================
+
+# Main SMTP relay: Mailgun
 EMAIL_BACKEND = "anymail.backends.mailgun.EmailBackend"
 ANYMAIL = {
    "MAILGUN_API_KEY": "",
    "MAILGUN_SENDER_DOMAIN": "lock-up.domain.name", 
 }
+
 DEFAULT_FROM_EMAIL = "noreply@lock-up.domain.name"
 SERVER_EMAIL = "server@lock-up.domain.name"
+
+
+# fallback SMTP relay: Local SMTP server postfix
+FALLBACK_EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
+FALLBACK_EMAIL_HOST = 'localhost'
+FALLBACK_EMAIL_PORT = 25
+FALLBACK_EMAIL_USE_TLS = False
+FALLBACK_EMAIL_HOST_USER = ''
+FALLBACK_EMAIL_HOST_PASSWORD = ''
