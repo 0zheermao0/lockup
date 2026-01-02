@@ -590,7 +590,7 @@
               </div>
 
               <!-- 带锁任务完成提示 -->
-              <div v-if="task.task_type === 'lock' && task.status === 'active'" class="completion-hint">
+              <div v-if="task.task_type === 'lock' && (task.status === 'active' || task.status === 'voting_passed')" class="completion-hint">
                 <!-- Key ownership requirement -->
                 <div v-if="keyCheckLoading" class="hint-loading">
                   🔍 正在检查钥匙持有情况...
@@ -5595,7 +5595,7 @@ onUnmounted(() => {
 
 @keyframes pulse-success {
   0%, 100% { opacity: 1; transform: scale(1); }
-  50% { opacity: 0.7; transform: scale(1.1); }
+  50% { opacity: 0.85; transform: scale(1.03); }
 }
 
 @keyframes pulse-warning {
