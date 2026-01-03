@@ -454,3 +454,14 @@ FALLBACK_EMAIL_PORT = int(os.getenv('FALLBACK_EMAIL_PORT', '25'))
 FALLBACK_EMAIL_USE_TLS = os.getenv('FALLBACK_EMAIL_USE_TLS', 'False').lower() == 'true'
 FALLBACK_EMAIL_HOST_USER = os.getenv('FALLBACK_EMAIL_HOST_USER', '')
 FALLBACK_EMAIL_HOST_PASSWORD = os.getenv('FALLBACK_EMAIL_HOST_PASSWORD', '')
+
+# 邮箱验证配置
+# 从环境变量读取允许的邮箱域名，用逗号分隔
+_default_domains = 'gmail.com,googlemail.com,outlook.com,hotmail.com,live.com,msn.com,yahoo.com,yahoo.co.uk,yahoo.ca,yahoo.com.au,aol.com,icloud.com,me.com,mac.com,protonmail.com,proton.me,qq.com,foxmail.com,163.com,126.com,yeah.net,sina.com,sina.cn,sohu.com,aliyun.com,alibaba-inc.com,edu.cn,edu,ac.uk,ac.cn'
+_allowed_domains_str = os.getenv('ALLOWED_EMAIL_DOMAINS', _default_domains)
+ALLOWED_EMAIL_DOMAINS = [domain.strip() for domain in _allowed_domains_str.split(',') if domain.strip()]
+
+# 邮箱验证码配置
+EMAIL_VERIFICATION_CODE_LENGTH = int(os.getenv('EMAIL_VERIFICATION_CODE_LENGTH', '6'))
+EMAIL_VERIFICATION_CODE_EXPIRE_MINUTES = int(os.getenv('EMAIL_VERIFICATION_CODE_EXPIRE_MINUTES', '15'))
+EMAIL_VERIFICATION_MAX_ATTEMPTS_PER_HOUR = int(os.getenv('EMAIL_VERIFICATION_MAX_ATTEMPTS_PER_HOUR', '5'))

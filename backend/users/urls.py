@@ -11,6 +11,10 @@ urlpatterns = [
     path('password/change/', views.PasswordChangeView.as_view(), name='password-change'),
     path('password/change-simple/', views.SimplePasswordChangeView.as_view(), name='simple-password-change'),
 
+    # 邮箱验证
+    path('email/send-verification/', views.EmailVerificationSendView.as_view(), name='send-email-verification'),
+    path('email/verify/', views.EmailVerificationVerifyView.as_view(), name='verify-email'),
+
     # 用户资料
     path('profile/', views.UserProfileView.as_view(), name='profile'),
     path('profile/avatar/', views.upload_avatar, name='upload-avatar'),

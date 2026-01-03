@@ -2,7 +2,8 @@ import type {
   User, Post, Comment, LoginRequest, RegisterRequest, PaginatedResponse,
   StoreItem, UserInventory, Item, Purchase, Game, GameParticipant,
   DriftBottleItem, BuriedTreasure, GameSession, ExplorationZone, NotificationItem,
-  SimplePasswordChangeRequest
+  SimplePasswordChangeRequest, EmailVerificationSendRequest, EmailVerificationSendResponse,
+  EmailVerificationVerifyRequest, EmailVerificationVerifyResponse
 } from '../types/index';
 import { API_BASE_URL } from '../config/index.js';
 
@@ -116,6 +117,21 @@ export const authApi = {
     return apiRequest('/auth/password/change-simple/', {
       method: 'POST',
       body: JSON.stringify(passwordData),
+    });
+  },
+
+  // Email Verification API
+  async sendEmailVerification(data: EmailVerificationSendRequest): Promise<EmailVerificationSendResponse> {
+    return apiRequest('/auth/email/send-verification/', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  },
+
+  async verifyEmail(data: EmailVerificationVerifyRequest): Promise<EmailVerificationVerifyResponse> {
+    return apiRequest('/auth/email/verify/', {
+      method: 'POST',
+      body: JSON.stringify(data),
     });
   },
 };
