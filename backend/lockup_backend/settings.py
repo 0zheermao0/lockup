@@ -436,8 +436,17 @@ LOGGING = {
 # EMAIL CONFIGURATION
 # =============================================================================
 
-# Main SMTP relay: Mailgun
-EMAIL_BACKEND = "anymail.backends.mailgun.EmailBackend"
+# Email Backend Configuration - 支持多种邮件服务
+EMAIL_BACKEND = os.getenv('EMAIL_BACKEND', 'anymail.backends.mailgun.EmailBackend')
+
+# Gmail SMTP Configuration (当使用 django.core.mail.backends.smtp.EmailBackend 时)
+EMAIL_HOST = os.getenv('EMAIL_HOST', 'smtp.gmail.com')
+EMAIL_PORT = int(os.getenv('EMAIL_PORT', '587'))
+EMAIL_USE_TLS = os.getenv('EMAIL_USE_TLS', 'True').lower() == 'true'
+EMAIL_HOST_USER = os.getenv('EMAIL_HOST_USER', '')
+EMAIL_HOST_PASSWORD = os.getenv('EMAIL_HOST_PASSWORD', '')
+
+# Mailgun Configuration (当使用 anymail.backends.mailgun.EmailBackend 时)
 ANYMAIL = {
    "MAILGUN_API_KEY": os.getenv('MAILGUN_API_KEY', ''),
    "MAILGUN_SENDER_DOMAIN": os.getenv('MAILGUN_SENDER_DOMAIN', 'lock-up.zheermao.top'),
@@ -446,8 +455,7 @@ ANYMAIL = {
 DEFAULT_FROM_EMAIL = os.getenv('DEFAULT_FROM_EMAIL', "noreply@lock-up.zheermao.top")
 SERVER_EMAIL = os.getenv('SERVER_EMAIL', "server@lock-up.zheermao.top")
 
-
-# fallback SMTP relay: Local SMTP server postfix or external SMTP
+# Fallback SMTP Configuration (备用配置)
 FALLBACK_EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
 FALLBACK_EMAIL_HOST = os.getenv('FALLBACK_EMAIL_HOST', 'localhost')
 FALLBACK_EMAIL_PORT = int(os.getenv('FALLBACK_EMAIL_PORT', '25'))
