@@ -270,6 +270,28 @@ class User(AbstractUser):
         """应用时间衰减"""
         decay_amount = self.calculate_fibonacci_decay()
         if decay_amount > 0:
+            # 检查是否有活跃的活力药水效果
+            energy_potion_protection = False
+            decay_reduction = 0.0
+
+            try:
+                from store.models import UserEffect
+                energy_effect = UserEffect.objects.filter(
+                    user=self,
+                    effect_type='energy_potion',
+                    is_active=True,
+                    expires_at__gt=timezone.now()
+                ).first()
+
+                if energy_effect:
+                    energy_potion_protection = True
+                    decay_reduction = energy_effect.properties.get('decay_reduction', 0.5)  # 默认50%减少
+                    # 应用衰减减少
+                    decay_amount = int(decay_amount * (1 - decay_reduction))
+            except ImportError:
+                # 如果store模块还不可用，忽略错误
+                pass
+
             old_score = self.activity_score
             self.activity_score = max(0, self.activity_score - decay_amount)
             self.last_decay_processed = timezone.now()
@@ -283,7 +305,12 @@ class User(AbstractUser):
                         action_type='time_decay',
                         points_change=-(old_score - self.activity_score),
                         new_total=self.activity_score,
-                        metadata={'days_inactive': (timezone.now().date() - self.last_active.date()).days}
+                        metadata={
+                            'days_inactive': (timezone.now().date() - self.last_active.date()).days,
+                            'energy_potion_protection': energy_potion_protection,
+                            'decay_reduction_applied': decay_reduction if energy_potion_protection else 0,
+                            'original_decay_amount': self.calculate_fibonacci_decay() if energy_potion_protection else decay_amount
+                        }
                     )
                 except Exception:
                     # 如果ActivityLog模型还不存在，忽略错误（迁移期间）

@@ -27,6 +27,8 @@ MANIFEST
 local_settings.py
 db.sqlite3
 db.sqlite3-journal
+*.sqlite3-shm
+*.sqlite3-wal
 media/
 
 # Virtual environment

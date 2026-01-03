@@ -45,4 +45,14 @@ urlpatterns = [
     # 小金库相关
     path('treasury/<uuid:item_id>/deposit/', views.deposit_treasury_coins, name='deposit-treasury-coins'),
     path('treasury/<uuid:item_id>/withdraw/', views.withdraw_treasury_coins, name='withdraw-treasury-coins'),
+
+    # 新增道具使用相关
+    path('use-lucky-charm/', views.use_lucky_charm, name='use-lucky-charm'),
+    path('use-energy-potion/', views.use_energy_potion, name='use-energy-potion'),
+    path('use-time-anchor/', views.use_time_anchor, name='use-time-anchor'),
+    path('use-exploration-compass/', views.use_exploration_compass, name='use-exploration-compass'),
+    path('use-influence-crown/', views.use_influence_crown, name='use-influence-crown'),
+
+    # 分享功能相关
+    path('shared-tasks/', views.get_shared_tasks, name='get-shared-tasks'),
 ]

@@ -237,6 +237,7 @@ class TaskTimelineEvent(models.Model):
         ('radar_detection', '探测雷达检测'),
         ('system_freeze', '系统冻结'),
         ('verification_code_updated', '验证码更新'),
+        ('item_effect_applied', '道具效果应用'),
         ('exclusive_task_created', '专属任务创建'),
         ('board_task_taken', '任务板接取'),
         ('shield_activated', '防护罩开启'),

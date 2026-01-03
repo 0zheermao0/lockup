@@ -19,6 +19,12 @@ class ItemType(models.Model):
         ('blizzard_bottle', '暴雪瓶'),
         ('sun_bottle', '太阳瓶'),
         ('time_hourglass', '时间沙漏'),
+        # 新增道具类型
+        ('lucky_charm', '幸运符'),
+        ('energy_potion', '活力药水'),
+        ('time_anchor', '时间锚点'),
+        ('exploration_compass', '探索指南针'),
+        ('influence_crown', '影响力皇冠'),
     ]
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
@@ -353,3 +359,97 @@ class UserHourglassPurchase(models.Model):
 
     def __str__(self):
         return f"{self.user.username} - 时间沙漏购买记录"
+
+
+class UserEffect(models.Model):
+    """用户道具效果"""
+
+    EFFECT_CHOICES = [
+        ('lucky_charm', '幸运符效果'),
+        ('energy_potion', '活力药水效果'),
+        ('time_anchor', '时间锚点效果'),
+        ('exploration_compass', '探索指南针效果'),
+        ('influence_crown', '影响力皇冠效果'),
+    ]
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='active_effects')
+    effect_type = models.CharField(max_length=50, choices=EFFECT_CHOICES)
+    item = models.ForeignKey(Item, on_delete=models.CASCADE, related_name='active_effects')
+
+    # 效果属性
+    properties = models.JSONField(default=dict, blank=True)
+
+    # 时间管理
+    created_at = models.DateTimeField(auto_now_add=True)
+    expires_at = models.DateTimeField(null=True, blank=True)
+    is_active = models.BooleanField(default=True)
+
+    class Meta:
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['user', 'effect_type', 'is_active']),
+            models.Index(fields=['expires_at']),
+        ]
+
+    def __str__(self):
+        return f"{self.user.username} - {self.get_effect_type_display()}"
+
+    @property
+    def is_expired(self):
+        """检查效果是否已过期"""
+        if not self.expires_at:
+            return False
+        from django.utils import timezone
+        return timezone.now() > self.expires_at
+
+
+class TaskSnapshot(models.Model):
+    """任务快照（用于时间锚点）"""
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
+    item = models.ForeignKey(Item, on_delete=models.CASCADE, related_name='task_snapshots')
+
+    # 快照数据
+    task_id = models.UUIDField()
+    snapshot_data = models.JSONField()  # 保存任务状态的完整快照
+
+    # 状态管理
+    can_restore = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    used_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f"任务快照 - {self.user.username}"
+
+
+class SharedTaskAccess(models.Model):
+    """分享的任务访问权限（用于友谊桥梁）"""
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    sharer = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='shared_tasks')
+    viewer = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='viewable_tasks')
+    item = models.ForeignKey(Item, on_delete=models.CASCADE, related_name='task_shares')
+
+    # 分享的任务
+    task_id = models.UUIDField()
+
+    # 权限管理
+    can_view_progress = models.BooleanField(default=True)
+    can_view_timeline = models.BooleanField(default=True)
+
+    # 时间管理
+    created_at = models.DateTimeField(auto_now_add=True)
+    expires_at = models.DateTimeField()
+    is_active = models.BooleanField(default=True)
+
+    class Meta:
+        unique_together = ['sharer', 'viewer', 'task_id']
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f"{self.sharer.username} 分享任务给 {self.viewer.username}"

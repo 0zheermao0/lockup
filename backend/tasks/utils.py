@@ -13,6 +13,46 @@ from store.models import Item
 from users.models import Notification
 
 
+def calculate_weighted_vote_counts(task):
+    """
+    计算带有影响力皇冠效果的加权投票统计
+
+    Args:
+        task: LockTask实例
+
+    Returns:
+        dict: 包含total_votes和agree_votes的字典，已应用影响力皇冠倍数
+    """
+    from store.models import UserEffect
+
+    votes = task.votes.all()
+    total_weighted_votes = 0
+    agree_weighted_votes = 0
+
+    for vote in votes:
+        # 检查投票者是否有活跃的影响力皇冠效果
+        crown_effect = UserEffect.objects.filter(
+            user=vote.voter,
+            effect_type='influence_crown',
+            is_active=True,
+            expires_at__gt=timezone.now()
+        ).first()
+
+        # 计算投票权重
+        vote_weight = 1
+        if crown_effect:
+            vote_weight = crown_effect.properties.get('vote_multiplier', 3)
+
+        total_weighted_votes += vote_weight
+        if vote.agree:
+            agree_weighted_votes += vote_weight
+
+    return {
+        'total_votes': total_weighted_votes,
+        'agree_votes': agree_weighted_votes
+    }
+
+
 def add_overtime_to_task(task, user, minutes=None):
     """
     为进行中的带锁任务随机加时

@@ -125,8 +125,8 @@
             </button>
           </div>
 
-          <!-- Item properties (only show for items other than keys, photos, treasury, and notes) -->
-          <div v-if="Object.keys(selectedItem.properties).length > 0 && !['key', 'photo', 'little_treasury', 'note'].includes(selectedItem.item_type.name)" class="properties-section">
+          <!-- Item properties (only show for items other than keys, photos, treasury, notes, and time_anchor) -->
+          <div v-if="Object.keys(selectedItem.properties).length > 0 && !['key', 'photo', 'little_treasury', 'note', 'time_anchor'].includes(selectedItem.item_type.name)" class="properties-section">
             <h4 class="properties-title">物品属性</h4>
             <div class="properties-content">
               <pre class="properties-json">{{ JSON.stringify(selectedItem.properties, null, 2) }}</pre>
@@ -269,6 +269,63 @@
             >
               <span v-if="usingTimeHourglass">使用中...</span>
               <span v-else>⏳ 使用时间沙漏</span>
+            </button>
+
+            <!-- Lucky Charm usage -->
+            <button
+              v-if="canUseLuckyCharm(selectedItem)"
+              @click="openLuckyCharmModal"
+              class="action-btn lucky-charm"
+              :disabled="usingLuckyCharm"
+            >
+              <span v-if="usingLuckyCharm">使用中...</span>
+              <span v-else>🍀 使用幸运符</span>
+            </button>
+
+            <!-- Energy Potion usage -->
+            <button
+              v-if="canUseEnergyPotion(selectedItem)"
+              @click="openEnergyPotionModal"
+              class="action-btn energy-potion"
+              :disabled="usingEnergyPotion"
+            >
+              <span v-if="usingEnergyPotion">使用中...</span>
+              <span v-else>⚡ 使用活力药水</span>
+            </button>
+
+
+            <!-- Time Anchor usage -->
+            <button
+              v-if="canUseTimeAnchor(selectedItem)"
+              @click="openTimeAnchorModal"
+              class="action-btn time-anchor"
+              :disabled="usingTimeAnchor"
+            >
+              <span v-if="usingTimeAnchor">使用中...</span>
+              <span v-else>⚓ 使用时间锚点</span>
+            </button>
+
+            <!-- Exploration Compass usage -->
+            <button
+              v-if="canUseExplorationCompass(selectedItem)"
+              @click="openExplorationCompassModal"
+              class="action-btn exploration-compass"
+              :disabled="usingExplorationCompass"
+            >
+              <span v-if="usingExplorationCompass">使用中...</span>
+              <span v-else>🧭 使用探索指南针</span>
+            </button>
+
+
+            <!-- Influence Crown usage -->
+            <button
+              v-if="canUseInfluenceCrown(selectedItem)"
+              @click="openInfluenceCrownModal"
+              class="action-btn influence-crown"
+              :disabled="usingInfluenceCrown"
+            >
+              <span v-if="usingInfluenceCrown">使用中...</span>
+              <span v-else>👑 使用影响力皇冠</span>
             </button>
 
             <!-- Discard item -->
@@ -991,15 +1048,328 @@
       </div>
     </div>
   </div>
+
+  <!-- Lucky Charm Modal -->
+  <div v-if="showLuckyCharmModal" class="modal-overlay" @click.self="closeLuckyCharmModal">
+    <div class="action-modal" @click.stop>
+      <div class="modal-header">
+        <h3 class="modal-title">🍀 使用幸运符</h3>
+        <button @click="closeLuckyCharmModal" class="modal-close">×</button>
+      </div>
+      <div class="modal-body">
+        <div class="item-info">
+          <p><strong>效果：</strong>下一个带锁任务的小时奖励概率+20%</p>
+          <p><strong>说明：</strong>使用后立即生效，持续到下一个任务完成</p>
+          <p class="warning">⚠️ 确认要使用幸运符吗？使用后道具将消失</p>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button @click="closeLuckyCharmModal" class="modal-btn secondary">取消</button>
+        <button
+          @click="useLuckyCharm"
+          :disabled="usingLuckyCharm"
+          class="modal-btn primary"
+        >
+          <span v-if="usingLuckyCharm">使用中...</span>
+          <span v-else>确认使用</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Energy Potion Modal -->
+  <div v-if="showEnergyPotionModal" class="modal-overlay" @click.self="closeEnergyPotionModal">
+    <div class="action-modal" @click.stop>
+      <div class="modal-header">
+        <h3 class="modal-title">⚡ 使用活力药水</h3>
+        <button @click="closeEnergyPotionModal" class="modal-close">×</button>
+      </div>
+      <div class="modal-body">
+        <div class="item-info">
+          <p><strong>效果：</strong>24小时内活跃度衰减减少50%</p>
+          <p><strong>持续时间：</strong>24小时</p>
+          <p class="warning">⚠️ 确认要使用活力药水吗？使用后道具将消失</p>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button @click="closeEnergyPotionModal" class="modal-btn secondary">取消</button>
+        <button
+          @click="useEnergyPotion"
+          :disabled="usingEnergyPotion"
+          class="modal-btn primary"
+        >
+          <span v-if="usingEnergyPotion">使用中...</span>
+          <span v-else>确认使用</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+
+  <!-- Time Anchor Modal -->
+  <div v-if="showTimeAnchorModal" class="modal-overlay" @click.self="closeTimeAnchorModal">
+    <div class="action-modal" @click.stop>
+      <div class="modal-header">
+        <h3 class="modal-title">⚓ 使用时间锚点</h3>
+        <button @click="closeTimeAnchorModal" class="modal-close">×</button>
+      </div>
+      <div class="modal-body">
+        <div class="warning-section">
+          <div class="warning-icon">⚓</div>
+          <div class="warning-content">
+            <h4 class="warning-title">时间锚点</h4>
+            <p class="warning-message">
+              保存当前任务状态，如果任务失败可以恢复到保存点。
+            </p>
+            <p class="warning-note">
+              使用后道具将被自动销毁，请谨慎使用！
+            </p>
+          </div>
+        </div>
+
+        <!-- Show saved state info if anchor has saved state -->
+        <div v-if="timeAnchorHasSavedState" class="saved-state-info">
+          <div class="info-header">
+            <span class="info-icon">💾</span>
+            <h4 class="info-title">已保存状态</h4>
+          </div>
+          <div class="saved-info-details">
+            <p><strong>任务:</strong> {{ savedTaskInfo?.taskTitle || '未知任务' }}</p>
+            <p><strong>保存状态:</strong> {{ savedTaskInfo?.savedStatus || '未知' }}</p>
+            <p v-if="savedTaskInfo?.savedAt"><strong>保存时间:</strong> {{ formatDate(savedTaskInfo.savedAt) }}</p>
+          </div>
+        </div>
+
+        <!-- Action selection - always allow save, show restore only if has saved state -->
+        <div class="form-group">
+          <label class="form-label">选择操作</label>
+          <div class="radio-group">
+            <label class="radio-option">
+              <input v-model="timeAnchorAction" type="radio" value="save" />
+              <span>{{ timeAnchorHasSavedState ? '重新保存任务状态' : '保存任务状态' }}</span>
+            </label>
+            <label v-if="timeAnchorHasSavedState" class="radio-option">
+              <input v-model="timeAnchorAction" type="radio" value="restore" />
+              <span>恢复任务状态</span>
+            </label>
+          </div>
+        </div>
+
+        <!-- Unified task selection for all cases -->
+        <div class="form-group">
+          <label class="form-label">选择任务</label>
+
+          <div v-if="timeAnchorAction === 'save' && timeAnchorSaveTasks.length === 0" class="no-tasks-message">
+            <p>暂无可保存的带锁任务</p>
+            <p class="hint">只能保存自己的活跃状态或投票状态的带锁任务</p>
+          </div>
+
+
+          <!-- Task list for save operation -->
+          <div v-if="timeAnchorAction === 'save' && timeAnchorSaveTasks.length > 0" class="tasks-list">
+            <div
+              v-for="task in timeAnchorSaveTasks"
+              :key="task.id"
+              class="task-item"
+              :class="{ 'selected': selectedTimeAnchorTaskId === task.id }"
+              @click="selectedTimeAnchorTaskId = task.id"
+            >
+              <div class="task-info">
+                <h4 class="task-title">{{ task.title }}</h4>
+                <p class="task-meta">
+                  <span class="task-difficulty">{{ getDifficultyText(task.difficulty) }}</span>
+                  <span class="task-status">{{ getStatusText(task.status) }}</span>
+                </p>
+                <p v-if="task.description" class="task-description">{{ stripHtmlAndTruncate(task.description, 120) }}</p>
+              </div>
+            </div>
+          </div>
+
+          <!-- Restore operation - show saved task info instead of task selection -->
+          <div v-if="timeAnchorAction === 'restore'" class="restore-task-info">
+            <div v-if="savedTaskCanBeRestored" class="saved-task-display">
+              <h4 class="saved-task-title">将恢复以下任务状态：</h4>
+              <div class="saved-task-card">
+                <div class="task-info">
+                  <h4 class="task-title">{{ savedTaskInfo?.taskTitle || '未知任务' }}</h4>
+                  <p class="task-meta">
+                    <span class="task-status failed">{{ savedTaskInfo?.savedStatus || '未知状态' }}</span>
+                    <span class="saved-time">保存于: {{ savedTaskInfo?.savedAt ? formatDate(savedTaskInfo.savedAt) : '未知时间' }}</span>
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <div v-else class="no-restore-available">
+              <div class="warning-section">
+                <div class="warning-icon">⚠️</div>
+                <div class="warning-content">
+                  <h4 class="warning-title">无法恢复</h4>
+                  <p v-if="!timeAnchorHasSavedState" class="warning-message">
+                    此时间锚点尚未保存任何任务状态
+                  </p>
+                  <p v-else-if="!savedTaskCanBeRestored" class="warning-message">
+                    保存的任务"{{ savedTaskInfo?.taskTitle }}"尚未失败，无法恢复
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button @click="closeTimeAnchorModal" class="modal-btn secondary">取消</button>
+        <button
+          @click="useTimeAnchor"
+          :disabled="usingTimeAnchor || !selectedTimeAnchorTaskId || (timeAnchorAction === 'restore' && !savedTaskCanBeRestored)"
+          class="modal-btn primary"
+        >
+          <span v-if="usingTimeAnchor">使用中...</span>
+          <span v-else>{{ timeAnchorAction === 'save' ? '确认保存' : '确认恢复' }}</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Exploration Compass Modal -->
+  <div v-if="showExplorationCompassModal" class="modal-overlay" @click.self="closeExplorationCompassModal">
+    <div class="action-modal" @click.stop>
+      <div class="modal-header">
+        <h3 class="modal-title">🧭 使用探索指南针</h3>
+        <button @click="closeExplorationCompassModal" class="modal-close">×</button>
+      </div>
+      <div class="modal-body">
+        <div class="item-info">
+          <p><strong>效果：</strong>显示指定区域内所有已埋藏宝物的相关信息（物品类型、难度、埋藏者），但不显示具体位置</p>
+          <div class="modal-form">
+            <label>选择探索区域：</label>
+            <select v-model="selectedCompassZone" class="form-select">
+              <option value="">请选择区域</option>
+              <option value="beach">🏖️ 月光海滩 (简单)</option>
+              <option value="forest">🌲 神秘森林 (普通)</option>
+              <option value="mountain">🏔️ 雾山 (困难)</option>
+              <option value="desert">🏜️ 沙漠绿洲 (普通)</option>
+              <option value="cave">🕳️ 深邃洞穴 (困难)</option>
+            </select>
+          </div>
+          <p class="warning">⚠️ 确认要使用探索指南针吗？使用后道具将消失</p>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button @click="closeExplorationCompassModal" class="modal-btn secondary">取消</button>
+        <button
+          @click="useExplorationCompass"
+          :disabled="usingExplorationCompass || !selectedCompassZone"
+          class="modal-btn primary"
+        >
+          <span v-if="usingExplorationCompass">使用中...</span>
+          <span v-else>确认使用</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+
+  <!-- Influence Crown Modal -->
+  <div v-if="showInfluenceCrownModal" class="modal-overlay" @click.self="closeInfluenceCrownModal">
+    <div class="action-modal" @click.stop>
+      <div class="modal-header">
+        <h3 class="modal-title">👑 使用影响力皇冠</h3>
+        <button @click="closeInfluenceCrownModal" class="modal-close">×</button>
+      </div>
+      <div class="modal-body">
+        <div class="item-info">
+          <p><strong>效果：</strong>48小时内，所有投票的权重变为3倍</p>
+          <p><strong>持续时间：</strong>48小时</p>
+          <p class="warning">⚠️ 确认要使用影响力皇冠吗？使用后道具将消失</p>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button @click="closeInfluenceCrownModal" class="modal-btn secondary">取消</button>
+        <button
+          @click="useInfluenceCrown"
+          :disabled="usingInfluenceCrown"
+          class="modal-btn primary"
+        >
+          <span v-if="usingInfluenceCrown">使用中...</span>
+          <span v-else>确认使用</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Exploration Compass Results Modal -->
+  <div v-if="compassResults" class="modal-overlay" @click.self="compassResults = null">
+    <div class="action-modal" @click.stop>
+      <div class="modal-header">
+        <h3 class="modal-title">🧭 探索结果 - {{ compassResults.zone_display_name }}</h3>
+        <button @click="compassResults = null" class="modal-close">×</button>
+      </div>
+      <div class="modal-body">
+        <div class="item-info">
+          <p><strong>探索区域：</strong>{{ compassResults.zone_display_name }}</p>
+          <p><strong>发现宝物：</strong>{{ compassResults.treasure_count }} 个</p>
+          <p><strong>使用时间：</strong>{{ new Date(compassResults.compass_used_at).toLocaleString() }}</p>
+        </div>
+        <div v-if="compassResults.treasures.length > 0">
+          <h4>发现的宝物详情：</h4>
+          <div v-for="treasure in compassResults.treasures" :key="treasure.treasure_id"
+               :class="['detection-result-card', { 'own-treasure': treasure.is_own_treasure }]">
+            <div class="treasure-info">
+              <pre class="treasure-info-text">{{ treasure.treasure_info }}</pre>
+              <p><strong>📅 埋藏时间：</strong>{{ new Date(treasure.buried_at).toLocaleString() }}</p>
+              <p><strong>⏰ 到期时间：</strong>{{ new Date(treasure.expires_at).toLocaleString() }}</p>
+              <div v-if="treasure.is_own_treasure" class="own-treasure-badge">
+                <span class="badge-icon">🏠</span>
+                <span class="badge-text">您的宝物</span>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div v-else class="no-tasks-message">
+          <p>该区域当前没有埋藏的宝物</p>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button @click="compassResults = null" class="modal-btn secondary">确定</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Notification Toast Display -->
+  <div class="notification-container">
+    <div
+      v-for="notification in notifications"
+      :key="notification.id"
+      :class="['notification-toast', `notification-${notification.type}`]"
+    >
+      <div class="notification-content">
+        <span class="notification-icon">
+          {{ notification.type === 'success' ? '✅' :
+             notification.type === 'error' ? '❌' :
+             notification.type === 'warning' ? '⚠️' : 'ℹ️' }}
+        </span>
+        <span class="notification-message">{{ notification.message }}</span>
+      </div>
+      <button
+        @click="removeNotification(notification.id)"
+        class="notification-close"
+      >
+        ×
+      </button>
+    </div>
+  </div>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
-import { storeApi, tasksApi } from '../lib/api'
+import { storeApi, tasksApi, ApiError } from '../lib/api'
 import { tasksApi as tasksApiDetailed } from '../lib/api-tasks'
 import { smartGoBack } from '../utils/navigation'
 import { useAuthStore } from '../stores/auth'
+import { useNotificationToast } from '../composables/NotificationToast'
 import type { UserInventory, Item } from '../types'
 import TreasuryItemModal from '../components/TreasuryItemModal.vue'
 
@@ -1009,11 +1379,16 @@ const router = useRouter()
 // Stores
 const authStore = useAuthStore()
 
+// Notification toast
+const { showNotification, notifications, removeNotification } = useNotificationToast()
+
 // Reactive data
 const inventory = ref<UserInventory | null>(null)
 const selectedItem = ref<Item | null>(null)
 const loading = ref(true)
 const error = ref<string | null>(null)
+const tasks = ref<any[]>([])
+const availableTasks = ref<any[]>([])
 
 // Photo related
 const uploadingPhoto = ref(false)
@@ -1048,7 +1423,6 @@ const discardingItem = ref(false)
 // Universal Key
 const showUniversalKeyModal = ref(false)
 const usingUniversalKey = ref(false)
-const availableTasks = ref<any[]>([])
 const selectedTaskId = ref<string>('')
 
 // Treasury Item
@@ -1084,6 +1458,32 @@ const showTimeHourglassModal = ref(false)
 const usingTimeHourglass = ref(false)
 const hourglassResults = ref<any>(null)
 const availableHourglassTasks = ref<any[]>([])
+
+// Lucky Charm
+const showLuckyCharmModal = ref(false)
+const usingLuckyCharm = ref(false)
+
+// Energy Potion
+const showEnergyPotionModal = ref(false)
+const usingEnergyPotion = ref(false)
+
+
+// Time Anchor
+const showTimeAnchorModal = ref(false)
+const usingTimeAnchor = ref(false)
+const timeAnchorAction = ref<'save' | 'restore'>('save')
+const selectedTimeAnchorTaskId = ref('')
+
+// Exploration Compass
+const showExplorationCompassModal = ref(false)
+const usingExplorationCompass = ref(false)
+const selectedCompassZone = ref('')
+const compassResults = ref<any>(null)
+
+
+// Influence Crown
+const showInfluenceCrownModal = ref(false)
+const usingInfluenceCrown = ref(false)
 
 
 // Methods
@@ -1250,11 +1650,30 @@ const closePhotoViewer = () => {
 }
 
 const canShareItem = (item: Item): boolean => {
-  return item.status === 'available' && ['photo', 'note', 'key', 'little_treasury', 'time_hourglass'].includes(item.item_type.name)
+  return item.status === 'available' && [
+    'photo', 'note', 'key', 'little_treasury', 'time_hourglass',
+    'lucky_charm', 'energy_potion', 'time_anchor',
+    'exploration_compass', 'influence_crown'
+  ].includes(item.item_type.name)
 }
 
 const canBuryItem = (item: Item): boolean => {
-  return item.status === 'available' && ['photo', 'key', 'note', 'little_treasury', 'detection_radar', 'photo_paper', 'blizzard_bottle', 'sun_bottle', 'time_hourglass'].includes(item.item_type.name)
+  return item.status === 'available' && [
+    'photo', 'key', 'note', 'little_treasury', 'detection_radar', 'photo_paper',
+    'blizzard_bottle', 'sun_bottle', 'time_hourglass'
+  ].includes(item.item_type.name)
+}
+
+const canShareNewItem = (item: Item): boolean => {
+  if (item.status !== 'available') return false
+  const shareableTypes = ['lucky_charm', 'energy_potion', 'time_anchor', 'exploration_compass', 'influence_crown']
+  return shareableTypes.includes(item.item_type.name)
+}
+
+const canBuryNewItem = (item: Item): boolean => {
+  if (item.status !== 'available') return false
+  const buryableTypes = ['lucky_charm', 'energy_potion', 'time_anchor', 'exploration_compass', 'influence_crown']
+  return buryableTypes.includes(item.item_type.name)
 }
 
 const canDiscardItem = (item: Item): boolean => {
@@ -1286,6 +1705,98 @@ const canUseSunBottle = (item: Item): boolean => {
 
 const canUseTimeHourglass = (item: Item): boolean => {
   return item.status === 'available' && item.item_type.name === 'time_hourglass'
+}
+
+
+// Tasks for Time Anchor (save)
+const timeAnchorSaveTasks = computed(() => {
+  if (!tasks.value) return []
+  return tasks.value.filter((task: any) =>
+    task.task_type === 'lock' &&
+    ['active', 'voting', 'voting_passed'].includes(task.status)
+  ).map((task: any) => ({
+    id: task.id,
+    title: task.title,
+    status: task.status,
+    difficulty: task.difficulty,
+    description: task.description
+  }))
+})
+
+// Tasks for Time Anchor (restore)
+const timeAnchorRestoreTasks = computed(() => {
+  if (!tasks.value) return []
+  return tasks.value.filter((task: any) =>
+    task.task_type === 'lock' &&
+    task.status === 'failed'
+  ).map((task: any) => ({
+    id: task.id,
+    title: task.title,
+    status: task.status,
+    difficulty: task.difficulty,
+    description: task.description
+  }))
+})
+
+
+const canUseLuckyCharm = (item: Item): boolean => {
+  return item.status === 'available' && item.item_type.name === 'lucky_charm'
+}
+
+const canUseEnergyPotion = (item: Item): boolean => {
+  return item.status === 'available' && item.item_type.name === 'energy_potion'
+}
+
+
+const canUseTimeAnchor = (item: Item): boolean => {
+  return item.status === 'available' && item.item_type.name === 'time_anchor'
+}
+
+// Check if Time Anchor has saved state
+const timeAnchorHasSavedState = computed(() => {
+  if (!selectedItem.value || selectedItem.value.item_type.name !== 'time_anchor') {
+    return false
+  }
+  // Check if the item has saved state in properties
+  return selectedItem.value.properties?.has_saved_state === true ||
+         selectedItem.value.properties?.saved_task_id ||
+         selectedItem.value.properties?.saved_status
+})
+
+// Get the saved task info if available
+const savedTaskInfo = computed(() => {
+  if (!selectedItem.value || selectedItem.value.item_type.name !== 'time_anchor') {
+    return null
+  }
+  return {
+    taskId: selectedItem.value.properties?.saved_task_id,
+    taskTitle: selectedItem.value.properties?.saved_task_title,
+    savedStatus: selectedItem.value.properties?.saved_status,
+    savedAt: selectedItem.value.properties?.saved_at
+  }
+})
+
+// Check if the saved task can be restored (task exists and is failed)
+const savedTaskCanBeRestored = computed(() => {
+  if (!timeAnchorHasSavedState.value || !savedTaskInfo.value?.taskId) {
+    return false
+  }
+
+  // Check if the saved task exists in the failed tasks list
+  const savedTask = timeAnchorRestoreTasks.value.find(
+    task => task.id === savedTaskInfo.value?.taskId
+  )
+
+  return savedTask && savedTask.status === 'failed'
+})
+
+const canUseExplorationCompass = (item: Item): boolean => {
+  return item.status === 'available' && item.item_type.name === 'exploration_compass'
+}
+
+
+const canUseInfluenceCrown = (item: Item): boolean => {
+  return item.status === 'available' && item.item_type.name === 'influence_crown'
 }
 
 
@@ -1439,7 +1950,7 @@ const useUniversalKey = async () => {
     await loadInventory()
 
     // Show success message
-    alert(`${response.message}\n获得奖励：${response.reward_coins} 积分`)
+    showNotification(`${response.message}\n获得奖励：${response.reward_coins} 积分`, 'success')
 
     // Close modal and reset selection
     closeUniversalKeyModal()
@@ -1523,7 +2034,7 @@ const useDetectionRadar = async () => {
     const hiddenTimeTasks = allTasks.filter(task => task.time_display_hidden)
 
     if (hiddenTimeTasks.length === 0) {
-      alert('您没有时间被隐藏的带锁任务')
+      showNotification('您没有时间被隐藏的带锁任务', 'warning')
       return
     }
 
@@ -1550,8 +2061,13 @@ const useDetectionRadar = async () => {
 
   } catch (error) {
     console.error('Error using detection radar:', error)
-    const errorMessage = error instanceof Error ? error.message : '使用探测雷达失败，请重试'
-    alert(errorMessage)
+    let errorMessage = '使用探测雷达失败，请重试'
+    if (error instanceof ApiError) {
+      errorMessage = error.message
+    } else if (error instanceof Error) {
+      errorMessage = error.message
+    }
+    showNotification(errorMessage, 'error')
   } finally {
     usingDetectionRadar.value = false
   }
@@ -1609,8 +2125,13 @@ const useBlizzardBottle = async () => {
 
   } catch (error) {
     console.error('Error using blizzard bottle:', error)
-    const errorMessage = error instanceof Error ? error.message : '使用暴雪瓶失败，请重试'
-    alert(errorMessage)
+    let errorMessage = '使用暴雪瓶失败，请重试'
+    if (error instanceof ApiError) {
+      errorMessage = error.message
+    } else if (error instanceof Error) {
+      errorMessage = error.message
+    }
+    showNotification(errorMessage, 'error')
   } finally {
     usingBlizzardBottle.value = false
   }
@@ -1652,8 +2173,13 @@ const useSunBottle = async () => {
 
   } catch (error) {
     console.error('Error using sun bottle:', error)
-    const errorMessage = error instanceof Error ? error.message : '使用太阳瓶失败，请重试'
-    alert(errorMessage)
+    let errorMessage = '使用太阳瓶失败，请重试'
+    if (error instanceof ApiError) {
+      errorMessage = error.message
+    } else if (error instanceof Error) {
+      errorMessage = error.message
+    }
+    showNotification(errorMessage, 'error')
   } finally {
     usingSunBottle.value = false
   }
@@ -1694,7 +2220,7 @@ const useTimeHourglass = async () => {
     const allTasks = [...tasks, ...votingTasks]
 
     if (allTasks.length === 0) {
-      alert('您当前没有活跃的带锁任务')
+      showNotification('您当前没有活跃的带锁任务', 'warning')
       return
     }
 
@@ -1721,8 +2247,13 @@ const useTimeHourglass = async () => {
 
   } catch (error) {
     console.error('Error using time hourglass:', error)
-    const errorMessage = error instanceof Error ? error.message : '使用时间沙漏失败，请重试'
-    alert(errorMessage)
+    let errorMessage = '使用时间沙漏失败，请重试'
+    if (error instanceof ApiError) {
+      errorMessage = error.message
+    } else if (error instanceof Error) {
+      errorMessage = error.message
+    }
+    showNotification(errorMessage, 'error')
   } finally {
     usingTimeHourglass.value = false
   }
@@ -1761,8 +2292,13 @@ const saveNoteContent = async () => {
 
   } catch (error) {
     console.error('Error editing note:', error)
-    const errorMessage = error instanceof Error ? error.message : '编辑纸条失败，请重试'
-    alert(errorMessage)
+    let errorMessage = '编辑纸条失败，请重试'
+    if (error instanceof ApiError) {
+      errorMessage = error.message
+    } else if (error instanceof Error) {
+      errorMessage = error.message
+    }
+    showNotification(errorMessage, 'error')
   } finally {
     editingNote.value = false
   }
@@ -1793,6 +2329,355 @@ const closeNoteViewModal = () => {
   selectedItem.value = null
 }
 
+// Lucky Charm Modal Functions
+const openLuckyCharmModal = () => {
+  if (!selectedItem.value) return
+  showLuckyCharmModal.value = true
+}
+
+const closeLuckyCharmModal = () => {
+  showLuckyCharmModal.value = false
+  selectedItem.value = null
+}
+
+const useLuckyCharm = async () => {
+  if (!selectedItem.value) return
+
+  try {
+    usingLuckyCharm.value = true
+    const response = await storeApi.useLuckyCharm(selectedItem.value.id)
+
+    // Refresh inventory after successful use
+    await loadInventory()
+
+    // Show success message
+    showNotification(`${response.message}`, 'success')
+
+    // Close modal and reset selection
+    closeLuckyCharmModal()
+  } catch (error) {
+    console.error('Error using lucky charm:', error)
+    let errorMessage = '使用幸运符失败，请重试'
+    if (error instanceof ApiError) {
+      errorMessage = error.message
+    } else if (error instanceof Error) {
+      errorMessage = error.message
+    }
+    showNotification(errorMessage, 'error')
+  } finally {
+    usingLuckyCharm.value = false
+  }
+}
+
+// Energy Potion Modal Functions
+const openEnergyPotionModal = () => {
+  if (!selectedItem.value) return
+  showEnergyPotionModal.value = true
+}
+
+const closeEnergyPotionModal = () => {
+  showEnergyPotionModal.value = false
+  selectedItem.value = null
+}
+
+const useEnergyPotion = async () => {
+  if (!selectedItem.value) return
+
+  try {
+    usingEnergyPotion.value = true
+    const response = await storeApi.useEnergyPotion(selectedItem.value.id)
+
+    // Refresh inventory after successful use
+    await loadInventory()
+
+    // Show success message
+    showNotification(`${response.message}`, 'success')
+
+    // Close modal and reset selection
+    closeEnergyPotionModal()
+  } catch (error) {
+    console.error('Error using energy potion:', error)
+
+    let errorMessage = '使用活力药水失败，请重试'
+    if (error instanceof ApiError) {
+      errorMessage = error.message
+    } else if (error instanceof Error) {
+      errorMessage = error.message
+    } else if (error && typeof error === 'object' && 'message' in error && typeof error.message === 'string') {
+      errorMessage = error.message
+    }
+
+    console.log('Showing notification with message:', errorMessage)
+    showNotification(errorMessage, 'error')
+  } finally {
+    usingEnergyPotion.value = false
+  }
+}
+
+
+// Time Anchor Modal Functions
+const openTimeAnchorModal = async () => {
+  if (!selectedItem.value) return
+  // Load tasks before showing modal
+  if (tasks.value.length === 0) {
+    try {
+      // Load tasks with all relevant statuses including failed tasks for restore
+      const activeTasks = await tasksApi.getTasksList({
+        task_type: 'lock',
+        status: 'active',
+        my_tasks: true
+      })
+      const votingTasks = await tasksApi.getTasksList({
+        task_type: 'lock',
+        status: 'voting',
+        my_tasks: true
+      })
+      const votingPassedTasks = await tasksApi.getTasksList({
+        task_type: 'lock',
+        status: 'voting_passed',
+        my_tasks: true
+      })
+      const failedTasks = await tasksApi.getTasksList({
+        task_type: 'lock',
+        status: 'failed',
+        my_tasks: true
+      })
+      tasks.value = [...activeTasks, ...votingTasks, ...votingPassedTasks, ...failedTasks]
+
+      // Auto-select the first available task when modal opens
+      if (timeAnchorSaveTasks.value.length > 0 && timeAnchorSaveTasks.value[0]) {
+        selectedTimeAnchorTaskId.value = timeAnchorSaveTasks.value[0].id
+      }
+    } catch (err) {
+      console.error('Failed to load tasks for time anchor:', err)
+    }
+  } else {
+    // Auto-select the first available task if tasks are already loaded
+    if (timeAnchorSaveTasks.value.length > 0 && timeAnchorSaveTasks.value[0]) {
+      selectedTimeAnchorTaskId.value = timeAnchorSaveTasks.value[0].id
+    }
+  }
+  // Set default action: always default to save for consistency
+  timeAnchorAction.value = 'save'
+
+  // If has saved state and want to restore, user can manually select
+  // Auto-select the saved task if it can be restored and user chooses restore
+  if (timeAnchorHasSavedState.value && savedTaskCanBeRestored.value && savedTaskInfo.value?.taskId) {
+    // Don't auto-select restore, let user choose
+    // selectedTimeAnchorTaskId.value = savedTaskInfo.value.taskId
+  }
+
+  showTimeAnchorModal.value = true
+}
+
+const closeTimeAnchorModal = () => {
+  showTimeAnchorModal.value = false
+  timeAnchorAction.value = 'save'
+  selectedTimeAnchorTaskId.value = ''
+  selectedItem.value = null
+}
+
+const useTimeAnchor = async () => {
+  if (!selectedItem.value || !selectedTimeAnchorTaskId.value) return
+
+  // Validation: Check if user has active locked task when trying to restore
+  if (timeAnchorAction.value === 'restore') {
+    try {
+      // Check for active locked task
+      const activeLockTask = await tasksApi.getActiveLockTask()
+      if (activeLockTask) {
+        showNotification('无法恢复任务：您当前有活跃的带锁任务。请先完成或停止当前任务后再恢复。', 'error')
+        return
+      }
+    } catch (error) {
+      console.error('Error checking active lock task:', error)
+      showNotification('检查任务状态时发生错误，请重试', 'error')
+      return
+    }
+  }
+
+  try {
+    usingTimeAnchor.value = true
+
+    // For restore operations, check if key exists and request recreation if necessary
+    let needsKeyRecreation = false
+    if (timeAnchorAction.value === 'restore') {
+      try {
+        const keyOwnership = await storeApi.getTaskKeyHolder(selectedTimeAnchorTaskId.value)
+
+        // If key doesn't exist (destroyed when task failed), request backend to recreate it
+        if (!keyOwnership.has_key) {
+          console.log('Key does not exist, requesting recreation during restore...')
+          needsKeyRecreation = true
+        }
+      } catch (keyError) {
+        console.warn('Failed to check key ownership:', keyError)
+      }
+    }
+
+    const response = await storeApi.useTimeAnchor({
+      item_id: selectedItem.value.id,
+      task_id: selectedTimeAnchorTaskId.value,
+      action: timeAnchorAction.value,
+      recreate_key: needsKeyRecreation
+    })
+
+    // Wait for backend processing
+    await new Promise(resolve => setTimeout(resolve, 1000))
+
+    // Refresh inventory after successful use
+    await loadInventory()
+
+    // Show success message
+    showNotification(`${response.message}`, 'success')
+
+    // Handle key return for restore operations
+    if (timeAnchorAction.value === 'restore') {
+      // Check if key was successfully returned/recreated
+      const updatedInventory = await storeApi.getUserInventory()
+      const taskKey = updatedInventory.items?.find(item =>
+        item.item_type.name === 'key' &&
+        item.properties?.task_id === selectedTimeAnchorTaskId.value
+      )
+
+      if (taskKey) {
+        // Determine appropriate message based on whether key was recreated or returned
+        let keyMessage = response.key_return_message || '任务已恢复，对应的任务钥匙已返还到背包'
+
+        if (response.key_recreated) {
+          keyMessage = '任务已恢复，原钥匙已重新创建并返还到背包'
+        } else if (needsKeyRecreation) {
+          keyMessage = '任务已恢复，钥匙已重新创建并返还到背包'
+        }
+
+        showNotification(keyMessage, 'success')
+      } else {
+        // If key still not found, show appropriate message
+        const keyOwnership = await storeApi.getTaskKeyHolder(selectedTimeAnchorTaskId.value)
+
+        if (!keyOwnership.has_key) {
+          if (needsKeyRecreation) {
+            showNotification('任务已恢复，但钥匙重新创建失败。请联系管理员处理。', 'error')
+          } else {
+            showNotification('任务已恢复，但原钥匙已被销毁。请联系管理员重新创建钥匙。', 'warning')
+          }
+        } else {
+          showNotification('任务已恢复，但钥匙返还可能需要稍等片刻。', 'info')
+        }
+      }
+    }
+
+    // Close modal and reset selection
+    closeTimeAnchorModal()
+  } catch (error) {
+    console.error('Error using time anchor:', error)
+    let errorMessage = '使用时间锚点失败，请重试'
+    if (error instanceof ApiError) {
+      errorMessage = error.message
+    } else if (error instanceof Error) {
+      errorMessage = error.message
+    }
+    showNotification(errorMessage, 'error')
+  } finally {
+    usingTimeAnchor.value = false
+  }
+}
+
+// Exploration Compass Modal Functions
+const openExplorationCompassModal = () => {
+  if (!selectedItem.value) return
+  showExplorationCompassModal.value = true
+}
+
+const closeExplorationCompassModal = () => {
+  showExplorationCompassModal.value = false
+  selectedCompassZone.value = ''
+  compassResults.value = null
+  selectedItem.value = null
+}
+
+const useExplorationCompass = async () => {
+  if (!selectedItem.value || !selectedCompassZone.value) return
+
+  try {
+    usingExplorationCompass.value = true
+    const response = await storeApi.useExplorationCompass({
+      item_id: selectedItem.value.id,
+      zone_name: selectedCompassZone.value
+    })
+
+    // Set compass results from API response
+    compassResults.value = {
+      zone_name: response.zone_name,
+      zone_display_name: response.zone_display_name,
+      treasures: response.treasures,
+      treasure_count: response.treasure_count,
+      compass_used_at: response.compass_used_at
+    }
+
+    // Refresh inventory after successful use
+    await loadInventory()
+
+    // Show success message
+    showNotification(`${response.message}`, 'success')
+
+    // Close modal but keep results displayed
+    showExplorationCompassModal.value = false
+  } catch (error) {
+    console.error('Error using exploration compass:', error)
+    let errorMessage = '使用探索指南针失败，请重试'
+    if (error instanceof ApiError) {
+      errorMessage = error.message
+    } else if (error instanceof Error) {
+      errorMessage = error.message
+    }
+    showNotification(errorMessage, 'error')
+  } finally {
+    usingExplorationCompass.value = false
+  }
+}
+
+
+// Influence Crown Modal Functions
+const openInfluenceCrownModal = () => {
+  if (!selectedItem.value) return
+  showInfluenceCrownModal.value = true
+}
+
+const closeInfluenceCrownModal = () => {
+  showInfluenceCrownModal.value = false
+  selectedItem.value = null
+}
+
+const useInfluenceCrown = async () => {
+  if (!selectedItem.value) return
+
+  try {
+    usingInfluenceCrown.value = true
+    const response = await storeApi.useInfluenceCrown(selectedItem.value.id)
+
+    // Refresh inventory after successful use
+    await loadInventory()
+
+    // Show success message
+    showNotification(`${response.message}`, 'success')
+
+    // Close modal and reset selection
+    closeInfluenceCrownModal()
+  } catch (error) {
+    console.error('Error using influence crown:', error)
+    let errorMessage = '使用影响力皇冠失败，请重试'
+    if (error instanceof ApiError) {
+      errorMessage = error.message
+    } else if (error instanceof Error) {
+      errorMessage = error.message
+    }
+    showNotification(errorMessage, 'error')
+  } finally {
+    usingInfluenceCrown.value = false
+  }
+}
+
 const viewNote = async () => {
   if (!selectedItem.value) return
 
@@ -1809,8 +2694,13 @@ const viewNote = async () => {
 
   } catch (error) {
     console.error('Error viewing note:', error)
-    const errorMessage = error instanceof Error ? error.message : '查看纸条失败，请重试'
-    alert(errorMessage)
+    let errorMessage = '查看纸条失败，请重试'
+    if (error instanceof ApiError) {
+      errorMessage = error.message
+    } else if (error instanceof Error) {
+      errorMessage = error.message
+    }
+    showNotification(errorMessage, 'error')
     closeNoteViewModal()
   } finally {
     viewingNote.value = false
@@ -1830,6 +2720,24 @@ const startNoteAutoCloseTimer = () => {
     }
   }, 1000)
 }
+
+
+// Watch for timeAnchorAction changes to auto-select tasks
+watch(timeAnchorAction, (newAction) => {
+  if (newAction === 'save' && timeAnchorSaveTasks.value.length > 0 && timeAnchorSaveTasks.value[0]) {
+    selectedTimeAnchorTaskId.value = timeAnchorSaveTasks.value[0].id
+  } else if (newAction === 'restore') {
+    // For restore, only allow the saved task if it can be restored
+    if (timeAnchorHasSavedState.value && savedTaskCanBeRestored.value && savedTaskInfo.value?.taskId) {
+      selectedTimeAnchorTaskId.value = savedTaskInfo.value.taskId
+    } else {
+      // No valid restore target available
+      selectedTimeAnchorTaskId.value = ''
+    }
+  } else {
+    selectedTimeAnchorTaskId.value = ''
+  }
+})
 
 // Lifecycle
 onMounted(() => {
@@ -3155,16 +4063,368 @@ onMounted(() => {
   font-weight: 900;
   text-transform: uppercase;
   letter-spacing: 0.5px;
-  color: #155724;
-  font-size: 0.875rem;
 }
 
-.expiration-note {
-  font-size: 0.875rem;
-  font-weight: 600;
-  color: #666;
-  margin: 0;
-  font-style: italic;
+/* New Item Modal Styles */
+.lucky-charm-modal {
+  .modal-content {
+    max-width: 500px;
+    background: linear-gradient(135deg, #4CAF50, #45a049);
+    border: 2px solid #4CAF50;
+  }
+
+  .modal-header {
+    background: linear-gradient(135deg, #45a049, #4CAF50);
+    color: white;
+  }
+
+  .item-info {
+    p {
+      margin: 8px 0;
+
+      strong {
+        color: #2e7d32;
+      }
+    }
+  }
+}
+
+.energy-potion-modal {
+  .modal-content {
+    max-width: 500px;
+    background: linear-gradient(135deg, #FF9800, #F57C00);
+    border: 2px solid #FF9800;
+  }
+
+  .modal-header {
+    background: linear-gradient(135deg, #F57C00, #FF9800);
+    color: white;
+  }
+
+  .item-info {
+    p {
+      margin: 8px 0;
+
+      strong {
+        color: #e65100;
+      }
+    }
+  }
+}
+
+.friendship-bridge-modal {
+  .modal-content {
+    max-width: 550px;
+    background: linear-gradient(135deg, #2196F3, #1976D2);
+    border: 2px solid #2196F3;
+  }
+
+  .modal-header {
+    background: linear-gradient(135deg, #1976D2, #2196F3);
+    color: white;
+  }
+
+  .form-group {
+    margin: 15px 0;
+
+    label {
+      display: block;
+      margin-bottom: 8px;
+      font-weight: 600;
+      color: #333;
+    }
+
+    .form-input,
+    .form-select {
+      width: 100%;
+      padding: 10px;
+      border: 2px solid #ddd;
+      border-radius: 8px;
+      font-size: 14px;
+
+      &:focus {
+        outline: none;
+        border-color: #2196F3;
+        box-shadow: 0 0 0 3px rgba(33, 150, 243, 0.2);
+      }
+    }
+
+    .radio-group {
+      display: flex;
+      gap: 15px;
+
+      .radio-option {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        cursor: pointer;
+
+        input[type="radio"] {
+          margin: 0;
+        }
+      }
+    }
+  }
+}
+
+.time-anchor-modal {
+  .modal-content {
+    max-width: 550px;
+    background: linear-gradient(135deg, #6F42C1, #5B21B6);
+    border: 2px solid #6F42C1;
+  }
+
+  .modal-header {
+    background: linear-gradient(135deg, #5B21B6, #6F42C1);
+    color: white;
+  }
+
+  .form-group {
+    margin: 15px 0;
+
+    label {
+      display: block;
+      margin-bottom: 8px;
+      font-weight: 600;
+      color: #333;
+    }
+
+    .form-input,
+    .form-select {
+      width: 100%;
+      padding: 10px;
+      border: 2px solid #ddd;
+      border-radius: 8px;
+      font-size: 14px;
+
+      &:focus {
+        outline: none;
+        border-color: #6F42C1;
+        box-shadow: 0 0 0 3px rgba(107, 66, 193, 0.2);
+      }
+    }
+
+    .radio-group {
+      display: flex;
+      gap: 15px;
+
+      .radio-option {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        cursor: pointer;
+
+        input[type="radio"] {
+          margin: 0;
+        }
+      }
+    }
+  }
+}
+
+.exploration-compass-modal {
+  .modal-content {
+    max-width: 600px;
+    background: linear-gradient(135deg, #17A2B8, #138756);
+    border: 2px solid #17A2B8;
+  }
+
+  .modal-header {
+    background: linear-gradient(135deg, #138756, #17A2B8);
+    color: white;
+  }
+
+  .form-group {
+    margin: 15px 0;
+
+    label {
+      display: block;
+      margin-bottom: 8px;
+      font-weight: 600;
+      color: #333;
+    }
+
+    .form-select {
+      width: 100%;
+      padding: 10px;
+      border: 2px solid #ddd;
+      border-radius: 8px;
+      font-size: 14px;
+
+      &:focus {
+        outline: none;
+        border-color: #17A2B8;
+        box-shadow: 0 0 0 3px rgba(23, 162, 184, 0.2);
+      }
+    }
+  }
+}
+
+.spacetime-gate-modal {
+  .modal-content {
+    max-width: 550px;
+    background: linear-gradient(135deg, #6F42C1, #5B21B6);
+    border: 2px solid #6F42C1;
+  }
+
+  .modal-header {
+    background: linear-gradient(135deg, #5B21B6, #6F42C1);
+    color: white;
+  }
+
+  .form-group {
+    margin: 15px 0;
+
+    label {
+      display: block;
+      margin-bottom: 8px;
+      font-weight: 600;
+      color: #333;
+    }
+
+    .form-select {
+      width: 100%;
+      padding: 10px;
+      border: 2px solid #ddd;
+      border-radius: 8px;
+      font-size: 14px;
+
+      &:focus {
+        outline: none;
+        border-color: #6F42C1;
+        box-shadow: 0 0 0 3px rgba(107, 66, 193, 0.2);
+      }
+    }
+  }
+}
+
+.influence-crown-modal {
+  .modal-content {
+    max-width: 500px;
+    background: linear-gradient(135deg, #FFD700, #FFA500);
+    border: 2px solid #FFD700;
+  }
+
+  .modal-header {
+    background: linear-gradient(135deg, #FFA500, #FFD700);
+    color: white;
+  }
+
+  .item-info {
+    p {
+      margin: 8px 0;
+
+      strong {
+        color: #c58000;
+      }
+    }
+  }
+}
+
+.compass-results-modal {
+  .modal-content {
+    max-width: 700px;
+    max-height: 80vh;
+    overflow-y: auto;
+    background: linear-gradient(135deg, #17A2B8, #138756);
+    border: 2px solid #17A2B8;
+  }
+
+  .modal-header {
+    background: linear-gradient(135deg, #138756, #17A2B8);
+    color: white;
+  }
+
+  .compass-summary {
+    background: rgba(255, 255, 255, 0.1);
+    padding: 15px;
+    border-radius: 8px;
+    margin-bottom: 20px;
+
+    p {
+      margin: 8px 0;
+
+      strong {
+        color: #138756;
+      }
+    }
+  }
+
+  .treasures-list {
+    max-height: 400px;
+    overflow-y: auto;
+
+    .treasure-item {
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid #e0e0e0;
+      border-radius: 8px;
+      padding: 15px;
+      margin-bottom: 10px;
+
+      .treasure-info {
+        p {
+          margin: 5px 0;
+          font-size: 13px;
+
+          strong {
+            color: #17A2B8;
+          }
+        }
+
+        .treasure-info-text {
+          background: #f8f9fa;
+          border: 1px solid #dee2e6;
+          border-radius: 4px;
+          padding: 10px;
+          margin: 10px 0;
+          font-family: inherit;
+          font-size: 13px;
+          white-space: pre-line;
+          color: #495057;
+          line-height: 1.4;
+        }
+
+        .own-treasure-badge {
+          display: inline-flex;
+          align-items: center;
+          gap: 4px;
+          background: #e3f2fd;
+          color: #1565c0;
+          padding: 4px 8px;
+          border-radius: 12px;
+          font-size: 11px;
+          font-weight: 500;
+          margin-top: 8px;
+          border: 1px solid #bbdefb;
+
+          .badge-icon {
+            font-size: 12px;
+          }
+
+          .badge-text {
+            font-weight: 600;
+          }
+        }
+      }
+    }
+
+    &.own-treasure {
+      background: #f8f9fa;
+      border-color: #17a2b8;
+      box-shadow: 3px 3px 0 #17a2b8;
+
+      &:hover {
+        box-shadow: 4px 4px 0 #17a2b8;
+      }
+    }
+  }
+
+  .no-treasures {
+    text-align: center;
+    padding: 20px;
+    color: #666;
+    font-style: italic;
+  }
 }
 
 /* Share Link Section */
@@ -3539,10 +4799,43 @@ onMounted(() => {
   color: #000;
 }
 
+.task-duration {
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  padding: 0.25rem 0.5rem;
+  border: 2px solid #000;
+  background: white;
+  color: #000;
+}
+
+.task-duration.valid {
+  background: #d4edda;
+  color: #155724;
+  border-color: #28a745;
+}
+
+.task-duration.invalid {
+  background: #f8d7da;
+  color: #721c24;
+  border-color: #dc3545;
+}
+
 .task-item.selected .task-difficulty,
-.task-item.selected .task-status {
+.task-item.selected .task-status,
+.task-item.selected .task-duration {
   background: #cce7ff;
   color: #000;
+}
+
+.task-item.disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.task-item.disabled:hover {
+  transform: none;
+  box-shadow: 4px 4px 0 #000;
 }
 
 .task-description {
@@ -4355,6 +5648,422 @@ onMounted(() => {
         padding: 0.75rem;
       }
     }
+  }
+}
+
+/* Time Anchor Saved State Styles */
+.saved-state-info {
+  background: linear-gradient(135deg, #e8f5e8, #f0f8f0);
+  border: 3px solid #28a745;
+  padding: 1.5rem;
+  margin-bottom: 1.5rem;
+  box-shadow: 4px 4px 0 #28a745;
+  border-radius: 6px;
+}
+
+.info-header {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+}
+
+.info-icon {
+  font-size: 1.5rem;
+  flex-shrink: 0;
+}
+
+.info-title {
+  font-size: 1.25rem;
+  font-weight: 900;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  margin: 0;
+  color: #155724;
+}
+
+.saved-info-details {
+  margin-bottom: 1rem;
+}
+
+.saved-info-details p {
+  margin: 0.5rem 0;
+  font-size: 0.875rem;
+  color: #155724;
+  font-weight: 600;
+}
+
+.saved-info-details strong {
+  color: #0d4419;
+  font-weight: 900;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.info-note {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  background: rgba(255, 255, 255, 0.7);
+  padding: 0.75rem;
+  border: 2px solid #28a745;
+  border-radius: 4px;
+}
+
+.note-icon {
+  font-size: 1rem;
+  flex-shrink: 0;
+  margin-top: 0.1rem;
+}
+
+.note-text {
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: #155724;
+  line-height: 1.4;
+}
+
+.restore-ready {
+  background: #d4edda;
+  color: #155724;
+  padding: 0.25rem 0.5rem;
+  border: 2px solid #28a745;
+  font-weight: 900;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  font-size: 0.7rem;
+  border-radius: 3px;
+}
+
+/* Mobile responsive for saved state info */
+@media (max-width: 768px) {
+  .saved-state-info {
+    padding: 1rem;
+    margin-bottom: 1rem;
+  }
+
+  .info-header {
+    flex-direction: column;
+    text-align: center;
+    gap: 0.5rem;
+    margin-bottom: 0.75rem;
+  }
+
+  .info-title {
+    font-size: 1rem;
+  }
+
+  .saved-info-details p {
+    font-size: 0.8rem;
+  }
+
+  .info-note {
+    flex-direction: column;
+    gap: 0.25rem;
+    padding: 0.5rem;
+    text-align: center;
+  }
+
+  .note-text {
+    font-size: 0.7rem;
+  }
+}
+
+/* Time Anchor Restore Task Info Styles */
+.restore-task-info {
+  margin-top: 1rem;
+}
+
+.saved-task-display {
+  background: linear-gradient(135deg, #e8f5e8, #f0f8f0);
+  border: 3px solid #28a745;
+  padding: 1.5rem;
+  box-shadow: 4px 4px 0 #28a745;
+  border-radius: 6px;
+}
+
+.saved-task-title {
+  font-size: 1rem;
+  font-weight: 900;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  margin: 0 0 1rem 0;
+  color: #155724;
+}
+
+.saved-task-card {
+  background: white;
+  border: 2px solid #000;
+  padding: 1rem;
+  box-shadow: 3px 3px 0 #000;
+  border-radius: 4px;
+}
+
+.saved-task-card .task-title {
+  font-size: 1rem;
+  font-weight: 900;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  margin: 0 0 0.5rem 0;
+  color: #000;
+}
+
+.saved-task-card .task-meta {
+  display: flex;
+  gap: 1rem;
+  margin: 0;
+  flex-wrap: wrap;
+}
+
+.saved-task-card .task-status.failed {
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  padding: 0.25rem 0.5rem;
+  border: 2px solid #dc3545;
+  background: #f8d7da;
+  color: #721c24;
+  border-radius: 3px;
+}
+
+.saved-task-card .saved-time {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: #666;
+  background: #f8f9fa;
+  padding: 0.25rem 0.5rem;
+  border: 1px solid #dee2e6;
+  border-radius: 3px;
+}
+
+.no-restore-available {
+  background: #f8d7da;
+  border: 3px solid #dc3545;
+  padding: 1.5rem;
+  box-shadow: 4px 4px 0 #dc3545;
+  border-radius: 6px;
+}
+
+.no-restore-available .warning-section {
+  display: flex;
+  gap: 1rem;
+  align-items: flex-start;
+  margin: 0;
+  padding: 0;
+  background: none;
+  border: none;
+  box-shadow: none;
+}
+
+.no-restore-available .warning-icon {
+  font-size: 2rem;
+  flex-shrink: 0;
+}
+
+.no-restore-available .warning-content {
+  flex: 1;
+}
+
+.no-restore-available .warning-title {
+  font-size: 1.1rem;
+  font-weight: 900;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  margin: 0 0 0.5rem 0;
+  color: #721c24;
+}
+
+.no-restore-available .warning-message {
+  font-weight: 700;
+  color: #721c24;
+  margin: 0;
+  line-height: 1.4;
+}
+
+/* Mobile responsive for restore task info */
+@media (max-width: 768px) {
+  .restore-task-info {
+    margin-top: 0.75rem;
+  }
+
+  .saved-task-display,
+  .no-restore-available {
+    padding: 1rem;
+  }
+
+  .saved-task-title {
+    font-size: 0.875rem;
+    margin-bottom: 0.75rem;
+  }
+
+  .saved-task-card {
+    padding: 0.75rem;
+  }
+
+  .saved-task-card .task-title {
+    font-size: 0.875rem;
+  }
+
+  .saved-task-card .task-meta {
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+
+  .no-restore-available .warning-section {
+    flex-direction: column;
+    gap: 0.5rem;
+    text-align: center;
+  }
+
+  .no-restore-available .warning-title {
+    font-size: 1rem;
+  }
+}
+
+/* Notification Toast Styles */
+.notification-container {
+  position: fixed;
+  top: 2rem;
+  right: 2rem;
+  z-index: 9999;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  max-width: 400px;
+  pointer-events: none;
+}
+
+.notification-toast {
+  background: white;
+  border: 4px solid #000;
+  padding: 1rem 1.5rem;
+  box-shadow: 8px 8px 0 #000;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  pointer-events: auto;
+  animation: slideInRight 0.3s ease-out;
+  max-width: 100%;
+  word-wrap: break-word;
+}
+
+.notification-success {
+  border-color: #28a745;
+  background: #d4edda;
+  box-shadow: 8px 8px 0 #28a745;
+}
+
+.notification-error {
+  border-color: #dc3545;
+  background: #f8d7da;
+  box-shadow: 8px 8px 0 #dc3545;
+}
+
+.notification-warning {
+  border-color: #ffc107;
+  background: #fff3cd;
+  box-shadow: 8px 8px 0 #ffc107;
+}
+
+.notification-info {
+  border-color: #17a2b8;
+  background: #d1ecf1;
+  box-shadow: 8px 8px 0 #17a2b8;
+}
+
+.notification-content {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex: 1;
+  min-width: 0;
+}
+
+.notification-icon {
+  font-size: 1.25rem;
+  flex-shrink: 0;
+}
+
+.notification-message {
+  font-weight: 700;
+  font-size: 0.875rem;
+  line-height: 1.4;
+  color: #000;
+  word-break: break-word;
+}
+
+.notification-close {
+  background: none;
+  border: 2px solid #000;
+  width: 2rem;
+  height: 2rem;
+  border-radius: 50%;
+  font-size: 1rem;
+  font-weight: 900;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s ease;
+  flex-shrink: 0;
+}
+
+.notification-close:hover {
+  background: #000;
+  color: white;
+  transform: scale(1.1);
+}
+
+@keyframes slideInRight {
+  0% {
+    transform: translateX(100%);
+    opacity: 0;
+  }
+  100% {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+/* Mobile responsive for notifications */
+@media (max-width: 768px) {
+  .notification-container {
+    top: 1rem;
+    right: 1rem;
+    left: 1rem;
+    max-width: none;
+  }
+
+  .notification-toast {
+    padding: 0.75rem 1rem;
+    box-shadow: 4px 4px 0 #000;
+  }
+
+  .notification-success {
+    box-shadow: 4px 4px 0 #28a745;
+  }
+
+  .notification-error {
+    box-shadow: 4px 4px 0 #dc3545;
+  }
+
+  .notification-warning {
+    box-shadow: 4px 4px 0 #ffc107;
+  }
+
+  .notification-info {
+    box-shadow: 4px 4px 0 #17a2b8;
+  }
+
+  .notification-message {
+    font-size: 0.8rem;
+  }
+
+  .notification-close {
+    width: 1.75rem;
+    height: 1.75rem;
+    font-size: 0.875rem;
   }
 }
 </style>
