@@ -164,11 +164,21 @@ export const tasksApi = {
 
   // 创建带图片的任务
   createTaskWithImages: async (formData: FormData): Promise<LockTask> => {
-    return apiRequest('/tasks/', {
+    const token = localStorage.getItem('token');
+
+    const headers: Record<string, string> = {};
+    if (token) {
+      headers.Authorization = `Token ${token}`;
+    }
+    // 不设置Content-Type，让浏览器自动设置multipart/form-data
+
+    const response = await fetch(`${API_BASE_URL}/tasks/`, {
       method: 'POST',
-      body: formData,
-      headers: {} // 让浏览器自动设置Content-Type为multipart/form-data
-    })
+      headers,
+      body: formData
+    });
+
+    return handleResponse<LockTask>(response);
   },
 
   // 更新任务
