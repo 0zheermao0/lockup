@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
-import { authApi, ApiError } from '../../lib/api';
+import { authApi, ApiError } from '../../lib/api-commons';
 
 export const RegisterForm: React.FC = () => {
   const [formData, setFormData] = useState({
@@ -114,9 +114,8 @@ export const RegisterForm: React.FC = () => {
                 name="username"
                 type="text"
                 required
-                className={`neo-brutal-input w-full mt-1 ${
-                  errors.username ? 'border-red-500' : ''
-                }`}
+                className={`neo-brutal-input w-full mt-1 ${errors.username ? 'border-red-500' : ''
+                  }`}
                 placeholder="输入用户名"
                 value={formData.username}
                 onChange={handleChange}
@@ -136,9 +135,8 @@ export const RegisterForm: React.FC = () => {
                 name="email"
                 type="email"
                 required
-                className={`neo-brutal-input w-full mt-1 ${
-                  errors.email ? 'border-red-500' : ''
-                }`}
+                className={`neo-brutal-input w-full mt-1 ${errors.email ? 'border-red-500' : ''
+                  }`}
                 placeholder="输入邮箱地址"
                 value={formData.email}
                 onChange={handleChange}
@@ -158,9 +156,8 @@ export const RegisterForm: React.FC = () => {
                 name="password"
                 type="password"
                 required
-                className={`neo-brutal-input w-full mt-1 ${
-                  errors.password ? 'border-red-500' : ''
-                }`}
+                className={`neo-brutal-input w-full mt-1 ${errors.password ? 'border-red-500' : ''
+                  }`}
                 placeholder="输入密码（至少8位）"
                 value={formData.password}
                 onChange={handleChange}
@@ -180,9 +177,8 @@ export const RegisterForm: React.FC = () => {
                 name="password_confirm"
                 type="password"
                 required
-                className={`neo-brutal-input w-full mt-1 ${
-                  errors.password_confirm ? 'border-red-500' : ''
-                }`}
+                className={`neo-brutal-input w-full mt-1 ${errors.password_confirm ? 'border-red-500' : ''
+                  }`}
                 placeholder="再次输入密码"
                 value={formData.password_confirm}
                 onChange={handleChange}

@@ -5,67 +5,10 @@ import type {
   SimplePasswordChangeRequest, EmailVerificationSendRequest, EmailVerificationSendResponse,
   EmailVerificationVerifyRequest, EmailVerificationVerifyResponse
 } from '../types/index';
+
+import { apiRequest } from './api-commons'
 import { API_BASE_URL } from '../config/index.js';
 
-class ApiError extends Error {
-  constructor(
-    message: string,
-    public status: number,
-    public data?: any
-  ) {
-    super(message);
-    this.name = 'ApiError';
-  }
-}
-
-async function handleResponse<T>(response: Response): Promise<T> {
-  if (!response.ok) {
-    const errorData = await response.json().catch((e) => {
-      console.log('JSON parse error:', e);
-      return {};
-    });
-    console.log('API Error Response:', {
-      status: response.status,
-      statusText: response.statusText,
-      errorData: errorData
-    });
-    // 优先使用后端返回的 error 字段，其次是 message 字段，其次是 non_field_errors 字段，最后才是 HTTP 状态
-    const errorMessage =
-      errorData.error ||
-      errorData.message ||
-      (Array.isArray(errorData.non_field_errors) ? errorData.non_field_errors.join(' ') : null) ||
-      `HTTP ${response.status}: ${response.statusText}`;
-
-    // console.log("DEBUG: ERROR MESSAGE", { error: errorData.error, message: errorData.message, errordata: errorData });
-    console.log('Final error message:', errorMessage);
-    throw new ApiError(
-      errorMessage,
-      response.status,
-      errorData
-    );
-  }
-
-  return response.json();
-}
-
-async function apiRequest<T>(
-  endpoint: string,
-  options: RequestInit = {}
-): Promise<T> {
-  const token = localStorage.getItem('token');
-
-  const config: RequestInit = {
-    headers: {
-      'Content-Type': 'application/json',
-      ...(token && { Authorization: `Token ${token}` }),
-      ...options.headers,
-    },
-    ...options,
-  };
-
-  const response = await fetch(`${API_BASE_URL}${endpoint}`, config);
-  return handleResponse<T>(response);
-}
 
 export const authApi = {
   async login(credentials: LoginRequest): Promise<{ token: string; user: User }> {

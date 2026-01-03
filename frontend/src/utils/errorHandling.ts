@@ -3,7 +3,6 @@
  * 将后端API错误映射为用户友好的错误消息
  */
 
-import { ApiError } from "@/lib/api"
 
 export interface ApiError {
   message: string
