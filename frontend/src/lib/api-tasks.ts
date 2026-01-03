@@ -27,7 +27,12 @@ async function handleResponse<T>(response: Response): Promise<T> {
     }
 
     throw new ApiError(
-      errorData.error || errorData.message || `HTTP ${response.status}: ${response.statusText}`,
+      // 优先使用后端返回的 error 字段，其次是 message 字段，其次是 non_field_errors 字段，最后才是 HTTP 状态
+      errorData.error ||
+      errorData.message ||
+      (Array.isArray(errorData.non_field_errors) ? errorData.non_field_errors.join(' ') : null) ||
+      `HTTP ${response.status}: ${response.statusText}`,
+
       response.status,
       errorData
     );
