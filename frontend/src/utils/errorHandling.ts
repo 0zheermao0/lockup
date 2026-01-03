@@ -3,11 +3,7 @@
  * 将后端API错误映射为用户友好的错误消息
  */
 
-export interface ApiError {
-  message: string
-  code?: string
-  details?: any
-}
+import { ApiError } from "../lib/api-commons.js"
 
 export interface UserFriendlyError {
   title: string
@@ -120,6 +116,26 @@ const TASK_CREATION_ERROR_MAP: Record<string, UserFriendlyError> = {
     message: '请求处理时间过长，请稍后重试',
     actionSuggestion: '请稍后重试',
     severity: 'warning'
+  },
+
+  // 错误码映射 因为当前apiError没有code属性 所以这里用status做映射备份
+  "401": {
+    title: '需要登录',
+    message: '请先登录后再创建任务',
+    actionSuggestion: '请登录您的账户',
+    severity: 'error'
+  },
+  "403": {
+    title: '权限不足',
+    message: '您没有权限执行此操作',
+    actionSuggestion: '请检查您的账户权限',
+    severity: 'error'
+  },
+  "429": {
+    title: '操作过于频繁',
+    message: '您的操作过于频繁，请稍后重试',
+    actionSuggestion: '请等待一段时间后再试',
+    severity: 'warning'
   }
 }
 
@@ -207,98 +223,26 @@ const POST_CREATION_ERROR_MAP: Record<string, UserFriendlyError> = {
     message: '您的操作过于频繁，请稍后重试',
     actionSuggestion: '请等待一段时间后再试',
     severity: 'warning'
-  }
-}
+  },
 
-/**
- * 解析后端API错误响应
- */
-export function parseApiError(error: any): ApiError {
-  // 处理axios错误格式
-  if (error.response) {
-    const { status, data } = error.response
-
-    if (data && typeof data === 'object') {
-      // Django REST framework 标准错误格式
-      if (data.detail) {
-        return {
-          message: data.detail,
-          code: data.code || `HTTP_${status}`,
-          details: data
-        }
-      }
-
-      // 字段验证错误
-      if (data.non_field_errors) {
-        return {
-          message: Array.isArray(data.non_field_errors)
-            ? data.non_field_errors[0]
-            : data.non_field_errors,
-          code: 'VALIDATION_ERROR',
-          details: data
-        }
-      }
-
-      // 特定字段错误
-      const fieldErrors = Object.keys(data).filter(key =>
-        key !== 'detail' && key !== 'code' && Array.isArray(data[key])
-      )
-
-      if (fieldErrors.length > 0) {
-        const firstField = fieldErrors[0]
-        if (firstField) {
-          const fieldErrorArray = data[firstField]
-          if (Array.isArray(fieldErrorArray) && fieldErrorArray.length > 0) {
-            const firstError = fieldErrorArray[0]
-            return {
-              message: `${firstField}: ${firstError}`,
-              code: `FIELD_ERROR_${firstField.toUpperCase()}`,
-              details: data
-            }
-          }
-        }
-      }
-
-      // 通用错误消息
-      if (data.error) {
-        return {
-          message: data.error,
-          code: data.code || `HTTP_${status}`,
-          details: data
-        }
-      }
-    }
-
-    // HTTP状态码错误
-    return {
-      message: `HTTP ${status} Error`,
-      code: `HTTP_${status}`,
-      details: { status, data }
-    }
-  }
-
-  // 网络错误
-  if (error.code === 'ECONNABORTED' || error.message?.includes('timeout')) {
-    return {
-      message: 'Request timeout',
-      code: 'TIMEOUT_ERROR',
-      details: error
-    }
-  }
-
-  if (error.code === 'NETWORK_ERROR' || !error.response) {
-    return {
-      message: 'Network connection failed',
-      code: 'NETWORK_ERROR',
-      details: error
-    }
-  }
-
-  // 未知错误
-  return {
-    message: error.message || 'Unknown error occurred',
-    code: 'UNKNOWN_ERROR',
-    details: error
+  // 错误码映射 因为当前apiError没有code属性 所以这里用status做映射备份
+  "401": {
+    title: '需要登录',
+    message: '请先登录后再创建任务',
+    actionSuggestion: '请登录您的账户',
+    severity: 'error'
+  },
+  "403": {
+    title: '权限不足',
+    message: '您没有权限执行此操作',
+    actionSuggestion: '请检查您的账户权限',
+    severity: 'error'
+  },
+  "429": {
+    title: '操作过于频繁',
+    message: '您的操作过于频繁，请稍后重试',
+    actionSuggestion: '请等待一段时间后再试',
+    severity: 'warning'
   }
 }
 
@@ -323,16 +267,9 @@ export function mapToUserFriendlyError(
 ): UserFriendlyError {
   const errorMap = context === 'task' ? TASK_CREATION_ERROR_MAP : POST_CREATION_ERROR_MAP
 
-  // 优先匹配错误代码
-  if (apiError.code) {
-    const mappedError = errorMap[apiError.code]
-    if (mappedError) {
-      return mappedError
-    }
-  }
 
   // 尝试根据错误消息匹配
-  const message = apiError.message.toLowerCase()
+  const message = apiError?.message?.toLowerCase?.() ?? ''
 
   // 任务创建相关错误匹配
   if (context === 'task') {
@@ -403,6 +340,16 @@ export function mapToUserFriendlyError(
     return commonErrorMap['SERVER_ERROR'] ?? getDefaultError(apiError)
   }
 
+
+  // 最后匹配错误代码
+  if (apiError.status) {
+    const statusStr = apiError.status.toString()
+    const mappedError = errorMap[statusStr] || commonErrorMap[statusStr]
+    if (mappedError) {
+      return mappedError
+    }
+  }
+
   // 默认错误
   return getDefaultError(apiError)
 }
@@ -413,8 +360,7 @@ export function mapToUserFriendlyError(
  * @param context - 错误上下文（任务或动态）
  * @returns 用户友好的错误信息
  */
-export function handleApiError(error: any, context: 'task' | 'post' = 'task'): UserFriendlyError {
-  const apiError = parseApiError(error)
+export function handleApiError(apiError: ApiError, context: 'task' | 'post' = 'task'): UserFriendlyError {
   return mapToUserFriendlyError(apiError, context)
 }
 

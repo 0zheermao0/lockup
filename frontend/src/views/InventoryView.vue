@@ -1365,7 +1365,8 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
-import { storeApi, tasksApi, ApiError } from '../lib/api'
+import { ApiError } from '../lib/api-commons'
+import { storeApi, tasksApi } from '../lib/api'
 import { tasksApi as tasksApiDetailed } from '../lib/api-tasks'
 import { smartGoBack } from '../utils/navigation'
 import { useAuthStore } from '../stores/auth'
