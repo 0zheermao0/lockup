@@ -162,6 +162,15 @@ export const tasksApi = {
     })
   },
 
+  // 创建带图片的任务
+  createTaskWithImages: async (formData: FormData): Promise<LockTask> => {
+    return apiRequest('/tasks/', {
+      method: 'POST',
+      body: formData,
+      headers: {} // 让浏览器自动设置Content-Type为multipart/form-data
+    })
+  },
+
   // 更新任务
   updateTask: async (id: string, data: Partial<LockTask>): Promise<LockTask> => {
     return apiRequest(`/tasks/${id}/`, {

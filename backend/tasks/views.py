@@ -373,7 +373,8 @@ class LockTaskListCreateView(generics.ListCreateAPIView):
         # 处理自动发布动态
         auto_publish = serializer.context.get('auto_publish', False)
         if auto_publish:
-            self._handle_auto_publish_post(task)
+            task_images = serializer.context.get('task_images', [])
+            self._handle_auto_publish_post(task, task_images)
 
     def _handle_daily_board_post_reward(self, task):
         """处理每日首次发布任务板奖励"""
@@ -408,24 +409,45 @@ class LockTaskListCreateView(generics.ListCreateAPIView):
                 priority='low'
             )
 
-    def _handle_auto_publish_post(self, task):
+    def _handle_auto_publish_post(self, task, images=None):
         """处理自动发布动态"""
         from django.conf import settings
-        from posts.models import Post
+        from posts.models import Post, PostImage
         import logging
 
         logger = logging.getLogger(__name__)
+        images = images or []
 
         try:
             # 生成动态内容
             post_content = self._generate_post_content(task)
 
-            # 创建动态
+            # 直接创建动态，然后单独处理图片
             post = Post.objects.create(
                 user=task.user,
                 content=post_content,
                 post_type='normal'
             )
+
+            # 处理图片上传
+            if images:
+                logger.info(f"Auto-publish post for task {task.id} includes {len(images)} images")
+
+                for i, image in enumerate(images):
+                    try:
+                        # 重置文件指针到开头
+                        image.seek(0)
+
+                        # 创建PostImage对象
+                        post_image = PostImage.objects.create(
+                            post=post,
+                            image=image
+                        )
+                        logger.info(f"Created post image {post_image.id} for post {post.id}")
+
+                    except Exception as img_error:
+                        logger.error(f"Failed to create image {i+1} for auto-published post {post.id}: {img_error}")
+                        # 继续处理其他图片，不因为单个图片失败而停止
 
             # 关联动态到任务
             task.auto_created_post = post
@@ -438,11 +460,29 @@ class LockTaskListCreateView(generics.ListCreateAPIView):
             task.description = task.description + link_text
             task.save()
 
-            logger.info(f"Auto-published post {post.id} for task {task.id}")
+            # 重新获取动态以包含图片信息
+            post.refresh_from_db()
+            actual_image_count = post.images.count()
+            logger.info(f"Auto-published post {post.id} for task {task.id} with {actual_image_count} images")
 
         except Exception as e:
             # 记录错误但不影响任务创建
             logger.error(f"Auto-publish post creation failed for task {task.id}: {e}")
+            import traceback
+            logger.error(f"Full traceback: {traceback.format_exc()}")
+
+            # 创建简单动态作为备用（不包含图片）
+            try:
+                post = Post.objects.create(
+                    user=task.user,
+                    content=post_content,
+                    post_type='normal'
+                )
+                task.auto_created_post = post
+                task.save()
+                logger.info(f"Auto-published fallback post {post.id} for task {task.id} (without images)")
+            except Exception as fallback_error:
+                logger.error(f"Even fallback post creation failed for task {task.id}: {fallback_error}")
 
     def _generate_post_content(self, task):
         """生成动态内容"""

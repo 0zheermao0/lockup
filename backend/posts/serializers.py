@@ -185,9 +185,12 @@ class PostCreateSerializer(serializers.ModelSerializer):
         try:
             for i, image in enumerate(images_data):
                 try:
+                    logger.info(f"Processing image {i+1}/{len(images_data)} for post {post.id}: {image.name} ({image.size} bytes)")
+
                     # 验证图片文件
                     from utils.file_upload import validate_uploaded_file
-                    validate_uploaded_file(image, 'image')
+                    file_info = validate_uploaded_file(image, 'image')
+                    logger.info(f"Image validation successful for {image.name}: {file_info}")
 
                     # 创建图片记录
                     post_image = PostImage.objects.create(
@@ -196,33 +199,63 @@ class PostCreateSerializer(serializers.ModelSerializer):
                         order=i
                     )
                     created_images.append(post_image)
-                    logger.info(f"Image {i+1}/{len(images_data)} created for post {post.id}")
+                    logger.info(f"Image {i+1}/{len(images_data)} created successfully for post {post.id}: {post_image.image.name}")
 
                 except Exception as e:
                     logger.error(f"Failed to create image {i+1} for post {post.id}: {e}")
+                    logger.error(f"Image details: name={image.name}, size={image.size}, content_type={getattr(image, 'content_type', 'unknown')}")
+                    import traceback
+                    logger.error(f"Full traceback: {traceback.format_exc()}")
+
                     # 清理已创建的图片
                     for img in created_images:
                         try:
                             img.delete()
-                        except:
-                            pass
+                            logger.info(f"Cleaned up image: {img.image.name}")
+                        except Exception as cleanup_e:
+                            logger.error(f"Failed to cleanup image {img.image.name}: {cleanup_e}")
+
                     # 删除动态
-                    post.delete()
-                    raise serializers.ValidationError(f"图片 {i+1} 处理失败: {str(e)}")
+                    try:
+                        post.delete()
+                        logger.info(f"Cleaned up post {post.id}")
+                    except Exception as cleanup_e:
+                        logger.error(f"Failed to cleanup post {post.id}: {cleanup_e}")
+
+                    # 检查具体错误类型
+                    error_str = str(e).lower()
+                    if 'pil' in error_str or 'pillow' in error_str:
+                        raise serializers.ValidationError(f"图片 {i+1} 格式无效或损坏")
+                    elif 'size' in error_str or 'large' in error_str:
+                        raise serializers.ValidationError(f"图片 {i+1} 文件过大")
+                    elif 'permission' in error_str:
+                        raise serializers.ValidationError(f"图片 {i+1} 保存权限不足")
+                    else:
+                        raise serializers.ValidationError(f"图片 {i+1} 处理失败: {str(e)}")
 
         except serializers.ValidationError:
             # 重新抛出验证错误
             raise
         except Exception as e:
             logger.error(f"Unexpected error during image processing for post {post.id}: {e}")
+            import traceback
+            logger.error(f"Full traceback: {traceback.format_exc()}")
+
             # 清理已创建的图片和动态
             for img in created_images:
                 try:
                     img.delete()
-                except:
-                    pass
-            post.delete()
-            raise serializers.ValidationError(f"图片处理过程中发生错误: {str(e)}")
+                    logger.info(f"Cleaned up image: {img.image.name}")
+                except Exception as cleanup_e:
+                    logger.error(f"Failed to cleanup image {img.image.name}: {cleanup_e}")
+
+            try:
+                post.delete()
+                logger.info(f"Cleaned up post {post.id}")
+            except Exception as cleanup_e:
+                logger.error(f"Failed to cleanup post {post.id}: {cleanup_e}")
+
+            raise serializers.ValidationError(f"图片处理过程中发生未知错误: {str(e)}")
 
         # 为严格模式打卡动态创建投票会话
         if post.post_type == 'checkin':
@@ -360,9 +393,12 @@ class CommentCreateSerializer(serializers.ModelSerializer):
         try:
             for i, image in enumerate(images_data):
                 try:
+                    logger.info(f"Processing comment image {i+1}/{len(images_data)} for comment {comment.id}: {image.name} ({image.size} bytes)")
+
                     # 验证图片文件
                     from utils.file_upload import validate_uploaded_file
-                    validate_uploaded_file(image, 'image')
+                    file_info = validate_uploaded_file(image, 'image')
+                    logger.info(f"Comment image validation successful for {image.name}: {file_info}")
 
                     # 创建图片记录
                     comment_image = CommentImage.objects.create(
@@ -371,33 +407,63 @@ class CommentCreateSerializer(serializers.ModelSerializer):
                         order=i
                     )
                     created_images.append(comment_image)
-                    logger.info(f"Comment image {i+1}/{len(images_data)} created for comment {comment.id}")
+                    logger.info(f"Comment image {i+1}/{len(images_data)} created successfully for comment {comment.id}: {comment_image.image.name}")
 
                 except Exception as e:
                     logger.error(f"Failed to create comment image {i+1} for comment {comment.id}: {e}")
+                    logger.error(f"Comment image details: name={image.name}, size={image.size}, content_type={getattr(image, 'content_type', 'unknown')}")
+                    import traceback
+                    logger.error(f"Full traceback: {traceback.format_exc()}")
+
                     # 清理已创建的图片
                     for img in created_images:
                         try:
                             img.delete()
-                        except:
-                            pass
+                            logger.info(f"Cleaned up comment image: {img.image.name}")
+                        except Exception as cleanup_e:
+                            logger.error(f"Failed to cleanup comment image {img.image.name}: {cleanup_e}")
+
                     # 删除评论
-                    comment.delete()
-                    raise serializers.ValidationError(f"图片 {i+1} 处理失败: {str(e)}")
+                    try:
+                        comment.delete()
+                        logger.info(f"Cleaned up comment {comment.id}")
+                    except Exception as cleanup_e:
+                        logger.error(f"Failed to cleanup comment {comment.id}: {cleanup_e}")
+
+                    # 检查具体错误类型
+                    error_str = str(e).lower()
+                    if 'pil' in error_str or 'pillow' in error_str:
+                        raise serializers.ValidationError(f"评论图片 {i+1} 格式无效或损坏")
+                    elif 'size' in error_str or 'large' in error_str:
+                        raise serializers.ValidationError(f"评论图片 {i+1} 文件过大")
+                    elif 'permission' in error_str:
+                        raise serializers.ValidationError(f"评论图片 {i+1} 保存权限不足")
+                    else:
+                        raise serializers.ValidationError(f"评论图片 {i+1} 处理失败: {str(e)}")
 
         except serializers.ValidationError:
             # 重新抛出验证错误
             raise
         except Exception as e:
             logger.error(f"Unexpected error during comment image processing for comment {comment.id}: {e}")
+            import traceback
+            logger.error(f"Full traceback: {traceback.format_exc()}")
+
             # 清理已创建的图片和评论
             for img in created_images:
                 try:
                     img.delete()
-                except:
-                    pass
-            comment.delete()
-            raise serializers.ValidationError(f"图片处理过程中发生错误: {str(e)}")
+                    logger.info(f"Cleaned up comment image: {img.image.name}")
+                except Exception as cleanup_e:
+                    logger.error(f"Failed to cleanup comment image {img.image.name}: {cleanup_e}")
+
+            try:
+                comment.delete()
+                logger.info(f"Cleaned up comment {comment.id}")
+            except Exception as cleanup_e:
+                logger.error(f"Failed to cleanup comment {comment.id}: {cleanup_e}")
+
+            raise serializers.ValidationError(f"评论图片处理过程中发生未知错误: {str(e)}")
 
         # 更新动态评论数
         post.comments_count += 1

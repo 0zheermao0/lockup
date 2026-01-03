@@ -91,6 +91,7 @@
                   <div class="upload-icon-mini">📷</div>
                   <div class="upload-text-mini">点击上传</div>
                   <div class="upload-hint-mini">JPG、PNG、SVG、GIF</div>
+                  <div class="upload-size-hint-mini">最大5MB</div>
                 </div>
                 <div v-else class="image-preview-mini">
                   <img :src="imagePreview" alt="预览图片" />
@@ -417,7 +418,20 @@ const handleImageUpload = (event: Event) => {
 
   // Validate file type
   if (!file.type.match(/^image\/(jpeg|jpg|png|gif|webp|bmp|svg\+xml)$/)) {
-    alert('请选择 JPG、PNG、SVG、GIF、WebP 或 BMP 格式的图片')
+    showToast.value = true
+    const errorData = formatErrorForNotification({
+      title: '文件格式不支持',
+      message: '请选择 JPG、PNG、SVG、GIF、WebP 或 BMP 格式的图片',
+      actionSuggestion: '请重新选择支持的图片格式',
+      severity: 'error'
+    })
+    toastData.value = {
+      ...errorData,
+      details: {
+        '当前文件类型': file.type,
+        '文件名': file.name
+      }
+    }
     return
   }
 
@@ -443,6 +457,22 @@ const handleImageUpload = (event: Event) => {
   const reader = new FileReader()
   reader.onload = (e) => {
     imagePreview.value = e.target?.result as string
+  }
+  reader.onerror = () => {
+    showToast.value = true
+    const errorData = formatErrorForNotification({
+      title: '图片读取失败',
+      message: '无法读取选择的图片文件',
+      actionSuggestion: '请检查文件是否损坏或重新选择其他图片',
+      severity: 'error'
+    })
+    toastData.value = {
+      ...errorData,
+      details: {
+        '文件名': file.name,
+        '文件大小': `${(file.size / 1024 / 1024).toFixed(2)}MB`
+      }
+    }
   }
   reader.readAsDataURL(file)
 }
@@ -583,8 +613,28 @@ const handleSubmit = async () => {
     console.log('Cleaned form data being sent:', cleanedForm)
 
     // Create the task through API (auto-publish is now handled on backend)
-    const newTask = await tasksApi.createTask(cleanedForm)
-    console.log('Task created successfully:', newTask)
+    let newTask
+    if (imageFile.value && form.autoPost) {
+      // 如果有图片且选择了自动发布，使用FormData
+      const formData = new FormData()
+
+      // 添加所有任务字段
+      Object.keys(cleanedForm).forEach(key => {
+        if (cleanedForm[key] !== undefined && cleanedForm[key] !== null) {
+          formData.append(key, cleanedForm[key])
+        }
+      })
+
+      // 添加图片
+      formData.append('images', imageFile.value)
+
+      newTask = await tasksApi.createTaskWithImages(formData)
+      console.log('Task created successfully with images:', newTask)
+    } else {
+      // 没有图片或不自动发布，使用JSON
+      newTask = await tasksApi.createTask(cleanedForm)
+      console.log('Task created successfully:', newTask)
+    }
 
     // 显示成功消息
     const successMsg = form.autoPost
@@ -1363,6 +1413,14 @@ watch(() => form.duration_type, (newValue) => {
 .upload-hint-mini {
   font-size: 0.7rem;
   color: #666;
+  line-height: 1.2;
+}
+
+.upload-size-hint-mini {
+  font-size: 0.65rem;
+  color: #007bff;
+  font-weight: 600;
+  margin-top: 0.125rem;
   line-height: 1.2;
 }
 

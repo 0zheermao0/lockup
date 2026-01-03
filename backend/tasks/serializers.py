@@ -334,6 +334,13 @@ class LockTaskCreateSerializer(serializers.ModelSerializer):
 
     description = serializers.CharField(required=False, allow_blank=True, default='')
     auto_publish = serializers.BooleanField(default=False, write_only=True)
+    images = serializers.ListField(
+        child=serializers.ImageField(),
+        required=False,
+        allow_empty=True,
+        max_length=9,  # 最多9张图片，与posts保持一致
+        write_only=True
+    )
 
     class Meta:
         model = LockTask
@@ -350,15 +357,16 @@ class LockTaskCreateSerializer(serializers.ModelSerializer):
             # 多人任务字段
             'max_participants',
             # 自动发布动态字段
-            'auto_publish'
+            'auto_publish', 'images'
         ]
         read_only_fields = ['id', 'status', 'strict_code']
 
     def create(self, validated_data):
         validated_data['user'] = self.context['request'].user
 
-        # 提取auto_publish字段，不保存到数据库
+        # 提取auto_publish和images字段，不保存到数据库
         auto_publish = validated_data.pop('auto_publish', False)
+        images = validated_data.pop('images', [])
 
         # 处理 max_participants 字段：如果为空或None，设置为1（单人任务）
         if validated_data.get('task_type') == 'board':
@@ -366,10 +374,26 @@ class LockTaskCreateSerializer(serializers.ModelSerializer):
             if max_participants is None or max_participants == 0:
                 validated_data['max_participants'] = 1
 
-        # 将auto_publish存储在上下文中，供视图使用
+        # 将auto_publish和images存储在上下文中，供视图使用
         self.context['auto_publish'] = auto_publish
+        self.context['task_images'] = images
 
         return super().create(validated_data)
+
+    def validate_images(self, value):
+        """验证图片"""
+        if not value:
+            return value
+
+        for i, image in enumerate(value):
+            try:
+                # 使用utils中的文件验证函数
+                from utils.file_upload import validate_uploaded_file
+                validate_uploaded_file(image, 'image')
+            except Exception as e:
+                raise serializers.ValidationError(f"图片 {i+1} 验证失败: {str(e)}")
+
+        return value
 
     def validate(self, data):
         """验证数据的一致性"""

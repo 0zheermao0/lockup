@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """
-Django管理命令：手动处理等级晋升
+Django管理命令：手动处理等级晋升和降级
 
 使用方法：
-    python manage.py process_level_promotions                    # 处理所有符合条件的用户
+    python manage.py process_level_promotions                    # 处理所有符合条件的用户（晋升和降级）
     python manage.py process_level_promotions --user-id 123     # 只处理指定用户
     python manage.py process_level_promotions --dry-run         # 预览模式，不实际执行
     python manage.py process_level_promotions --batch-size 500  # 自定义批处理大小
@@ -20,7 +20,7 @@ import sys
 
 
 class Command(BaseCommand):
-    help = '手动处理用户等级晋升'
+    help = '手动处理用户等级晋升和降级'
 
     def add_arguments(self, parser):
         parser.add_argument(
@@ -45,8 +45,8 @@ class Command(BaseCommand):
         parser.add_argument(
             '--level',
             type=int,
-            choices=[1, 2, 3],
-            help='只处理指定当前等级的用户（1, 2, 或 3）'
+            choices=[1, 2, 3, 4],
+            help='只处理指定当前等级的用户（1, 2, 3, 或 4）'
         )
 
         parser.add_argument(
@@ -63,7 +63,7 @@ class Command(BaseCommand):
 
     def handle(self, *args, **options):
         self.stdout.write(
-            self.style.SUCCESS('🎯 开始处理用户等级晋升...\n')
+            self.style.SUCCESS('🎯 开始处理用户等级晋升和降级...\n')
         )
 
         start_time = timezone.now()
@@ -88,7 +88,7 @@ class Command(BaseCommand):
             sys.exit(1)
 
     def _process_single_user(self, options):
-        """处理单个用户的等级晋升"""
+        """处理单个用户的等级晋升或降级"""
         user_id = options['user_id']
         dry_run = options['dry_run']
         verbose = options['verbose']
@@ -101,11 +101,12 @@ class Command(BaseCommand):
         self.stdout.write(f'🔍 检查用户: {user.username} (ID: {user.id}, 当前等级: {user.level})')
 
         # 检查是否符合晋升条件
-        target_level = user.check_level_promotion_eligibility()
+        promotion_level = user.check_level_promotion_eligibility()
+        demotion_level = user.check_level_demotion_eligibility()
 
-        if target_level is None:
+        if promotion_level is None and demotion_level is None:
             self.stdout.write(
-                self.style.WARNING(f'   ⚠️  用户 {user.username} 暂不符合晋升条件')
+                self.style.WARNING(f'   ⚠️  用户 {user.username} 暂不符合晋升或降级条件')
             )
 
             if verbose:
@@ -146,56 +147,69 @@ class Command(BaseCommand):
                 'details': []
             }
 
+        # Determine action and target level
+        target_level = promotion_level if promotion_level else demotion_level
+        action_type = 'promotion' if promotion_level else 'demotion'
+        action_verb = '晋升' if promotion_level else '降级'
+        action_icon = '⬆️' if promotion_level else '⬇️'
+
         if dry_run:
             self.stdout.write(
-                self.style.SUCCESS(f'   ✨ [预览] 用户 {user.username} 可以从 {user.level} 级晋升到 {target_level} 级')
+                self.style.SUCCESS(f'   ✨ [预览] 用户 {user.username} 可以从 {user.level} 级{action_verb}到 {target_level} 级')
             )
             return {
                 'processed': 1,
-                'promoted': 0,
+                'promoted': 1 if promotion_level else 0,
+                'demoted': 1 if demotion_level else 0,
                 'errors': 0,
                 'skipped': 0,
-                'details': [{'user': user.username, 'from_level': user.level, 'to_level': target_level, 'action': 'preview'}]
+                'details': [{'user': user.username, 'from_level': user.level, 'to_level': target_level, 'action': f'preview_{action_type}'}]
             }
 
-        # 执行晋升
+        # 执行等级变更
         try:
             with transaction.atomic():
-                user.promote_to_level(target_level, reason='manual_command')
+                old_level = user.level
+                if promotion_level:
+                    user.promote_to_level(target_level, reason='manual_command')
+                else:
+                    user.demote_to_level(target_level, reason='manual_command')
 
             self.stdout.write(
-                self.style.SUCCESS(f'   ✅ 用户 {user.username} 成功从 {user.level - 1} 级晋升到 {user.level} 级')
+                self.style.SUCCESS(f'   ✅ {action_icon} 用户 {user.username} 成功从 {old_level} 级{action_verb}到 {user.level} 级')
             )
 
             return {
                 'processed': 1,
-                'promoted': 1,
+                'promoted': 1 if promotion_level else 0,
+                'demoted': 1 if demotion_level else 0,
                 'errors': 0,
                 'skipped': 0,
-                'details': [{'user': user.username, 'from_level': user.level - 1, 'to_level': user.level, 'action': 'promoted'}]
+                'details': [{'user': user.username, 'from_level': old_level, 'to_level': user.level, 'action': action_type}]
             }
 
         except Exception as e:
             self.stdout.write(
-                self.style.ERROR(f'   ❌ 晋升用户 {user.username} 时发生错误: {str(e)}')
+                self.style.ERROR(f'   ❌ {action_verb}用户 {user.username} 时发生错误: {str(e)}')
             )
             return {
                 'processed': 1,
                 'promoted': 0,
+                'demoted': 0,
                 'errors': 1,
                 'skipped': 0,
                 'details': []
             }
 
     def _process_batch_users(self, options):
-        """批量处理用户等级晋升"""
+        """批量处理用户等级晋升和降级"""
         batch_size = options['batch_size']
         dry_run = options['dry_run']
         level_filter = options['level']
         verbose = options['verbose']
 
-        # 构建查询条件
-        queryset = User.objects.filter(level__lt=4).order_by('id')
+        # 构建查询条件 - 现在需要检查所有用户
+        queryset = User.objects.all().order_by('id')
 
         if level_filter:
             queryset = queryset.filter(level=level_filter)
@@ -218,11 +232,12 @@ class Command(BaseCommand):
         if level_filter:
             self.stdout.write(f'🎯 仅处理当前等级为 {level_filter} 的用户')
         if dry_run:
-            self.stdout.write(self.style.WARNING('🔍 预览模式 - 不会实际执行晋升'))
+            self.stdout.write(self.style.WARNING('🔍 预览模式 - 不会实际执行晋升或降级'))
 
         self.stdout.write('')
 
         promoted_count = 0
+        demoted_count = 0
         error_count = 0
         skipped_count = 0
         processed_count = 0
@@ -239,43 +254,54 @@ class Command(BaseCommand):
             for user in batch_users:
                 processed_count += 1
 
-                # 检查晋升条件
-                target_level = user.check_level_promotion_eligibility()
+                # 检查晋升和降级条件
+                promotion_level = user.check_level_promotion_eligibility()
+                demotion_level = user.check_level_demotion_eligibility()
 
-                if target_level is None:
+                if promotion_level is None and demotion_level is None:
                     skipped_count += 1
                     if verbose:
-                        self.stdout.write(f'   ⚠️  {user.username} (等级{user.level}) - 暂不符合晋升条件')
+                        self.stdout.write(f'   ⚠️  {user.username} (等级{user.level}) - 暂不符合晋升或降级条件')
                     continue
 
+                # 确定操作类型
+                target_level = promotion_level if promotion_level else demotion_level
+                action_type = 'promotion' if promotion_level else 'demotion'
+                action_verb = '晋升' if promotion_level else '降级'
+                action_icon = '⬆️' if promotion_level else '⬇️'
+
                 if dry_run:
-                    self.stdout.write(f'   ✨ [预览] {user.username} 可以从 {user.level} 级晋升到 {target_level} 级')
+                    self.stdout.write(f'   ✨ [预览] {user.username} 可以从 {user.level} 级{action_verb}到 {target_level} 级')
                     details.append({
                         'user': user.username,
                         'from_level': user.level,
                         'to_level': target_level,
-                        'action': 'preview'
+                        'action': f'preview_{action_type}'
                     })
                     continue
 
-                # 执行晋升
+                # 执行等级变更
                 try:
                     with transaction.atomic():
                         old_level = user.level
-                        user.promote_to_level(target_level, reason='manual_command')
+                        if promotion_level:
+                            user.promote_to_level(target_level, reason='manual_command')
+                            promoted_count += 1
+                        else:
+                            user.demote_to_level(target_level, reason='manual_command')
+                            demoted_count += 1
 
-                    promoted_count += 1
-                    self.stdout.write(f'   ✅ {user.username} 成功从 {old_level} 级晋升到 {user.level} 级')
+                    self.stdout.write(f'   ✅ {action_icon} {user.username} 成功从 {old_level} 级{action_verb}到 {user.level} 级')
                     details.append({
                         'user': user.username,
                         'from_level': old_level,
                         'to_level': user.level,
-                        'action': 'promoted'
+                        'action': action_type
                     })
 
                 except Exception as e:
                     error_count += 1
-                    self.stdout.write(f'   ❌ {user.username} 晋升失败: {str(e)}')
+                    self.stdout.write(f'   ❌ {user.username} {action_verb}失败: {str(e)}')
                     if verbose:
                         import traceback
                         self.stdout.write(traceback.format_exc())
@@ -283,6 +309,7 @@ class Command(BaseCommand):
         return {
             'processed': processed_count,
             'promoted': promoted_count,
+            'demoted': demoted_count,
             'errors': error_count,
             'skipped': skipped_count,
             'details': details
@@ -298,27 +325,35 @@ class Command(BaseCommand):
         self.stdout.write('='*60)
 
         if options['dry_run']:
-            self.stdout.write(self.style.WARNING('🔍 预览模式 - 未实际执行晋升'))
+            self.stdout.write(self.style.WARNING('🔍 预览模式 - 未实际执行等级变更'))
 
         self.stdout.write(f'⏱️  执行时间: {duration:.2f} 秒')
         self.stdout.write(f'👥 处理用户数: {result["processed"]}')
-        self.stdout.write(f'🎉 成功晋升: {result["promoted"]}')
+        self.stdout.write(f'⬆️  成功晋升: {result["promoted"]}')
+        self.stdout.write(f'⬇️  成功降级: {result.get("demoted", 0)}')
         self.stdout.write(f'⚠️  跳过用户: {result["skipped"]}')
         self.stdout.write(f'❌ 错误数量: {result["errors"]}')
 
         if result['details'] and options['verbose']:
             self.stdout.write('\n📋 详细信息:')
             for detail in result['details'][:20]:  # 最多显示20条详细信息
-                action_icon = {'promoted': '✅', 'preview': '👀', 'error': '❌'}.get(detail['action'], '📝')
+                action_icons = {
+                    'promotion': '⬆️', 'demotion': '⬇️',
+                    'preview_promotion': '👀⬆️', 'preview_demotion': '👀⬇️',
+                    'promoted': '✅⬆️', 'demoted': '✅⬇️',
+                    'error': '❌'
+                }
+                action_icon = action_icons.get(detail['action'], '📝')
                 self.stdout.write(f'   {action_icon} {detail["user"]}: {detail["from_level"]} → {detail["to_level"]}')
 
             if len(result['details']) > 20:
                 self.stdout.write(f'   ... 还有 {len(result["details"]) - 20} 条记录')
 
-        if result['promoted'] > 0 and not options['dry_run']:
-            self.stdout.write('\n🎊 等级晋升处理完成！用户将收到晋升通知。')
+        total_changes = result['promoted'] + result.get('demoted', 0)
+        if total_changes > 0 and not options['dry_run']:
+            self.stdout.write('\n🎊 等级变更处理完成！用户将收到相关通知。')
         elif options['dry_run'] and result['details']:
-            self.stdout.write(f'\n👀 预览完成！发现 {len(result["details"])} 个用户符合晋升条件。')
-            self.stdout.write('   使用不带 --dry-run 参数的命令来实际执行晋升。')
+            self.stdout.write(f'\n👀 预览完成！发现 {len(result["details"])} 个用户符合等级变更条件。')
+            self.stdout.write('   使用不带 --dry-run 参数的命令来实际执行变更。')
         else:
             self.stdout.write('\n✨ 处理完成！')
