@@ -20,12 +20,12 @@ async function parseRawError(error: any): Promise<ApiError> {
         error?.name === 'AbortError' ||        // fetch
         error?.message?.toLowerCase().includes('timeout')
     ) {
-        return new ApiError('Request timeout', undefined, error);
+        return new ApiError('Request timeout', 0, error);
     }
 
     // if there is no response (e.g., network error)
     if (!error?.response) {
-        return new ApiError('Network connection failed', undefined, error);
+        return new ApiError('Network connection failed', 0, error);
     }
 
     const status = error.response.status;
@@ -48,48 +48,59 @@ async function parseRawError(error: any): Promise<ApiError> {
         if (error_resp_data.error) {
             return new ApiError(error_resp_data.error, status, error_resp_data);
         }
-        else if (error_resp_data.message) {
+
+        if (error_resp_data.message) {
             return new ApiError(error_resp_data.message, status, error_resp_data);
         }
-        else if (error_resp_data.detail) {
+
+        if (error_resp_data.detail) {
             return new ApiError(error_resp_data.detail, status, error_resp_data);
         }
-        else if (error_resp_data.non_field_errors) {
+
+        if (error_resp_data.non_field_errors) {
             return Array.isArray(error_resp_data.non_field_errors)
                 ? new ApiError(error_resp_data.non_field_errors[0], status, error_resp_data)
                 : new ApiError(error_resp_data.non_field_errors, status, error_resp_data);
         }
-        else if (error_resp_data.reason) {
+
+        if (error_resp_data.reason) {
             return new ApiError(error_resp_data.reason, status, error_resp_data);
         }
-        else if (error_resp_data.error_description) {
+
+        if (error_resp_data.error_description) {
             return new ApiError(error_resp_data.error_description, status, error_resp_data);
         }
-        else {
-            const fieldErrors = Object.keys(error_resp_data).filter(key =>
-                key != "code" && Array.isArray(error_resp_data[key])
-            );
 
-            if (fieldErrors.length > 0) {
-                const firstField = fieldErrors[0];
-                if (firstField) {
-                    const fieldErrorArray = error_resp_data[firstField];
-                    if (Array.isArray(fieldErrorArray) && fieldErrorArray.length > 0) {
-                        const firstError = fieldErrorArray[0];
-                        return new ApiError(`${firstField}: ${firstError}`, status, error_resp_data);
-                    }
+        // check for field-specific errors
+        const fieldErrors = Object.keys(error_resp_data).filter(key =>
+            key != "code" && Array.isArray(error_resp_data[key])
+        );
+        if (fieldErrors.length > 0) {
+            const firstField = fieldErrors[0];
+            if (firstField) {
+                const fieldErrorArray = error_resp_data[firstField];
+                if (Array.isArray(fieldErrorArray) && fieldErrorArray.length > 0) {
+                    const firstError = fieldErrorArray[0];
+                    return new ApiError(`${firstField}: ${firstError}`, status, error_resp_data);
                 }
             }
-            else if (error_resp_data.code) {
-                return new ApiError(error_resp_data.code, status, error_resp_data);
-            }
-            else {
-                return new ApiError(`HTTP ${status} Error`, status, error_resp_data);
-            }
+        }
+
+        if (error_resp_data.code) {
+            return new ApiError(error_resp_data.code, status, error_resp_data);
         }
     }
 
-    // json conversion failed or empty body
+    // json conversion failed or empty body, return http code
+    if (status == 401) {
+        return new ApiError('AUTHENTICATION_REQUIRED', status, error);
+    }
+    if (status == 403) {
+        return new ApiError('PERMISSION_DENIED', status, error);
+    }
+    if (status == 429) {
+        return new ApiError('RATE_LIMIT_EXCEEDED', status, error);
+    }
     return new ApiError(`HTTP ${status} Error`, status, error);
 }
 
