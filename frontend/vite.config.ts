@@ -16,10 +16,35 @@ export default defineConfig({
     },
   },
   build: {
+    // 设置chunk大小警告阈值为1MB (1000KB)
+    chunkSizeWarningLimit: 1000,
     rollupOptions: {
       output: {
-        // 更稳定的文件名策略
-        manualChunks: undefined,
+        // 智能分块策略 - 只分离实际存在的大型依赖
+        manualChunks(id) {
+          if (id.includes('node_modules')) {
+            // Vue生态系统 (vue, vue-router, pinia)
+            if (id.includes('vue') || id.includes('pinia') || id.includes('vue-router')) {
+              return 'vue-vendor';
+            }
+            // UI组件库 (naive-ui是最大的依赖)
+            if (id.includes('naive-ui')) {
+              return 'ui-vendor';
+            }
+            // 图标库
+            if (id.includes('@vicons')) {
+              return 'icons-vendor';
+            }
+            // 其他工具库 (axios, @vueuse/core等)
+            if (id.includes('axios') || id.includes('@vueuse')) {
+              return 'utils-vendor';
+            }
+          }
+        },
+        // 为chunk文件添加hash以支持长期缓存
+        chunkFileNames: 'js/[name]-[hash].js',
+        entryFileNames: 'js/[name]-[hash].js',
+        assetFileNames: 'assets/[name]-[hash].[ext]'
       }
     }
   },
