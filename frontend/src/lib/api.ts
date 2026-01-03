@@ -35,7 +35,6 @@ async function handleResponse<T>(response: Response): Promise<T> {
       (Array.isArray(errorData.non_field_errors) ? errorData.non_field_errors.join(' ') : null) ||
       `HTTP ${response.status}: ${response.statusText}`;
 
-    // console.log("DEBUG: ERROR MESSAGE", { error: errorData.error, message: errorData.message, errordata: errorData });
     console.log('Final error message:', errorMessage);
     throw new ApiError(
       errorMessage,
