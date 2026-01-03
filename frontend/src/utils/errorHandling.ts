@@ -3,6 +3,8 @@
  * 将后端API错误映射为用户友好的错误消息
  */
 
+import { ApiError } from "@/lib/api"
+
 export interface ApiError {
   message: string
   code?: string
@@ -214,68 +216,93 @@ const POST_CREATION_ERROR_MAP: Record<string, UserFriendlyError> = {
  * 解析后端API错误响应
  */
 export function parseApiError(error: any): ApiError {
+  console.log("debugddddddd", error, error.data, error.response);
+  let status: number | undefined
+  let data: any
+
+
+  // TODO: better routing?
+  // 处理ApiError错误格式
+  if (error.data) {
+    console.log("debuginsideapieror");
+    status = error.status
+    data = error.data
+  }
   // 处理axios错误格式
-  if (error.response) {
-    const { status, data } = error.response
+  else if (error.response) {
+    console.log("debuginsideaxioserror");
+    status = error.response.status
+    data = error.response.data
+  }
+  else {
+    console.log("debuginsideunknownerror");
+    status = undefined
+    data = error
+  }
 
-    if (data && typeof data === 'object') {
-      // Django REST framework 标准错误格式
-      if (data.detail) {
-        return {
-          message: data.detail,
-          code: data.code || `HTTP_${status}`,
-          details: data
-        }
+  console.log("debugparsedata", { status, data });
+
+  if (data && typeof data === 'object') {
+    // Django REST framework 标准错误格式
+    if (data.detail) {
+      return {
+        message: data.detail,
+        code: data.code || `HTTP_${status}`,
+        details: data
       }
+    }
 
-      // 字段验证错误
-      if (data.non_field_errors) {
-        return {
-          message: Array.isArray(data.non_field_errors)
-            ? data.non_field_errors[0]
-            : data.non_field_errors,
-          code: 'VALIDATION_ERROR',
-          details: data
-        }
+    // 字段验证错误
+    if (data.non_field_errors) {
+      return {
+        message: Array.isArray(data.non_field_errors)
+          ? data.non_field_errors[0]
+          : data.non_field_errors,
+        code: 'VALIDATION_ERROR',
+        details: data
       }
+    }
 
-      // 特定字段错误
-      const fieldErrors = Object.keys(data).filter(key =>
-        key !== 'detail' && key !== 'code' && Array.isArray(data[key])
-      )
+    // 特定字段错误
+    const fieldErrors = Object.keys(data).filter(key =>
+      key !== 'detail' && key !== 'code' && Array.isArray(data[key])
+    )
 
-      if (fieldErrors.length > 0) {
-        const firstField = fieldErrors[0]
-        if (firstField) {
-          const fieldErrorArray = data[firstField]
-          if (Array.isArray(fieldErrorArray) && fieldErrorArray.length > 0) {
-            const firstError = fieldErrorArray[0]
-            return {
-              message: `${firstField}: ${firstError}`,
-              code: `FIELD_ERROR_${firstField.toUpperCase()}`,
-              details: data
-            }
+    if (fieldErrors.length > 0) {
+      const firstField = fieldErrors[0]
+      if (firstField) {
+        const fieldErrorArray = data[firstField]
+        if (Array.isArray(fieldErrorArray) && fieldErrorArray.length > 0) {
+          const firstError = fieldErrorArray[0]
+          return {
+            message: `${firstField}: ${firstError}`,
+            code: `FIELD_ERROR_${firstField.toUpperCase()}`,
+            details: data
           }
-        }
-      }
-
-      // 通用错误消息
-      if (data.error) {
-        return {
-          message: data.error,
-          code: data.code || `HTTP_${status}`,
-          details: data
         }
       }
     }
 
-    // HTTP状态码错误
+    // 通用错误消息
+    if (data.error) {
+      return {
+        message: data.error,
+        code: data.code || `HTTP_${status}`,
+        details: data
+      }
+    }
+  }
+
+  // HTTP状态码错误
+  if (status) {
+
     return {
       message: `HTTP ${status} Error`,
       code: `HTTP_${status}`,
       details: { status, data }
     }
   }
+
 
   // 网络错误
   if (error.code === 'ECONNABORTED' || error.message?.includes('timeout')) {
