@@ -323,66 +323,59 @@ export function mapToUserFriendlyError(
 ): UserFriendlyError {
   const errorMap = context === 'task' ? TASK_CREATION_ERROR_MAP : POST_CREATION_ERROR_MAP
 
-  // 优先匹配错误代码
-  if (apiError.code) {
-    const mappedError = errorMap[apiError.code]
-    if (mappedError) {
-      return mappedError
-    }
-  }
 
   // 尝试根据错误消息匹配
-  const message = apiError.message.toLowerCase()
+  const detailedMessage = apiError?.details?.message?.toLowerCase?.() ?? ''
 
   // 任务创建相关错误匹配
   if (context === 'task') {
-    if (message.includes('title') && message.includes('required')) {
+    if (detailedMessage.includes('title') && detailedMessage.includes('required')) {
       return errorMap['TITLE_REQUIRED'] ?? getDefaultError(apiError)
     }
-    if (message.includes('持续时间') && message.includes('至少')) {
+    if (detailedMessage.includes('持续时间') && detailedMessage.includes('至少')) {
       return errorMap['DURATION_TOO_SHORT'] ?? getDefaultError(apiError)
     }
-    if (message.includes('已经有一个正在进行的带锁任务')) {
+    if (detailedMessage.includes('已经有一个正在进行的带锁任务')) {
       return errorMap['ACTIVE_LOCK_TASK_EXISTS'] ?? getDefaultError(apiError)
     }
-    if (message.includes('积分不足') || message.includes('insufficient')) {
+    if (detailedMessage.includes('积分不足') || detailedMessage.includes('insufficient')) {
       return errorMap['INSUFFICIENT_COINS'] ?? getDefaultError(apiError)
     }
-    if (message.includes('背包') || message.includes('inventory')) {
+    if (detailedMessage.includes('背包') || detailedMessage.includes('inventory')) {
       return errorMap['INVENTORY_FULL'] ?? getDefaultError(apiError)
     }
-    if (message.includes('随机时间') && message.includes('最大')) {
+    if (detailedMessage.includes('随机时间') && detailedMessage.includes('最大')) {
       return errorMap['RANDOM_DURATION_MAX_REQUIRED'] ?? getDefaultError(apiError)
     }
-    if (message.includes('投票') && message.includes('比例')) {
+    if (detailedMessage.includes('投票') && detailedMessage.includes('比例')) {
       return errorMap['VOTE_AGREEMENT_RATIO_REQUIRED'] ?? getDefaultError(apiError)
     }
-    if (message.includes('奖励') && message.includes('必须')) {
+    if (detailedMessage.includes('奖励') && detailedMessage.includes('必须')) {
       return errorMap['REWARD_REQUIRED'] ?? getDefaultError(apiError)
     }
-    if (message.includes('奖励') && message.includes('10000')) {
+    if (detailedMessage.includes('奖励') && detailedMessage.includes('10000')) {
       return errorMap['REWARD_TOO_HIGH'] ?? getDefaultError(apiError)
     }
   }
 
   // 动态创建相关错误匹配
   if (context === 'post') {
-    if (message.includes('content') && message.includes('required')) {
+    if (detailedMessage.includes('content') && detailedMessage.includes('required')) {
       return errorMap['CONTENT_REQUIRED'] ?? getDefaultError(apiError)
     }
-    if (message.includes('没有活跃的严格模式')) {
+    if (detailedMessage.includes('没有活跃的严格模式')) {
       return errorMap['NO_ACTIVE_STRICT_TASK'] ?? getDefaultError(apiError)
     }
-    if (message.includes('已经发布过打卡')) {
+    if (detailedMessage.includes('已经发布过打卡')) {
       return errorMap['CHECKIN_ALREADY_EXISTS'] ?? getDefaultError(apiError)
     }
-    if (message.includes('验证码') || message.includes('verification')) {
+    if (detailedMessage.includes('验证码') || detailedMessage.includes('verification')) {
       return errorMap['INVALID_VERIFICATION_CODE'] ?? getDefaultError(apiError)
     }
-    if (message.includes('file') && message.includes('large')) {
+    if (detailedMessage.includes('file') && detailedMessage.includes('large')) {
       return errorMap['FILE_TOO_LARGE'] ?? getDefaultError(apiError)
     }
-    if (message.includes('file') && message.includes('type')) {
+    if (detailedMessage.includes('file') && detailedMessage.includes('type')) {
       return errorMap['INVALID_FILE_TYPE'] ?? getDefaultError(apiError)
     }
   }
@@ -390,17 +383,25 @@ export function mapToUserFriendlyError(
   // 通用错误匹配
   const commonErrorMap = context === 'task' ? TASK_CREATION_ERROR_MAP : POST_CREATION_ERROR_MAP
 
-  if (message.includes('authentication') || message.includes('登录')) {
+  if (detailedMessage.includes('authentication') || detailedMessage.includes('登录')) {
     return commonErrorMap['AUTHENTICATION_REQUIRED'] ?? getDefaultError(apiError)
   }
-  if (message.includes('network') || message.includes('网络')) {
+  if (detailedMessage.includes('network') || detailedMessage.includes('网络')) {
     return commonErrorMap['NETWORK_ERROR'] ?? getDefaultError(apiError)
   }
-  if (message.includes('timeout') || message.includes('超时')) {
+  if (detailedMessage.includes('timeout') || detailedMessage.includes('超时')) {
     return commonErrorMap['TIMEOUT_ERROR'] ?? getDefaultError(apiError)
   }
-  if (message.includes('server') || message.includes('500')) {
+  if (detailedMessage.includes('server') || detailedMessage.includes('500')) {
     return commonErrorMap['SERVER_ERROR'] ?? getDefaultError(apiError)
+  }
+
+  // 最后匹配错误代码
+  if (apiError.code) {
+    const mappedError = errorMap[apiError.code]
+    if (mappedError) {
+      return mappedError
+    }
   }
 
   // 默认错误
