@@ -274,6 +274,7 @@ export function parseApiError(error: any): ApiError {
         const fieldErrorArray = data[firstField]
         if (Array.isArray(fieldErrorArray) && fieldErrorArray.length > 0) {
           const firstError = fieldErrorArray[0]
+          console.log("debugreturn", `${firstField}: ${firstError}`, `FIELD_ERROR_${firstField.toUpperCase()}`, data);
           return {
             message: `${firstField}: ${firstError}`,
             code: `FIELD_ERROR_${firstField.toUpperCase()}`,
@@ -352,7 +353,8 @@ export function mapToUserFriendlyError(
 
 
   // 尝试根据错误消息匹配
-  const detailedMessage = apiError?.details?.message?.toLowerCase?.() ?? ''
+  const detailedMessage = apiError?.message?.toLowerCase?.() ?? ''
+  console.log("debugmappingerror", detailedMessage);
 
   // 任务创建相关错误匹配
   if (context === 'task') {
