@@ -33,6 +33,11 @@ app.conf.update(
     result_serializer='json',
     accept_content=['json'],
 
+    # Default queue configuration
+    task_default_queue='default',
+    task_default_exchange='default',
+    task_default_routing_key='default',
+
     # Timezone settings
     timezone=settings.TIME_ZONE,
     enable_utc=True,

@@ -1904,14 +1904,14 @@ def process_expired_board_tasks(self):
 def process_deadline_reminders_8h(self):
     """
     处理8小时截止提醒 - 每30分钟运行
-    查找7.5-8.5小时内到期的任务，向未提交参与者发送提醒
+    查找0.5-8.5小时内到期的任务，向未提交参与者发送提醒
     """
     logger.info("Starting 8h deadline reminders processing")
 
     try:
         with transaction.atomic():
             now = timezone.now()
-            start_window = now + timedelta(hours=7.5)
+            start_window = now + timedelta(hours=0.5)
             end_window = now + timedelta(hours=8.5)
 
             # 查找即将到期的任务板任务
