@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
-import { authApi, ApiError } from '../../lib/api';
+import { authApi, ApiError } from '../../lib/api-commons';
 
 export const LoginForm: React.FC = () => {
   const [formData, setFormData] = useState({

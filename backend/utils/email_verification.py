@@ -334,3 +334,63 @@ def verify_email_code(email: str, code: str) -> tuple[bool, str]:
 
     logger.info(f"Email verification successful for {email}")
     return True, "验证成功"
+
+
+def validate_email_code_for_registration(email: str, code: str) -> tuple[bool, str]:
+    """
+    验证邮箱验证码用于注册（不标记为已使用）
+
+    Args:
+        email: 邮箱地址
+        code: 验证码
+
+    Returns:
+        tuple[bool, str]: (是否验证成功, 错误消息)
+    """
+    if not email or not code:
+        return False, "邮箱和验证码不能为空"
+
+    # 查找匹配的验证码（包括已使用的）
+    verification = EmailVerification.objects.filter(
+        email=email,
+        verification_code=code
+    ).first()
+
+    if not verification:
+        return False, "验证码错误或已失效"
+
+    # 检查是否过期
+    if verification.is_expired():
+        return False, "验证码已过期"
+
+    logger.info(f"Email verification validated for registration: {email}")
+    return True, "验证成功"
+
+
+def mark_email_verification_as_used(email: str, code: str) -> bool:
+    """
+    标记邮箱验证码为已使用（用于注册完成后）
+
+    Args:
+        email: 邮箱地址
+        code: 验证码
+
+    Returns:
+        bool: 是否成功标记
+    """
+    try:
+        verification = EmailVerification.objects.filter(
+            email=email,
+            verification_code=code,
+            is_used=False
+        ).first()
+
+        if verification and not verification.is_expired():
+            verification.is_used = True
+            verification.save()
+            logger.info(f"Email verification marked as used for registration: {email}")
+            return True
+        return False
+    except Exception as e:
+        logger.error(f"Failed to mark verification as used for {email}: {e}")
+        return False
