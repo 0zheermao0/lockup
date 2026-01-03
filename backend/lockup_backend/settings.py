@@ -45,6 +45,7 @@ INSTALLED_APPS = [
     'rest_framework',
     'rest_framework.authtoken',
     'corsheaders',
+    'anymail',
     # Celery apps
     'django_celery_beat',
     'django_celery_results',
@@ -428,3 +429,27 @@ LOGGING = {
         },
     },
 }
+
+
+# =============================================================================
+# EMAIL CONFIGURATION
+# =============================================================================
+
+# Main SMTP relay: Mailgun
+EMAIL_BACKEND = "anymail.backends.mailgun.EmailBackend"
+ANYMAIL = {
+   "MAILGUN_API_KEY": "",
+   "MAILGUN_SENDER_DOMAIN": "lock-up.domain.name", 
+}
+
+DEFAULT_FROM_EMAIL = "noreply@lock-up.domain.name"
+SERVER_EMAIL = "server@lock-up.domain.name"
+
+
+# fallback SMTP relay: Local SMTP server postfix
+FALLBACK_EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
+FALLBACK_EMAIL_HOST = 'smtp.gmail.com'
+FALLBACK_EMAIL_PORT = 587
+FALLBACK_EMAIL_USE_TLS = True
+FALLBACK_EMAIL_HOST_USER = ""
+FALLBACK_EMAIL_HOST_PASSWORD = ''
