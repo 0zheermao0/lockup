@@ -110,6 +110,29 @@ class PostImage(models.Model):
     def __str__(self):
         return f"{self.post.user.username} - Image {self.order}"
 
+    def save(self, *args, **kwargs):
+        """重写save方法，添加错误日志记录"""
+        import logging
+        from django.db import OperationalError, IntegrityError
+        logger = logging.getLogger(__name__)
+
+        try:
+            logger.info(f"Saving PostImage for post {self.post.id}, order {self.order}")
+            super().save(*args, **kwargs)
+            logger.info(f"PostImage saved successfully: {self.id}")
+        except OperationalError as e:
+            logger.error(f"SQLite OperationalError saving PostImage for post {self.post.id}: {e}")
+            # 检查是否是数据库锁定错误
+            if 'database is locked' in str(e).lower():
+                logger.error("Database is locked - possible concurrency issue")
+            raise
+        except IntegrityError as e:
+            logger.error(f"IntegrityError saving PostImage for post {self.post.id}: {e}")
+            raise
+        except Exception as e:
+            logger.error(f"Unexpected error saving PostImage for post {self.post.id}: {e}")
+            raise
+
 
 class PostLike(models.Model):
     """动态点赞模型"""
