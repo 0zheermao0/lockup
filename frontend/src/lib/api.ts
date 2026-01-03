@@ -6,7 +6,7 @@ import type {
   EmailVerificationVerifyRequest, EmailVerificationVerifyResponse
 } from '../types/index';
 
-import { apiRequest } from './api-commons'
+import { apiRequest, handleResponse } from './api-commons'
 import { API_BASE_URL } from '../config/index.js';
 
 export const authApi = {
@@ -45,6 +45,7 @@ export const authApi = {
     });
   },
 
+  // TODO: why these request is not go through apiRequest?
   async uploadAvatar(avatarFile: File): Promise<{ message: string; avatar_url: string }> {
     const formData = new FormData();
     formData.append('avatar', avatarFile);

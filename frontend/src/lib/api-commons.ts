@@ -105,7 +105,7 @@ async function parseRawError(error: any): Promise<ApiError> {
 }
 
 
-async function handleResponse<T>(response: Response): Promise<T> {
+export async function handleResponse<T>(response: Response): Promise<T> {
     if (response.ok)
         return response.json();
 
