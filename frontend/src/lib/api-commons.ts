@@ -105,7 +105,7 @@ async function parseRawError(error: any): Promise<ApiError> {
 }
 
 
-export async function handleResponse<T>(response: Response): Promise<T> {
+async function handleResponse<T>(response: Response): Promise<T> {
     if (response.ok)
         return response.json();
 
@@ -116,6 +116,21 @@ export async function handleResponse<T>(response: Response): Promise<T> {
 
     console.log('API Error: Message:', apiError.message, 'Status:', apiError.status, 'Data:', apiError.data);
     throw apiError;
+}
+
+async function fetchWithTimeout(input: RequestInfo, init?: RequestInit, timeoutMs = 10000): Promise<Response> {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+
+    try {
+        const response = await fetch(input, {
+            ...init,
+            signal: controller.signal
+        });
+        return response;
+    } finally {
+        clearTimeout(timeoutId);
+    }
 }
 
 export async function apiRequest<T>(
@@ -135,14 +150,15 @@ export async function apiRequest<T>(
     };
 
     try {
-        const response = await fetch(fullUrl, config);
+        const response = await fetchWithTimeout(fullUrl, config);
         return await handleResponse<T>(response);
     } catch (fetchError) {
         // If it's already an ApiError from handleResponse, re-throw it as-is
         if (fetchError instanceof ApiError) {
             throw fetchError;
         }
-        // Only wrap actual network errors
-        throw new Error(`Network error: ${(fetchError as any)?.message || String(fetchError)}`);
+        // dont wrap, the parseRawError can handle it
+        const apiError = await parseRawError(fetchError);
+        throw apiError;
     }
 }
