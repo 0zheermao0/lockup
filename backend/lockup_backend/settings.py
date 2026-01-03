@@ -56,6 +56,7 @@ INSTALLED_APPS = [
     'store',
     'telegram_bot',
     'events',
+    'utils',
 ]
 
 MIDDLEWARE = [
@@ -438,18 +439,18 @@ LOGGING = {
 # Main SMTP relay: Mailgun
 EMAIL_BACKEND = "anymail.backends.mailgun.EmailBackend"
 ANYMAIL = {
-   "MAILGUN_API_KEY": "",
-   "MAILGUN_SENDER_DOMAIN": "lock-up.domain.name", 
+   "MAILGUN_API_KEY": os.getenv('MAILGUN_API_KEY', ''),
+   "MAILGUN_SENDER_DOMAIN": os.getenv('MAILGUN_SENDER_DOMAIN', 'lock-up.zheermao.top'),
 }
 
-DEFAULT_FROM_EMAIL = "noreply@lock-up.domain.name"
-SERVER_EMAIL = "server@lock-up.domain.name"
+DEFAULT_FROM_EMAIL = os.getenv('DEFAULT_FROM_EMAIL', "noreply@lock-up.zheermao.top")
+SERVER_EMAIL = os.getenv('SERVER_EMAIL', "server@lock-up.zheermao.top")
 
 
-# fallback SMTP relay: Local SMTP server postfix
+# fallback SMTP relay: Local SMTP server postfix or external SMTP
 FALLBACK_EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
-FALLBACK_EMAIL_HOST = 'smtp.gmail.com'
-FALLBACK_EMAIL_PORT = 587
-FALLBACK_EMAIL_USE_TLS = True
-FALLBACK_EMAIL_HOST_USER = ""
-FALLBACK_EMAIL_HOST_PASSWORD = ''
+FALLBACK_EMAIL_HOST = os.getenv('FALLBACK_EMAIL_HOST', 'localhost')
+FALLBACK_EMAIL_PORT = int(os.getenv('FALLBACK_EMAIL_PORT', '25'))
+FALLBACK_EMAIL_USE_TLS = os.getenv('FALLBACK_EMAIL_USE_TLS', 'False').lower() == 'true'
+FALLBACK_EMAIL_HOST_USER = os.getenv('FALLBACK_EMAIL_HOST_USER', '')
+FALLBACK_EMAIL_HOST_PASSWORD = os.getenv('FALLBACK_EMAIL_HOST_PASSWORD', '')

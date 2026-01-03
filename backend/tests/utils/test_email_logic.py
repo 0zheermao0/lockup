@@ -1,9 +1,10 @@
+import os
 from utils.email import EMailSendStatus, _send_email, send_email_task
 from anymail.exceptions import AnymailError
 from smtplib import SMTPException
 
 
-TEST_EMAIL = "changhai0109@hotmail.com"
+TEST_EMAIL = os.getenv('TEST_EMAIL', 'test@example.com')
 
 def test_mailgun_success(mocker):
     mock_send = mocker.patch(
