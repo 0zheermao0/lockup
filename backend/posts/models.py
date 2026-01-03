@@ -351,6 +351,29 @@ class CommentImage(models.Model):
     def __str__(self):
         return f"{self.comment.user.username} - Comment Image {self.order}"
 
+    def save(self, *args, **kwargs):
+        """重写save方法，添加错误日志记录"""
+        import logging
+        from django.db import OperationalError, IntegrityError
+        logger = logging.getLogger(__name__)
+
+        try:
+            logger.info(f"Saving CommentImage for comment {self.comment.id}, order {self.order}")
+            super().save(*args, **kwargs)
+            logger.info(f"CommentImage saved successfully: {self.id}")
+        except OperationalError as e:
+            logger.error(f"SQLite OperationalError saving CommentImage for comment {self.comment.id}: {e}")
+            # 检查是否是数据库锁定错误
+            if 'database is locked' in str(e).lower():
+                logger.error("Database is locked - possible concurrency issue")
+            raise
+        except IntegrityError as e:
+            logger.error(f"IntegrityError saving CommentImage for comment {self.comment.id}: {e}")
+            raise
+        except Exception as e:
+            logger.error(f"Unexpected error saving CommentImage for comment {self.comment.id}: {e}")
+            raise
+
 
 class CommentLike(models.Model):
     """评论点赞模型"""

@@ -1,6 +1,9 @@
+import logging
 from rest_framework import serializers
 from .models import Post, PostImage, PostLike, Comment, CommentImage, CommentLike, CheckinVotingSession, CheckinVote
 from users.serializers import UserPublicSerializer
+
+logger = logging.getLogger(__name__)
 
 
 class PostImageSerializer(serializers.ModelSerializer):
@@ -352,13 +355,49 @@ class CommentCreateSerializer(serializers.ModelSerializer):
             **validated_data
         )
 
-        # 创建评论图片
-        for i, image in enumerate(images_data):
-            CommentImage.objects.create(
-                comment=comment,
-                image=image,
-                order=i
-            )
+        # 创建评论图片 - 添加安全验证和错误处理
+        created_images = []
+        try:
+            for i, image in enumerate(images_data):
+                try:
+                    # 验证图片文件
+                    from utils.file_upload import validate_uploaded_file
+                    validate_uploaded_file(image, 'image')
+
+                    # 创建图片记录
+                    comment_image = CommentImage.objects.create(
+                        comment=comment,
+                        image=image,
+                        order=i
+                    )
+                    created_images.append(comment_image)
+                    logger.info(f"Comment image {i+1}/{len(images_data)} created for comment {comment.id}")
+
+                except Exception as e:
+                    logger.error(f"Failed to create comment image {i+1} for comment {comment.id}: {e}")
+                    # 清理已创建的图片
+                    for img in created_images:
+                        try:
+                            img.delete()
+                        except:
+                            pass
+                    # 删除评论
+                    comment.delete()
+                    raise serializers.ValidationError(f"图片 {i+1} 处理失败: {str(e)}")
+
+        except serializers.ValidationError:
+            # 重新抛出验证错误
+            raise
+        except Exception as e:
+            logger.error(f"Unexpected error during comment image processing for comment {comment.id}: {e}")
+            # 清理已创建的图片和评论
+            for img in created_images:
+                try:
+                    img.delete()
+                except:
+                    pass
+            comment.delete()
+            raise serializers.ValidationError(f"图片处理过程中发生错误: {str(e)}")
 
         # 更新动态评论数
         post.comments_count += 1

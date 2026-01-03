@@ -123,7 +123,7 @@
                 <div @click="triggerCommentFileInput" class="upload-zone">
                   <div v-if="selectedCommentImages.length === 0" class="upload-placeholder">
                     📷 添加图片 (可选)
-                    <span class="upload-hint">点击选择图片</span>
+                    <span class="upload-hint">点击选择图片 (最多3张，每张不超过5MB)</span>
                   </div>
                   <div v-else class="selected-images">
                     <div
@@ -660,16 +660,36 @@ const handleCommentImageSelect = (event: Event) => {
 
   for (let i = 0; i < files.length; i++) {
     const file = files[i]
-    if (file && file.type.startsWith('image/')) {
-      const reader = new FileReader()
-      reader.onload = (e) => {
-        selectedCommentImages.value.push({
-          file: file,
-          preview: e.target?.result as string
-        })
-      }
-      reader.readAsDataURL(file)
+
+    // 验证文件类型
+    if (!file.type.startsWith('image/')) {
+      alert(`文件 ${file.name} 不是图片格式，请选择图片文件`)
+      continue
     }
+
+    // 验证文件大小（5MB限制）
+    if (file.size > 5 * 1024 * 1024) {
+      alert(`图片 ${file.name} 超过了5MB大小限制，请压缩图片或选择较小的文件`)
+      continue
+    }
+
+    // 检查是否已达到最大数量限制
+    if (selectedCommentImages.value.length >= 3) {
+      alert('最多只能上传3张图片')
+      break
+    }
+
+    const reader = new FileReader()
+    reader.onload = (e) => {
+      selectedCommentImages.value.push({
+        file: file,
+        preview: e.target?.result as string
+      })
+    }
+    reader.onerror = () => {
+      alert(`读取图片 ${file.name} 失败，请重试`)
+    }
+    reader.readAsDataURL(file)
   }
 
   // Clear input value to allow selecting same file again
