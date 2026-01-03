@@ -215,7 +215,6 @@ const POST_CREATION_ERROR_MAP: Record<string, UserFriendlyError> = {
  * @deprecated 解析后端API错误响应
  */
 export function parseApiError(error: any): ApiError {
-  console.log("debugddddddd", error, error.data, error.response);
   let status: number | undefined
   let data: any
 
@@ -223,23 +222,18 @@ export function parseApiError(error: any): ApiError {
   // TODO: better routing?
   // 处理ApiError错误格式
   if (error.data) {
-    console.log("debuginsideapieror");
     status = error.status
     data = error.data
   }
   // 处理axios错误格式
   else if (error.response) {
-    console.log("debuginsideaxioserror");
     status = error.response.status
     data = error.response.data
   }
   else {
-    console.log("debuginsideunknownerror");
     status = undefined
     data = error
   }
-
-  console.log("debugparsedata", { status, data });
 
   if (data && typeof data === 'object') {
     // Django REST framework 标准错误格式
@@ -273,7 +267,6 @@ export function parseApiError(error: any): ApiError {
         const fieldErrorArray = data[firstField]
         if (Array.isArray(fieldErrorArray) && fieldErrorArray.length > 0) {
           const firstError = fieldErrorArray[0]
-          console.log("debugreturn", `${firstField}: ${firstError}`, `FIELD_ERROR_${firstField.toUpperCase()}`, data);
           return {
             message: `${firstField}: ${firstError}`,
             code: `FIELD_ERROR_${firstField.toUpperCase()}`,
@@ -353,7 +346,6 @@ export function mapToUserFriendlyError(
 
   // 尝试根据错误消息匹配
   const detailedMessage = apiError?.message?.toLowerCase?.() ?? ''
-  console.log("debugmappingerror", detailedMessage);
 
   // 任务创建相关错误匹配
   if (context === 'task') {

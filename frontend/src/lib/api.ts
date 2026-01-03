@@ -9,7 +9,6 @@ import type {
 import { apiRequest } from './api-commons'
 import { API_BASE_URL } from '../config/index.js';
 
-
 export const authApi = {
   async login(credentials: LoginRequest): Promise<{ token: string; user: User }> {
     return apiRequest('/auth/login/', {
