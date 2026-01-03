@@ -1,5 +1,5 @@
-import { apiRequest } from './api-commons'
-import { API_BASE_URL } from '../config/index.js';
+import { apiRequest, ApiError } from './api-commons'
+import { API_BASE_URL } from '../config/index';
 
 export interface TelegramBindRequest {
   telegram_user_id: number;

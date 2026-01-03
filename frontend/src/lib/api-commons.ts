@@ -106,8 +106,18 @@ async function parseRawError(error: any): Promise<ApiError> {
 
 
 export async function handleResponse<T>(response: Response): Promise<T> {
-    if (response.ok)
-        return response.json();
+    if (response.ok) {
+        // Handle responses with no content (like DELETE requests)
+        if (response.status === 204 || response.headers.get('content-length') === '0') {
+            return null as T;
+        }
+
+        try {
+            return await response.json();
+        } catch (jsonError) {
+            throw new ApiError('Failed to parse response JSON', response.status, jsonError);
+        }
+    }
 
     // ---------------------------------------------------------------
     // response not okay, now doing error handling process

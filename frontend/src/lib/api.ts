@@ -6,8 +6,8 @@ import type {
   EmailVerificationVerifyRequest, EmailVerificationVerifyResponse
 } from '../types/index';
 
-import { apiRequest, handleResponse } from './api-commons'
-import { API_BASE_URL } from '../config/index.js';
+import { apiRequest, handleResponse, ApiError } from './api-commons'
+import { API_BASE_URL } from '../config/index';
 
 export const authApi = {
   async login(credentials: LoginRequest): Promise<{ token: string; user: User }> {

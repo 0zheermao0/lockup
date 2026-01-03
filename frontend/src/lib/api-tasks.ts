@@ -1,6 +1,6 @@
 import type { LockTask, TaskCreateRequest, PinningQueueStatus, PinningCarouselData, SunBottleResponse } from '../types/index'
 import { apiRequest, handleResponse } from './api-commons'
-import { API_BASE_URL } from '../config/index.js';
+import { API_BASE_URL } from '../config/index';
 
 // Tasks API
 export const tasksApi = {
