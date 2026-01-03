@@ -10,6 +10,8 @@ urlpatterns = [
     path('logout/', views.UserLogoutView.as_view(), name='logout'),
     path('password/change/', views.PasswordChangeView.as_view(), name='password-change'),
     path('password/change-simple/', views.SimplePasswordChangeView.as_view(), name='simple-password-change'),
+    path('password/reset-request/', views.PasswordResetRequestView.as_view(), name='password-reset-request'),
+    path('password/reset-confirm/', views.PasswordResetConfirmView.as_view(), name='password-reset-confirm'),
 
     # 邮箱验证
     path('email/send-verification/', views.EmailVerificationSendView.as_view(), name='send-email-verification'),

@@ -1080,3 +1080,71 @@ class EmailVerification(models.Model):
             expires_at=expires_at,
             ip_address=ip_address
         )
+
+
+class PasswordReset(models.Model):
+    """密码重置模型"""
+
+    email = models.EmailField(
+        help_text="待重置密码的邮箱地址"
+    )
+    reset_code = models.CharField(
+        max_length=6,
+        help_text="6位数字重置码"
+    )
+    created_at = models.DateTimeField(
+        auto_now_add=True,
+        help_text="创建时间"
+    )
+    expires_at = models.DateTimeField(
+        help_text="过期时间"
+    )
+    is_used = models.BooleanField(
+        default=False,
+        help_text="是否已使用"
+    )
+    ip_address = models.GenericIPAddressField(
+        blank=True,
+        null=True,
+        help_text="请求IP地址"
+    )
+
+    class Meta:
+        db_table = 'password_resets'
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['email', '-created_at']),
+            models.Index(fields=['reset_code']),
+            models.Index(fields=['expires_at']),
+        ]
+        verbose_name = '密码重置'
+        verbose_name_plural = '密码重置'
+
+    def __str__(self):
+        return f"{self.email} - {self.reset_code} ({'已使用' if self.is_used else '未使用'})"
+
+    def is_expired(self):
+        """检查重置码是否已过期"""
+        return timezone.now() > self.expires_at
+
+    def is_valid(self):
+        """检查重置码是否有效（未使用且未过期）"""
+        return not self.is_used and not self.is_expired()
+
+    @classmethod
+    def create_reset_code(cls, email, ip_address=None):
+        """创建新的密码重置码"""
+        import random
+
+        # 生成6位数字重置码
+        code = ''.join([str(random.randint(0, 9)) for _ in range(6)])
+
+        # 设置15分钟后过期
+        expires_at = timezone.now() + timedelta(minutes=15)
+
+        return cls.objects.create(
+            email=email,
+            reset_code=code,
+            expires_at=expires_at,
+            ip_address=ip_address
+        )

@@ -260,24 +260,35 @@ class UserRegistrationSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError({"password_confirm": "密码不匹配"})
 
         # 验证邮箱验证码
-        from utils.email_verification import verify_email_code
+        from utils.email_verification import validate_email_code_for_registration
         email = attrs.get('email', '').strip().lower()
         verification_code = attrs.get('email_verification_code', '').strip()
 
         if not verification_code:
             raise serializers.ValidationError({"email_verification_code": "邮箱验证码不能为空"})
 
-        success, message = verify_email_code(email, verification_code)
+        success, message = validate_email_code_for_registration(email, verification_code)
         if not success:
             raise serializers.ValidationError({"email_verification_code": message})
 
         return attrs
 
     def create(self, validated_data):
+        # 保存验证码以便注册成功后标记为已使用
+        email = validated_data.get('email')
+        verification_code = validated_data.get('email_verification_code')
+
         # 移除验证码字段，不保存到用户模型中
         validated_data.pop('password_confirm')
         validated_data.pop('email_verification_code')
+
         user = User.objects.create_user(**validated_data)
+
+        # 注册成功后，标记验证码为已使用
+        if email and verification_code:
+            from utils.email_verification import mark_email_verification_as_used
+            mark_email_verification_as_used(email, verification_code)
+
         return user
 
 
@@ -453,6 +464,59 @@ class SimplePasswordChangeSerializer(serializers.Serializer):
         user.set_password(self.validated_data['new_password'])
         user.save()
         return user
+
+
+class PasswordResetRequestSerializer(serializers.Serializer):
+    """密码重置请求序列化器"""
+
+    email = serializers.EmailField()
+
+    def validate_email(self, value):
+        """验证邮箱格式"""
+        if not value:
+            raise serializers.ValidationError("邮箱不能为空")
+        return value.lower()
+
+
+class PasswordResetConfirmSerializer(serializers.Serializer):
+    """密码重置确认序列化器"""
+
+    email = serializers.EmailField()
+    reset_code = serializers.CharField(max_length=6, min_length=6)
+    new_password = serializers.CharField(write_only=True)
+    new_password_confirm = serializers.CharField(write_only=True)
+
+    def validate_email(self, value):
+        """验证邮箱格式"""
+        if not value:
+            raise serializers.ValidationError("邮箱不能为空")
+        return value.lower()
+
+    def validate_reset_code(self, value):
+        """验证重置码格式"""
+        if not value:
+            raise serializers.ValidationError("重置码不能为空")
+        if len(value) != 6:
+            raise serializers.ValidationError("重置码必须是6位数字")
+        if not value.isdigit():
+            raise serializers.ValidationError("重置码只能包含数字")
+        return value
+
+    def validate_new_password(self, value):
+        """验证新密码强度"""
+        if not value:
+            raise serializers.ValidationError("新密码不能为空")
+
+        # 使用现有的密码验证函数
+        return validate_password_with_detailed_messages(value)
+
+    def validate(self, attrs):
+        """验证密码确认匹配"""
+        if attrs['new_password'] != attrs['new_password_confirm']:
+            raise serializers.ValidationError({
+                "new_password_confirm": "新密码确认不匹配"
+            })
+        return attrs
 
 
 class NotificationSerializer(serializers.ModelSerializer):

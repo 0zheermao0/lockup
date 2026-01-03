@@ -8,15 +8,19 @@ from django.db.models import Q, Count
 from django.utils import timezone
 from datetime import timedelta
 from tasks.pagination import DynamicPageNumberPagination
-from .models import User, Friendship, UserLevelUpgrade, DailyLoginReward, Notification, EmailVerification
+from .models import User, Friendship, UserLevelUpgrade, DailyLoginReward, Notification, EmailVerification, PasswordReset
 from .serializers import (
     UserSerializer, UserPublicSerializer, UserRegistrationSerializer,
     UserLoginSerializer, UserProfileUpdateSerializer, FriendshipSerializer,
     FriendRequestSerializer, UserLevelUpgradeSerializer, UserStatsSerializer,
-    PasswordChangeSerializer, SimplePasswordChangeSerializer, NotificationSerializer, NotificationCreateSerializer
+    PasswordChangeSerializer, SimplePasswordChangeSerializer, NotificationSerializer, NotificationCreateSerializer,
+    PasswordResetRequestSerializer, PasswordResetConfirmSerializer
 )
 from utils.email_verification import (
     create_and_send_verification, verify_email_code, is_email_domain_allowed
+)
+from utils.password_reset import (
+    create_and_send_password_reset, reset_user_password
 )
 
 
@@ -446,6 +450,72 @@ class SimplePasswordChangeView(APIView):
             return Response({
                 'message': '密码修改成功'
             }, status=status.HTTP_200_OK)
+
+        return Response(
+            serializer.errors,
+            status=status.HTTP_400_BAD_REQUEST
+        )
+
+
+class PasswordResetRequestView(APIView):
+    """密码重置请求视图"""
+
+    permission_classes = [permissions.AllowAny]
+
+    def post(self, request):
+        """处理密码重置请求"""
+        serializer = PasswordResetRequestSerializer(data=request.data)
+
+        if serializer.is_valid():
+            email = serializer.validated_data['email']
+            ip_address = get_client_ip(request)
+
+            # 创建并发送密码重置码
+            success, message, extra_info = create_and_send_password_reset(email, ip_address)
+
+            if success:
+                return Response({
+                    'message': message,
+                    'expires_in_minutes': extra_info.get('expires_in_minutes', 15),
+                    'remaining_attempts': extra_info.get('remaining_attempts', 0)
+                }, status=status.HTTP_200_OK)
+            else:
+                return Response({
+                    'error': message,
+                    'remaining_attempts': extra_info.get('remaining_attempts', 0)
+                }, status=status.HTTP_400_BAD_REQUEST)
+
+        return Response(
+            serializer.errors,
+            status=status.HTTP_400_BAD_REQUEST
+        )
+
+
+class PasswordResetConfirmView(APIView):
+    """密码重置确认视图"""
+
+    permission_classes = [permissions.AllowAny]
+
+    def post(self, request):
+        """处理密码重置确认"""
+        serializer = PasswordResetConfirmSerializer(data=request.data)
+
+        if serializer.is_valid():
+            email = serializer.validated_data['email']
+            reset_code = serializer.validated_data['reset_code']
+            new_password = serializer.validated_data['new_password']
+
+            # 重置密码
+            success, message = reset_user_password(email, reset_code, new_password)
+
+            if success:
+                return Response({
+                    'message': message
+                }, status=status.HTTP_200_OK)
+            else:
+                return Response({
+                    'error': message
+                }, status=status.HTTP_400_BAD_REQUEST)
 
         return Response(
             serializer.errors,
