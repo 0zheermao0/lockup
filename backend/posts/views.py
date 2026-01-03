@@ -6,6 +6,7 @@ from django.utils import timezone
 from datetime import timedelta
 from django.shortcuts import get_object_or_404
 from django.core.paginator import Paginator, PageNotAnInteger, EmptyPage
+from django.db import transaction
 import logging
 from .models import Post, PostLike, Comment, CommentLike, CheckinVote, CheckinVotingSession
 from .serializers import (
@@ -643,6 +644,7 @@ def get_post_detail(request, post_id):
 
 @api_view(['POST'])
 @permission_classes([permissions.IsAuthenticated])
+@transaction.atomic
 def create_comment(request, post_id):
     """创建评论"""
     try:
@@ -722,11 +724,9 @@ def create_comment(request, post_id):
             extra_data={'post_id': str(post.id), 'reply_id': str(comment.id)}
         )
 
-        # 返回完整的评论数据
-        response_serializer = CommentSerializer(comment, context={'request': request})
-        return Response(response_serializer.data, status=status.HTTP_201_CREATED)
-
-    return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+    # 返回完整的评论数据 - 修复：移出if语句，所有成功创建的评论都应该返回成功响应
+    response_serializer = CommentSerializer(comment, context={'request': request})
+    return Response(response_serializer.data, status=status.HTTP_201_CREATED)
 
 
 @api_view(['POST', 'DELETE'])

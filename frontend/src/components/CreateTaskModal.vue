@@ -620,8 +620,9 @@ const handleSubmit = async () => {
 
       // 添加所有任务字段
       Object.keys(cleanedForm).forEach(key => {
-        if (cleanedForm[key] !== undefined && cleanedForm[key] !== null) {
-          formData.append(key, cleanedForm[key])
+        const typedKey = key as keyof typeof cleanedForm
+        if (cleanedForm[typedKey] !== undefined && cleanedForm[typedKey] !== null) {
+          formData.append(key, String(cleanedForm[typedKey]))
         }
       })
 

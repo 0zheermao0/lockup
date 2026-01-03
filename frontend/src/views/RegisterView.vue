@@ -23,21 +23,19 @@
           </div>
         </div>
 
-        <div class="form-group">
-          <label for="email">邮箱</label>
-          <input
-            id="email"
-            v-model="form.email"
-            type="email"
-            required
-            :disabled="authStore.isLoading"
-            :class="{ 'error-input': emailFieldErrors.length > 0 }"
-          />
-          <!-- Field-specific email errors -->
-          <div v-if="emailFieldErrors.length > 0" class="field-error">
-            <div v-for="(error, index) in emailFieldErrors" :key="index" class="field-error-item">
-              {{ error }}
-            </div>
+        <!-- 邮箱验证组件 -->
+        <EmailVerification
+          v-model="form.email"
+          v-model:verification-code="form.email_verification_code"
+          :disabled="authStore.isLoading"
+          @verified="handleEmailVerified"
+          @error="handleEmailVerificationError"
+        />
+
+        <!-- 邮箱验证码字段级错误 -->
+        <div v-if="emailVerificationFieldErrors.length > 0" class="field-error">
+          <div v-for="(error, index) in emailVerificationFieldErrors" :key="index" class="field-error-item">
+            {{ error }}
           </div>
         </div>
 
@@ -159,8 +157,10 @@
           </div>
         </div>
 
-        <button type="submit" :disabled="authStore.isLoading">
-          {{ authStore.isLoading ? '注册中...' : '注册' }}
+        <button type="submit" :disabled="authStore.isLoading || !isEmailVerified">
+          <span v-if="authStore.isLoading">注册中...</span>
+          <span v-else-if="!isEmailVerified">请先完成邮箱验证</span>
+          <span v-else>注册</span>
         </button>
       </form>
 
@@ -187,6 +187,7 @@ import { ref, reactive, computed, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '../stores/auth'
 import NotificationToast from '../components/NotificationToast.vue'
+import EmailVerification from '../components/EmailVerification.vue'
 import type { RegisterRequest } from '../types/index'
 
 const router = useRouter()
@@ -196,7 +197,8 @@ const form = reactive<RegisterRequest>({
   username: '',
   email: '',
   password: '',
-  password_confirm: ''
+  password_confirm: '',
+  email_verification_code: ''
 })
 
 const error = ref('')
@@ -208,6 +210,10 @@ const passwordFieldErrors = ref<string[]>([])
 const passwordConfirmFieldErrors = ref<string[]>([])
 const usernameFieldErrors = ref<string[]>([])
 const emailFieldErrors = ref<string[]>([])
+const emailVerificationFieldErrors = ref<string[]>([])
+
+// Email verification state
+const isEmailVerified = ref(false)
 
 // Toast notification state
 const showToast = ref(false)
@@ -265,12 +271,28 @@ const checkPasswordMatch = () => {
   // This will trigger the computed property update
 }
 
+// Email verification handlers
+const handleEmailVerified = (email: string, code: string) => {
+  form.email = email
+  form.email_verification_code = code
+  isEmailVerified.value = true
+  emailFieldErrors.value = []
+  emailVerificationFieldErrors.value = []
+
+  console.log('邮箱验证成功:', { email, code })
+}
+
+const handleEmailVerificationError = (error: string) => {
+  console.error('邮箱验证错误:', error)
+}
+
 // Clear field-specific errors
 const clearFieldErrors = () => {
   passwordFieldErrors.value = []
   passwordConfirmFieldErrors.value = []
   usernameFieldErrors.value = []
   emailFieldErrors.value = []
+  emailVerificationFieldErrors.value = []
 }
 
 // Enhanced error parsing with field-specific error handling and NotificationToast data
@@ -350,6 +372,12 @@ const parseRegistrationError = (err: any): {
       errorResult.details['确认密码错误'] = (errorData.password_confirm as string[]).join('，')
     }
 
+    if (errorData.email_verification_code && Array.isArray(errorData.email_verification_code)) {
+      emailVerificationFieldErrors.value = errorData.email_verification_code as string[]
+      fieldErrorsFound.push('邮箱验证码')
+      errorResult.details['邮箱验证码错误'] = (errorData.email_verification_code as string[]).join('，')
+    }
+
     // Handle non-field errors (general validation errors)
     if (errorData.non_field_errors && Array.isArray(errorData.non_field_errors)) {
       const nonFieldErrors = errorData.non_field_errors as string[]
@@ -403,6 +431,9 @@ const parseRegistrationError = (err: any): {
         } else if (field === 'password_confirm') {
           passwordConfirmFieldErrors.value = fieldErrorMessages
           allErrors.push(`确认密码：${fieldErrorMessages.join('，')}`)
+        } else if (field === 'email_verification_code') {
+          emailVerificationFieldErrors.value = fieldErrorMessages
+          allErrors.push(`邮箱验证码：${fieldErrorMessages.join('，')}`)
         } else {
           allErrors.push(...fieldErrorMessages)
         }
@@ -471,6 +502,22 @@ const handleRegister = async () => {
   error.value = ''
   clearFieldErrors()
   showToast.value = false
+
+  // Client-side validation for email verification
+  if (!isEmailVerified.value) {
+    toastData.value = {
+      type: 'warning',
+      title: '邮箱验证未完成',
+      message: '请先完成邮箱验证',
+      secondaryMessage: '需要验证邮箱后才能注册账号',
+      details: {
+        '问题': '未完成邮箱验证',
+        '解决方法': '请按照提示完成邮箱验证'
+      }
+    }
+    showToast.value = true
+    return
+  }
 
   // Client-side validation for password match
   if (form.password !== form.password_confirm) {

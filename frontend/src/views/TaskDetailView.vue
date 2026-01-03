@@ -49,22 +49,28 @@
                   v-if="task.status === 'pending' && canManageTask"
                   @click="startTask"
                   class="quick-action-btn primary large"
+                  :title="'开始任务'"
                 >
-                  🚀 开始任务
+                  <span class="btn-icon">🚀</span>
+                  <span class="btn-text">开始任务</span>
                 </button>
                 <button
                   v-if="(task.status === 'active' || task.status === 'voting_passed') && canCompleteTask"
                   @click="completeTask"
                   class="quick-action-btn success large"
+                  :title="'完成任务'"
                 >
-                  ✅ 完成任务
+                  <span class="btn-icon">✅</span>
+                  <span class="btn-text">完成任务</span>
                 </button>
                 <button
                   v-if="(task.status === 'active' || task.status === 'voting' || task.status === 'voting_passed') && canManageLockTask"
                   @click="stopTask"
                   class="quick-action-btn danger large"
+                  :title="'停止任务'"
                 >
-                  ⏹️ 停止任务
+                  <span class="btn-icon">⏹️</span>
+                  <span class="btn-text">停止任务</span>
                 </button>
 
                 <!-- Board task primary actions -->
@@ -72,8 +78,10 @@
                   v-if="canClaimTask"
                   @click="claimTask"
                   class="quick-action-btn warning large"
+                  :title="'揭榜任务'"
                 >
-                  📋 揭榜任务
+                  <span class="btn-icon">📋</span>
+                  <span class="btn-text">揭榜任务</span>
                 </button>
 
                 <!-- Completion rate warning -->
@@ -94,22 +102,28 @@
                   v-if="canSubmitProof"
                   @click="openSubmissionModal"
                   class="quick-action-btn info large"
+                  :title="'提交完成证明'"
                 >
-                  📤 提交完成证明
+                  <span class="btn-icon">📤</span>
+                  <span class="btn-text">提交完成证明</span>
                 </button>
                 <button
                   v-if="canReviewTask"
                   @click="approveTask"
                   class="quick-action-btn success large"
+                  :title="'审核通过'"
                 >
-                  ✅ 审核通过
+                  <span class="btn-icon">✅</span>
+                  <span class="btn-text">审核通过</span>
                 </button>
                 <button
                   v-if="canReviewTask"
                   @click="rejectTask"
                   class="quick-action-btn danger large"
+                  :title="'审核拒绝'"
                 >
-                  ❌ 审核拒绝
+                  <span class="btn-icon">❌</span>
+                  <span class="btn-text">审核拒绝</span>
                 </button>
 
                 <!-- End task button -->
@@ -117,8 +131,10 @@
                   v-if="canEndTask"
                   @click="endTask"
                   class="quick-action-btn danger large"
+                  :title="'结束任务'"
                 >
-                  🏁 结束任务
+                  <span class="btn-icon">🏁</span>
+                  <span class="btn-text">结束任务</span>
                 </button>
 
                 <!-- Voting actions -->
@@ -126,15 +142,19 @@
                   v-if="canStartVoting"
                   @click="startVoting"
                   class="quick-action-btn vote large pulse"
+                  :title="'发起投票'"
                 >
-                  🗳️ 发起投票
+                  <span class="btn-icon">🗳️</span>
+                  <span class="btn-text">发起投票</span>
                 </button>
                 <button
                   v-else-if="canVote"
                   @click="openVoteModal"
                   class="quick-action-btn vote large"
+                  :title="'参与投票'"
                 >
-                  🗳️ 参与投票
+                  <span class="btn-icon">🗳️</span>
+                  <span class="btn-text">参与投票</span>
                 </button>
               </div>
 
@@ -144,8 +164,10 @@
                   v-if="canAddOvertime"
                   @click="addOvertime"
                   class="quick-action-btn secondary"
+                  :title="'随机加时'"
                 >
-                  ⏰ 随机加时
+                  <span class="btn-icon">⏰</span>
+                  <span class="btn-text">随机加时</span>
                 </button>
 
               </div>
@@ -1920,9 +1942,12 @@ const fetchTimeline = async () => {
   try {
     timelineLoading.value = true
     const timelineData = await tasksApi.getTaskTimeline(taskId)
-    timeline.value = timelineData.timeline_events || []
+    // 过滤掉小时奖励记录，只保留重要的任务事件
+    timeline.value = (timelineData.timeline_events || []).filter((event: any) =>
+      event.event_type !== 'hourly_reward'
+    )
 
-    console.log('📊 Timeline data loaded:', timeline.value.length, 'events')
+    console.log('📊 Timeline data loaded:', timeline.value.length, 'events (hourly rewards filtered out)')
 
     // Scroll to newest event on mobile after timeline loads
     await nextTick()
@@ -2345,7 +2370,7 @@ const completeTask = async () => {
   try {
     const updatedTask = await tasksApi.completeTask(task.value.id)
     task.value = updatedTask
-    console.log('任务已完成')
+    console.log('任务已完成', updatedTask)
     if (progressInterval.value) {
       clearInterval(progressInterval.value)
     }
@@ -2356,8 +2381,46 @@ const completeTask = async () => {
     }
 
     // 刷新用户数据以更新lock status
-    authStore.refreshUser()
-    alert('✅ 任务已成功完成！钥匙已被销毁。')
+    await authStore.refreshUser()
+
+    // 刷新时间线以显示完成事件
+    await fetchTimeline()
+
+    // 计算任务持续时间
+    const startTime = new Date(updatedTask.start_time || new Date())
+    const endTime = new Date(updatedTask.completed_at || updatedTask.end_time || new Date())
+    const durationMs = endTime.getTime() - startTime.getTime()
+    const durationHours = Math.floor(durationMs / (1000 * 60 * 60))
+    const durationMinutes = Math.floor((durationMs % (1000 * 60 * 60)) / (1000 * 60))
+
+    // 准备结算信息
+    const settlementInfo = {
+      taskTitle: updatedTask.title,
+      startTime: formatDateTime(updatedTask.start_time || new Date().toISOString()),
+      endTime: formatDateTime(updatedTask.completed_at || updatedTask.end_time || new Date().toISOString()),
+      totalDuration: durationHours > 0 ? `${durationHours}小时${durationMinutes}分钟` : `${durationMinutes}分钟`,
+      difficulty: updatedTask.difficulty,
+      taskType: updatedTask.task_type === 'lock' ? '带锁任务' : '任务板',
+      wasFrozen: updatedTask.total_frozen_duration && updatedTask.total_frozen_duration > 0,
+      frozenDuration: updatedTask.total_frozen_duration ? `${Math.floor(updatedTask.total_frozen_duration / 60)}分钟` : null
+    }
+
+    // 显示详细的结算通知
+    showToast.value = true
+    toastData.value = {
+      type: 'success',
+      title: '🎉 任务完成结算',
+      message: `${settlementInfo.taskType}「${settlementInfo.taskTitle}」已成功完成！`,
+      secondaryMessage: '任务结算详情如下：',
+      details: {
+        '开始时间': settlementInfo.startTime,
+        '完成时间': settlementInfo.endTime,
+        '总锁时': settlementInfo.totalDuration,
+        '难度等级': getDifficultyDisplay(settlementInfo.difficulty),
+        ...(settlementInfo.wasFrozen && settlementInfo.frozenDuration ? { '冻结时长': settlementInfo.frozenDuration } : {}),
+        ...(updatedTask.task_type === 'lock' ? { '钥匙状态': '已销毁 🔑💥' } : {})
+      }
+    }
   } catch (error: any) {
     console.error('Error completing task:', error)
 
@@ -2757,20 +2820,79 @@ const endTask = async () => {
   }
 
   try {
-    const updatedTask = await tasksApi.endTask(task.value.id)
+    const updatedTask = await tasksApi.endTask(task.value.id) as Task
     task.value = updatedTask
-    console.log('任务已结束')
+    console.log('任务已结束', updatedTask)
 
     // 刷新用户数据以更新积分等信息
     await authStore.refreshUser()
 
-    // 显示成功提示
+    // 刷新时间线以显示结束事件
+    await fetchTimeline()
+
+    // 计算任务持续时间（如果有开始时间）
+    let durationInfo = null
+    if (updatedTask.start_time) {
+      const startTime = new Date(updatedTask.start_time)
+      const endTime = new Date(updatedTask.completed_at || new Date())
+      const durationMs = endTime.getTime() - startTime.getTime()
+      const durationHours = Math.floor(durationMs / (1000 * 60 * 60))
+      const durationMinutes = Math.floor((durationMs % (1000 * 60 * 60)) / (1000 * 60))
+      durationInfo = {
+        startTime: formatDateTime(updatedTask.start_time),
+        endTime: formatDateTime(updatedTask.completed_at || new Date().toISOString()),
+        totalDuration: durationHours > 0 ? `${durationHours}小时${durationMinutes}分钟` : `${durationMinutes}分钟`
+      }
+    }
+
+    // 准备结算信息
+    const settlementInfo = {
+      taskTitle: updatedTask.title,
+      taskType: updatedTask.task_type === 'lock' ? '带锁任务' : '任务板',
+      finalStatus: updatedTask.status === 'completed' ? '已完成' : '已失败',
+      reward: updatedTask.reward || 0,
+      participantCount: updatedTask.participant_count || 0,
+      submittedCount: updatedTask.submitted_count || 0,
+      approvedCount: updatedTask.approved_count || 0
+    }
+
+    // 根据任务类型和状态准备详细信息
+    const details: Record<string, string> = {
+      '任务状态': settlementInfo.finalStatus === '已完成' ? '✅ 已完成' : '❌ 已失败',
+      ...(durationInfo ? {
+        '开始时间': durationInfo.startTime,
+        '结束时间': durationInfo.endTime,
+        '总时长': durationInfo.totalDuration
+      } : {})
+    }
+
+    // 任务板特有的结算信息
+    if (updatedTask.task_type === 'board') {
+      details['奖励积分'] = `${settlementInfo.reward} 积分`
+
+      if (settlementInfo.participantCount > 0) {
+        details['总参与人数'] = `${settlementInfo.participantCount} 人`
+        details['已提交作品'] = `${settlementInfo.submittedCount} 人`
+        details['通过审核'] = `${settlementInfo.approvedCount} 人`
+
+        if (settlementInfo.approvedCount > 0 && settlementInfo.finalStatus === '已完成') {
+          const rewardPerPerson = Math.ceil(settlementInfo.reward / settlementInfo.approvedCount)
+          details['每人获得'] = `${rewardPerPerson} 积分`
+        }
+      } else {
+        details['参与情况'] = '无人参与，奖励已退还'
+      }
+    }
+
+    // 显示详细的结算通知
+    const isSuccess = settlementInfo.finalStatus === '已完成'
     showToast.value = true
     toastData.value = {
-      type: 'success',
-      title: '任务已结束',
-      message: '任务已成功结束并完成结算',
-      secondaryMessage: '奖励已根据实际情况分配'
+      type: isSuccess ? 'success' : 'warning',
+      title: isSuccess ? '🎯 任务结束结算' : '⚠️ 任务结束结算',
+      message: `${settlementInfo.taskType}「${settlementInfo.taskTitle}」已结束！`,
+      secondaryMessage: '任务结算详情如下：',
+      details
     }
 
   } catch (error: any) {
@@ -3777,6 +3899,17 @@ const formatFileSize = (bytes: number): string => {
   const sizes = ['B', 'KB', 'MB', 'GB']
   const i = Math.floor(Math.log(bytes) / Math.log(k))
   return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i]
+}
+
+// 格式化难度等级显示
+const getDifficultyDisplay = (difficulty: string) => {
+  const difficultyMap: Record<string, string> = {
+    'easy': '简单',
+    'normal': '普通',
+    'hard': '困难',
+    'hell': '地狱'
+  }
+  return difficultyMap[difficulty] || difficulty
 }
 
 // Get proof status text based on task status
@@ -5028,35 +5161,130 @@ onUnmounted(() => {
   }
 }
 
-/* Optimize quick actions bar for mobile layout with sticky positioning */
+/* Enhanced mobile styles for quick actions bar with Neo-Brutalism design */
 @media (max-width: 768px) {
   .quick-actions-bar {
     position: sticky;
     top: 0;
-    padding: 1rem;
-    margin-bottom: 1.5rem;
+    padding: 0.75rem 1rem;
+    margin-bottom: 1rem;
     z-index: 100;
     background: white;
-    border: 3px solid #000;
-    box-shadow: 6px 6px 0 #000;
+    border: 2px solid #000;
+    box-shadow: 4px 4px 0 #000;
     backdrop-filter: blur(10px);
     -webkit-backdrop-filter: blur(10px);
   }
 
   .actions-primary {
-    flex-direction: column;
-    align-items: stretch;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    align-items: center;
+    justify-content: flex-start;
   }
 
   .actions-secondary {
-    flex-direction: column;
-    align-items: stretch;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.375rem;
+    align-items: center;
+    justify-content: flex-start;
+    margin-top: 0.5rem;
   }
 
+  /* Mobile icon-only buttons following homepage pattern */
   .quick-action-btn {
-    width: 100%;
+    height: 36px;
+    min-width: 36px;
+    border: 2px solid #000;
+    border-radius: 6px;
+    color: white;
+    font-size: 1rem;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    display: flex;
+    align-items: center;
     justify-content: center;
-    text-align: center;
+    box-shadow: 2px 2px 0 #000;
+    font-weight: 600;
+    padding: 0 0.5rem;
+    flex: 0 1 auto;
+    touch-action: manipulation;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  /* Hide text on mobile, show only icons */
+  .quick-action-btn .btn-text {
+    display: none;
+  }
+
+  .quick-action-btn .btn-icon {
+    display: block;
+    font-size: 1rem;
+    line-height: 1;
+  }
+
+  /* Color schemes for different button types - matching PC styles */
+  .quick-action-btn.primary {
+    background: #007bff;
+    color: white;
+  }
+  .quick-action-btn.success {
+    background: #28a745;
+    color: white;
+  }
+  .quick-action-btn.danger {
+    background: #dc3545;
+    color: white;
+  }
+  .quick-action-btn.warning {
+    background: #ffc107;
+    color: #000;
+  }
+  .quick-action-btn.info {
+    background: #17a2b8;
+    color: white;
+  }
+  .quick-action-btn.vote {
+    background: linear-gradient(135deg, #ffc107, #fd7e14);
+    color: #000;
+  }
+  .quick-action-btn.secondary {
+    background: #fd7e14;
+    color: white;
+  }
+
+  .quick-action-btn:hover {
+    transform: translate(-1px, -1px);
+    box-shadow: 3px 3px 0 #000;
+  }
+
+  .quick-action-btn:active {
+    transform: translate(0, 0);
+    box-shadow: 1px 1px 0 #000;
+  }
+
+  /* Large buttons are same size as regular on mobile */
+  .quick-action-btn.large {
+    height: 36px;
+    min-width: 36px;
+  }
+
+  /* Pulse animation for vote buttons */
+  .quick-action-btn.pulse {
+    animation: pulse-mobile 2s infinite;
+  }
+
+  @keyframes pulse-mobile {
+    0%, 100% {
+      opacity: 1;
+      transform: scale(1);
+    }
+    50% {
+      opacity: 0.8;
+      transform: scale(1.05);
+    }
   }
 }
 
@@ -5188,6 +5416,46 @@ onUnmounted(() => {
 
   .task-card, .actions-section, .voting-section {
     padding: 0.75rem;
+  }
+
+  /* Enhanced quick actions for extra small screens */
+  .quick-actions-bar {
+    padding: 0.5rem 0.75rem;
+  }
+
+  .actions-primary,
+  .actions-secondary {
+    gap: 0.375rem;
+  }
+
+  /* Extra compact icon-only buttons for very small screens */
+  .quick-action-btn {
+    height: 32px;
+    min-width: 32px;
+    border: 2px solid #000;
+    border-radius: 4px;
+    font-size: 0.875rem;
+    padding: 0;
+    box-shadow: 2px 2px 0 #000;
+  }
+
+  .quick-action-btn .btn-icon {
+    font-size: 0.875rem;
+  }
+
+  .quick-action-btn:hover {
+    transform: translate(-0.5px, -0.5px);
+    box-shadow: 3px 3px 0 #000;
+  }
+
+  .quick-action-btn:active {
+    transform: translate(0, 0);
+    box-shadow: 1px 1px 0 #000;
+  }
+
+  .quick-action-btn.large {
+    height: 32px;
+    min-width: 32px;
   }
 }
 

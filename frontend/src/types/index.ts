@@ -183,7 +183,13 @@ export interface LockTask extends BaseLockTask {
   // 任务完成相关字段
   taker?: User
   completion_proof?: string
+  completed_at?: string
   submission_files?: TaskSubmissionFile[]
+  // 任务板字段（用于统一的Task类型）
+  reward?: number
+  participant_count?: number
+  submitted_count?: number
+  approved_count?: number
 }
 
 export interface TaskParticipant {
@@ -222,6 +228,9 @@ export interface BoardTask extends BaseLockTask {
   submitted_count?: number
   approved_count?: number
   can_take?: boolean
+  // 共享的任务时间字段
+  start_time?: string
+  end_time?: string
 }
 
 export type Task = LockTask | BoardTask
@@ -393,12 +402,34 @@ export interface RegisterRequest {
   email: string
   password: string
   password_confirm: string
+  email_verification_code: string
 }
 
 export interface AuthResponse {
   user: User
   token: string
   refresh_token?: string
+}
+
+// Email Verification Types
+export interface EmailVerificationSendRequest {
+  email: string
+}
+
+export interface EmailVerificationSendResponse {
+  message: string
+  expires_in_minutes: number
+  remaining_attempts: number
+}
+
+export interface EmailVerificationVerifyRequest {
+  email: string
+  code: string
+}
+
+export interface EmailVerificationVerifyResponse {
+  message: string
+  verified: boolean
 }
 
 // Form Types

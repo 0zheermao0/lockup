@@ -230,10 +230,20 @@ class UserRegistrationSerializer(serializers.ModelSerializer):
 
     password = serializers.CharField(write_only=True)
     password_confirm = serializers.CharField(write_only=True)
+    email_verification_code = serializers.CharField(write_only=True, help_text="邮箱验证码")
 
     class Meta:
         model = User
-        fields = ['username', 'email', 'password', 'password_confirm']
+        fields = ['username', 'email', 'password', 'password_confirm', 'email_verification_code']
+
+    def validate_email(self, value):
+        """验证邮箱域名是否允许"""
+        from utils.email_verification import is_email_domain_allowed
+
+        email = value.strip().lower()
+        if not is_email_domain_allowed(email):
+            raise serializers.ValidationError("不支持的邮箱域名，请使用常用邮箱服务商")
+        return email
 
     def validate_password(self, value):
         """验证密码强度，提供详细的错误信息"""
@@ -245,12 +255,28 @@ class UserRegistrationSerializer(serializers.ModelSerializer):
         return validate_password_with_detailed_messages(value, user=temp_user)
 
     def validate(self, attrs):
+        # 验证密码确认
         if attrs['password'] != attrs['password_confirm']:
             raise serializers.ValidationError({"password_confirm": "密码不匹配"})
+
+        # 验证邮箱验证码
+        from utils.email_verification import verify_email_code
+        email = attrs.get('email', '').strip().lower()
+        verification_code = attrs.get('email_verification_code', '').strip()
+
+        if not verification_code:
+            raise serializers.ValidationError({"email_verification_code": "邮箱验证码不能为空"})
+
+        success, message = verify_email_code(email, verification_code)
+        if not success:
+            raise serializers.ValidationError({"email_verification_code": message})
+
         return attrs
 
     def create(self, validated_data):
+        # 移除验证码字段，不保存到用户模型中
         validated_data.pop('password_confirm')
+        validated_data.pop('email_verification_code')
         user = User.objects.create_user(**validated_data)
         return user
 

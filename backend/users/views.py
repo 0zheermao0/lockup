@@ -8,13 +8,104 @@ from django.db.models import Q, Count
 from django.utils import timezone
 from datetime import timedelta
 from tasks.pagination import DynamicPageNumberPagination
-from .models import User, Friendship, UserLevelUpgrade, DailyLoginReward, Notification
+from .models import User, Friendship, UserLevelUpgrade, DailyLoginReward, Notification, EmailVerification
 from .serializers import (
     UserSerializer, UserPublicSerializer, UserRegistrationSerializer,
     UserLoginSerializer, UserProfileUpdateSerializer, FriendshipSerializer,
     FriendRequestSerializer, UserLevelUpgradeSerializer, UserStatsSerializer,
     PasswordChangeSerializer, SimplePasswordChangeSerializer, NotificationSerializer, NotificationCreateSerializer
 )
+from utils.email_verification import (
+    create_and_send_verification, verify_email_code, is_email_domain_allowed
+)
+
+
+def get_client_ip(request):
+    """获取客户端IP地址"""
+    x_forwarded_for = request.META.get('HTTP_X_FORWARDED_FOR')
+    if x_forwarded_for:
+        ip = x_forwarded_for.split(',')[0]
+    else:
+        ip = request.META.get('REMOTE_ADDR')
+    return ip
+
+
+class EmailVerificationSendView(APIView):
+    """发送邮箱验证码"""
+
+    permission_classes = [permissions.AllowAny]
+
+    def post(self, request):
+        email = request.data.get('email', '').strip().lower()
+
+        if not email:
+            return Response({
+                'error': '邮箱地址不能为空'
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        # 检查邮箱格式
+        from django.core.validators import validate_email
+        from django.core.exceptions import ValidationError
+
+        try:
+            validate_email(email)
+        except ValidationError:
+            return Response({
+                'error': '邮箱格式不正确'
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        # 检查邮箱是否已被注册
+        if User.objects.filter(email=email).exists():
+            return Response({
+                'error': '该邮箱已被注册'
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        # 获取客户端IP
+        ip_address = get_client_ip(request)
+
+        # 创建并发送验证码
+        success, message, extra_info = create_and_send_verification(email, ip_address)
+
+        if success:
+            return Response({
+                'message': message,
+                'expires_in_minutes': extra_info.get('expires_in_minutes'),
+                'remaining_attempts': extra_info.get('remaining_attempts')
+            }, status=status.HTTP_200_OK)
+        else:
+            return Response({
+                'error': message,
+                'remaining_attempts': extra_info.get('remaining_attempts', 0)
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+
+class EmailVerificationVerifyView(APIView):
+    """验证邮箱验证码"""
+
+    permission_classes = [permissions.AllowAny]
+
+    def post(self, request):
+        email = request.data.get('email', '').strip().lower()
+        code = request.data.get('code', '').strip()
+
+        if not email or not code:
+            return Response({
+                'error': '邮箱和验证码不能为空'
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        # 验证邮箱验证码
+        success, message = verify_email_code(email, code)
+
+        if success:
+            return Response({
+                'message': message,
+                'verified': True
+            }, status=status.HTTP_200_OK)
+        else:
+            return Response({
+                'error': message,
+                'verified': False
+            }, status=status.HTTP_400_BAD_REQUEST)
 
 
 class UserRegistrationView(generics.CreateAPIView):

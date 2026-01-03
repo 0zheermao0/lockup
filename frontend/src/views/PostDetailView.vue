@@ -661,6 +661,11 @@ const handleCommentImageSelect = (event: Event) => {
   for (let i = 0; i < files.length; i++) {
     const file = files[i]
 
+    // 验证文件是否存在
+    if (!file) {
+      continue
+    }
+
     // 验证文件类型
     if (!file.type.startsWith('image/')) {
       alert(`文件 ${file.name} 不是图片格式，请选择图片文件`)
