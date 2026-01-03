@@ -77,7 +77,7 @@
               <div @click="triggerFileInput" class="upload-zone">
                 <div v-if="selectedImages.length === 0" class="upload-placeholder">
                   📷 点击选择图片
-                  <span class="upload-hint">支持多张图片</span>
+                  <span class="upload-hint">最多9张，每张不超过5MB</span>
                 </div>
                 <div v-else class="selected-images">
                   <div

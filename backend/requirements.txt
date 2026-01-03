@@ -85,3 +85,10 @@ idna==3.11                  # Internationalized domain names
 #
 # openpyxl==3.1.5           # Excel file processing (not found in codebase)
 # et_xmlfile==2.0.0         # Excel XML processing (openpyxl dependency)
+
+
+# =============================================================================
+# EMAIL SUPPORT
+# =============================================================================
+django-anymail[mailgun]==14.0       # Email backend integration with Mailgun (for sending emails)
+

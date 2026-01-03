@@ -52,7 +52,7 @@ ALLOWED_DOCUMENT_MIMES = {
 ALL_ALLOWED_MIMES = ALLOWED_IMAGE_MIMES | ALLOWED_VIDEO_MIMES | ALLOWED_DOCUMENT_MIMES
 
 # 文件大小限制（字节）
-MAX_IMAGE_SIZE = 10 * 1024 * 1024  # 10MB
+MAX_IMAGE_SIZE = 5 * 1024 * 1024  # 5MB
 MAX_VIDEO_SIZE = 100 * 1024 * 1024  # 100MB
 MAX_DOCUMENT_SIZE = 20 * 1024 * 1024  # 20MB
 
@@ -298,3 +298,40 @@ def clean_filename_for_display(filename):
                 return f"uploaded_file{ext}"
 
     return basename
+
+
+def validate_uploaded_file(uploaded_file, expected_type='image'):
+    """
+    验证上传的文件
+
+    Args:
+        uploaded_file: Django UploadedFile对象
+        expected_type: 期望的文件类型 ('image', 'video', 'document')
+
+    Returns:
+        dict: 文件信息
+
+    Raises:
+        ValidationError: 验证失败时抛出异常
+    """
+    import logging
+    logger = logging.getLogger(__name__)
+
+    try:
+        # 使用现有的安全验证函数
+        file_info = validate_file_security(uploaded_file)
+
+        # 检查文件类型是否符合期望
+        if expected_type and file_info['file_type'] != expected_type:
+            logger.error(f"File type mismatch: expected {expected_type}, got {file_info['file_type']}")
+            raise ValidationError(f"文件类型不匹配，期望 {expected_type}，实际为 {file_info['file_type']}")
+
+        logger.info(f"File validation successful: {file_info['original_name']} ({file_info['file_size']} bytes)")
+        return file_info
+
+    except ValidationError as e:
+        logger.error(f"File validation failed for {uploaded_file.name}: {e}")
+        raise
+    except Exception as e:
+        logger.error(f"Unexpected error during file validation for {uploaded_file.name}: {e}")
+        raise ValidationError(f"文件验证过程中发生错误: {str(e)}")

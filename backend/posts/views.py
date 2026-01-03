@@ -33,35 +33,83 @@ class PostListCreateView(generics.ListCreateAPIView):
 
     def create(self, request, *args, **kwargs):
         """重写create方法以确保响应序列化正确"""
-        # 预处理请求数据：移除位置信息，添加严格模式验证码
-        request_data = self._preprocess_post_data(request.data.copy())
+        try:
+            # 预处理请求数据：移除位置信息，添加严格模式验证码
+            request_data = self._preprocess_post_data(request.data.copy())
 
-        serializer = self.get_serializer(data=request_data)
-        serializer.is_valid(raise_exception=True)
-        post = serializer.save()
-
-        # 处理带锁任务状态下的每日首次打卡奖励
-        self._process_daily_checkin_reward(post)
-
-        # 重新获取post实例，确保正确的预取关联关系（包括新创建的投票会话）
-        post = Post.objects.select_related('user').prefetch_related(
-            'images', 'likes', 'comments__images', 'voting_session'
-        ).get(id=post.id)
-
-        # 使用PostSerializer序列化响应
-        response_serializer = PostSerializer(post, context=self.get_serializer_context())
-        headers = self.get_success_headers(response_serializer.data)
-
-        # Debug: Check if voting session is in the response
-        if post.post_type == 'checkin':
-            print(f"DEBUG: Post {post.id} voting_session in response: {response_serializer.data.get('voting_session')}")
+            # 验证序列化器数据
+            serializer = self.get_serializer(data=request_data)
             try:
-                session = post.voting_session
-                print(f"DEBUG: Voting session exists for post {post.id}: deadline={session.voting_deadline}")
-            except:
-                print(f"DEBUG: No voting session found for post {post.id}")
+                serializer.is_valid(raise_exception=True)
+            except Exception as e:
+                logger.error(f"Post serializer validation failed for user {request.user.username}: {e}")
+                return Response(
+                    {'error': '数据验证失败', 'details': str(e)},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
 
-        return Response(response_serializer.data, status=status.HTTP_201_CREATED, headers=headers)
+            # 保存动态（包含图片处理）
+            try:
+                post = serializer.save()
+                logger.info(f"Post created successfully: {post.id} by user {request.user.username}")
+            except Exception as e:
+                logger.error(f"Failed to save post for user {request.user.username}: {e}")
+                # 检查是否是图片相关的错误
+                if any(keyword in str(e).lower() for keyword in ['image', 'file', 'upload', 'pil', 'pillow']):
+                    return Response(
+                        {'error': '图片处理失败', 'details': '请检查图片格式和大小是否符合要求'},
+                        status=status.HTTP_400_BAD_REQUEST
+                    )
+                return Response(
+                    {'error': '发布动态失败', 'details': '服务器内部错误，请稍后重试'},
+                    status=status.HTTP_500_INTERNAL_SERVER_ERROR
+                )
+
+            # 处理带锁任务状态下的每日首次打卡奖励
+            try:
+                self._process_daily_checkin_reward(post)
+            except Exception as e:
+                logger.error(f"Failed to process daily checkin reward for post {post.id}: {e}")
+                # 不影响主流程，继续执行
+
+            # 重新获取post实例，确保正确的预取关联关系（包括新创建的投票会话）
+            try:
+                post = Post.objects.select_related('user').prefetch_related(
+                    'images', 'likes', 'comments__images', 'voting_session'
+                ).get(id=post.id)
+            except Exception as e:
+                logger.error(f"Failed to refetch post {post.id}: {e}")
+                # 使用原始post对象继续
+                pass
+
+            # 使用PostSerializer序列化响应
+            try:
+                response_serializer = PostSerializer(post, context=self.get_serializer_context())
+                headers = self.get_success_headers(response_serializer.data)
+            except Exception as e:
+                logger.error(f"Failed to serialize post response for post {post.id}: {e}")
+                return Response(
+                    {'error': '响应序列化失败', 'post_id': str(post.id)},
+                    status=status.HTTP_500_INTERNAL_SERVER_ERROR
+                )
+
+            # Debug: Check if voting session is in the response
+            if post.post_type == 'checkin':
+                print(f"DEBUG: Post {post.id} voting_session in response: {response_serializer.data.get('voting_session')}")
+                try:
+                    session = post.voting_session
+                    print(f"DEBUG: Voting session exists for post {post.id}: deadline={session.voting_deadline}")
+                except:
+                    print(f"DEBUG: No voting session found for post {post.id}")
+
+            return Response(response_serializer.data, status=status.HTTP_201_CREATED, headers=headers)
+
+        except Exception as e:
+            logger.error(f"Unexpected error in post creation for user {request.user.username}: {e}")
+            return Response(
+                {'error': '发布动态失败', 'details': '服务器内部错误，请联系管理员'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
 
     def _preprocess_post_data(self, data):
         """预处理动态数据：移除位置信息，添加严格模式验证码"""
