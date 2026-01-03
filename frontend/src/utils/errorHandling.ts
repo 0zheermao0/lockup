@@ -212,7 +212,7 @@ const POST_CREATION_ERROR_MAP: Record<string, UserFriendlyError> = {
 }
 
 /**
- * 解析后端API错误响应
+ * @deprecated 解析后端API错误响应
  */
 export function parseApiError(error: any): ApiError {
   console.log("debugddddddd", error, error.data, error.response);
@@ -443,7 +443,8 @@ export function mapToUserFriendlyError(
  * @returns 用户友好的错误信息
  */
 export function handleApiError(error: any, context: 'task' | 'post' = 'task'): UserFriendlyError {
-  const apiError = parseApiError(error)
+  // const apiError = parseApiError(error)
+  const apiError = error
   return mapToUserFriendlyError(apiError, context)
 }
 
