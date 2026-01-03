@@ -3,7 +3,9 @@ import type {
   StoreItem, UserInventory, Item, Purchase, Game, GameParticipant,
   DriftBottleItem, BuriedTreasure, GameSession, ExplorationZone, NotificationItem,
   SimplePasswordChangeRequest, EmailVerificationSendRequest, EmailVerificationSendResponse,
-  EmailVerificationVerifyRequest, EmailVerificationVerifyResponse
+  EmailVerificationVerifyRequest, EmailVerificationVerifyResponse,
+  PasswordResetRequestRequest, PasswordResetRequestResponse,
+  PasswordResetConfirmRequest, PasswordResetConfirmResponse
 } from '../types/index';
 
 import { apiRequest, handleResponse, ApiError } from './api-commons'
@@ -79,6 +81,21 @@ export const authApi = {
 
   async verifyEmail(data: EmailVerificationVerifyRequest): Promise<EmailVerificationVerifyResponse> {
     return apiRequest('/auth/email/verify/', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  },
+
+  // Password Reset API
+  async requestPasswordReset(data: PasswordResetRequestRequest): Promise<PasswordResetRequestResponse> {
+    return apiRequest('/auth/password/reset-request/', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  },
+
+  async confirmPasswordReset(data: PasswordResetConfirmRequest): Promise<PasswordResetConfirmResponse> {
+    return apiRequest('/auth/password/reset-confirm/', {
       method: 'POST',
       body: JSON.stringify(data),
     });

@@ -3,6 +3,7 @@ import { useAuthStore } from '../stores/auth'
 import HomeView from '../views/HomeView.vue'
 import LoginView from '../views/LoginView.vue'
 import RegisterView from '../views/RegisterView.vue'
+import PasswordResetView from '../views/PasswordResetView.vue'
 import PostDetailView from '../views/PostDetailView.vue'
 import ProfileView from '../views/ProfileView.vue'
 import TaskView from '../views/TaskView.vue'
@@ -90,6 +91,12 @@ const router = createRouter({
       path: '/register',
       name: 'register',
       component: RegisterView,
+      meta: { requiresGuest: true }
+    },
+    {
+      path: '/password-reset',
+      name: 'password-reset',
+      component: PasswordResetView,
       meta: { requiresGuest: true }
     },
     {

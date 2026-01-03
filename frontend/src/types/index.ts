@@ -432,6 +432,28 @@ export interface EmailVerificationVerifyResponse {
   verified: boolean
 }
 
+// Password Reset Types
+export interface PasswordResetRequestRequest {
+  email: string
+}
+
+export interface PasswordResetRequestResponse {
+  message: string
+  expires_in_minutes: number
+  remaining_attempts: number
+}
+
+export interface PasswordResetConfirmRequest {
+  email: string
+  reset_code: string
+  new_password: string
+  new_password_confirm: string
+}
+
+export interface PasswordResetConfirmResponse {
+  message: string
+}
+
 // Form Types
 export interface PostCreateRequest {
   content: string

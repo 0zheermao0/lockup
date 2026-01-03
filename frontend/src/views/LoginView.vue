@@ -40,6 +40,7 @@
 
       <div class="auth-links">
         <p>还没有账号？ <router-link to="/register">立即注册</router-link></p>
+        <p>忘记密码？ <router-link to="/password-reset">重置密码</router-link></p>
       </div>
     </div>
   </div>
