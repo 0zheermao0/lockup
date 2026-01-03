@@ -1660,7 +1660,8 @@ const canShareItem = (item: Item): boolean => {
 const canBuryItem = (item: Item): boolean => {
   return item.status === 'available' && [
     'photo', 'key', 'note', 'little_treasury', 'detection_radar', 'photo_paper',
-    'blizzard_bottle', 'sun_bottle', 'time_hourglass'
+    'blizzard_bottle', 'sun_bottle', 'time_hourglass',
+    'lucky_charm', 'energy_potion', 'time_anchor', 'exploration_compass', 'influence_crown'
   ].includes(item.item_type.name)
 }
 

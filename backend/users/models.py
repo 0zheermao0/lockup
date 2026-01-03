@@ -132,15 +132,17 @@ class User(AbstractUser):
         if self.level != 2:
             return False
 
-        # New criteria: Activity ≥200 + Posts ≥20 + Likes ≥50 + Lock Duration ≥7 days
+        # Updated criteria: Activity ≥300 + Posts ≥20 + Likes ≥50 + Lock Duration ≥7 days + Task Completion Rate ≥80%
         lock_duration_hours = self.get_total_lock_duration() / 60
         lock_duration_days = lock_duration_hours / 24
+        task_completion_rate = self.get_task_completion_rate()
 
         return (
-            self.activity_score >= 200 and
+            self.activity_score >= 300 and
             self.total_posts >= 20 and
             self.total_likes_received >= 50 and
-            lock_duration_days >= 7
+            lock_duration_days >= 7 and
+            task_completion_rate >= 80.0
         )
 
     def can_upgrade_to_level_4(self):
@@ -148,13 +150,13 @@ class User(AbstractUser):
         if self.level != 3:
             return False
 
-        # New criteria: Activity ≥500 + Posts ≥50 + Likes ≥1000 + Lock Duration ≥30 days + Task Completion Rate ≥90%
+        # Updated criteria: Activity ≥1000 + Posts ≥50 + Likes ≥1000 + Lock Duration ≥30 days + Task Completion Rate ≥90%
         lock_duration_hours = self.get_total_lock_duration() / 60
         lock_duration_days = lock_duration_hours / 24
         task_completion_rate = self.get_task_completion_rate()
 
         return (
-            self.activity_score >= 500 and
+            self.activity_score >= 1000 and
             self.total_posts >= 50 and
             self.total_likes_received >= 1000 and
             lock_duration_days >= 30 and
@@ -171,6 +173,67 @@ class User(AbstractUser):
             return 4
         return None
 
+    def should_demote_from_level_2(self):
+        """Check if level 2 user should be demoted to level 1"""
+        if self.level != 2:
+            return False
+
+        # Check if user no longer meets level 2 requirements
+        lock_duration_hours = self.get_total_lock_duration() / 60
+
+        return not (
+            self.activity_score >= 100 and
+            self.total_posts >= 5 and
+            self.total_likes_received >= 10 and
+            lock_duration_hours >= 24
+        )
+
+    def should_demote_from_level_3(self):
+        """Check if level 3 user should be demoted to level 2"""
+        if self.level != 3:
+            return False
+
+        # Check if user no longer meets level 3 requirements
+        lock_duration_hours = self.get_total_lock_duration() / 60
+        lock_duration_days = lock_duration_hours / 24
+        task_completion_rate = self.get_task_completion_rate()
+
+        return not (
+            self.activity_score >= 300 and
+            self.total_posts >= 20 and
+            self.total_likes_received >= 50 and
+            lock_duration_days >= 7 and
+            task_completion_rate >= 80.0
+        )
+
+    def should_demote_from_level_4(self):
+        """Check if level 4 user should be demoted to level 3"""
+        if self.level != 4:
+            return False
+
+        # Check if user no longer meets level 4 requirements
+        lock_duration_hours = self.get_total_lock_duration() / 60
+        lock_duration_days = lock_duration_hours / 24
+        task_completion_rate = self.get_task_completion_rate()
+
+        return not (
+            self.activity_score >= 1000 and
+            self.total_posts >= 50 and
+            self.total_likes_received >= 1000 and
+            lock_duration_days >= 30 and
+            task_completion_rate >= 90.0
+        )
+
+    def check_level_demotion_eligibility(self):
+        """Check which level user should be demoted to"""
+        if self.level == 2 and self.should_demote_from_level_2():
+            return 1
+        elif self.level == 3 and self.should_demote_from_level_3():
+            return 2
+        elif self.level == 4 and self.should_demote_from_level_4():
+            return 3
+        return None
+
     def get_level_promotion_requirements(self, target_level):
         """Get requirements for specific level promotion"""
         requirements = {
@@ -181,13 +244,14 @@ class User(AbstractUser):
                 'lock_duration_hours': 24
             },
             3: {
-                'activity_score': 200,
+                'activity_score': 300,
                 'total_posts': 20,
                 'total_likes_received': 50,
-                'lock_duration_hours': 7 * 24  # 7 days
+                'lock_duration_hours': 7 * 24,  # 7 days
+                'task_completion_rate': 80.0
             },
             4: {
-                'activity_score': 500,
+                'activity_score': 1000,
                 'total_posts': 50,
                 'total_likes_received': 1000,
                 'lock_duration_hours': 30 * 24,  # 30 days
@@ -203,7 +267,7 @@ class User(AbstractUser):
         self.level = new_level
         self.save(update_fields=['level'])
 
-        # Record level upgrade
+        # Record level change (upgrade or downgrade)
         UserLevelUpgrade.objects.create(
             user=self,
             from_level=old_level,
@@ -212,18 +276,35 @@ class User(AbstractUser):
             promoted_by=None  # System promotion
         )
 
-        # Create notification
-        Notification.create_notification(
-            recipient=self,
-            notification_type='level_upgraded',
-            title=f'恭喜升级到等级 {new_level}！',
-            message=f'您已成功从等级 {old_level} 升级到等级 {new_level}！',
-            actor=None,  # System notification
-            extra_data={'old_level': old_level, 'new_level': new_level},
-            priority='normal'
-        )
+        # Create notification - different messages for promotion vs demotion
+        if new_level > old_level:
+            # Promotion
+            Notification.create_notification(
+                recipient=self,
+                notification_type='level_upgraded',
+                title=f'恭喜升级到等级 {new_level}！',
+                message=f'您已成功从等级 {old_level} 升级到等级 {new_level}！',
+                actor=None,  # System notification
+                extra_data={'old_level': old_level, 'new_level': new_level, 'change_type': 'promotion'},
+                priority='normal'
+            )
+        else:
+            # Demotion
+            Notification.create_notification(
+                recipient=self,
+                notification_type='level_downgraded',
+                title=f'等级已调整至 {new_level} 级',
+                message=f'由于未达到等级 {old_level} 的要求，您的等级已调整至 {new_level} 级。继续努力，重新达到更高等级！',
+                actor=None,  # System notification
+                extra_data={'old_level': old_level, 'new_level': new_level, 'change_type': 'demotion'},
+                priority='normal'
+            )
 
         return True
+
+    def demote_to_level(self, new_level, reason='downgrade'):
+        """Demote user to lower level with proper tracking"""
+        return self.promote_to_level(new_level, reason)
 
     def update_activity(self, points=1):
         """更新用户活跃度 - 支持可变积分"""

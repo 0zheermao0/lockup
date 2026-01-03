@@ -43,6 +43,13 @@ class PostListCreateView(generics.ListCreateAPIView):
                 serializer.is_valid(raise_exception=True)
             except Exception as e:
                 logger.error(f"Post serializer validation failed for user {request.user.username}: {e}")
+                # 检查是否是文件大小相关的验证错误
+                error_str = str(e).lower()
+                if any(keyword in error_str for keyword in ['file', 'image', 'size', 'large', '大小', '图片']):
+                    return Response(
+                        {'error': '图片验证失败', 'details': '请检查图片格式和大小是否符合要求（最多9张，每张不超过5MB）'},
+                        status=status.HTTP_400_BAD_REQUEST
+                    )
                 return Response(
                     {'error': '数据验证失败', 'details': str(e)},
                     status=status.HTTP_400_BAD_REQUEST
@@ -54,14 +61,51 @@ class PostListCreateView(generics.ListCreateAPIView):
                 logger.info(f"Post created successfully: {post.id} by user {request.user.username}")
             except Exception as e:
                 logger.error(f"Failed to save post for user {request.user.username}: {e}")
-                # 检查是否是图片相关的错误
-                if any(keyword in str(e).lower() for keyword in ['image', 'file', 'upload', 'pil', 'pillow']):
+                import traceback
+                logger.error(f"Full traceback: {traceback.format_exc()}")
+
+                # 详细检查错误类型
+                error_str = str(e).lower()
+                error_type = type(e).__name__
+
+                # 图片处理相关错误
+                if any(keyword in error_str for keyword in ['image', 'file', 'upload', 'pil', 'pillow', 'jpeg', 'png', 'gif']):
                     return Response(
-                        {'error': '图片处理失败', 'details': '请检查图片格式和大小是否符合要求'},
+                        {'error': '图片处理失败', 'details': '图片格式不支持或文件损坏，请重新选择图片'},
                         status=status.HTTP_400_BAD_REQUEST
                     )
+
+                # 数据库相关错误
+                if any(keyword in error_str for keyword in ['database', 'locked', 'sqlite', 'operational']):
+                    return Response(
+                        {'error': '数据库繁忙', 'details': '服务器正在处理其他请求，请稍后重试'},
+                        status=status.HTTP_503_SERVICE_UNAVAILABLE
+                    )
+
+                # 文件系统相关错误
+                if any(keyword in error_str for keyword in ['permission', 'disk', 'space', 'directory']):
+                    return Response(
+                        {'error': '存储错误', 'details': '文件保存失败，请稍后重试'},
+                        status=status.HTTP_507_INSUFFICIENT_STORAGE
+                    )
+
+                # 内存相关错误
+                if any(keyword in error_str for keyword in ['memory', 'allocation']):
+                    return Response(
+                        {'error': '内存不足', 'details': '图片太大或数量过多，请减少图片大小或数量'},
+                        status=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE
+                    )
+
+                # 网络超时相关错误
+                if any(keyword in error_str for keyword in ['timeout', 'connection']):
+                    return Response(
+                        {'error': '请求超时', 'details': '处理时间过长，请稍后重试'},
+                        status=status.HTTP_408_REQUEST_TIMEOUT
+                    )
+
+                # 通用错误
                 return Response(
-                    {'error': '发布动态失败', 'details': '服务器内部错误，请稍后重试'},
+                    {'error': '发布动态失败', 'details': f'服务器内部错误({error_type})，请稍后重试'},
                     status=status.HTTP_500_INTERNAL_SERVER_ERROR
                 )
 
@@ -614,30 +658,69 @@ def create_comment(request, post_id):
         context={'request': request, 'post_id': post_id}
     )
 
-    if serializer.is_valid():
-        comment = serializer.save()
+    try:
+        if serializer.is_valid():
+            comment = serializer.save()
+        else:
+            logger.error(f"Comment serializer validation failed for user {request.user.username}: {serializer.errors}")
+            # 检查是否是图片相关的验证错误
+            error_str = str(serializer.errors).lower()
+            if any(keyword in error_str for keyword in ['image', 'file', 'size', 'large', '大小', '图片']):
+                return Response(
+                    {'error': '评论图片验证失败', 'details': '请检查图片格式和大小是否符合要求（最多3张，每张不超过5MB）'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+    except Exception as e:
+        logger.error(f"Failed to create comment for post {post_id} by user {request.user.username}: {e}")
+        import traceback
+        logger.error(f"Full traceback: {traceback.format_exc()}")
 
-        # 创建评论通知 - 通知动态作者
-        if comment.user != post.user:
-            Notification.create_notification(
-                recipient=post.user,
-                notification_type='post_commented',
-                actor=comment.user,
-                related_object_type='post',
-                related_object_id=post.id,
-                extra_data={'comment_id': str(comment.id)}
+        # 详细检查错误类型
+        error_str = str(e).lower()
+        error_type = type(e).__name__
+
+        # 图片处理相关错误
+        if any(keyword in error_str for keyword in ['image', 'file', 'upload', 'pil', 'pillow', 'jpeg', 'png', 'gif']):
+            return Response(
+                {'error': '评论图片处理失败', 'details': '图片格式不支持或文件损坏，请重新选择图片'},
+                status=status.HTTP_400_BAD_REQUEST
             )
 
-        # 如果是回复评论，通知被回复的用户
-        if comment.parent and comment.user != comment.parent.user:
-            Notification.create_notification(
-                recipient=comment.parent.user,
-                notification_type='comment_replied',
-                actor=comment.user,
-                related_object_type='comment',
-                related_object_id=comment.parent.id,
-                extra_data={'post_id': str(post.id), 'reply_id': str(comment.id)}
+        # 数据库相关错误
+        if any(keyword in error_str for keyword in ['database', 'locked', 'sqlite', 'operational']):
+            return Response(
+                {'error': '数据库繁忙', 'details': '服务器正在处理其他请求，请稍后重试'},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE
             )
+
+        # 通用错误
+        return Response(
+            {'error': '评论发布失败', 'details': f'服务器内部错误({error_type})，请稍后重试'},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+    # 创建评论通知 - 通知动态作者
+    if comment.user != post.user:
+        Notification.create_notification(
+            recipient=post.user,
+            notification_type='post_commented',
+            actor=comment.user,
+            related_object_type='post',
+            related_object_id=post.id,
+            extra_data={'comment_id': str(comment.id)}
+        )
+
+    # 如果是回复评论，通知被回复的用户
+    if comment.parent and comment.user != comment.parent.user:
+        Notification.create_notification(
+            recipient=comment.parent.user,
+            notification_type='comment_replied',
+            actor=comment.user,
+            related_object_type='comment',
+            related_object_id=comment.parent.id,
+            extra_data={'post_id': str(post.id), 'reply_id': str(comment.id)}
+        )
 
         # 返回完整的评论数据
         response_serializer = CommentSerializer(comment, context={'request': request})
