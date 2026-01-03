@@ -26,6 +26,8 @@ async function handleResponse<T>(response: Response): Promise<T> {
       errorData = { message: response.statusText };
     }
 
+    console.log("debugsdhsjdhsjdhjds", errorData);
+
     throw new ApiError(
       // 优先使用后端返回的 error 字段，其次是 message 字段，其次是 non_field_errors 字段，最后才是 HTTP 状态
       errorData.error ||
