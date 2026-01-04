@@ -218,10 +218,7 @@ const purchaseItem = async (item: StoreItem) => {
     const quantity = purchaseQuantities.value[item.id] || 1
     const result = await storeApi.purchaseItem(item.id, quantity)
 
-    // Update user coins
-    if (authStore.user) {
-      authStore.user.coins = result.remaining_coins
-    }
+    // 积分更新由API响应拦截器自动处理，无需手动更新
 
     // Update inventory
     inventory.value = await storeApi.getUserInventory()

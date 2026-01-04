@@ -1045,3 +1045,23 @@ export const notificationsApi = {
 };
 
 export { ApiError };
+
+// 通用API对象，供其他模块使用
+export const api = {
+  get: <T>(endpoint: string) => apiRequest<T>(endpoint),
+  post: <T>(endpoint: string, data?: any) => apiRequest<T>(endpoint, {
+    method: 'POST',
+    body: data ? JSON.stringify(data) : undefined
+  }),
+  put: <T>(endpoint: string, data?: any) => apiRequest<T>(endpoint, {
+    method: 'PUT',
+    body: data ? JSON.stringify(data) : undefined
+  }),
+  patch: <T>(endpoint: string, data?: any) => apiRequest<T>(endpoint, {
+    method: 'PATCH',
+    body: data ? JSON.stringify(data) : undefined
+  }),
+  delete: <T>(endpoint: string) => apiRequest<T>(endpoint, {
+    method: 'DELETE'
+  })
+};

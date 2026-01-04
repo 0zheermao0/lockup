@@ -134,7 +134,7 @@
 
               <div class="info-row">
                 <span class="label">金币</span>
-                <span class="value coins">🪙 {{ userProfile.coins }}</span>
+                <span class="value coins">🪙 {{ isOwnProfile ? (authStore.user?.coins || 0) : (userProfile.coins || 0) }}</span>
               </div>
             </div>
           </section>
@@ -143,7 +143,7 @@
           <section class="lock-status-section">
             <h3>锁定状态</h3>
             <LockStatus
-              :lockTask="userProfile.active_lock_task"
+              :lockTask="isOwnProfile ? authStore.user?.active_lock_task : userProfile.active_lock_task"
               :showActions="isOwnProfile"
               :showWhenFree="true"
               size="normal"

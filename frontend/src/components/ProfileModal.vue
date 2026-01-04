@@ -70,7 +70,7 @@
             <div class="stats-grid">
               <div class="stat-item">
                 <span class="stat-label">积分</span>
-                <span class="stat-value coins">🪙 {{ userProfile.coins || 0 }}</span>
+                <span class="stat-value coins">🪙 {{ userProfile.id === currentUserId ? (authStore.user?.coins || 0) : (userProfile.coins || 0) }}</span>
               </div>
               <div class="stat-item">
                 <span class="stat-label">活跃度</span>
@@ -104,10 +104,10 @@
           </div>
 
           <!-- Current Lock Status -->
-          <div v-if="userProfile.active_lock_task" class="profile-section">
+          <div v-if="userProfile.id === currentUserId ? authStore.user?.active_lock_task : userProfile.active_lock_task" class="profile-section">
             <h4 class="section-title">🔒 当前锁状态</h4>
             <LockStatus
-              :lockTask="userProfile.active_lock_task"
+              :lockTask="userProfile.id === currentUserId ? authStore.user?.active_lock_task : userProfile.active_lock_task"
               :showActions="false"
               :showWhenFree="true"
               size="normal"

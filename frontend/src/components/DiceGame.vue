@@ -412,8 +412,7 @@ const createGame = async () => {
     // Refresh games list
     await loadGames()
 
-    // Refresh user data (coins might have changed)
-    await authStore.refreshUser()
+    // 注意：积分更新现在由API响应拦截器自动处理，无需手动刷新
   } catch (error: any) {
     console.error('Failed to create game:', error)
     alert(error.message || '创建游戏失败')
@@ -520,10 +519,7 @@ const cancelGame = async (gameId: string) => {
 
     const result = await storeApi.cancelGame(gameId)
 
-    // Update user coins
-    if (authStore.user) {
-      authStore.user.coins = result.remaining_coins
-    }
+    // 注意：积分更新现在由API响应拦截器自动处理，无需手动更新
 
     // Refresh games list and inventory
     await Promise.all([

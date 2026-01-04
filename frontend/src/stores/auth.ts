@@ -99,6 +99,46 @@ export const useAuthStore = defineStore('auth', () => {
     }
   }
 
+  // 统一积分管理方法
+  const updateCoins = (newCoins: number) => {
+    if (user.value) {
+      user.value.coins = newCoins
+      // 同步更新localStorage
+      localStorage.setItem('user', JSON.stringify(user.value))
+    }
+  }
+
+  const addCoins = (amount: number) => {
+    if (user.value) {
+      const newCoins = user.value.coins + amount
+      updateCoins(newCoins)
+    }
+  }
+
+  const subtractCoins = (amount: number) => {
+    if (user.value) {
+      const newCoins = Math.max(0, user.value.coins - amount)
+      updateCoins(newCoins)
+    }
+  }
+
+  // 锁定状态管理方法
+  const updateActiveLockTask = (newLockTask: any) => {
+    if (user.value) {
+      user.value.active_lock_task = newLockTask
+      // 同步更新localStorage
+      localStorage.setItem('user', JSON.stringify(user.value))
+    }
+  }
+
+  const clearActiveLockTask = () => {
+    updateActiveLockTask(null)
+  }
+
+  const setActiveLockTask = (lockTask: any) => {
+    updateActiveLockTask(lockTask)
+  }
+
   return {
     // State
     user,
@@ -113,6 +153,14 @@ export const useAuthStore = defineStore('auth', () => {
     logout,
     clearAuth,
     updateUser,
-    refreshUser
+    refreshUser,
+    // 积分管理方法
+    updateCoins,
+    addCoins,
+    subtractCoins,
+    // 锁定状态管理方法
+    updateActiveLockTask,
+    clearActiveLockTask,
+    setActiveLockTask
   }
 })
