@@ -647,8 +647,7 @@ const voteOnPost = async (post: Post, voteType: 'pass' | 'reject') => {
     post.user_vote = voteType
 
     // Show success message
-    // Refresh user coins
-    await authStore.refreshUser()
+    // 注意：积分更新现在由API响应拦截器自动处理，无需手动刷新
   } catch (error: any) {
     console.error('Voting failed:', error)
     alert(error.message || 'Voting failed')
@@ -712,8 +711,7 @@ onMounted(async () => {
 
   // Set up periodic checking for pinned users (every 30 seconds)
   setInterval(checkPinnedUsers, 30000)
-  // Set up periodic checking for authStore (every 12 seconds)
-  setInterval(authStore.refreshUser, 120000)
+  // 注意：移除定时刷新用户数据，现在由API响应拦截器自动处理积分同步
 })
 </script>
 
