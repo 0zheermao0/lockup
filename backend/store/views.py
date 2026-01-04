@@ -26,6 +26,7 @@ from .serializers import (
     ExploreZoneSerializer, FindTreasureSerializer
 )
 from tasks.models import LockTask, TaskTimelineEvent
+from tasks.validators import validate_task_completion_conditions
 
 
 def getDifficultyText(difficulty: str) -> str:
@@ -1862,9 +1863,8 @@ def use_universal_key(request):
                 return Response({
                     'error': f'任务状态为 {lock_task.status}，任务不在可完成状态'
                 }, status=status.HTTP_400_BAD_REQUEST)
-                
-            from tasks.views import _can_complete_lock_task
-            can_complete, reason_response = _can_complete_lock_task(lock_task, user, require_has_key=False)
+
+            can_complete, reason_response = validate_task_completion_conditions(lock_task, user, require_has_key=False)
             if not can_complete:
                 return reason_response
 
