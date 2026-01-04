@@ -3,7 +3,7 @@ export const config = {
   // API配置
   api: {
     // 从环境变量获取API基础URL
-    baseURL: import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:8000/api',
+    baseURL: import.meta.env.VITE_API_BASE_URL || 'https://lock-down.z820.changhai0109.com/api',
     // 请求超时时间（毫秒）
     timeout: 10000,
   },

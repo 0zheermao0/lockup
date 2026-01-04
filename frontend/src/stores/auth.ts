@@ -9,6 +9,9 @@ export const useAuthStore = defineStore('auth', () => {
   const token = ref<string | null>(null)
   const isLoading = ref(false)
 
+  // DEBUG
+  const lastFetchedAt = ref<Date | null>(null)
+
   // Getters
   const isAuthenticated = computed(() => !!token.value && !!user.value)
 
@@ -37,6 +40,8 @@ export const useAuthStore = defineStore('auth', () => {
 
       localStorage.setItem('token', response.token)
       localStorage.setItem('user', JSON.stringify(response.user))
+      // DEBUG
+      lastFetchedAt.value = new Date()
 
       return response
     } catch (error) {
@@ -82,6 +87,9 @@ export const useAuthStore = defineStore('auth', () => {
   const updateUser = (newUser: User) => {
     user.value = newUser
     localStorage.setItem('user', JSON.stringify(newUser))
+    // DEBUG
+    console.log('User data updated:', newUser)
+    lastFetchedAt.value = new Date()
   }
 
   const refreshUser = async () => {
@@ -113,6 +121,7 @@ export const useAuthStore = defineStore('auth', () => {
     logout,
     clearAuth,
     updateUser,
-    refreshUser
+    refreshUser,
+    lastFetchedAt, // DEBUG
   }
 })
