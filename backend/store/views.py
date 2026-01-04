@@ -26,6 +26,7 @@ from .serializers import (
     ExploreZoneSerializer, FindTreasureSerializer
 )
 from tasks.models import LockTask, TaskTimelineEvent
+from tasks.validators import validate_task_completion_conditions
 
 
 def getDifficultyText(difficulty: str) -> str:
@@ -1860,8 +1861,12 @@ def use_universal_key(request):
             # 检查任务状态是否可以使用万能钥匙
             if lock_task.status not in ['active', 'voting', 'voting_passed']:
                 return Response({
-                    'error': f'任务状态为 {lock_task.status}，只能在活跃、投票或投票通过状态下使用万能钥匙'
+                    'error': f'任务状态为 {lock_task.status}，任务不在可完成状态'
                 }, status=status.HTTP_400_BAD_REQUEST)
+
+            can_complete, reason_response = validate_task_completion_conditions(lock_task, user, require_has_key=False)
+            if not can_complete:
+                return reason_response
 
             # 记录使用前状态
             previous_status = lock_task.status

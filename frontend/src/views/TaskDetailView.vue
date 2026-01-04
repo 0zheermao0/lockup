@@ -64,7 +64,7 @@
                   <span class="btn-text">完成任务</span>
                 </button>
                 <button
-                  v-if="(task.status === 'active' || task.status === 'voting' || task.status === 'voting_passed') && canManageLockTask"
+                  v-if="(task.status === 'active' || task.status === 'voting' || task.status === 'voting_passed') && isOwnTask"
                   @click="stopTask"
                   class="quick-action-btn danger large"
                   :title="'停止任务'"

@@ -571,7 +571,7 @@
               <div class="warning-content">
                 <h4 class="warning-title">重要提醒</h4>
                 <p class="warning-message">
-                  万能钥匙可以直接完成任何状态的带锁任务，并获得正常的完成奖励。
+                  万能钥匙可以直接完成任何可完成的带锁任务，并获得正常的完成奖励。
                 </p>
                 <p class="warning-note">
                   使用后钥匙将被销毁，请谨慎选择！
@@ -1954,11 +1954,11 @@ const useUniversalKey = async () => {
     // Show success message
     showNotification(`${response.message}\n获得奖励：${response.reward_coins} 积分`, 'success')
 
-    // Close modal and reset selection
-    closeUniversalKeyModal()
-  } catch (err) {
+  } catch (err) {    
     error.value = err instanceof Error ? err.message : '使用万能钥匙失败'
   } finally {
+    // Close modal and reset selection
+    closeUniversalKeyModal()
     usingUniversalKey.value = false
   }
 }
