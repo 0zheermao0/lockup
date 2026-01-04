@@ -694,7 +694,8 @@ onMounted(async () => {
   // Initialize posts and pinned users check
   await Promise.all([
     initialize(),
-    checkPinnedUsers()
+    checkPinnedUsers(),
+    authStore.refreshUser()
   ])
 
   // Restore scroll position if we have saved state
@@ -711,6 +712,8 @@ onMounted(async () => {
 
   // Set up periodic checking for pinned users (every 30 seconds)
   setInterval(checkPinnedUsers, 30000)
+  // Set up periodic checking for authStore (every 12 seconds)
+  setInterval(authStore.refreshUser, 120000)
 })
 </script>
 
