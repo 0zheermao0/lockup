@@ -1,4 +1,5 @@
 import { API_BASE_URL } from '../config/index';
+import { useAuthStore } from '../stores/auth';
 
 
 export class ApiError extends Error {
@@ -113,7 +114,31 @@ export async function handleResponse<T>(response: Response): Promise<T> {
         }
 
         try {
-            return await response.json();
+            const data = await response.json();
+
+            // 状态同步拦截器 - 自动同步后端返回的积分和锁定状态更新
+            if (data && typeof data === 'object') {
+                // 使用authStore同步状态
+                const authStore = useAuthStore();
+
+                // 检查各种积分字段并同步
+                if (data.remaining_coins !== undefined) {
+                    authStore.updateCoins(data.remaining_coins);
+                } else if (data.user_remaining_coins !== undefined) {
+                    authStore.updateCoins(data.user_remaining_coins);
+                } else if (data.user_total_coins !== undefined) {
+                    authStore.updateCoins(data.user_total_coins);
+                }
+
+                // 检查锁定状态字段并同步
+                if (data.active_lock_task !== undefined) {
+                    authStore.updateActiveLockTask(data.active_lock_task);
+                } else if (data.user && data.user.active_lock_task !== undefined) {
+                    authStore.updateActiveLockTask(data.user.active_lock_task);
+                }
+            }
+
+            return data;
         } catch (jsonError) {
             throw new ApiError('Failed to parse response JSON', response.status, jsonError);
         }

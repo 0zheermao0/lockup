@@ -1265,6 +1265,7 @@ import { useAuthStore } from '../stores/auth'
 import { useTasksStore } from '../stores/tasks'
 import { tasksApi } from '../lib/api-tasks'
 import { storeApi } from '../lib/api'
+import { stateApi } from '../lib/api-coins'
 import { getLevelCSSClass, getLevelDisplayName, getLevelUsernameColor } from '../lib/level-colors'
 import { smartGoBack } from '../utils/navigation'
 import TaskSubmissionModal from '../components/TaskSubmissionModal.vue'
@@ -2230,8 +2231,7 @@ const startProgressUpdate = () => {
               progressInterval.value = undefined
             }
 
-            // 刷新用户数据以更新lock status
-            await authStore.refreshUser()
+            // 注意：积分和状态更新现在由API响应拦截器自动处理
 
             // 刷新时间线以显示完成事件
             await fetchTimeline()
@@ -2329,8 +2329,7 @@ const startTask = async () => {
     task.value = updatedTask
     console.log('任务已开始')
     startProgressUpdate()
-    // 刷新用户数据以更新lock status
-    authStore.refreshUser()
+    // 注意：锁定状态更新现在由API响应拦截器自动处理
   } catch (error: any) {
     console.error('Error starting task:', error)
 
@@ -2380,8 +2379,7 @@ const completeTask = async () => {
       await checkUserHasTaskKey()
     }
 
-    // 刷新用户数据以更新lock status
-    await authStore.refreshUser()
+    // 注意：用户积分更新现在由API响应拦截器自动处理，无需手动刷新
 
     // 刷新时间线以显示完成事件
     await fetchTimeline()
@@ -2465,8 +2463,7 @@ const stopTask = async () => {
     if (progressInterval.value) {
       clearInterval(progressInterval.value)
     }
-    // 刷新用户数据以更新lock status
-    authStore.refreshUser()
+    // 注意：锁定状态更新现在由API响应拦截器和stateApi自动处理
     alert('⚠️ 任务已停止并标记为失败')
   } catch (error: any) {
     console.error('Error stopping task:', error)
@@ -2507,8 +2504,7 @@ const startVoting = async () => {
     // Refresh task data to get updated voting information
     await fetchTask()
 
-    // Refresh user data to update lock status
-    await authStore.refreshUser()
+    // 注意：积分和状态更新现在由API响应拦截器自动处理
   } catch (error) {
     console.error('Error starting voting:', error)
     alert('发起投票失败，请重试')
@@ -2754,8 +2750,7 @@ const addOvertime = async () => {
       }
     }
 
-    // 刷新用户数据以更新lock status
-    authStore.refreshUser()
+    // 注意：积分和状态更新现在由API响应拦截器自动处理
 
     // 显示加时信息
     showToast.value = true
@@ -2824,8 +2819,7 @@ const endTask = async () => {
     task.value = updatedTask
     console.log('任务已结束', updatedTask)
 
-    // 刷新用户数据以更新积分等信息
-    await authStore.refreshUser()
+    // 注意：积分和状态更新现在由API响应拦截器自动处理
 
     // 刷新时间线以显示结束事件
     await fetchTimeline()
@@ -3056,8 +3050,7 @@ const manualTimeAdjustment = async (type: 'increase' | 'decrease') => {
       }
     }
 
-    // 刷新用户数据以更新积分
-    await authStore.refreshUser()
+    // 注意：积分更新现在由API响应拦截器自动处理
 
     // 刷新任务时间线
     await fetchTimeline()
@@ -3133,8 +3126,7 @@ const toggleTimeDisplay = async () => {
       (task.value as any).time_display_hidden = result.time_display_hidden
     }
 
-    // 刷新用户数据以更新积分
-    await authStore.refreshUser()
+    // 注意：积分更新现在由API响应拦截器自动处理
 
     // 刷新任务时间线
     await fetchTimeline()
@@ -3206,8 +3198,7 @@ const pinTaskOwner = async () => {
   try {
     const result = await tasksApi.pinTaskOwner(task.value.id, 60, 30)
 
-    // 刷新用户数据以更新积分
-    await authStore.refreshUser()
+    // 注意：积分更新现在由API响应拦截器自动处理
 
     // 刷新任务时间线
     await fetchTimeline()
@@ -3301,8 +3292,7 @@ const createExclusiveTask = async () => {
     }
     const result = await tasksApi.createExclusiveTask(task.value.id, taskData)
 
-    // 刷新用户数据以更新积分
-    await authStore.refreshUser()
+    // 注意：积分更新现在由API响应拦截器自动处理
 
     // 关闭模态框
     closeExclusiveTaskModal()
@@ -3377,8 +3367,7 @@ const freezeTask = async () => {
   try {
     const result = await tasksApi.freezeTask(task.value.id)
 
-    // 刷新用户数据以更新积分
-    await authStore.refreshUser()
+    // 注意：积分更新现在由API响应拦截器自动处理
 
     // 刷新任务数据
     await fetchTask()
@@ -3444,8 +3433,7 @@ const unfreezeTask = async () => {
   try {
     const result = await tasksApi.unfreezeTask(task.value.id)
 
-    // 刷新用户数据以更新积分
-    await authStore.refreshUser()
+    // 注意：积分更新现在由API响应拦截器自动处理
 
     // 刷新任务数据
     await fetchTask()
@@ -3545,14 +3533,8 @@ const toggleShield = async () => {
       }
     }
 
-    // 刷新用户数据以更新积分
-    try {
-      if (authStore && typeof authStore.refreshUser === 'function') {
-        await authStore.refreshUser()
-      }
-    } catch (refreshError) {
-      // Continue with the operation even if user refresh fails
-    }
+    // 注意：积分更新现在由API响应拦截器自动处理
+    // 不再需要手动刷新用户数据
 
     // 刷新任务时间线
     try {

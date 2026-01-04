@@ -546,10 +546,7 @@ const joinGameWithChoice = async (gameId: string) => {
     gameResult.value = result
     showResultModal.value = true
 
-    // Update user coins if bet was deducted
-    if (authStore.user) {
-      authStore.user.coins = (result as any).remaining_coins || authStore.user.coins
-    }
+    // 注意：积分更新现在由API响应拦截器自动处理，无需手动更新
 
     // Clear choice selection
     delete joinChoices.value[gameId]
@@ -677,10 +674,7 @@ const cancelGame = async (gameId: string) => {
 
     const result = await storeApi.cancelGame(gameId)
 
-    // Update user coins
-    if (authStore.user) {
-      authStore.user.coins = result.remaining_coins
-    }
+    // 注意：积分更新现在由API响应拦截器自动处理，无需手动更新
 
     // Refresh games list
     loadGames()
