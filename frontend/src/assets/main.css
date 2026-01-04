@@ -1,1 +1,33 @@
-/* Empty CSS file - using component-level styles */
+@import './base.css';
+
+/* 主样式文件 - 导入基础样式和全局样式 */
+
+/* 确保CSS正确加载的标记 */
+html {
+  --css-loaded: true;
+}
+
+/* 全局样式重置和优化 */
+* {
+  box-sizing: border-box;
+}
+
+/* 确保字体渲染质量 */
+body {
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
+
+/* 响应式图片 */
+img {
+  max-width: 100%;
+  height: auto;
+}
+
+/* 确保Vue组件正确渲染 */
+#app {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}

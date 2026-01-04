@@ -15,6 +15,8 @@ export default defineConfig({
       '@': fileURLToPath(new URL('./src', import.meta.url))
     },
   },
+  // 修复部署时CSS丢失问题 - 确保资源路径正确
+  base: './',
   build: {
     // 设置chunk大小警告阈值为1MB (1000KB)
     chunkSizeWarningLimit: 1000,
@@ -44,7 +46,15 @@ export default defineConfig({
         // 为chunk文件添加hash以支持长期缓存
         chunkFileNames: 'js/[name]-[hash].js',
         entryFileNames: 'js/[name]-[hash].js',
-        assetFileNames: 'assets/[name]-[hash].[ext]'
+        // 修复CSS部署问题 - 使用更简单的资源命名策略
+        assetFileNames: (assetInfo) => {
+          // CSS文件使用简单命名避免路径问题
+          if (assetInfo.name?.endsWith('.css')) {
+            return 'css/[name]-[hash].css';
+          }
+          // 其他资源文件
+          return 'assets/[name]-[hash].[ext]';
+        }
       }
     }
   },
