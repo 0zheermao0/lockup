@@ -613,6 +613,7 @@ def _auto_settle_multi_person_expired_task_internal(task, current_time):
 
     # 自动审核通过所有已提交的参与者
     auto_approved_count = 0
+    failed_count = 0  # 初始化失败计数器
     for participant in submitted_participants:
         participant.status = 'approved'
         participant.reviewed_at = current_time
@@ -659,12 +660,14 @@ def _auto_settle_multi_person_expired_task_internal(task, current_time):
         TaskTimelineEvent.objects.create(
             task=task,
             event_type='task_completed',
-            description=f'任务已到期，{auto_approved_count}位参与者自动审核通过，任务完成',
+            description=f'任务已到期，{auto_approved_count}位参与者自动审核通过，{failed_count}位参与者自动标记为失败，任务完成',
             metadata={
                 'auto_settled': True,
                 'deadline_expired': True,
                 'auto_approved_count': auto_approved_count,
+                'auto_failed_count': failed_count,
                 'total_approved': all_approved_participants.count(),
+                'total_participants': participants.count(),
                 'reward_distributed': task.reward or 0,
                 'processed_by': 'celery_task'
             }
@@ -686,10 +689,12 @@ def _auto_settle_multi_person_expired_task_internal(task, current_time):
         TaskTimelineEvent.objects.create(
             task=task,
             event_type='task_failed',
-            description=f'任务已到期，无人通过审核，自动标记为失败',
+            description=f'任务已到期，无人通过审核，{failed_count}位参与者自动标记为失败，任务失败',
             metadata={
                 'auto_settled': True,
                 'deadline_expired': True,
+                'auto_failed_count': failed_count,
+                'total_participants': participants.count(),
                 'refund_amount': task.reward,
                 'processed_by': 'celery_task'
             }
@@ -712,8 +717,22 @@ def _auto_settle_multi_person_expired_task_internal(task, current_time):
         }
     )
 
-    # 通知所有未通过审核的参与者
-    for participant in participants.exclude(status='approved'):
+    # 将所有未提交或未通过审核的参与者标记为rejected（用于任务完成率计算）
+    failed_participants = participants.exclude(status='approved')
+
+    for participant in failed_participants:
+        if participant.status in ['joined', 'submitted']:  # 未提交或已提交但未审核通过
+            original_status = participant.status
+            participant.status = 'rejected'
+            participant.reviewed_at = current_time
+            if original_status == 'joined':
+                participant.review_comment = '任务到期未提交，自动标记为失败'
+            else:
+                participant.review_comment = '任务到期未审核，自动标记为失败'
+            participant.save()
+            failed_count += 1
+
+        # 通知参与者
         Notification.create_notification(
             recipient=participant.participant,
             notification_type='task_board_ended',
@@ -723,7 +742,8 @@ def _auto_settle_multi_person_expired_task_internal(task, current_time):
                 'task_title': task.title,
                 'auto_settled': True,
                 'final_status': task.status,
-                'participant_status': participant.status
+                'participant_status': participant.status,
+                'auto_failed': participant.status == 'rejected' and 'auto' in participant.review_comment
             }
         )
 
@@ -731,7 +751,9 @@ def _auto_settle_multi_person_expired_task_internal(task, current_time):
         'task_id': str(task.id),
         'action': action_msg,
         'auto_approved_count': auto_approved_count,
+        'auto_failed_count': failed_count,
         'total_approved': all_approved_participants.count(),
+        'total_participants': participants.count(),
         'reward_distributed': task.reward if task.status == 'completed' else 0,
         'refund_amount': task.reward if task.status == 'failed' else 0
     }
