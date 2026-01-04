@@ -226,7 +226,7 @@ const fetchUserLockStatus = async () => {
 
   // If user object is provided and has active_lock_task, use it
   if (props.user?.active_lock_task) {
-    console.log(`LockIndicator: User ${props.user.username} has active_lock_task:`, props.user.active_lock_task)
+    // console.log(`LockIndicator: User ${props.user.username} has active_lock_task:`, props.user.active_lock_task)
     userLockTask.value = props.user.active_lock_task
     return
   }
