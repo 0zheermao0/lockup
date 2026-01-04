@@ -470,6 +470,25 @@ class User(AbstractUser):
 
         return round(completion_rate, 1)  # 保留一位小数
 
+    def get_total_tasks_completed(self):
+        """计算用户实际完成的任务总数：已完成带锁任务数 + 参与他人任务板通过审核的数量"""
+        from tasks.models import LockTask, TaskParticipant
+
+        # 1. 计算用户创建的已完成带锁任务数
+        completed_lock_tasks = LockTask.objects.filter(
+            user=self,
+            task_type='lock',
+            status='completed'
+        ).count()
+
+        # 2. 计算用户参与他人任务板任务中已通过审核的数量
+        approved_participations = TaskParticipant.objects.filter(
+            participant=self,
+            status='approved'
+        ).count()
+
+        return completed_lock_tasks + approved_participations
+
     def bind_telegram(self, telegram_user_id, telegram_username=None, telegram_chat_id=None):
         """绑定 Telegram 账户"""
         self.telegram_user_id = telegram_user_id

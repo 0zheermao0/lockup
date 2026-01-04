@@ -40,6 +40,7 @@ class UserSerializer(serializers.ModelSerializer):
     active_lock_task = serializers.SerializerMethodField()
     total_lock_duration = serializers.SerializerMethodField()
     task_completion_rate = serializers.SerializerMethodField()
+    total_tasks_completed = serializers.SerializerMethodField()
     avatar = serializers.SerializerMethodField()
 
     class Meta:
@@ -55,7 +56,7 @@ class UserSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = [
             'id', 'level', 'activity_score', 'last_active', 'coins',
-            'total_posts', 'total_likes_received', 'total_tasks_completed',
+            'total_posts', 'total_likes_received',
             'total_lock_duration', 'task_completion_rate', 'created_at', 'updated_at', 'active_lock_task',
             'telegram_username', 'telegram_notifications_enabled', 'is_staff', 'is_superuser'
         ]
@@ -113,6 +114,10 @@ class UserSerializer(serializers.ModelSerializer):
         """获取用户任务完成率（%）"""
         return obj.get_task_completion_rate()
 
+    def get_total_tasks_completed(self, obj):
+        """获取用户完成的任务总数"""
+        return obj.get_total_tasks_completed()
+
     def get_avatar(self, obj):
         """获取头像的完整URL"""
         if obj.avatar:
@@ -146,6 +151,7 @@ class UserPublicSerializer(serializers.ModelSerializer):
     active_lock_task = serializers.SerializerMethodField()
     total_lock_duration = serializers.SerializerMethodField()
     task_completion_rate = serializers.SerializerMethodField()
+    total_tasks_completed = serializers.SerializerMethodField()
     telegram_username = serializers.SerializerMethodField()
     avatar = serializers.SerializerMethodField()
 
@@ -210,6 +216,10 @@ class UserPublicSerializer(serializers.ModelSerializer):
     def get_task_completion_rate(self, obj):
         """获取用户任务完成率（%）"""
         return obj.get_task_completion_rate()
+
+    def get_total_tasks_completed(self, obj):
+        """获取用户完成的任务总数"""
+        return obj.get_total_tasks_completed()
 
     def get_telegram_username(self, obj):
         """只有在用户启用展示账号选项时才返回 Telegram 用户名"""
