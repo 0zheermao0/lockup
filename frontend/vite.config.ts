@@ -15,8 +15,8 @@ export default defineConfig({
       '@': fileURLToPath(new URL('./src', import.meta.url))
     },
   },
-  // 修复部署时CSS丢失问题 - 确保资源路径正确
-  base: './',
+  // 修复部署时CSS丢失问题 - 使用绝对路径确保SPA路由正常工作
+  base: '/',
   build: {
     // 设置chunk大小警告阈值为1MB (1000KB)
     chunkSizeWarningLimit: 1000,
