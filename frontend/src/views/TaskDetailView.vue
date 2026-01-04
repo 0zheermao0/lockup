@@ -2325,11 +2325,11 @@ const startTask = async () => {
   if (!task.value) return
 
   try {
-    const updatedTask = await stateApi.startTask(task.value.id)
+    const updatedTask = await tasksApi.startTask(task.value.id)
     task.value = updatedTask
     console.log('任务已开始')
     startProgressUpdate()
-    // 注意：锁定状态更新现在由API响应拦截器和stateApi自动处理
+    // 注意：锁定状态更新现在由API响应拦截器自动处理
   } catch (error: any) {
     console.error('Error starting task:', error)
 
@@ -2367,7 +2367,7 @@ const completeTask = async () => {
   }
 
   try {
-    const updatedTask = await stateApi.completeTask(task.value.id)
+    const updatedTask = await tasksApi.completeTask(task.value.id)
     task.value = updatedTask
     console.log('任务已完成', updatedTask)
     if (progressInterval.value) {
@@ -2457,7 +2457,7 @@ const stopTask = async () => {
   }
 
   try {
-    const updatedTask = await stateApi.stopTask(task.value.id)
+    const updatedTask = await tasksApi.stopTask(task.value.id)
     task.value = updatedTask
     console.log('任务已停止')
     if (progressInterval.value) {
@@ -3535,7 +3535,6 @@ const toggleShield = async () => {
 
     // 注意：积分更新现在由API响应拦截器自动处理
     // 不再需要手动刷新用户数据
-    }
 
     // 刷新任务时间线
     try {

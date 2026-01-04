@@ -1,4 +1,5 @@
 import { API_BASE_URL } from '../config/index';
+import { useAuthStore } from '../stores/auth';
 
 
 export class ApiError extends Error {
@@ -117,8 +118,7 @@ export async function handleResponse<T>(response: Response): Promise<T> {
 
             // 状态同步拦截器 - 自动同步后端返回的积分和锁定状态更新
             if (data && typeof data === 'object') {
-                // 动态导入authStore避免循环依赖
-                const { useAuthStore } = await import('../stores/auth');
+                // 使用authStore同步状态
                 const authStore = useAuthStore();
 
                 // 检查各种积分字段并同步
