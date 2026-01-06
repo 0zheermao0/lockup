@@ -123,7 +123,7 @@
                 <div @click="triggerCommentFileInput" class="upload-zone">
                   <div v-if="selectedCommentImages.length === 0" class="upload-placeholder">
                     📷 添加图片 (可选)
-                    <span class="upload-hint">点击选择图片 (最多3张，每张不超过5MB)</span>
+                    <span class="upload-hint">点击选择图片 (最多3张，每张不超过2.5MB)</span>
                   </div>
                   <div v-else class="selected-images">
                     <div
@@ -672,9 +672,9 @@ const handleCommentImageSelect = (event: Event) => {
       continue
     }
 
-    // 验证文件大小（5MB限制）
-    if (file.size > 5 * 1024 * 1024) {
-      alert(`图片 ${file.name} 超过了5MB大小限制，请压缩图片或选择较小的文件`)
+    // 验证文件大小（2.5MB限制）
+    if (file.size > 2.5 * 1024 * 1024) {
+      alert(`图片 ${file.name} 超过了2.5MB大小限制，请压缩图片或选择较小的文件`)
       continue
     }
 

@@ -11,6 +11,7 @@ This command sets up ALL periodic tasks in the django-celery-beat database sched
 - Pinning queue processing: runs every minute to manage user pinning queue
 - Pinning system health check: runs every 5 minutes to monitor pinning system
 - Deadline reminders 8h: runs every 30 minutes to send 8-hour deadline reminders for board tasks
+- Board task settlement processing: runs every 5 minutes to auto-settle expired board tasks
 - Event system scheduling: runs every minute to schedule pending events
 - Event system execution: runs every minute to execute scheduled events
 - Event system cleanup: runs every hour to process expired effects
@@ -1006,6 +1007,87 @@ class Command(BaseCommand):
                         self.style.WARNING(f'Periodic task "{event_health_task_name}" already exists and is up to date')
                     )
 
+        # ========================================================================
+        # Board Task Settlement Processing Task Setup
+        # ========================================================================
+
+        self.stdout.write('\n' + '=' * 60)
+        self.stdout.write(self.style.SUCCESS('Setting up board task settlement processing task...'))
+
+        # Create every-5-minutes interval schedule for board task settlement
+        board_settlement_schedule, created = IntervalSchedule.objects.get_or_create(
+            every=5,  # 5 minutes
+            period=IntervalSchedule.MINUTES,
+        )
+
+        if created and not dry_run:
+            self.stdout.write(f'Created board settlement interval schedule: {board_settlement_schedule}')
+        elif created:
+            self.stdout.write(f'[DRY RUN] Would create board settlement interval schedule: {board_settlement_schedule}')
+        else:
+            self.stdout.write(f'Using existing board settlement interval schedule: {board_settlement_schedule}')
+
+        # Create periodic task for board task settlement
+        board_settlement_task_name = 'process-expired-board-tasks'
+        board_settlement_task_function = 'tasks.celery_tasks.process_expired_board_tasks'
+
+        if dry_run:
+            existing_board_settlement_task = PeriodicTask.objects.filter(name=board_settlement_task_name).first()
+            if existing_board_settlement_task:
+                self.stdout.write(
+                    self.style.WARNING(f'[DRY RUN] Task "{board_settlement_task_name}" already exists')
+                )
+            else:
+                self.stdout.write(
+                    self.style.SUCCESS(f'[DRY RUN] Would create periodic task: {board_settlement_task_name}')
+                )
+        else:
+            board_settlement_periodic_task, created = PeriodicTask.objects.get_or_create(
+                name=board_settlement_task_name,
+                defaults={
+                    'interval': board_settlement_schedule,
+                    'task': board_settlement_task_function,
+                    'kwargs': json.dumps({}),
+                    'enabled': True,
+                    'description': 'Process expired board tasks and auto-settle based on submission status (Every 5 minutes)',
+                    'queue': 'settlements',
+                }
+            )
+
+            if created:
+                self.stdout.write(
+                    self.style.SUCCESS(f'Created periodic task: {board_settlement_task_name}')
+                )
+                self.stdout.write(f'  Task: {board_settlement_task_function}')
+                self.stdout.write(f'  Schedule: {board_settlement_schedule}')
+                self.stdout.write(f'  Queue: settlements')
+                self.stdout.write(f'  Enabled: {board_settlement_periodic_task.enabled}')
+            else:
+                # Update existing task if needed
+                updated = False
+                if board_settlement_periodic_task.task != board_settlement_task_function:
+                    board_settlement_periodic_task.task = board_settlement_task_function
+                    updated = True
+                if board_settlement_periodic_task.interval != board_settlement_schedule:
+                    board_settlement_periodic_task.interval = board_settlement_schedule
+                    updated = True
+                if not board_settlement_periodic_task.enabled:
+                    board_settlement_periodic_task.enabled = True
+                    updated = True
+                if getattr(board_settlement_periodic_task, 'queue', None) != 'settlements':
+                    board_settlement_periodic_task.queue = 'settlements'
+                    updated = True
+
+                if updated:
+                    board_settlement_periodic_task.save()
+                    self.stdout.write(
+                        self.style.SUCCESS(f'Updated existing periodic task: {board_settlement_task_name}')
+                    )
+                else:
+                    self.stdout.write(
+                        self.style.WARNING(f'Periodic task "{board_settlement_task_name}" already exists and is up to date')
+                    )
+
         # Show final task configurations
         self.stdout.write('\n' + '=' * 60)
         self.stdout.write(self.style.SUCCESS('Periodic Tasks Configuration:'))
@@ -1106,6 +1188,14 @@ class Command(BaseCommand):
             self.stdout.write(f'Enabled: {event_health_periodic_task.enabled}')
             self.stdout.write(f'Queue: {getattr(event_health_periodic_task, "queue", "default")}')
             self.stdout.write(f'Last Run: {event_health_periodic_task.last_run_at or "Never"}')
+
+            self.stdout.write('\n--- Board Task Settlement Processing Task ---')
+            self.stdout.write(f'Name: {board_settlement_periodic_task.name}')
+            self.stdout.write(f'Task: {board_settlement_periodic_task.task}')
+            self.stdout.write(f'Schedule: {board_settlement_periodic_task.interval}')
+            self.stdout.write(f'Enabled: {board_settlement_periodic_task.enabled}')
+            self.stdout.write(f'Queue: {getattr(board_settlement_periodic_task, "queue", "default")}')
+            self.stdout.write(f'Last Run: {board_settlement_periodic_task.last_run_at or "Never"}')
         else:
             self.stdout.write('\n[DRY RUN] Task configuration details not available in dry-run mode')
 
@@ -1136,7 +1226,8 @@ class Command(BaseCommand):
             'schedule-pending-events',
             'execute-pending-events',
             'process-expired-effects',
-            'event-system-health-check'
+            'event-system-health-check',
+            'process-expired-board-tasks'
         ]
 
         if dry_run:

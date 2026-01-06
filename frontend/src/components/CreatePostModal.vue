@@ -77,7 +77,7 @@
               <div @click="triggerFileInput" class="upload-zone">
                 <div v-if="selectedImages.length === 0" class="upload-placeholder">
                   📷 点击选择图片
-                  <span class="upload-hint">最多9张，每张不超过5MB</span>
+                  <span class="upload-hint">最多9张，每张不超过2.5MB</span>
                 </div>
                 <div v-else class="selected-images">
                   <div
@@ -311,12 +311,12 @@ const handleImageSelect = (event: Event) => {
       continue
     }
 
-    // 验证文件大小（5MB限制）
-    if (file.size > 5 * 1024 * 1024) {
+    // 验证文件大小（2.5MB限制）
+    if (file.size > 2.5 * 1024 * 1024) {
       showToast.value = true
       const errorData = formatErrorForNotification({
         title: '文件过大',
-        message: `图片 ${file.name} 超过了5MB大小限制`,
+        message: `图片 ${file.name} 超过了2.5MB大小限制`,
         actionSuggestion: '请压缩图片或选择较小的文件',
         severity: 'error'
       })

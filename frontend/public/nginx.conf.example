@@ -1,0 +1,17 @@
+# Nginx configuration for Vue.js SPA
+# Place this in your server block
+
+location / {
+  try_files $uri $uri/ /index.html;
+}
+
+# Optional: Cache static assets
+location ~* \.(js|css|png|jpg|jpeg|gif|ico|svg|woff|woff2|ttf|eot)$ {
+  expires 1y;
+  add_header Cache-Control "public, immutable";
+}
+
+# Security headers
+add_header X-Frame-Options "SAMEORIGIN" always;
+add_header X-Content-Type-Options "nosniff" always;
+add_header X-XSS-Protection "1; mode=block" always;

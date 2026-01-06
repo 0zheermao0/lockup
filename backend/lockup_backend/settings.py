@@ -177,6 +177,11 @@ STATIC_ROOT = BASE_DIR / 'staticfiles'
 MEDIA_URL = '/media/'
 MEDIA_ROOT = BASE_DIR / 'media'
 
+# File Upload Settings - 统一图像上传大小限制为2.5MB
+# 设置为2.5MB以保持系统一致性和合理的文件大小
+FILE_UPLOAD_MAX_MEMORY_SIZE = int(2.5 * 1024 * 1024)  # 2.5MB
+DATA_UPLOAD_MAX_MEMORY_SIZE = int(2.5 * 1024 * 1024)  # 2.5MB
+
 # Default primary key field type
 # https://docs.djangoproject.com/en/5.2/ref/settings/#default-auto-field
 
