@@ -91,7 +91,7 @@
                   <div class="upload-icon-mini">📷</div>
                   <div class="upload-text-mini">点击上传</div>
                   <div class="upload-hint-mini">JPG、PNG、SVG、GIF</div>
-                  <div class="upload-size-hint-mini">最大5MB</div>
+                  <div class="upload-size-hint-mini">最大2.5MB</div>
                 </div>
                 <div v-else class="image-preview-mini">
                   <img :src="imagePreview" alt="预览图片" />
@@ -435,12 +435,12 @@ const handleImageUpload = (event: Event) => {
     return
   }
 
-  // Validate file size (5MB max)
-  if (file.size > 5 * 1024 * 1024) {
+  // Validate file size (2.5MB max)
+  if (file.size > 2.5 * 1024 * 1024) {
     showToast.value = true
     const errorData = formatErrorForNotification({
       title: '文件过大',
-      message: '上传的图片超过了5MB大小限制',
+      message: '上传的图片超过了2.5MB大小限制',
       actionSuggestion: '请压缩图片或选择较小的文件',
       severity: 'error'
     })

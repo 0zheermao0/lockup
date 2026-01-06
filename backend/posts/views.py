@@ -48,7 +48,7 @@ class PostListCreateView(generics.ListCreateAPIView):
                 error_str = str(e).lower()
                 if any(keyword in error_str for keyword in ['file', 'image', 'size', 'large', '大小', '图片']):
                     return Response(
-                        {'error': '图片验证失败', 'details': '请检查图片格式和大小是否符合要求（最多9张，每张不超过5MB）'},
+                        {'error': '图片验证失败', 'details': '请检查图片格式和大小是否符合要求（最多9张，每张不超过2.5MB）'},
                         status=status.HTTP_400_BAD_REQUEST
                     )
                 return Response(
@@ -669,7 +669,7 @@ def create_comment(request, post_id):
             error_str = str(serializer.errors).lower()
             if any(keyword in error_str for keyword in ['image', 'file', 'size', 'large', '大小', '图片']):
                 return Response(
-                    {'error': '评论图片验证失败', 'details': '请检查图片格式和大小是否符合要求（最多3张，每张不超过5MB）'},
+                    {'error': '评论图片验证失败', 'details': '请检查图片格式和大小是否符合要求（最多3张，每张不超过2.5MB）'},
                     status=status.HTTP_400_BAD_REQUEST
                 )
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)

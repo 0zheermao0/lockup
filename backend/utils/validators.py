@@ -78,7 +78,7 @@ def secure_avatar_validator(uploaded_file):
             raise ValidationError("头像只能是图片文件")
 
         # 头像特殊限制
-        max_avatar_size = 5 * 1024 * 1024  # 5MB
+        max_avatar_size = int(2.5 * 1024 * 1024)  # 2.5MB
         if file_info['file_size'] > max_avatar_size:
             raise ValidationError(f"头像文件过大，最大允许 {max_avatar_size / 1024 / 1024:.1f}MB")
 

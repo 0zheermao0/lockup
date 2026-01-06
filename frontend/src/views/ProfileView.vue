@@ -439,9 +439,9 @@ const handleAvatarUpload = async (event: Event) => {
     return
   }
 
-  // 验证文件大小 (5MB)
-  if (file.size > 5 * 1024 * 1024) {
-    alert('图片大小不能超过5MB')
+  // 验证文件大小 (2.5MB)
+  if (file.size > 2.5 * 1024 * 1024) {
+    alert('图片大小不能超过2.5MB')
     return
   }
 

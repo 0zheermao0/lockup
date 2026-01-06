@@ -210,6 +210,7 @@ class TelegramBotService:
             self.application.add_handler(CommandHandler("status", self._handle_status))
             self.application.add_handler(CommandHandler("task", self._handle_task))
             self.application.add_handler(CommandHandler("share_item", self._handle_share_item))
+            self.application.add_handler(CommandHandler("board", self._handle_board))
             self.application.add_handler(CommandHandler("help", self._handle_help))
 
             # 回调查询处理器（处理按钮点击）
@@ -622,12 +623,93 @@ Telegram 通知：{'✅ 已开启' if user.telegram_notifications_enabled else '
 /unbind - 解绑账户
 /status - 查看账户状态
 /task - 查看您的带锁任务
+/board - 查看您的任务板
 /share_item - 分享背包中的物品
 /help - 显示此帮助
 通知功能：
 绑定后会自动接收应用内的重要通知"""
 
         await update.message.reply_text(help_text)
+
+    async def _handle_board(self, update, context):
+        """处理 /board 命令 - 显示用户创建的可接取任务板任务"""
+        user_id = update.effective_user.id
+        chat_id = update.effective_chat.id
+        chat_type = update.effective_chat.type
+
+        # 安全检查：验证更新和频率限制
+        if not self._validate_update(update) or not self._check_rate_limit(user_id):
+            logger.warning(f"Security check failed for user {user_id} in _handle_board")
+            return
+
+        try:
+            # 根据聊天类型确定如何查找用户
+            if chat_type == 'private':
+                # 私聊：使用 chat_id 查找
+                user_query = await sync_to_async(User.objects.filter)(telegram_chat_id=chat_id)
+            else:
+                # 群聊：使用 user_id 查找
+                user_query = await sync_to_async(User.objects.filter)(telegram_user_id=user_id)
+
+            user = await sync_to_async(user_query.first)()
+
+            if not user:
+                if chat_type == 'private':
+                    await self._safe_send_message(
+                        update.message.reply_text,
+                        "❌ 您还没有绑定任何账户\n\n"
+                        "使用 /bind 开始绑定"
+                    )
+                else:
+                    await self._safe_send_message(
+                        update.message.reply_text,
+                        f"❌ @{update.effective_user.username or update.effective_user.first_name} 还没有绑定账户\n\n"
+                        "请私聊机器人使用 /start 进行绑定"
+                    )
+                return
+
+            # 查询可接取的任务板任务
+            available_tasks = await self._get_user_available_board_tasks(user)
+
+            if not available_tasks:
+                # 用户没有可接取的任务板任务
+                if chat_type == 'private':
+                    message_text = f"""🏆 **您的任务板**
+
+您目前没有可接取的任务板任务。
+
+💡 可接取的任务需要满足以下条件：
+• 📋 您创建的任务板任务
+• 🔄 状态为可接取（已发布）
+• 👥 未满员（还有空位）
+• ⏰ 在有效期内（未过期）
+
+前往应用创建新的任务板任务，邀请朋友参与！"""
+                else:
+                    message_text = f"""🏆 **@{user.username} 的任务板**
+
+{user.username} 目前没有可接取的任务板任务。
+
+💡 可以前往应用创建新的任务板任务！"""
+
+                await self._safe_send_message(
+                    update.message.reply_text,
+                    message_text,
+                    parse_mode='Markdown'
+                )
+                return
+
+            # 显示任务选择界面
+            await self._send_task_selection_interface(update, user, available_tasks, chat_type)
+
+            logger.info(f"Board command processed successfully for user {user.username} in {chat_type} chat, {len(available_tasks)} tasks found")
+
+        except Exception as e:
+            logger.error(f"Error in board handler for user {user_id}: {e}")
+            await self._safe_send_message(
+                update.message.reply_text,
+                "❌ 获取任务板信息时发生错误，请稍后重试"
+            )
 
     async def _handle_share_item(self, update, context):
         """处理 /share_item 命令 - 显示用户背包中可分享的物品"""
@@ -684,7 +766,7 @@ Telegram 通知：{'✅ 已开启' if user.telegram_notifications_enabled else '
                 status='available',
                 item_type__name__in=['photo', 'note', 'key']
             )
-            shareable_items = await sync_to_async(list)(shareable_items_query.select_related('item_type'))
+            shareable_items = await sync_to_async(list)(shareable_items_query.select_related('item_type', 'original_owner'))
 
             if not shareable_items:
                 # 用户没有可分享的物品
@@ -730,7 +812,11 @@ Telegram 通知：{'✅ 已开启' if user.telegram_notifications_enabled else '
             # 添加物品列表信息
             for i, item in enumerate(shareable_items[:5], 1):  # 最多显示5个物品
                 item_icon = getattr(item.item_type, 'icon', '📦')
-                items_text += f"{i}. {item_icon} {item.item_type.display_name}\n"
+                # 添加原始所有者信息以辅助区分相同物品
+                if item.original_owner:
+                    items_text += f"{i}. {item_icon} {item.item_type.display_name} - {item.original_owner.username}\n"
+                else:
+                    items_text += f"{i}. {item_icon} {item.item_type.display_name} - {item.owner.username}\n"
 
             items_text += f"\n💡 选择后将生成分享链接，其他人点击即可获得物品！"
 
@@ -738,7 +824,11 @@ Telegram 通知：{'✅ 已开启' if user.telegram_notifications_enabled else '
             keyboard_buttons = []
             for i, item in enumerate(shareable_items[:5]):  # 最多显示5个物品
                 item_icon = getattr(item.item_type, 'icon', '📦')
-                button_text = f"{item_icon} {item.item_type.display_name}"
+                # 添加原始所有者信息以辅助区分相同物品
+                if item.original_owner:
+                    button_text = f"{item_icon} {item.item_type.display_name} - {item.original_owner.username}"
+                else:
+                    button_text = f"{item_icon} {item.item_type.display_name} - {item.owner.username}"
                 callback_data = f"share_select_{item.id}_{user.id}"  # 包含用户ID用于权限验证
                 keyboard_buttons.append([InlineKeyboardButton(button_text, callback_data=callback_data)])
 
@@ -797,6 +887,13 @@ Telegram 通知：{'✅ 已开启' if user.telegram_notifications_enabled else '
 
             elif callback_data.startswith('share_claim_'):
                 await self._handle_share_claim_callback(query, callback_data, current_user)
+
+            # 处理任务板相关回调
+            elif callback_data.startswith('board_select_'):
+                await self._handle_board_select_callback(query, callback_data, current_user)
+
+            elif callback_data.startswith('board_take_'):
+                await self._handle_board_take_callback(query, callback_data, current_user)
 
             # 处理游戏参与回调
             elif callback_data.startswith('game_'):
@@ -1427,6 +1524,375 @@ Telegram 通知：{'✅ 已开启' if user.telegram_notifications_enabled else '
             import traceback
             logger.error(f"Traceback: {traceback.format_exc()}")
             return False
+
+    async def _get_user_available_board_tasks(self, user):
+        """查询用户创建的可接取任务板任务"""
+        from django.utils import timezone
+        from django.db.models import Count, F, Q
+
+        now = timezone.now()
+
+        # 查询条件：
+        # 1. 用户创建的任务板任务
+        # 2. 状态为可接取 (taken)
+        # 3. 未满员 (current_participants < max_participants)
+        # 4. 在有效期内 (deadline > now)
+        tasks_query = await sync_to_async(LockTask.objects.filter)(
+            creator=user,
+            task_type='board',
+            status='taken',
+            deadline__gt=now
+        )
+
+        # 使用注解查询参与者数量，过滤未满员的任务
+        tasks_query = tasks_query.annotate(
+            participant_count=Count('taskparticipant', filter=Q(taskparticipant__status='accepted'))
+        ).filter(
+            participant_count__lt=F('max_participants')
+        )
+
+        return await sync_to_async(list)(
+            tasks_query.select_related().order_by('-created_at')[:10]
+        )
+
+    async def _send_task_selection_interface(self, update, user, tasks, chat_type):
+        """发送任务选择界面"""
+
+        # 构建消息文本
+        if chat_type == 'private':
+            message_text = f"""🏆 **您的任务板**
+
+您有 {len(tasks)} 个可接取的任务：
+
+"""
+        else:
+            message_text = f"""🏆 **@{user.username} 的任务板**
+
+@{user.username} 有 {len(tasks)} 个可接取的任务：
+
+"""
+
+        # 添加任务列表
+        for i, task in enumerate(tasks, 1):
+            # 计算剩余时间
+            remaining_time = self._format_remaining_time(task.deadline)
+
+            # 计算参与者信息
+            participant_count = getattr(task, 'participant_count', 0)
+            participant_info = f"{participant_count}/{task.max_participants}人"
+
+            # 难度显示
+            difficulty_map = {
+                'easy': '🟢 简单',
+                'normal': '🟡 普通',
+                'hard': '🔴 困难',
+                'hell': '🔥 地狱'
+            }
+            difficulty = difficulty_map.get(task.difficulty, task.difficulty)
+
+            message_text += f"""{i}. **{task.title}**
+   📊 {difficulty} | 👥 {participant_info} | ⏰ {remaining_time}
+   💰 奖励: {task.reward_coins}积分
+
+"""
+
+        message_text += "💡 选择一个任务来开放接取："
+
+        # 创建选择按钮（只有任务创建者可以点击）
+        keyboard_buttons = []
+        for task in tasks:
+            button_text = f"🎯 {task.title[:20]}{'...' if len(task.title) > 20 else ''}"
+            callback_data = f"board_select_{task.id}_{user.id}"
+            keyboard_buttons.append([InlineKeyboardButton(button_text, callback_data=callback_data)])
+
+        keyboard = InlineKeyboardMarkup(keyboard_buttons)
+
+        await self._safe_send_message(
+            update.message.reply_text,
+            message_text,
+            parse_mode='Markdown',
+            reply_markup=keyboard
+        )
+
+    async def _handle_board_select_callback(self, query, callback_data, current_user):
+        """处理任务选择回调 - 只有任务创建者可以选择"""
+
+        # 解析回调数据：board_select_{task_id}_{creator_user_id}
+        try:
+            parts = callback_data.replace('board_select_', '').split('_')
+            if len(parts) != 2:
+                return await self._safe_callback_response(query, "❌ 无效的操作", show_alert=True)
+
+            task_id, creator_user_id = parts
+            creator_user_id = int(creator_user_id)
+
+            # 验证只有任务创建者可以选择
+            if current_user.id != creator_user_id:
+                return await self._safe_callback_response(query, "❌ 只有任务创建者才能开放任务接取", show_alert=True)
+
+            # 获取任务信息
+            task_query = await sync_to_async(LockTask.objects.filter)(
+                id=task_id,
+                creator=current_user,
+                task_type='board'
+            )
+            task = await sync_to_async(task_query.select_related().first)()
+
+            if not task:
+                return await self._safe_callback_response(query, "❌ 任务不存在或无权限", show_alert=True)
+
+            # 检查任务状态
+            if task.status != 'taken':
+                return await self._safe_callback_response(query, "❌ 任务已结束或不可接取", show_alert=True)
+
+            # 更新消息为接取界面
+            await self._update_to_take_interface(query, task, current_user)
+
+        except ValueError:
+            await self._safe_callback_response(query, "❌ 无效的用户ID", show_alert=True)
+        except Exception as e:
+            logger.error(f"Error in board select callback: {e}")
+            await self._safe_callback_response(query, "❌ 操作失败", show_alert=True)
+
+    async def _handle_board_take_callback(self, query, callback_data, current_user):
+        """处理任务接取回调 - 所有绑定用户都可以接取"""
+
+        # 解析回调数据：board_take_{task_id}
+        task_id = callback_data.replace('board_take_', '')
+
+        try:
+            # 获取任务信息
+            task_query = await sync_to_async(LockTask.objects.filter)(
+                id=task_id,
+                task_type='board'
+            )
+            task = await sync_to_async(task_query.select_related('creator').first)()
+
+            if not task:
+                return await self._safe_callback_response(query, "❌ 任务不存在或已结束", show_alert=True)
+
+            # 检查任务状态
+            if task.status not in ['taken', 'active']:
+                return await self._safe_callback_response(query, "❌ 任务已结束或不可接取", show_alert=True)
+
+            # 检查是否是任务创建者
+            if task.creator.id == current_user.id:
+                return await self._safe_callback_response(query, "❌ 不能接取自己创建的任务", show_alert=True)
+
+            # 检查是否已经参与
+            existing_participant = await sync_to_async(
+                task.taskparticipant_set.filter(user=current_user).first
+            )()
+            if existing_participant:
+                return await self._safe_callback_response(query, "❌ 您已经参与了这个任务", show_alert=True)
+
+            # 执行任务接取逻辑
+            success, message = await self._take_board_task(task, current_user)
+
+            if success:
+                # 更新消息显示接取成功
+                await self._update_message_with_participant(query, task, current_user)
+
+                # 发送成功消息和截止时间提醒
+                remaining_time = self._format_remaining_time(task.deadline)
+                success_message = f"🎉 成功接取任务《{task.title}》！\n\n⏰ 截止时间：{remaining_time}\n💡 请及时提交完成！"
+
+                await self._safe_callback_response(query, success_message, show_alert=True)
+
+                # 创建截止时间提醒通知
+                await self._create_deadline_reminder_notification(task, current_user)
+
+                logger.info(f"User {current_user.username} successfully took board task {task.title}")
+            else:
+                await self._safe_callback_response(query, f"❌ {message}", show_alert=True)
+
+        except Exception as e:
+            logger.error(f"Error in board take callback: {e}")
+            await self._safe_callback_response(query, "❌ 接取任务失败，请稍后重试", show_alert=True)
+
+    async def _take_board_task(self, task, user):
+        """执行任务接取逻辑"""
+        try:
+            from django.utils import timezone
+
+            # 检查任务状态和容量
+            current_participants = await sync_to_async(
+                task.taskparticipant_set.filter(status='accepted').count
+            )()
+
+            if current_participants >= task.max_participants:
+                return False, "任务已满员"
+
+            if task.status not in ['taken', 'active']:
+                return False, "任务已结束或不可接取"
+
+            # 创建参与记录
+            from tasks.models import TaskParticipant
+            await sync_to_async(TaskParticipant.objects.create)(
+                task=task,
+                user=user,
+                status='accepted',
+                joined_at=timezone.now()
+            )
+
+            # 检查是否满员，如果满员则开始任务
+            new_participant_count = current_participants + 1
+            if new_participant_count >= task.max_participants:
+                task.status = 'active'
+                task.started_at = timezone.now()
+                await sync_to_async(task.save)()
+
+            return True, "成功接取任务"
+
+        except Exception as e:
+            logger.error(f"Error in _take_board_task: {e}")
+            return False, f"接取失败: {str(e)}"
+
+    async def _update_to_take_interface(self, query, task, creator):
+        """更新消息为接取界面"""
+        chat_type = query.message.chat.type
+
+        # 构建任务详情消息
+        message_text = self._build_task_detail_message(task, creator, chat_type)
+
+        # 创建接取按钮（持久化，所有人可点击）
+        keyboard = InlineKeyboardMarkup([
+            [InlineKeyboardButton("🎯 接取任务", callback_data=f"board_take_{task.id}")]
+        ])
+
+        await self._safe_edit_message(
+            query,
+            message_text,
+            reply_markup=keyboard,
+            parse_mode='Markdown'
+        )
+
+        await self._safe_callback_response(query, f"✅ 已开放《{task.title}》的接取", show_alert=True)
+
+    def _build_task_detail_message(self, task, creator, chat_type):
+        """构建任务详情消息"""
+        # 计算剩余时间
+        remaining_time = self._format_remaining_time(task.deadline)
+
+        # 难度显示
+        difficulty_map = {
+            'easy': '🟢 简单',
+            'normal': '🟡 普通',
+            'hard': '🔴 困难',
+            'hell': '🔥 地狱'
+        }
+        difficulty = difficulty_map.get(task.difficulty, task.difficulty)
+
+        if chat_type == 'private':
+            message_text = f"""🎯 **任务详情**
+
+📋 **任务标题**：{task.title}
+👤 **创建者**：{creator.username}
+📊 **难度**：{difficulty}
+👥 **参与者**：{task.max_participants}人
+⏰ **截止时间**：{remaining_time}
+💰 **奖励**：{task.reward_coins}积分
+
+💡 **描述**：
+{task.description[:200] + '...' if len(task.description) > 200 else task.description}
+
+🎯 点击下方按钮接取任务！"""
+        else:
+            message_text = f"""🎯 **@{creator.username} 开放的任务**
+
+📋 **任务标题**：{task.title}
+👤 **创建者**：{creator.username}
+📊 **难度**：{difficulty}
+👥 **参与者**：{task.max_participants}人
+⏰ **截止时间**：{remaining_time}
+💰 **奖励**：{task.reward_coins}积分
+
+💡 **描述**：
+{task.description[:200] + '...' if len(task.description) > 200 else task.description}
+
+🎯 点击下方按钮接取任务！"""
+
+        return message_text
+
+    async def _update_message_with_participant(self, query, task, new_participant):
+        """更新消息显示新参与者"""
+        # 获取当前参与者数量
+        current_participants = await sync_to_async(
+            task.taskparticipant_set.filter(status='accepted').count
+        )()
+
+        # 在原消息基础上添加参与者信息
+        original_text = query.message.text
+
+        # 检查是否已有参与者记录
+        if "🎯 **参与者：**" in original_text:
+            # 已有参与者记录，在现有记录后追加
+            updated_text = f"{original_text}\n• @{new_participant.username}"
+        else:
+            # 首次有参与者，添加参与者记录区域
+            updated_text = f"{original_text}\n\n🎯 **参与者：**\n• @{new_participant.username}"
+
+        # 如果满员，移除按钮
+        if current_participants >= task.max_participants:
+            updated_text += f"\n\n✅ **任务已满员，自动开始！**"
+            keyboard = None
+        else:
+            # 保持接取按钮
+            keyboard = InlineKeyboardMarkup([
+                [InlineKeyboardButton("🎯 接取任务", callback_data=f"board_take_{task.id}")]
+            ])
+
+        # 更新消息
+        await self._safe_edit_message(
+            query,
+            updated_text,
+            reply_markup=keyboard,
+            parse_mode='Markdown'
+        )
+
+    async def _create_deadline_reminder_notification(self, task, user):
+        """创建截止时间提醒通知"""
+        from users.models import Notification
+
+        # 计算截止时间
+        remaining_time = self._format_remaining_time(task.deadline)
+
+        # 创建通知
+        await sync_to_async(Notification.create_notification)(
+            recipient=user,
+            notification_type='task_deadline_reminder',
+            actor=None,
+            title='任务截止时间提醒',
+            message=f'您参与的任务板任务《{task.title}》将在{remaining_time}后截止，请及时提交完成！',
+            related_object_type='lock_task',
+            related_object_id=task.id,
+            extra_data={
+                'task_type': 'board',
+                'task_title': task.title,
+                'deadline': task.deadline.isoformat(),
+                'remaining_time': remaining_time
+            },
+            priority='high'
+        )
+
+    def _format_remaining_time(self, deadline):
+        """格式化剩余时间显示"""
+        from django.utils import timezone
+
+        remaining = deadline - timezone.now()
+        if remaining.total_seconds() <= 0:
+            return "已过期"
+
+        days = remaining.days
+        hours = remaining.seconds // 3600
+        minutes = (remaining.seconds % 3600) // 60
+
+        if days > 0:
+            return f"{days}天{hours}小时"
+        elif hours > 0:
+            return f"{hours}小时{minutes}分钟"
+        else:
+            return f"{minutes}分钟"
 
 
 # 全局实例

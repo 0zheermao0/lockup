@@ -542,10 +542,10 @@ def upload_avatar(request):
             status=status.HTTP_400_BAD_REQUEST
         )
 
-    # 验证文件大小 (5MB)
-    if avatar_file.size > 5 * 1024 * 1024:
+    # 验证文件大小 (2.5MB)
+    if avatar_file.size > int(2.5 * 1024 * 1024):
         return Response(
-            {'error': '图片大小不能超过5MB'},
+            {'error': '图片大小不能超过2.5MB'},
             status=status.HTTP_400_BAD_REQUEST
         )
 
