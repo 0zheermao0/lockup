@@ -1534,19 +1534,19 @@ Telegram 通知：{'✅ 已开启' if user.telegram_notifications_enabled else '
 
         # 查询条件：
         # 1. 用户创建的任务板任务
-        # 2. 状态为可接取 (taken)
+        # 2. 状态为可接取 (open, taken, submitted)
         # 3. 未满员 (current_participants < max_participants)
         # 4. 在有效期内 (deadline > now)
         tasks_query = await sync_to_async(LockTask.objects.filter)(
-            creator=user,
+            user=user,  # 修正：使用 user 而不是 creator
             task_type='board',
-            status='taken',
+            status__in=['open', 'taken', 'submitted'],  # 修正：可接取的状态
             deadline__gt=now
         )
 
         # 使用注解查询参与者数量，过滤未满员的任务
         tasks_query = tasks_query.annotate(
-            participant_count=Count('taskparticipant', filter=Q(taskparticipant__status='accepted'))
+            participant_count=Count('participants', filter=Q(participants__status='joined'))  # 修正：使用正确的关系名称和状态
         ).filter(
             participant_count__lt=F('max_participants')
         )
@@ -1592,7 +1592,7 @@ Telegram 通知：{'✅ 已开启' if user.telegram_notifications_enabled else '
 
             message_text += f"""{i}. **{task.title}**
    📊 {difficulty} | 👥 {participant_info} | ⏰ {remaining_time}
-   💰 奖励: {task.reward_coins}积分
+   💰 奖励: {task.reward}积分
 
 """
 
@@ -1633,7 +1633,7 @@ Telegram 通知：{'✅ 已开启' if user.telegram_notifications_enabled else '
             # 获取任务信息
             task_query = await sync_to_async(LockTask.objects.filter)(
                 id=task_id,
-                creator=current_user,
+                user=current_user,  # 修正：使用 user 而不是 creator
                 task_type='board'
             )
             task = await sync_to_async(task_query.select_related().first)()
@@ -1642,7 +1642,7 @@ Telegram 通知：{'✅ 已开启' if user.telegram_notifications_enabled else '
                 return await self._safe_callback_response(query, "❌ 任务不存在或无权限", show_alert=True)
 
             # 检查任务状态
-            if task.status != 'taken':
+            if task.status not in ['open', 'taken', 'submitted']:
                 return await self._safe_callback_response(query, "❌ 任务已结束或不可接取", show_alert=True)
 
             # 更新消息为接取界面
@@ -1666,22 +1666,22 @@ Telegram 通知：{'✅ 已开启' if user.telegram_notifications_enabled else '
                 id=task_id,
                 task_type='board'
             )
-            task = await sync_to_async(task_query.select_related('creator').first)()
+            task = await sync_to_async(task_query.select_related('user').first)()
 
             if not task:
                 return await self._safe_callback_response(query, "❌ 任务不存在或已结束", show_alert=True)
 
             # 检查任务状态
-            if task.status not in ['taken', 'active']:
+            if task.status not in ['open', 'taken', 'submitted']:
                 return await self._safe_callback_response(query, "❌ 任务已结束或不可接取", show_alert=True)
 
             # 检查是否是任务创建者
-            if task.creator.id == current_user.id:
+            if task.user.id == current_user.id:  # 修正：使用 user 而不是 creator
                 return await self._safe_callback_response(query, "❌ 不能接取自己创建的任务", show_alert=True)
 
             # 检查是否已经参与
             existing_participant = await sync_to_async(
-                task.taskparticipant_set.filter(user=current_user).first
+                task.participants.filter(participant=current_user).first  # 修正：使用正确的关系名称和字段
             )()
             if existing_participant:
                 return await self._safe_callback_response(query, "❌ 您已经参与了这个任务", show_alert=True)
@@ -1717,21 +1717,21 @@ Telegram 通知：{'✅ 已开启' if user.telegram_notifications_enabled else '
 
             # 检查任务状态和容量
             current_participants = await sync_to_async(
-                task.taskparticipant_set.filter(status='accepted').count
+                task.participants.filter(status='joined').count  # 修正：使用正确的关系名称和状态
             )()
 
             if current_participants >= task.max_participants:
                 return False, "任务已满员"
 
-            if task.status not in ['taken', 'active']:
+            if task.status not in ['open', 'taken', 'submitted']:
                 return False, "任务已结束或不可接取"
 
             # 创建参与记录
             from tasks.models import TaskParticipant
             await sync_to_async(TaskParticipant.objects.create)(
                 task=task,
-                user=user,
-                status='accepted',
+                participant=user,  # 修正：使用 participant 而不是 user
+                status='joined',   # 修正：使用正确的状态
                 joined_at=timezone.now()
             )
 
@@ -1791,7 +1791,7 @@ Telegram 通知：{'✅ 已开启' if user.telegram_notifications_enabled else '
 📊 **难度**：{difficulty}
 👥 **参与者**：{task.max_participants}人
 ⏰ **截止时间**：{remaining_time}
-💰 **奖励**：{task.reward_coins}积分
+💰 **奖励**：{task.reward}积分
 
 💡 **描述**：
 {task.description[:200] + '...' if len(task.description) > 200 else task.description}
@@ -1805,7 +1805,7 @@ Telegram 通知：{'✅ 已开启' if user.telegram_notifications_enabled else '
 📊 **难度**：{difficulty}
 👥 **参与者**：{task.max_participants}人
 ⏰ **截止时间**：{remaining_time}
-💰 **奖励**：{task.reward_coins}积分
+💰 **奖励**：{task.reward}积分
 
 💡 **描述**：
 {task.description[:200] + '...' if len(task.description) > 200 else task.description}
@@ -1818,7 +1818,7 @@ Telegram 通知：{'✅ 已开启' if user.telegram_notifications_enabled else '
         """更新消息显示新参与者"""
         # 获取当前参与者数量
         current_participants = await sync_to_async(
-            task.taskparticipant_set.filter(status='accepted').count
+            task.participants.filter(status='joined').count  # 修正：使用正确的关系名称和状态
         )()
 
         # 在原消息基础上添加参与者信息
