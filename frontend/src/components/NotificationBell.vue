@@ -546,9 +546,9 @@ onUnmounted(() => {
   position: absolute;
   top: 100%;
   right: 0;
-  min-width: 400px;
-  max-width: 500px;
-  max-height: 500px;
+  min-width: 420px;
+  max-width: 480px;
+  max-height: 480px;
   background: white;
   border: 2px solid #000;
   border-radius: 8px;
@@ -595,7 +595,7 @@ onUnmounted(() => {
 }
 
 .notification-list {
-  max-height: 350px;
+  max-height: 380px;
   overflow-y: auto;
 }
 
@@ -1267,36 +1267,35 @@ onUnmounted(() => {
 
   .notification-dropdown {
     position: fixed;
-    top: 60px;
-    right: 0.5rem;
-    left: 0.5rem;
+    top: 80px;
+    left: 1rem;
+    right: 1rem;
     width: auto;
-    min-width: unset;
-    max-width: unset;
-    transform: none;
-    margin-top: 0;
-    max-height: calc(100vh - 80px);
-    z-index: 9999;
+    max-width: 420px;
+    min-width: 320px;
+    margin: 0 auto;
+    max-height: calc(100vh - 120px);
+    z-index: 99999;
     animation: slideDown 0.3s ease-out;
   }
 
   .notification-list {
-    max-height: calc(100vh - 140px);
+    max-height: calc(100vh - 160px);
   }
 
   .notification-item {
-    padding: 0.75rem;
-    gap: 0.5rem;
+    padding: 1rem;
+    gap: 0.75rem;
   }
 
   .notification-title {
-    font-size: 0.875rem;
-    line-height: 1.3;
+    font-size: 0.9rem;
+    line-height: 1.4;
   }
 
   .notification-message {
-    font-size: 0.8rem;
-    line-height: 1.4;
+    font-size: 0.85rem;
+    line-height: 1.5;
   }
 
   .header-actions {
@@ -1310,11 +1309,11 @@ onUnmounted(() => {
   }
 
   .dropdown-header {
-    padding: 0.75rem;
+    padding: 1rem;
   }
 
   .dropdown-header h3 {
-    font-size: 1rem;
+    font-size: 1.1rem;
   }
 
   .game-choices {
@@ -1368,39 +1367,44 @@ onUnmounted(() => {
 /* 超小屏幕优化 */
 @media (max-width: 480px) {
   .notification-dropdown {
-    top: 55px;
-    right: 0.25rem;
-    left: 0.25rem;
-    max-height: calc(100vh - 75px);
+    top: 70px;
+    left: 0.5rem;
+    right: 0.5rem;
+    width: auto;
+    max-width: 380px;
+    min-width: 300px;
+    margin: 0 auto;
+    max-height: calc(100vh - 110px);
+    z-index: 99999;
   }
 
   .notification-list {
-    max-height: calc(100vh - 135px);
+    max-height: calc(100vh - 155px);
   }
 
   .dropdown-header {
-    padding: 0.5rem;
+    padding: 0.75rem;
   }
 
   .dropdown-header h3 {
-    font-size: 0.9rem;
-  }
-
-  .notification-item {
-    padding: 0.5rem;
-    gap: 0.375rem;
-  }
-
-  .notification-icon {
     font-size: 1rem;
   }
 
+  .notification-item {
+    padding: 0.75rem;
+    gap: 0.5rem;
+  }
+
+  .notification-icon {
+    font-size: 1.1rem;
+  }
+
   .notification-title {
-    font-size: 0.8rem;
+    font-size: 0.85rem;
   }
 
   .notification-message {
-    font-size: 0.75rem;
+    font-size: 0.8rem;
   }
 
   .notification-meta {
@@ -1486,6 +1490,295 @@ onUnmounted(() => {
   .no-more {
     padding: 0.5rem;
     font-size: 0.75rem;
+  }
+}
+
+/* ===========================================
+ * 液态玻璃主题样式覆盖
+ * =========================================== */
+
+/* 液态玻璃主题下的铃铛图标 */
+.theme-liquid-glass .bell-icon {
+  background: var(--theme-modal-bg) !important;
+  backdrop-filter: var(--theme-backdrop-filter) !important;
+  -webkit-backdrop-filter: var(--theme-backdrop-filter) !important;
+  border: 1px solid rgba(255, 255, 255, 0.2) !important;
+  border-radius: 50% !important;
+  box-shadow: var(--theme-shadow-small), var(--theme-inner-glow) !important;
+  color: var(--theme-text-primary) !important;
+  transition: all var(--theme-transition-fast) !important;
+}
+
+.theme-liquid-glass .bell-icon:hover {
+  transform: translateY(-1px) scale(1.05) !important;
+  box-shadow: var(--theme-hover-lift), var(--theme-inner-glow-strong) !important;
+  backdrop-filter: blur(20px) saturate(200%) brightness(1.2) !important;
+  -webkit-backdrop-filter: blur(20px) saturate(200%) brightness(1.2) !important;
+  background: var(--theme-card-bg) !important;
+  border-color: rgba(255, 255, 255, 0.3) !important;
+}
+
+.theme-liquid-glass .bell-icon.has-notifications {
+  background: rgba(255, 107, 107, 0.15) !important;
+  border-color: rgba(255, 107, 107, 0.3) !important;
+  box-shadow: 0 0 20px rgba(255, 107, 107, 0.2), var(--theme-inner-glow) !important;
+  animation: liquid-bell-ring 2s infinite;
+}
+
+@keyframes liquid-bell-ring {
+  0%, 10%, 20%, 30%, 40%, 50%, 60%, 70%, 80%, 90%, 100% {
+    transform: rotate(0deg);
+  }
+  5%, 15%, 25%, 35%, 45%, 55%, 65%, 75%, 85%, 95% {
+    transform: rotate(10deg);
+  }
+}
+
+/* 液态玻璃主题下的通知徽章 */
+.theme-liquid-glass .notification-badge {
+  background: rgba(220, 53, 69, 0.8) !important;
+  backdrop-filter: var(--theme-glass-light) !important;
+  -webkit-backdrop-filter: var(--theme-glass-light) !important;
+  border: 1px solid rgba(220, 53, 69, 0.5) !important;
+  border-radius: 50% !important;
+  color: var(--theme-text-inverted) !important;
+  box-shadow: 0 0 10px rgba(220, 53, 69, 0.3), var(--theme-inner-glow) !important;
+}
+
+/* 液态玻璃主题下的移动端遮罩 */
+.theme-liquid-glass .mobile-overlay {
+  background: rgba(0, 0, 0, 0.3) !important;
+  backdrop-filter: blur(8px) !important;
+  -webkit-backdrop-filter: blur(8px) !important;
+}
+
+/* 液态玻璃主题下的下拉框 */
+.theme-liquid-glass .notification-dropdown {
+  background: var(--theme-modal-bg) !important;
+  backdrop-filter: var(--theme-backdrop-filter) !important;
+  -webkit-backdrop-filter: var(--theme-backdrop-filter) !important;
+  border: 1px solid rgba(255, 255, 255, 0.2) !important;
+  border-radius: var(--theme-border-radius-large) !important;
+  box-shadow: var(--theme-shadow-large), var(--theme-glow), var(--theme-inner-glow-strong) !important;
+  z-index: 1000 !important;
+}
+
+/* 液态玻璃主题下的下拉框头部 */
+.theme-liquid-glass .dropdown-header {
+  background: var(--theme-card-bg) !important;
+  backdrop-filter: var(--theme-glass-filter) !important;
+  -webkit-backdrop-filter: var(--theme-glass-filter) !important;
+  border: none !important;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.15) !important;
+  border-radius: var(--theme-border-radius-large) var(--theme-border-radius-large) 0 0 !important;
+}
+
+.theme-liquid-glass .dropdown-header h3 {
+  color: var(--theme-text-primary) !important;
+}
+
+/* 液态玻璃主题下的按钮 */
+.theme-liquid-glass .mark-all-btn,
+.theme-liquid-glass .clear-btn {
+  background: var(--theme-tertiary-bg) !important;
+  backdrop-filter: var(--theme-glass-light) !important;
+  -webkit-backdrop-filter: var(--theme-glass-light) !important;
+  border: 1px solid rgba(255, 255, 255, 0.1) !important;
+  border-radius: var(--theme-border-radius-small) !important;
+  color: var(--theme-text-primary) !important;
+  box-shadow: var(--theme-inner-glow) !important;
+  transition: all var(--theme-transition-fast) !important;
+}
+
+.theme-liquid-glass .mark-all-btn:hover,
+.theme-liquid-glass .clear-btn:hover {
+  transform: translateY(-1px) scale(1.02) !important;
+  box-shadow: var(--theme-shadow-small), var(--theme-inner-glow-strong) !important;
+  background: var(--theme-card-bg) !important;
+  border-color: rgba(255, 255, 255, 0.2) !important;
+}
+
+/* 液态玻璃主题下的通知列表 */
+.theme-liquid-glass .notification-list {
+  background: transparent !important;
+}
+
+/* 液态玻璃主题下的通知项 */
+.theme-liquid-glass .notification-item {
+  background: transparent !important;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1) !important;
+  transition: all var(--theme-transition-fast) !important;
+}
+
+.theme-liquid-glass .notification-item:hover {
+  background: var(--theme-tertiary-bg) !important;
+  backdrop-filter: var(--theme-glass-light) !important;
+  -webkit-backdrop-filter: var(--theme-glass-light) !important;
+}
+
+.theme-liquid-glass .notification-item.is-read {
+  background: var(--theme-secondary-bg) !important;
+  opacity: 0.7;
+}
+
+.theme-liquid-glass .notification-item:not(.is-read):before {
+  background: linear-gradient(135deg, rgba(59, 130, 246, 0.8), rgba(59, 130, 246, 0.6)) !important;
+}
+
+/* 液态玻璃主题下的通知内容 */
+.theme-liquid-glass .notification-title {
+  color: var(--theme-text-primary) !important;
+}
+
+.theme-liquid-glass .notification-message {
+  color: var(--theme-text-secondary) !important;
+}
+
+.theme-liquid-glass .notification-meta {
+  color: var(--theme-text-muted) !important;
+}
+
+.theme-liquid-glass .time {
+  color: var(--theme-text-muted) !important;
+}
+
+/* 液态玻璃主题下的可点击元素 */
+.theme-liquid-glass .clickable-actor,
+.theme-liquid-glass .clickable-username {
+  color: rgba(59, 130, 246, 0.9) !important;
+  background: transparent !important;
+  border: 1px solid transparent !important;
+  backdrop-filter: var(--theme-glass-light) !important;
+  -webkit-backdrop-filter: var(--theme-glass-light) !important;
+  transition: all var(--theme-transition-fast) !important;
+}
+
+.theme-liquid-glass .clickable-actor:hover,
+.theme-liquid-glass .clickable-username:hover {
+  color: var(--theme-text-inverted) !important;
+  background: rgba(59, 130, 246, 0.8) !important;
+  border-color: rgba(59, 130, 246, 0.5) !important;
+  backdrop-filter: var(--theme-glass-filter) !important;
+  -webkit-backdrop-filter: var(--theme-glass-filter) !important;
+  box-shadow: 0 0 15px rgba(59, 130, 246, 0.2), var(--theme-inner-glow) !important;
+  transform: translateY(-1px) scale(1.02) !important;
+}
+
+/* 液态玻璃主题下的操作按钮 */
+.theme-liquid-glass .action-btn {
+  background: var(--theme-tertiary-bg) !important;
+  backdrop-filter: var(--theme-glass-light) !important;
+  -webkit-backdrop-filter: var(--theme-glass-light) !important;
+  border: 1px solid rgba(255, 255, 255, 0.1) !important;
+  border-radius: var(--theme-border-radius-small) !important;
+  color: var(--theme-text-primary) !important;
+  box-shadow: var(--theme-inner-glow) !important;
+  transition: all var(--theme-transition-fast) !important;
+}
+
+.theme-liquid-glass .action-btn:hover {
+  transform: translateY(-1px) scale(1.05) !important;
+  box-shadow: var(--theme-shadow-small), var(--theme-inner-glow-strong) !important;
+  backdrop-filter: var(--theme-glass-filter) !important;
+  -webkit-backdrop-filter: var(--theme-glass-filter) !important;
+}
+
+.theme-liquid-glass .mark-read-btn:hover {
+  background: rgba(40, 167, 69, 0.8) !important;
+  color: var(--theme-text-inverted) !important;
+  border-color: rgba(40, 167, 69, 0.5) !important;
+  box-shadow: 0 0 15px rgba(40, 167, 69, 0.2), var(--theme-inner-glow-strong) !important;
+}
+
+.theme-liquid-glass .delete-btn:hover {
+  background: rgba(220, 53, 69, 0.8) !important;
+  color: var(--theme-text-inverted) !important;
+  border-color: rgba(220, 53, 69, 0.5) !important;
+  box-shadow: 0 0 15px rgba(220, 53, 69, 0.2), var(--theme-inner-glow-strong) !important;
+}
+
+/* 液态玻璃主题下的懒加载样式 */
+.theme-liquid-glass .load-more-section {
+  background: transparent !important;
+  border-top: 1px solid rgba(255, 255, 255, 0.1) !important;
+}
+
+.theme-liquid-glass .load-more-btn {
+  background: rgba(59, 130, 246, 0.15) !important;
+  backdrop-filter: var(--theme-glass-filter) !important;
+  -webkit-backdrop-filter: var(--theme-glass-filter) !important;
+  border: 1px solid rgba(59, 130, 246, 0.2) !important;
+  border-radius: var(--theme-border-radius-small) !important;
+  color: var(--theme-text-primary) !important;
+  box-shadow: 0 0 15px rgba(59, 130, 246, 0.2), var(--theme-inner-glow) !important;
+  transition: all var(--theme-transition-fast) !important;
+}
+
+.theme-liquid-glass .load-more-btn:hover {
+  transform: translateY(-1px) scale(1.02) !important;
+  box-shadow: 0 0 25px rgba(59, 130, 246, 0.3), var(--theme-hover-lift) !important;
+  background: rgba(59, 130, 246, 0.8) !important;
+  color: var(--theme-text-inverted) !important;
+}
+
+.theme-liquid-glass .loading-more {
+  color: var(--theme-text-secondary) !important;
+}
+
+.theme-liquid-glass .no-more {
+  color: var(--theme-text-muted) !important;
+  border-top: 1px solid rgba(255, 255, 255, 0.1) !important;
+}
+
+.theme-liquid-glass .loading {
+  color: var(--theme-text-secondary) !important;
+}
+
+.theme-liquid-glass .empty-state {
+  color: var(--theme-text-secondary) !important;
+}
+
+/* 移动端液态玻璃优化 */
+@media (max-width: 768px) {
+  .theme-liquid-glass .notification-dropdown {
+    /* 完全继承原始UI的移动端定位 */
+    position: fixed !important;
+    top: 80px !important;
+    left: 1rem !important;
+    right: 1rem !important;
+    width: auto !important;
+    max-width: 420px !important;
+    min-width: 320px !important;
+    margin: 0 auto !important;
+    max-height: calc(100vh - 120px) !important;
+    z-index: 99999 !important;
+    animation: slideDown 0.3s ease-out !important;
+    border-radius: var(--theme-border-radius) !important;
+  }
+
+  .theme-liquid-glass .dropdown-header {
+    border-radius: var(--theme-border-radius) var(--theme-border-radius) 0 0 !important;
+  }
+}
+
+@media (max-width: 480px) {
+  .theme-liquid-glass .notification-dropdown {
+    /* 完全继承原始UI的超小屏移动端定位 */
+    position: fixed !important;
+    top: 70px !important;
+    left: 0.5rem !important;
+    right: 0.5rem !important;
+    width: auto !important;
+    max-width: 380px !important;
+    min-width: 300px !important;
+    margin: 0 auto !important;
+    max-height: calc(100vh - 110px) !important;
+    z-index: 99999 !important;
+    border-radius: var(--theme-border-radius-small) !important;
+  }
+
+  .theme-liquid-glass .dropdown-header {
+    border-radius: var(--theme-border-radius-small) var(--theme-border-radius-small) 0 0 !important;
   }
 }
 </style>

@@ -6,14 +6,20 @@
 
 <script setup lang="ts">
 import { RouterView } from 'vue-router'
-import { onMounted } from 'vue'
+import { onMounted, watch } from 'vue'
 import { useAuthStore } from './stores/auth'
 import { useNotificationStore } from './stores/notifications'
+import { useThemeStore } from './stores/theme'
 
 const authStore = useAuthStore()
 const notificationStore = useNotificationStore()
+const themeStore = useThemeStore()
 
 onMounted(async () => {
+  // Initialize theme system first
+  const themeCleanup = themeStore.initTheme()
+  console.log('🎨 Theme system initialized:', themeStore.currentTheme)
+
   // Initialize auth state on app startup
   await authStore.initAuth()
 
@@ -26,10 +32,41 @@ onMounted(async () => {
       console.error('Failed to initialize notifications:', error)
     }
   }
+
+  // Cleanup theme listeners on app unmount
+  if (themeCleanup) {
+    // Store cleanup function for potential future use
+    // In Vue 3, we don't have onUnmounted at the app level easily accessible
+  }
 })
+
+// Watch for theme changes and apply to document root
+watch(
+  () => themeStore.currentThemeClass,
+  (newThemeClass, oldThemeClass) => {
+    const html = document.documentElement
+
+    // Remove old theme class
+    if (oldThemeClass) {
+      html.classList.remove(oldThemeClass)
+    }
+
+    // Add new theme class
+    html.classList.add(newThemeClass)
+
+    console.log('🎨 Theme applied to document:', newThemeClass)
+  },
+  { immediate: true }
+)
 </script>
 
 <style>
+/* Theme system imports */
+@import './assets/themes/shared-variables.css';
+@import './assets/themes/neo-brutalism.css';
+@import './assets/themes/liquid-glass.css';
+@import './assets/themes/theme-transitions.css';
+
 /* Global styles */
 *,
 *::before,
@@ -40,13 +77,17 @@ onMounted(async () => {
 }
 
 body {
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  font-family: var(--theme-font-family-primary, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif);
   line-height: 1.6;
-  color: #333;
+  color: var(--theme-text-primary, #333);
+  background-color: var(--theme-primary-bg, #ffffff);
+  transition: background-color var(--theme-transition-normal, 0.3s ease), color var(--theme-transition-normal, 0.3s ease);
 }
 
 #app {
   min-height: 100vh;
+  background: var(--theme-primary-bg, #ffffff);
+  transition: background var(--theme-transition-normal, 0.3s ease);
 }
 
 /* Remove default Vue styling */

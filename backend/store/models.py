@@ -25,6 +25,7 @@ class ItemType(models.Model):
         ('time_anchor', '时间锚点'),
         ('exploration_compass', '探索指南针'),
         ('influence_crown', '影响力皇冠'),
+        ('small_campfire', '小火堆'),
     ]
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)

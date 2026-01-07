@@ -328,6 +328,17 @@
               <span v-else>👑 使用影响力皇冠</span>
             </button>
 
+            <!-- Small Campfire usage -->
+            <button
+              v-if="canUseSmallCampfire(selectedItem)"
+              @click="openSmallCampfireModal"
+              class="action-btn small-campfire"
+              :disabled="usingSmallCampfire"
+            >
+              <span v-if="usingSmallCampfire">使用中...</span>
+              <span v-else>🔥 使用小火堆</span>
+            </button>
+
             <!-- Discard item -->
             <button
               v-if="canDiscardItem(selectedItem)"
@@ -1299,6 +1310,83 @@
     </div>
   </div>
 
+  <!-- Small Campfire Modal -->
+  <div v-if="showSmallCampfireModal" class="modal-overlay" @click.self="closeSmallCampfireModal">
+    <div class="action-modal small-campfire-modal">
+      <div class="modal-header">
+        <h3 class="modal-title">🔥 使用小火堆</h3>
+        <button @click="closeSmallCampfireModal" class="modal-close">×</button>
+      </div>
+
+      <div class="modal-body">
+        <div class="warning-section">
+          <div class="warning-icon">🔥</div>
+          <div class="warning-content">
+            <h4 class="warning-title">小火堆</h4>
+            <p class="warning-message">
+              可以解冻您自己的被冻结的带锁任务，让任务恢复倒计时。
+            </p>
+            <p class="warning-note">
+              ⚠️ 使用后物品将被自动销毁，请谨慎使用！
+            </p>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <div v-if="frozenTasks.length === 0" class="no-tasks-message">
+            <p>暂无被冻结的带锁任务</p>
+            <p class="hint">只能解冻自己的已被冻结的带锁任务</p>
+          </div>
+
+          <div v-else-if="frozenTasks[0]" class="frozen-task-info">
+            <h4 class="info-title">🧊 被冻结的任务</h4>
+            <div class="task-display-card">
+              <div class="task-info">
+                <h4 class="task-title">{{ frozenTasks[0].title }}</h4>
+                <p class="task-meta">
+                  <span class="task-difficulty">{{ getDifficultyText(frozenTasks[0].difficulty) }}</span>
+                  <span class="task-status frozen">❄️ 已冻结</span>
+                </p>
+                <p v-if="frozenTasks[0].description" class="task-description">
+                  {{ stripHtmlAndTruncate(frozenTasks[0].description, 120) }}
+                </p>
+                <div v-if="frozenTasks[0].frozen_at" class="freeze-info">
+                  <span class="freeze-time">冻结时间：{{ formatFreezeTime(frozenTasks[0].frozen_at) }}</span>
+                </div>
+              </div>
+            </div>
+            <p class="auto-select-note">
+              💡 将自动解冻上述任务
+            </p>
+          </div>
+        </div>
+
+        <div v-if="selectedItem" class="item-info-section">
+          <h4 class="info-title">🔥 使用物品</h4>
+          <div class="item-info-card">
+            <span class="item-icon">{{ selectedItem.item_type.icon }}</span>
+            <div class="item-details">
+              <span class="item-name">{{ selectedItem.item_type.display_name }}</span>
+              <span class="item-description">{{ selectedItem.item_type.description }}</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="modal-footer">
+        <button @click="closeSmallCampfireModal" class="modal-btn secondary">取消</button>
+        <button
+          @click="useSmallCampfire"
+          class="modal-btn primary"
+          :disabled="frozenTasks.length === 0 || usingSmallCampfire"
+        >
+          <span v-if="usingSmallCampfire">使用中...</span>
+          <span v-else>🔥 使用小火堆</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
   <!-- Exploration Compass Results Modal -->
   <div v-if="compassResults" class="modal-overlay" @click.self="compassResults = null">
     <div class="action-modal" @click.stop>
@@ -1486,6 +1574,24 @@ const compassResults = ref<any>(null)
 const showInfluenceCrownModal = ref(false)
 const usingInfluenceCrown = ref(false)
 
+// Small Campfire
+const showSmallCampfireModal = ref(false)
+const usingSmallCampfire = ref(false)
+const frozenTasks = ref<Array<{
+  id: string;
+  title: string;
+  description: string;
+  difficulty: string;
+  status: string;
+  frozen_at?: string;
+  frozen_end_time?: string;
+  frozen_duration_seconds?: number;
+  remaining_time_after_unfreeze_seconds?: number;
+  start_time?: string;
+  end_time?: string;
+}>>([])
+const selectedSmallCampfireTaskId = ref<string | null>(null)
+
 
 // Methods
 const goBack = () => {
@@ -1522,6 +1628,17 @@ const getStatusText = (status: string): string => {
 
 const formatDate = (dateString: string): string => {
   return new Date(dateString).toLocaleString('zh-CN')
+}
+
+const formatFreezeTime = (dateString: string): string => {
+  if (!dateString) return ''
+  return new Date(dateString).toLocaleString('zh-CN', {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit'
+  })
 }
 
 const formatExpireTime = (dateString: string): string => {
@@ -1654,7 +1771,7 @@ const canShareItem = (item: Item): boolean => {
   return item.status === 'available' && [
     'photo', 'note', 'key', 'little_treasury', 'time_hourglass',
     'lucky_charm', 'energy_potion', 'time_anchor',
-    'exploration_compass', 'influence_crown'
+    'exploration_compass', 'influence_crown', 'small_campfire'
   ].includes(item.item_type.name)
 }
 
@@ -1662,19 +1779,19 @@ const canBuryItem = (item: Item): boolean => {
   return item.status === 'available' && [
     'photo', 'key', 'note', 'little_treasury', 'detection_radar', 'photo_paper',
     'blizzard_bottle', 'sun_bottle', 'time_hourglass',
-    'lucky_charm', 'energy_potion', 'time_anchor', 'exploration_compass', 'influence_crown'
+    'lucky_charm', 'energy_potion', 'time_anchor', 'exploration_compass', 'influence_crown', 'small_campfire'
   ].includes(item.item_type.name)
 }
 
 const canShareNewItem = (item: Item): boolean => {
   if (item.status !== 'available') return false
-  const shareableTypes = ['lucky_charm', 'energy_potion', 'time_anchor', 'exploration_compass', 'influence_crown']
+  const shareableTypes = ['lucky_charm', 'energy_potion', 'time_anchor', 'exploration_compass', 'influence_crown', 'small_campfire']
   return shareableTypes.includes(item.item_type.name)
 }
 
 const canBuryNewItem = (item: Item): boolean => {
   if (item.status !== 'available') return false
-  const buryableTypes = ['lucky_charm', 'energy_potion', 'time_anchor', 'exploration_compass', 'influence_crown']
+  const buryableTypes = ['lucky_charm', 'energy_potion', 'time_anchor', 'exploration_compass', 'influence_crown', 'small_campfire']
   return buryableTypes.includes(item.item_type.name)
 }
 
@@ -1799,6 +1916,10 @@ const canUseExplorationCompass = (item: Item): boolean => {
 
 const canUseInfluenceCrown = (item: Item): boolean => {
   return item.status === 'available' && item.item_type.name === 'influence_crown'
+}
+
+const canUseSmallCampfire = (item: Item): boolean => {
+  return item.status === 'available' && item.item_type.name === 'small_campfire'
 }
 
 
@@ -2677,6 +2798,68 @@ const useInfluenceCrown = async () => {
     showNotification(errorMessage, 'error')
   } finally {
     usingInfluenceCrown.value = false
+  }
+}
+
+// Small Campfire Modal Functions
+const openSmallCampfireModal = async () => {
+  if (!selectedItem.value) return
+
+  try {
+    // Load frozen tasks when opening the modal
+    const response = await storeApi.getFrozenTasks()
+    frozenTasks.value = response.frozen_tasks || []
+
+    // Auto-select the first (and only) frozen task if available
+    if (frozenTasks.value.length > 0 && frozenTasks.value[0]) {
+      selectedSmallCampfireTaskId.value = frozenTasks.value[0].id
+    }
+
+    showSmallCampfireModal.value = true
+  } catch (error) {
+    console.error('Error loading frozen tasks:', error)
+    showNotification('加载冻结任务失败，请重试', 'error')
+  }
+}
+
+const closeSmallCampfireModal = () => {
+  showSmallCampfireModal.value = false
+  selectedSmallCampfireTaskId.value = null
+  frozenTasks.value = []
+  if (selectedItem.value) {
+    selectedItem.value = null
+  }
+}
+
+const useSmallCampfire = async () => {
+  if (!selectedItem.value || !selectedSmallCampfireTaskId.value) return
+
+  try {
+    usingSmallCampfire.value = true
+    const response = await storeApi.useSmallCampfireOnTask({
+      item_id: selectedItem.value.id,
+      task_id: selectedSmallCampfireTaskId.value
+    })
+
+    // Refresh inventory after successful use
+    await loadInventory()
+
+    // Show success message
+    showNotification(`${response.message}`, 'success')
+
+    // Close modal and reset selection
+    closeSmallCampfireModal()
+  } catch (error) {
+    console.error('Error using small campfire:', error)
+    let errorMessage = '使用小火堆失败，请重试'
+    if (error instanceof ApiError) {
+      errorMessage = error.message
+    } else if (error instanceof Error) {
+      errorMessage = error.message
+    }
+    showNotification(errorMessage, 'error')
+  } finally {
+    usingSmallCampfire.value = false
   }
 }
 
@@ -6066,6 +6249,345 @@ onMounted(() => {
     width: 1.75rem;
     height: 1.75rem;
     font-size: 0.875rem;
+  }
+}
+
+/* Small Campfire Modal Styles */
+.small-campfire-modal {
+  .modal-content {
+    max-width: 600px;
+    background: linear-gradient(135deg, #ff6b35, #ff8c42);
+    border: 3px solid #000;
+    box-shadow: 8px 8px 0 #000;
+  }
+
+  .modal-header {
+    background: linear-gradient(135deg, #ff6b35, #ff4500);
+    color: white;
+    border-bottom: 3px solid #000;
+  }
+
+  .modal-body {
+    padding: 1.5rem;
+    background: white;
+  }
+
+  .warning-section {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    background: linear-gradient(135deg, #fff8e1, #ffecb3);
+    border: 3px solid #ffa000;
+    border-radius: 8px;
+    padding: 1rem;
+    margin-bottom: 1.5rem;
+    box-shadow: 4px 4px 0 #ffa000;
+  }
+
+  .warning-icon {
+    font-size: 2rem;
+    flex-shrink: 0;
+  }
+
+  .warning-content {
+    flex: 1;
+  }
+
+  .warning-title {
+    font-size: 1.125rem;
+    font-weight: 900;
+    color: #e65100;
+    margin: 0 0 0.5rem 0;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+
+  .warning-message {
+    font-size: 0.95rem;
+    font-weight: 600;
+    color: #333;
+    margin: 0 0 0.5rem 0;
+    line-height: 1.4;
+  }
+
+  .warning-note {
+    font-size: 0.875rem;
+    font-weight: 700;
+    color: #d84315;
+    margin: 0;
+  }
+
+  .tasks-list {
+    max-height: 300px;
+    overflow-y: auto;
+    border: 3px solid #000;
+    border-radius: 8px;
+    background: #f8f9fa;
+  }
+
+  .task-item {
+    border-bottom: 2px solid #dee2e6;
+    padding: 1rem;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    background: white;
+
+    &:last-child {
+      border-bottom: none;
+    }
+
+    &:hover {
+      background: #e9ecef;
+      transform: translateX(2px);
+    }
+
+    &.selected {
+      background: linear-gradient(135deg, #ff6b35, #ff8c42);
+      color: white;
+      border-left: 5px solid #ff4500;
+      box-shadow: inset 0 0 0 2px #fff;
+
+      .task-title {
+        color: white;
+      }
+
+      .task-meta {
+        color: #fff;
+      }
+
+      .task-description {
+        color: #fff;
+      }
+    }
+  }
+
+  .task-info {
+    width: 100%;
+  }
+
+  .task-title {
+    font-size: 1.125rem;
+    font-weight: 900;
+    color: #212529;
+    margin: 0 0 0.5rem 0;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+
+  .task-meta {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    margin-bottom: 0.5rem;
+    font-size: 0.875rem;
+    font-weight: 700;
+  }
+
+  .task-difficulty {
+    background: #007bff;
+    color: white;
+    padding: 0.25rem 0.5rem;
+    border-radius: 4px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    font-size: 0.75rem;
+  }
+
+  .task-status.frozen {
+    background: #6c757d;
+    color: white;
+    padding: 0.25rem 0.5rem;
+    border-radius: 4px;
+    font-size: 0.75rem;
+  }
+
+  .task-description {
+    font-size: 0.875rem;
+    color: #666;
+    line-height: 1.4;
+    margin: 0;
+  }
+
+  .no-tasks-message {
+    text-align: center;
+    padding: 2rem;
+    color: #666;
+
+    p {
+      margin: 0.5rem 0;
+      font-weight: 600;
+    }
+
+    .hint {
+      font-size: 0.875rem;
+      color: #999;
+    }
+  }
+
+  .frozen-task-info {
+    margin: 1rem 0;
+  }
+
+  .task-display-card {
+    background: linear-gradient(135deg, #e3f2fd, #bbdefb);
+    border: 3px solid #1976d2;
+    border-radius: 8px;
+    padding: 1rem;
+    margin: 1rem 0;
+    box-shadow: 4px 4px 0 #1976d2;
+  }
+
+  .freeze-info {
+    margin-top: 0.75rem;
+    padding-top: 0.75rem;
+    border-top: 2px solid #90caf9;
+  }
+
+  .freeze-time {
+    font-size: 0.875rem;
+    font-weight: 600;
+    color: #1565c0;
+    background: rgba(25, 118, 210, 0.1);
+    padding: 0.25rem 0.5rem;
+    border-radius: 4px;
+  }
+
+  .auto-select-note {
+    font-size: 0.875rem;
+    color: #666;
+    text-align: center;
+    margin: 1rem 0;
+    font-weight: 600;
+    background: linear-gradient(135deg, #fff3e0, #ffe0b2);
+    border: 2px solid #ff9800;
+    border-radius: 6px;
+    padding: 0.75rem;
+    box-shadow: 2px 2px 0 #ff9800;
+  }
+
+  .item-info-section {
+    margin-top: 1.5rem;
+    padding-top: 1.5rem;
+    border-top: 3px solid #dee2e6;
+  }
+
+  .info-title {
+    font-size: 1rem;
+    font-weight: 900;
+    color: #333;
+    margin: 0 0 1rem 0;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+
+  .item-info-card {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    background: linear-gradient(135deg, #f8f9fa, #e9ecef);
+    border: 3px solid #000;
+    border-radius: 8px;
+    padding: 1rem;
+    box-shadow: 4px 4px 0 #000;
+  }
+
+  .item-icon {
+    font-size: 2rem;
+    flex-shrink: 0;
+  }
+
+  .item-details {
+    flex: 1;
+  }
+
+  .item-name {
+    display: block;
+    font-size: 1rem;
+    font-weight: 900;
+    color: #212529;
+    margin-bottom: 0.25rem;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+
+  .item-description {
+    display: block;
+    font-size: 0.875rem;
+    color: #666;
+    line-height: 1.4;
+  }
+
+  .modal-footer {
+    display: flex;
+    justify-content: flex-end;
+    gap: 1rem;
+    padding: 1rem 1.5rem;
+    background: #f8f9fa;
+    border-top: 3px solid #000;
+
+    .modal-btn {
+      padding: 0.75rem 1.5rem;
+      border: 3px solid #000;
+      font-weight: 900;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      cursor: pointer;
+      box-shadow: 4px 4px 0 #000;
+      transition: all 0.2s ease;
+
+      &.secondary {
+        background: #6c757d;
+        color: white;
+
+        &:hover {
+          background: #5a6268;
+          transform: translate(-1px, -1px);
+          box-shadow: 5px 5px 0 #000;
+        }
+      }
+
+      &.primary {
+        background: linear-gradient(135deg, #ff6b35, #ff4500);
+        color: white;
+
+        &:hover:not(:disabled) {
+          background: linear-gradient(135deg, #ff4500, #e63900);
+          transform: translate(-1px, -1px);
+          box-shadow: 5px 5px 0 #000;
+        }
+
+        &:disabled {
+          background: #6c757d;
+          cursor: not-allowed;
+          opacity: 0.6;
+        }
+      }
+
+      &:active {
+        transform: translate(1px, 1px);
+        box-shadow: 2px 2px 0 #000;
+      }
+    }
+  }
+}
+
+/* Action button for small campfire */
+.action-btn.small-campfire {
+  background: linear-gradient(135deg, #ff6b35, #ff4500);
+  color: white;
+  border-color: #ff4500;
+
+  &:hover:not(:disabled) {
+    background: linear-gradient(135deg, #ff4500, #e63900);
+    transform: translate(-1px, -1px);
+    box-shadow: 5px 5px 0 #000;
+  }
+
+  &:disabled {
+    background: #6c757d;
+    border-color: #6c757d;
+    cursor: not-allowed;
+    opacity: 0.6;
   }
 }
 </style>

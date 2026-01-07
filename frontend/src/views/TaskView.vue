@@ -331,7 +331,7 @@
 
     <!-- Back to Top Button -->
     <BackToTopButton
-      :scroll-threshold="300"
+      :scroll-threshold="150"
       @refresh="handleRefreshData"
       @scroll-to-top="handleScrollToTop"
     />

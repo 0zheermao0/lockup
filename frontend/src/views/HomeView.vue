@@ -3,7 +3,13 @@
     <!-- Header -->
     <header class="header">
       <div class="header-content">
-        <h1>锁芯社区</h1>
+        <h1
+          @click="handleThemeSwitch"
+          class="theme-switch-title"
+          title="点击切换主题"
+        >
+          锁芯社区
+        </h1>
         <div class="user-info">
           <div class="user-stats">
             <span
@@ -320,7 +326,7 @@
 
     <!-- Back to Top Button -->
     <BackToTopButton
-      :scroll-threshold="300"
+      :scroll-threshold="100"
       @refresh="handleRefreshData"
       @scroll-to-top="handleScrollToTop"
     />
@@ -334,6 +340,7 @@ import { useAuthStore } from '../stores/auth'
 import { usePostsStore } from '../stores/posts'
 import { useNotificationStore } from '../stores/notifications'
 import { useNavigationStore } from '../stores/navigation'
+import { useThemeStore } from '../stores/theme'
 import { useInfiniteScroll } from '../composables/useInfiniteScroll'
 import { formatDistanceToNow } from '../lib/utils'
 import { getLevelColorScheme, getLevelCSSProperties, getLevelCSSClass, getLevelDisplayName, getLevelUsernameColor } from '../lib/level-colors'
@@ -353,6 +360,7 @@ const authStore = useAuthStore()
 const postsStore = usePostsStore()
 const notificationStore = useNotificationStore()
 const navigationStore = useNavigationStore()
+const themeStore = useThemeStore()
 
 // 创建动态模态框状态
 const showCreateModal = ref(false)
@@ -368,6 +376,8 @@ const showMoreActions = ref(false)
 // 置顶轮播组件引用和状态
 const pinnedCarouselRef = ref(null)
 const hasPinnedUsers = ref(false)
+
+// 移除主题切换动画状态
 
 // 计算是否显示置顶轮播组件
 const showPinnedCarousel = computed(() => {
@@ -668,6 +678,23 @@ const truncateTitle = (title: string) => {
   return title.substring(0, 6) + '...'
 }
 
+// 主题切换处理函数
+const handleThemeSwitch = async () => {
+  try {
+    console.log('🎨 切换主题...')
+
+    // 切换主题
+    themeStore.toggleTheme()
+
+    // 等待主题切换动画完成
+    await new Promise(resolve => setTimeout(resolve, themeStore.preferences.transitionDuration))
+
+    console.log('✅ 主题切换完成:', themeStore.currentTheme)
+  } catch (error) {
+    console.error('❌ 主题切换失败:', error)
+  }
+}
+
 // 回到顶部按钮处理函数
 const handleRefreshData = async () => {
   try {
@@ -743,8 +770,55 @@ onMounted(async () => {
   text-transform: uppercase;
   letter-spacing: 1px;
   margin: 0;
-  color: #000;
+  color: var(--theme-text-primary, #000);
 }
+
+/* Theme-aware clickable title styles */
+.theme-switch-title {
+  cursor: pointer;
+  user-select: none;
+  /* 移除hover动画效果 */
+  position: relative;
+  /* 缩小预设padding，保持美观 */
+  padding: 0.25rem 0.5rem;
+  border-radius: var(--theme-border-radius, 6px);
+  /* 默认状态下透明，不显示按钮效果 */
+  background: transparent;
+  border: 1px solid transparent;
+  box-shadow: none;
+}
+
+/* Neo-Brutalism 主题特定的 hover 效果 */
+.theme-neo-brutalism .theme-switch-title:hover {
+  color: var(--theme-text-primary, #000);
+  background: var(--theme-secondary-bg, rgba(0, 0, 0, 0.05));
+  border: var(--theme-border-light, 1px solid transparent);
+  box-shadow: var(--theme-shadow-sm, 2px 2px 0 #000);
+  /* padding和border-radius已在基础样式中设置，避免尺寸变化 */
+}
+
+/* Liquid Glass 主题特定的 hover 效果 */
+.theme-liquid-glass .theme-switch-title:hover {
+  color: var(--theme-text-primary, #000);
+  background: var(--theme-secondary-bg, rgba(255, 255, 255, 0.05));
+  border: var(--theme-border-light, 1px solid transparent);
+  box-shadow: var(--theme-shadow-small, 0 4px 16px rgba(0, 0, 0, 0.08));
+  backdrop-filter: var(--theme-glass-light, blur(12px));
+  -webkit-backdrop-filter: var(--theme-glass-light, blur(12px));
+  /* padding和border-radius已在基础样式中设置，避免尺寸变化 */
+}
+
+/* Neo-Brutalism 主题特定的 active 效果 */
+.theme-neo-brutalism .theme-switch-title:active {
+  transform: var(--theme-active-transform, translate(2px, 2px));
+}
+
+/* Liquid Glass 主题特定的 active 效果 */
+.theme-liquid-glass .theme-switch-title:active {
+  transform: scale(0.95);
+}
+
+/* 移除点击动画 - 不需要特殊动画效果 */
 
 .user-info {
   display: flex;
@@ -1369,7 +1443,7 @@ onMounted(async () => {
   gap: 0.5rem;
   position: sticky;
   top: 1rem;
-  z-index: 10;
+  z-index: 100;
   backdrop-filter: blur(10px);
   -webkit-backdrop-filter: blur(10px);
   transition: all 0.3s cubic-bezier(0.4, 0.0, 0.2, 1);

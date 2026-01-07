@@ -1,0 +1,467 @@
+/*
+ * Neo-Brutalism Theme
+ * Bold, high-contrast design with thick borders and offset shadows
+ */
+
+.theme-neo-brutalism {
+  /* ===========================================
+   * NEO-BRUTALISM COLOR SCHEME
+   * High contrast, bold colors with black borders
+   * =========================================== */
+
+  /* Background colors */
+  --theme-primary-bg: #ffffff;
+  --theme-secondary-bg: #f8f9fa;
+  --theme-tertiary-bg: #e9ecef;
+
+  /* Text colors */
+  --theme-text-primary: #000000;
+  --theme-text-secondary: #333333;
+  --theme-text-tertiary: #666666;
+
+  /* Border system */
+  --theme-border: 2px solid #000000;
+  --theme-border-thick: 3px solid #000000;
+  --theme-border-light: 1px solid #000000;
+  --theme-border-color: #000000;
+  --theme-border-radius: 8px;
+
+  /* Shadow system - Offset shadows for brutalist effect */
+  --theme-shadow-sm: 2px 2px 0 #000000;
+  --theme-shadow-md: 4px 4px 0 #000000;
+  --theme-shadow-lg: 6px 6px 0 #000000;
+  --theme-shadow-xl: 8px 8px 0 #000000;
+  --theme-shadow-hover: 6px 6px 0 #000000;
+
+  /* Interactive transforms */
+  --theme-hover-transform: translate(-2px, -2px);
+  --theme-active-transform: translate(2px, 2px);
+
+  /* Typography */
+  --theme-font-weight-normal: 500;
+  --theme-font-weight-medium: 600;
+  --theme-font-weight-semibold: 700;
+  --theme-font-weight-bold: 800;
+  --theme-font-weight-black: 900;
+
+  /* Text effects */
+  --theme-text-shadow: none;
+  --theme-text-outline: none;
+
+  /* Glass effects - disabled for Neo-Brutalism */
+  --theme-backdrop-filter: none;
+  --theme-backdrop-blur: none;
+  --theme-inner-glow: none;
+  --theme-outer-glow: none;
+
+  /* Component-specific overrides */
+  --theme-button-padding: 0.625rem 1rem;
+  --theme-button-font-weight: var(--theme-font-weight-bold);
+  --theme-button-text-transform: uppercase;
+  --theme-button-letter-spacing: 0.5px;
+  --theme-button-border: var(--theme-border);
+  --theme-button-shadow: var(--theme-shadow-md);
+
+  --theme-card-background: var(--theme-primary-bg);
+  --theme-card-border: var(--theme-border-thick);
+  --theme-card-shadow: var(--theme-shadow-lg);
+  --theme-card-border-radius: var(--theme-border-radius);
+
+  --theme-header-background: var(--theme-primary-bg);
+  --theme-header-border: 0 0 2px solid #000000;
+  --theme-header-shadow: 0 2px 0 rgba(0, 0, 0, 0.1);
+
+  --theme-input-background: var(--theme-primary-bg);
+  --theme-input-border: var(--theme-border);
+  --theme-input-focus-shadow: var(--theme-shadow-md);
+
+  /* Status colors - Bold and high contrast */
+  --theme-success-bg: #28a745;
+  --theme-success-text: #ffffff;
+  --theme-success-border: 2px solid #000000;
+  --theme-success-shadow: var(--theme-shadow-md);
+
+  --theme-warning-bg: #ffc107;
+  --theme-warning-text: #000000;
+  --theme-warning-border: 2px solid #000000;
+  --theme-warning-shadow: var(--theme-shadow-md);
+
+  --theme-error-bg: #dc3545;
+  --theme-error-text: #ffffff;
+  --theme-error-border: 2px solid #000000;
+  --theme-error-shadow: var(--theme-shadow-md);
+
+  --theme-info-bg: #17a2b8;
+  --theme-info-text: #ffffff;
+  --theme-info-border: 2px solid #000000;
+  --theme-info-shadow: var(--theme-shadow-md);
+
+  /* Level colors - maintaining existing system */
+  --theme-level-1-bg: #9ca3af;
+  --theme-level-1-text: #ffffff;
+  --theme-level-1-border: 2px solid #000000;
+
+  --theme-level-2-bg: #3b82f6;
+  --theme-level-2-text: #ffffff;
+  --theme-level-2-border: 2px solid #000000;
+
+  --theme-level-3-bg: #9333ea;
+  --theme-level-3-text: #ffffff;
+  --theme-level-3-border: 2px solid #000000;
+
+  --theme-level-4-bg: #eab308;
+  --theme-level-4-text: #000000;
+  --theme-level-4-border: 2px solid #000000;
+}
+
+/* ===========================================
+ * NEO-BRUTALISM UTILITY CLASSES
+ * Direct implementations of Neo-Brutalism patterns
+ * =========================================== */
+
+.theme-neo-brutalism .neo-brutal-shadow {
+  box-shadow: var(--theme-shadow-md);
+}
+
+.theme-neo-brutalism .neo-brutal-button {
+  background: var(--theme-primary-bg);
+  border: var(--theme-button-border);
+  font-weight: var(--theme-button-font-weight);
+  text-transform: var(--theme-button-text-transform);
+  letter-spacing: var(--theme-button-letter-spacing);
+  box-shadow: var(--theme-button-shadow);
+  border-radius: var(--theme-border-radius);
+  padding: var(--theme-button-padding);
+  color: var(--theme-text-primary);
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.theme-neo-brutalism .neo-brutal-button:hover {
+  transform: var(--theme-hover-transform);
+  box-shadow: var(--theme-shadow-hover);
+}
+
+.theme-neo-brutalism .neo-brutal-button:active {
+  transform: var(--theme-active-transform);
+  box-shadow: var(--theme-shadow-sm);
+}
+
+.theme-neo-brutalism .neo-brutal-card {
+  background: var(--theme-card-background);
+  border: var(--theme-card-border);
+  border-radius: var(--theme-card-border-radius);
+  box-shadow: var(--theme-card-shadow);
+  padding: var(--theme-padding-lg);
+  transition: all 0.3s cubic-bezier(0.4, 0.0, 0.2, 1);
+}
+
+.theme-neo-brutalism .neo-brutal-card:hover {
+  transform: var(--theme-hover-transform);
+  box-shadow: var(--theme-shadow-xl);
+}
+
+.theme-neo-brutalism .neo-brutal-input {
+  background: var(--theme-input-background);
+  border: var(--theme-input-border);
+  border-radius: var(--theme-border-radius);
+  padding: var(--theme-padding-sm) var(--theme-padding-md);
+  font-weight: var(--theme-font-weight-medium);
+  box-shadow: var(--theme-shadow-sm);
+  color: var(--theme-text-primary);
+  font-family: var(--theme-font-family-primary);
+}
+
+.theme-neo-brutalism .neo-brutal-input:focus {
+  outline: none;
+  box-shadow: var(--theme-input-focus-shadow);
+  border-color: var(--theme-border-color);
+}
+
+/* ===========================================
+ * BUTTON VARIANTS
+ * Different button styles for Neo-Brutalism theme
+ * =========================================== */
+
+.theme-neo-brutalism .btn-primary {
+  background: linear-gradient(135deg, #007bff, #0056b3);
+  color: white;
+  border: var(--theme-border);
+  box-shadow: var(--theme-shadow-md);
+}
+
+.theme-neo-brutalism .btn-primary:hover {
+  background: linear-gradient(135deg, #0056b3, #004085);
+  transform: var(--theme-hover-transform);
+  box-shadow: var(--theme-shadow-hover);
+}
+
+.theme-neo-brutalism .btn-success {
+  background: linear-gradient(135deg, #28a745, #218838);
+  color: white;
+  border: var(--theme-border);
+  box-shadow: var(--theme-shadow-md);
+}
+
+.theme-neo-brutalism .btn-success:hover {
+  background: linear-gradient(135deg, #218838, #1e7e34);
+  transform: var(--theme-hover-transform);
+  box-shadow: var(--theme-shadow-hover);
+}
+
+.theme-neo-brutalism .btn-warning {
+  background: linear-gradient(135deg, #ffc107, #e0a800);
+  color: #212529;
+  border: var(--theme-border);
+  box-shadow: var(--theme-shadow-md);
+}
+
+.theme-neo-brutalism .btn-warning:hover {
+  background: linear-gradient(135deg, #e0a800, #d39e00);
+  transform: var(--theme-hover-transform);
+  box-shadow: var(--theme-shadow-hover);
+}
+
+.theme-neo-brutalism .btn-danger {
+  background: linear-gradient(135deg, #dc3545, #c82333);
+  color: white;
+  border: var(--theme-border);
+  box-shadow: var(--theme-shadow-md);
+}
+
+.theme-neo-brutalism .btn-danger:hover {
+  background: linear-gradient(135deg, #c82333, #bd2130);
+  transform: var(--theme-hover-transform);
+  box-shadow: var(--theme-shadow-hover);
+}
+
+/* ===========================================
+ * LEVEL INDICATOR STYLES
+ * User level badges with Neo-Brutalism styling
+ * =========================================== */
+
+.theme-neo-brutalism .level-1 {
+  background: var(--theme-level-1-bg);
+  color: var(--theme-level-1-text);
+  border: var(--theme-level-1-border);
+  box-shadow: var(--theme-shadow-sm);
+  border-radius: var(--theme-border-radius);
+  padding: 0.25rem 0.75rem;
+  font-weight: var(--theme-font-weight-black);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.theme-neo-brutalism .level-2 {
+  background: var(--theme-level-2-bg);
+  color: var(--theme-level-2-text);
+  border: var(--theme-level-2-border);
+  box-shadow: var(--theme-shadow-sm);
+  border-radius: var(--theme-border-radius);
+  padding: 0.25rem 0.75rem;
+  font-weight: var(--theme-font-weight-black);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.theme-neo-brutalism .level-3 {
+  background: var(--theme-level-3-bg);
+  color: var(--theme-level-3-text);
+  border: var(--theme-level-3-border);
+  box-shadow: var(--theme-shadow-sm);
+  border-radius: var(--theme-border-radius);
+  padding: 0.25rem 0.75rem;
+  font-weight: var(--theme-font-weight-black);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.theme-neo-brutalism .level-4 {
+  background: var(--theme-level-4-bg);
+  color: var(--theme-level-4-text);
+  border: var(--theme-level-4-border);
+  box-shadow: var(--theme-shadow-sm);
+  border-radius: var(--theme-border-radius);
+  padding: 0.25rem 0.75rem;
+  font-weight: var(--theme-font-weight-black);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+/* ===========================================
+ * FORM ELEMENTS
+ * Form styling with Neo-Brutalism design
+ * =========================================== */
+
+.theme-neo-brutalism input,
+.theme-neo-brutalism textarea,
+.theme-neo-brutalism select {
+  background: var(--theme-input-background);
+  border: var(--theme-input-border);
+  border-radius: var(--theme-border-radius);
+  padding: var(--theme-padding-sm) var(--theme-padding-md);
+  font-family: var(--theme-font-family-primary);
+  font-weight: var(--theme-font-weight-medium);
+  color: var(--theme-text-primary);
+  box-shadow: var(--theme-shadow-sm);
+  transition: all 0.2s ease;
+}
+
+.theme-neo-brutalism input:focus,
+.theme-neo-brutalism textarea:focus,
+.theme-neo-brutalism select:focus {
+  outline: none;
+  box-shadow: var(--theme-input-focus-shadow);
+  border-color: var(--theme-border-color);
+}
+
+/* ===========================================
+ * HEADER STYLING
+ * Header with Neo-Brutalism characteristics
+ * =========================================== */
+
+.theme-neo-brutalism .header {
+  background: var(--theme-header-background);
+  border-bottom: var(--theme-border);
+  box-shadow: var(--theme-header-shadow);
+}
+
+.theme-neo-brutalism .header h1 {
+  font-weight: var(--theme-font-weight-black);
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: var(--theme-text-primary);
+  text-shadow: var(--theme-text-shadow);
+}
+
+/* ===========================================
+ * ANIMATION KEYFRAMES
+ * Neo-Brutalism specific animations
+ * =========================================== */
+
+@keyframes neo-brutal-bounce {
+  0%, 100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-4px);
+  }
+}
+
+@keyframes neo-brutal-shake {
+  0%, 100% {
+    transform: translateX(0);
+  }
+  25% {
+    transform: translateX(-2px);
+  }
+  75% {
+    transform: translateX(2px);
+  }
+}
+
+.theme-neo-brutalism .animate-bounce {
+  animation: neo-brutal-bounce 1s infinite;
+}
+
+.theme-neo-brutalism .animate-shake {
+  animation: neo-brutal-shake 0.5s ease-in-out;
+}
+
+/* ===========================================
+ * RESPONSIVE ADJUSTMENTS
+ * Mobile-specific Neo-Brutalism adjustments
+ * =========================================== */
+
+@media (max-width: 768px) {
+  .theme-neo-brutalism {
+    --theme-border: 2px solid #000000;
+    --theme-border-thick: 2px solid #000000;
+    --theme-shadow-sm: 2px 2px 0 #000000;
+    --theme-shadow-md: 3px 3px 0 #000000;
+    --theme-shadow-lg: 4px 4px 0 #000000;
+    --theme-shadow-hover: 4px 4px 0 #000000;
+    --theme-border-radius: 6px;
+  }
+}
+
+@media (max-width: 480px) {
+  .theme-neo-brutalism {
+    --theme-border: 1px solid #000000;
+    --theme-border-thick: 2px solid #000000;
+    --theme-shadow-sm: 1px 1px 0 #000000;
+    --theme-shadow-md: 2px 2px 0 #000000;
+    --theme-shadow-lg: 3px 3px 0 #000000;
+    --theme-shadow-hover: 3px 3px 0 #000000;
+    --theme-hover-transform: translate(-1px, -1px);
+    --theme-active-transform: translate(1px, 1px);
+  }
+}
+
+/* ===========================================
+ * 用户名样式修复 - 确保原始Neo-Brutalism效果
+ * =========================================== */
+
+.theme-neo-brutalism .username {
+  font-weight: bold;
+  text-transform: none !important;
+}
+
+.theme-neo-brutalism .username.clickable {
+  cursor: pointer;
+  transition: all 0.2s ease;
+  padding: 0.25rem 0.5rem;
+  border-radius: 4px;
+  margin: -0.25rem -0.5rem;
+  font-weight: 700;
+  border: 2px solid transparent;
+  background: none !important;
+  background-color: transparent !important;
+  box-shadow: none !important;
+  transform: none !important;
+  text-transform: none !important;
+}
+
+.theme-neo-brutalism .username.clickable:hover {
+  color: white !important;
+  transform: translate(-1px, -1px) !important;
+  box-shadow: 2px 2px 0 #000 !important;
+  border-color: #000 !important;
+}
+
+/* Level-specific hover effects - 恢复原始等级颜色 */
+.theme-neo-brutalism .username.clickable.level-1:hover {
+  background-color: #6c757d !important;
+  color: white !important;
+}
+
+.theme-neo-brutalism .username.clickable.level-2:hover {
+  background-color: #17a2b8 !important;
+  color: white !important;
+}
+
+.theme-neo-brutalism .username.clickable.level-3:hover {
+  background-color: #ffc107 !important;
+  color: white !important;
+}
+
+.theme-neo-brutalism .username.clickable.level-4:hover {
+  background-color: #fd7e14 !important;
+  color: white !important;
+}
+
+.theme-neo-brutalism .username.clickable.level-5:hover {
+  background-color: #dc3545 !important;
+  color: white !important;
+}
+
+.theme-neo-brutalism .username.clickable.level-6:hover {
+  background-color: #6f42c1 !important;
+  color: white !important;
+}
+
+/* 时间文本样式 */
+.theme-neo-brutalism .time {
+  font-size: 0.875rem;
+  color: #666 !important;
+}

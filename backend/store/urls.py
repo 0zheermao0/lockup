@@ -52,6 +52,9 @@ urlpatterns = [
     path('use-time-anchor/', views.use_time_anchor, name='use-time-anchor'),
     path('use-exploration-compass/', views.use_exploration_compass, name='use-exploration-compass'),
     path('use-influence-crown/', views.use_influence_crown, name='use-influence-crown'),
+    path('use-small-campfire/', views.use_small_campfire, name='use-small-campfire'),
+    path('use-small-campfire-on-task/', views.use_small_campfire_on_task, name='use-small-campfire-on-task'),
+    path('frozen-tasks/', views.get_frozen_tasks, name='get-frozen-tasks'),
 
     # 分享功能相关
     path('shared-tasks/', views.get_shared_tasks, name='get-shared-tasks'),

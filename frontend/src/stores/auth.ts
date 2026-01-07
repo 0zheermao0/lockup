@@ -125,9 +125,14 @@ export const useAuthStore = defineStore('auth', () => {
   // 锁定状态管理方法
   const updateActiveLockTask = (newLockTask: any) => {
     if (user.value) {
-      user.value.active_lock_task = newLockTask
+      // Validate that the task belongs to current user (if task has user info)
+      if (newLockTask && newLockTask.user && newLockTask.user.id !== user.value.id) {
+        console.warn('Attempted to update with another user\'s lock task:', newLockTask);
+        return;
+      }
+      user.value.active_lock_task = newLockTask;
       // 同步更新localStorage
-      localStorage.setItem('user', JSON.stringify(user.value))
+      localStorage.setItem('user', JSON.stringify(user.value));
     }
   }
 

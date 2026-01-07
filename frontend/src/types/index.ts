@@ -510,7 +510,7 @@ export interface UserStore {
 export interface ItemType {
   id: string
   name: 'photo_paper' | 'photo' | 'drift_bottle' | 'key' | 'note' | 'little_treasury' | 'detection_radar' | 'blizzard_bottle' | 'sun_bottle' | 'time_hourglass' |
-        'lucky_charm' | 'energy_potion' | 'time_anchor' | 'exploration_compass' | 'influence_crown'
+        'lucky_charm' | 'energy_potion' | 'time_anchor' | 'exploration_compass' | 'influence_crown' | 'small_campfire'
   display_name: string
   description: string
   icon: string
