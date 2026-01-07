@@ -106,7 +106,7 @@ async function parseRawError(error: any): Promise<ApiError> {
 }
 
 
-export async function handleResponse<T>(response: Response): Promise<T> {
+export async function handleResponse<T>(response: Response, requestUrl?: string): Promise<T> {
     if (response.ok) {
         // Handle responses with no content (like DELETE requests)
         if (response.status === 204 || response.headers.get('content-length') === '0') {
@@ -118,23 +118,56 @@ export async function handleResponse<T>(response: Response): Promise<T> {
 
             // 状态同步拦截器 - 自动同步后端返回的积分和锁定状态更新
             if (data && typeof data === 'object') {
-                // 使用authStore同步状态
-                const authStore = useAuthStore();
+                try {
+                    // 使用authStore同步状态
+                    const authStore = useAuthStore();
 
-                // 检查各种积分字段并同步
-                if (data.remaining_coins !== undefined) {
-                    authStore.updateCoins(data.remaining_coins);
-                } else if (data.user_remaining_coins !== undefined) {
-                    authStore.updateCoins(data.user_remaining_coins);
-                } else if (data.user_total_coins !== undefined) {
-                    authStore.updateCoins(data.user_total_coins);
-                }
+                    // 检查各种积分字段并同步
+                    if (data.remaining_coins !== undefined) {
+                        authStore.updateCoins(data.remaining_coins);
+                    } else if (data.user_remaining_coins !== undefined) {
+                        authStore.updateCoins(data.user_remaining_coins);
+                    } else if (data.user_total_coins !== undefined) {
+                        authStore.updateCoins(data.user_total_coins);
+                    }
 
-                // 检查锁定状态字段并同步
-                if (data.active_lock_task !== undefined) {
-                    authStore.updateActiveLockTask(data.active_lock_task);
-                } else if (data.user && data.user.active_lock_task !== undefined) {
-                    authStore.updateActiveLockTask(data.user.active_lock_task);
+                    // 检查锁定状态字段并同步 - 只对当前用户的端点更新
+                    // Define endpoints that should update current user's lock task
+                    const CURRENT_USER_ENDPOINTS = [
+                        '/auth/me/',
+                        '/auth/profile/',
+                        '/auth/login/',
+                        '/auth/register/',
+                        '/tasks/',
+                        '/store/'
+                    ];
+
+                    const shouldUpdateLockTask = (url: string) => {
+                        // Exclude profile endpoints that fetch other users' data
+                        if (url.match(/\/auth\/users\/\d+\//)) {
+                            return false;
+                        }
+                        return CURRENT_USER_ENDPOINTS.some(endpoint => url.includes(endpoint));
+                    };
+
+                    const url = requestUrl || '';
+
+                    if (data.active_lock_task !== undefined && shouldUpdateLockTask(url)) {
+                        // Only update if it's the current user's task or during login/register
+                        const isAuthEndpoint = url.includes('/auth/login/') || url.includes('/auth/register/');
+                        if (!data.user || isAuthEndpoint || (authStore.user && data.user.id === authStore.user.id)) {
+                            authStore.updateActiveLockTask(data.active_lock_task);
+                        }
+                    } else if (data.user && data.user.active_lock_task !== undefined && shouldUpdateLockTask(url)) {
+                        // Only update if it's the current user or during login/register
+                        const isAuthEndpoint = url.includes('/auth/login/') || url.includes('/auth/register/');
+                        if (isAuthEndpoint || (authStore.user && data.user.id === authStore.user.id)) {
+                            authStore.updateActiveLockTask(data.user.active_lock_task);
+                        }
+                    }
+                } catch (storeError) {
+                    console.warn('Error updating auth store:', storeError);
+                    // Continue processing the response even if store update fails
                 }
             }
 
@@ -186,7 +219,7 @@ export async function apiRequest<T>(
 
     try {
         const response = await fetchWithTimeout(fullUrl, config);
-        return await handleResponse<T>(response);
+        return await handleResponse<T>(response, endpoint);
     } catch (fetchError) {
         // If it's already an ApiError from handleResponse, re-throw it as-is
         if (fetchError instanceof ApiError) {
