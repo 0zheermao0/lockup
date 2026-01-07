@@ -1664,8 +1664,8 @@ def create_share_link(request):
                 status='available'
             )
 
-            # 检查物品类型是否可分享 (photo, note, key, little_treasury, detection_radar, blizzard_bottle, sun_bottle, time_hourglass, lucky_charm, energy_potion, time_anchor, exploration_compass, influence_crown)
-            if item.item_type.name not in ['photo', 'note', 'key', 'little_treasury', 'detection_radar', 'blizzard_bottle', 'sun_bottle', 'time_hourglass', 'lucky_charm', 'energy_potion', 'time_anchor', 'exploration_compass', 'influence_crown']:
+            # 检查物品类型是否可分享 (photo, note, key, little_treasury, detection_radar, blizzard_bottle, sun_bottle, time_hourglass, lucky_charm, energy_potion, time_anchor, exploration_compass, influence_crown, small_campfire)
+            if item.item_type.name not in ['photo', 'note', 'key', 'little_treasury', 'detection_radar', 'blizzard_bottle', 'sun_bottle', 'time_hourglass', 'lucky_charm', 'energy_potion', 'time_anchor', 'exploration_compass', 'influence_crown', 'small_campfire']:
                 return Response({
                     'error': f'{item.item_type.display_name} 不支持分享'
                 }, status=status.HTTP_400_BAD_REQUEST)
@@ -3068,4 +3068,321 @@ def edit_note(request, note_id):
     except Exception as e:
         return Response({
             'error': f'编辑纸条失败: {str(e)}'
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def use_small_campfire(request):
+    """使用小火堆解冻被冻结的任务"""
+    from tasks.models import LockTask
+    from tasks.timeline import TaskTimelineEvent
+    from notifications.models import Notification
+    from django.utils import timezone
+    from datetime import timedelta
+
+    user = request.user
+    small_campfire_id = request.data.get('small_campfire_id')
+    task_id = request.data.get('task_id')
+
+    if not small_campfire_id or not task_id:
+        return Response({
+            'error': '请提供小火堆ID和任务ID'
+        }, status=status.HTTP_400_BAD_REQUEST)
+
+    try:
+        # 验证小火堆
+        small_campfire = Item.objects.get(
+            id=small_campfire_id,
+            owner=user,
+            item_type__name='small_campfire',
+            status='available'
+        )
+    except Item.DoesNotExist:
+        return Response({
+            'error': '小火堆不存在或已被使用'
+        }, status=status.HTTP_404_NOT_FOUND)
+
+    try:
+        # 验证任务
+        lock_task = LockTask.objects.get(id=task_id, user=user)
+    except LockTask.DoesNotExist:
+        return Response({
+            'error': '任务不存在或不属于您'
+        }, status=status.HTTP_404_NOT_FOUND)
+
+    # 验证任务是否被冻结
+    if not lock_task.is_frozen:
+        return Response({
+            'error': '任务未被冻结，无需使用小火堆'
+        }, status=status.HTTP_400_BAD_REQUEST)
+
+    # 验证任务状态
+    if lock_task.status not in ['active', 'voting_passed']:
+        return Response({
+            'error': '只能对进行中的任务使用小火堆'
+        }, status=status.HTTP_400_BAD_REQUEST)
+
+    try:
+        with transaction.atomic():
+            # 计算剩余时间
+            now = timezone.now()
+            if lock_task.frozen_end_time and lock_task.frozen_at:
+                remaining_time = lock_task.frozen_end_time - lock_task.frozen_at
+                # 恢复任务时间
+                lock_task.end_time = now + remaining_time
+
+            # 累计冻结时长
+            if lock_task.frozen_at:
+                frozen_duration = now - lock_task.frozen_at
+                lock_task.total_frozen_duration += frozen_duration
+
+            # 解冻任务
+            lock_task.is_frozen = False
+            lock_task.frozen_at = None
+            lock_task.frozen_end_time = None
+            lock_task.save()
+
+            # 消耗小火堆
+            small_campfire.status = 'used'
+            small_campfire.used_at = now
+            small_campfire.inventory = None
+            small_campfire.save()
+
+            # 创建时间线事件
+            TaskTimelineEvent.objects.create(
+                task=lock_task,
+                event_type='item_effect_applied',
+                user=user,
+                metadata={
+                    'item_type': 'small_campfire',
+                    'action': 'task_unfrozen',
+                    'unfrozen_at': now.isoformat(),
+                    'remaining_time_restored': str(remaining_time) if 'remaining_time' in locals() else None,
+                    'item_id': str(small_campfire.id)
+                }
+            )
+
+            # 创建通知
+            Notification.create_notification(
+                recipient=user,
+                notification_type='item_effect_applied',
+                title='小火堆使用成功',
+                message=f'您的任务"{lock_task.title}"已成功解冻！',
+                priority='normal',
+                extra_data={
+                    'item_type': 'small_campfire',
+                    'task_id': str(lock_task.id),
+                    'task_title': lock_task.title,
+                    'unfrozen_at': now.isoformat()
+                }
+            )
+
+            return Response({
+                'success': True,
+                'message': '小火堆使用成功，任务已解冻！',
+                'task': {
+                    'id': str(lock_task.id),
+                    'title': lock_task.title,
+                    'is_frozen': lock_task.is_frozen,
+                    'end_time': lock_task.end_time.isoformat() if lock_task.end_time else None
+                }
+            }, status=status.HTTP_200_OK)
+
+    except Exception as e:
+        return Response({
+            'error': f'解冻任务时发生错误: {str(e)}'
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def use_small_campfire_on_task(request):
+    """使用小火堆选择并解冻被冻结的任务 - 类似万能钥匙的选择机制"""
+    from tasks.models import LockTask, TaskTimelineEvent
+    from users.models import Notification
+    from django.utils import timezone
+    from datetime import timedelta
+
+    try:
+        item_id = request.data.get('item_id')
+        task_id = request.data.get('task_id')
+
+        if not item_id or not task_id:
+            return Response({
+                'error': '缺少必要参数：item_id 和 task_id'
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        with transaction.atomic():
+            user = request.user
+
+            # 验证小火堆道具
+            try:
+                small_campfire = Item.objects.get(
+                    id=item_id,
+                    owner=user,
+                    item_type__name='small_campfire',
+                    status='available'
+                )
+            except Item.DoesNotExist:
+                return Response({
+                    'error': '小火堆道具不存在或不可用'
+                }, status=status.HTTP_404_NOT_FOUND)
+
+            # 验证任务
+            try:
+                lock_task = LockTask.objects.get(
+                    id=task_id,
+                    user=user,
+                    task_type='lock'
+                )
+            except LockTask.DoesNotExist:
+                return Response({
+                    'error': '指定的带锁任务不存在或不属于您'
+                }, status=status.HTTP_400_BAD_REQUEST)
+
+            # 验证任务是否被冻结
+            if not lock_task.is_frozen:
+                return Response({
+                    'error': '任务未被冻结，无需使用小火堆'
+                }, status=status.HTTP_400_BAD_REQUEST)
+
+            # 验证任务状态
+            if lock_task.status not in ['active', 'voting_passed']:
+                return Response({
+                    'error': '只能对进行中的任务使用小火堆'
+                }, status=status.HTTP_400_BAD_REQUEST)
+
+            # 计算剩余时间
+            now = timezone.now()
+            if lock_task.frozen_end_time and lock_task.frozen_at:
+                remaining_time = lock_task.frozen_end_time - lock_task.frozen_at
+                # 恢复任务时间
+                lock_task.end_time = now + remaining_time
+
+            # 累计冻结时长
+            if lock_task.frozen_at:
+                frozen_duration = now - lock_task.frozen_at
+                lock_task.total_frozen_duration += frozen_duration
+
+            # 解冻任务
+            lock_task.is_frozen = False
+            lock_task.frozen_at = None
+            lock_task.frozen_end_time = None
+            lock_task.save()
+
+            # 消耗小火堆
+            small_campfire.status = 'used'
+            small_campfire.used_at = now
+            small_campfire.inventory = None
+            small_campfire.save()
+
+            # 创建时间线事件
+            TaskTimelineEvent.objects.create(
+                task=lock_task,
+                event_type='item_effect_applied',
+                user=user,
+                description=f'使用小火堆解冻任务：{lock_task.title}',
+                metadata={
+                    'item_type': 'small_campfire',
+                    'action': 'task_unfrozen',
+                    'unfrozen_at': now.isoformat(),
+                    'remaining_time_restored': str(remaining_time) if 'remaining_time' in locals() else None,
+                    'item_id': str(small_campfire.id),
+                    'selection_method': 'task_selection'
+                }
+            )
+
+            # 创建通知
+            Notification.create_notification(
+                recipient=user,
+                notification_type='item_effect_applied',
+                title='小火堆使用成功',
+                message=f'您使用小火堆成功解冻了任务「{lock_task.title}」！',
+                related_object_type='lock_task',
+                related_object_id=lock_task.id,
+                extra_data={
+                    'item_type': 'small_campfire',
+                    'task_id': str(lock_task.id),
+                    'task_title': lock_task.title,
+                    'unfrozen_at': now.isoformat(),
+                    'selection_method': 'task_selection'
+                },
+                priority='normal'
+            )
+
+            return Response({
+                'success': True,
+                'message': f'小火堆使用成功！任务「{lock_task.title}」已解冻',
+                'task_id': str(lock_task.id),
+                'task_title': lock_task.title,
+                'task': {
+                    'id': str(lock_task.id),
+                    'title': lock_task.title,
+                    'is_frozen': lock_task.is_frozen,
+                    'end_time': lock_task.end_time.isoformat() if lock_task.end_time else None,
+                    'status': lock_task.status
+                }
+            }, status=status.HTTP_200_OK)
+
+    except Exception as e:
+        return Response({
+            'error': f'使用小火堆失败: {str(e)}'
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def get_frozen_tasks(request):
+    """获取用户的冻结任务列表，用于小火堆选择"""
+    from tasks.models import LockTask
+
+    try:
+        user = request.user
+
+        # 获取所有被冻结的带锁任务
+        frozen_tasks = LockTask.objects.filter(
+            user=user,
+            task_type='lock',
+            is_frozen=True,
+            status__in=['active', 'voting_passed']
+        ).order_by('-frozen_at')
+
+        tasks_data = []
+        for task in frozen_tasks:
+            # 计算冻结时长
+            frozen_duration_seconds = 0
+            if task.frozen_at:
+                frozen_duration = timezone.now() - task.frozen_at
+                frozen_duration_seconds = int(frozen_duration.total_seconds())
+
+            # 计算预计解冻后的剩余时间
+            remaining_time_after_unfreeze = None
+            if task.frozen_end_time and task.frozen_at:
+                remaining_time = task.frozen_end_time - task.frozen_at
+                remaining_time_after_unfreeze = int(remaining_time.total_seconds())
+
+            tasks_data.append({
+                'id': str(task.id),
+                'title': task.title,
+                'description': task.description,
+                'difficulty': task.difficulty,
+                'status': task.status,
+                'frozen_at': task.frozen_at.isoformat() if task.frozen_at else None,
+                'frozen_end_time': task.frozen_end_time.isoformat() if task.frozen_end_time else None,
+                'frozen_duration_seconds': frozen_duration_seconds,
+                'remaining_time_after_unfreeze_seconds': remaining_time_after_unfreeze,
+                'start_time': task.start_time.isoformat() if task.start_time else None,
+                'end_time': task.end_time.isoformat() if task.end_time else None
+            })
+
+        return Response({
+            'frozen_tasks': tasks_data,
+            'count': len(tasks_data),
+            'message': f'找到 {len(tasks_data)} 个冻结的任务' if tasks_data else '当前没有冻结的任务'
+        }, status=status.HTTP_200_OK)
+
+    except Exception as e:
+        return Response({
+            'error': f'获取冻结任务列表失败: {str(e)}'
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)

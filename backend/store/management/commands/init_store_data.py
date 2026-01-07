@@ -86,26 +86,7 @@ class Command(BaseCommand):
                 'display_name': '小金库',
                 'description': '可以存储和提取积分的神奇道具，使用后销毁',
                 'icon': '💰',
-                'is_consumable': True,
-                'max_uses': 1,
-                'can_be_shared': True,
-                'category': 'tool',
-                'properties_schema': {
-                    'stored_coins': {
-                        'type': 'integer',
-                        'default': 0,
-                        'min': 0,
-                        'description': '存储的积分数量'
-                    },
-                    'depositor_username': {
-                        'type': 'string',
-                        'description': '存入积分的用户名'
-                    },
-                    'deposit_time': {
-                        'type': 'string',
-                        'description': '存入时间'
-                    }
-                }
+                'is_consumable': True
             },
             {
                 'name': 'detection_radar',
@@ -170,6 +151,13 @@ class Command(BaseCommand):
                 'description': '在48小时内，所有投票的权重变为3倍，大幅提升社区影响力，使用后自动销毁',
                 'icon': '👑',
                 'is_consumable': True
+            },
+            {
+                'name': 'small_campfire',
+                'display_name': '小火堆',
+                'description': '温暖的小火堆，可以解冻你被冻结的带锁任务，使用后自动销毁',
+                'icon': '🔥',
+                'is_consumable': True
             }
         ]
 
@@ -232,6 +220,7 @@ class Command(BaseCommand):
             time_anchor_type = ItemType.objects.get(name='time_anchor')
             exploration_compass_type = ItemType.objects.get(name='exploration_compass')
             influence_crown_type = ItemType.objects.get(name='influence_crown')
+            small_campfire_type = ItemType.objects.get(name='small_campfire')
         except ItemType.DoesNotExist as e:
             self.stdout.write(
                 self.style.ERROR(f'❌ 道具类型不存在: {e}')
@@ -394,6 +383,17 @@ class Command(BaseCommand):
                 'stock': None,
                 'daily_limit': 1,
                 'level_requirement': 2
+            },
+            {
+                'item_type': small_campfire_type,
+                'name': '小火堆',
+                'description': '温暖的小火堆，可以解冻你被冻结的带锁任务，重新点燃希望之火！',
+                'price': 50,
+                'icon': '🔥',
+                'is_available': True,
+                'stock': None,
+                'daily_limit': 1,
+                'level_requirement': 1
             }
         ]
 
