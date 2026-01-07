@@ -5032,16 +5032,21 @@ onUnmounted(() => {
   margin: 0.25rem 0;
 }
 
-/* Quick Actions Bar */
+/* Quick Actions Bar - Match homepage mobile-quick-access pattern */
 .quick-actions-bar {
   background: white;
-  border: 4px solid #000;
-  padding: 1.5rem;
-  box-shadow: 8px 8px 0 #000;
-  margin-bottom: 2rem;
+  border: 3px solid #000;
+  border-radius: 8px;
+  box-shadow: 6px 6px 0 #000;
+  margin-bottom: 1.5rem;
+  padding: 0.5rem;
+  gap: 0.5rem;
   position: sticky;
-  top: 0;
-  z-index: 10;
+  top: 1rem;
+  z-index: 100;
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  transition: all 0.3s cubic-bezier(0.4, 0.0, 0.2, 1);
 }
 
 .quick-actions-content {
@@ -5143,19 +5148,21 @@ onUnmounted(() => {
   }
 }
 
-/* Enhanced mobile styles for quick actions bar with Neo-Brutalism design */
+/* Enhanced mobile styles for quick actions bar - Match homepage pattern */
 @media (max-width: 768px) {
   .quick-actions-bar {
     position: sticky;
-    top: 0;
-    padding: 0.75rem 1rem;
-    margin-bottom: 1rem;
+    top: 1rem;
+    padding: 0.5rem;
+    margin-bottom: 1.5rem;
     z-index: 100;
     background: white;
-    border: 2px solid #000;
-    box-shadow: 4px 4px 0 #000;
+    border: 3px solid #000;
+    border-radius: 8px;
+    box-shadow: 6px 6px 0 #000;
     backdrop-filter: blur(10px);
     -webkit-backdrop-filter: blur(10px);
+    transition: all 0.3s cubic-bezier(0.4, 0.0, 0.2, 1);
   }
 
   .actions-primary {

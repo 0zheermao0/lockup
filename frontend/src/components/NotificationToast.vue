@@ -103,12 +103,22 @@ const closeToast = () => {
 
 // Auto close functionality
 watch(() => props.isVisible, (newVal) => {
-  if (newVal && props.autoClose) {
-    autoCloseTimer.value = window.setTimeout(() => {
-      closeToast()
-    }, props.autoCloseDelay)
-  } else if (!newVal && autoCloseTimer.value) {
-    clearTimeout(autoCloseTimer.value)
+  if (newVal) {
+    // 禁用body滚动
+    document.body.style.overflow = 'hidden'
+
+    if (props.autoClose) {
+      autoCloseTimer.value = window.setTimeout(() => {
+        closeToast()
+      }, props.autoCloseDelay)
+    }
+  } else {
+    // 恢复body滚动
+    document.body.style.overflow = ''
+
+    if (autoCloseTimer.value) {
+      clearTimeout(autoCloseTimer.value)
+    }
   }
 })
 
@@ -118,6 +128,8 @@ onUnmounted(() => {
   if (autoCloseTimer.value) {
     clearTimeout(autoCloseTimer.value)
   }
+  // 确保恢复body滚动
+  document.body.style.overflow = ''
 })
 </script>
 
@@ -150,11 +162,22 @@ onUnmounted(() => {
   bottom: 0;
   background: rgba(0, 0, 0, 0.6);
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: center;
   z-index: 9999;
   backdrop-filter: blur(4px);
   -webkit-backdrop-filter: blur(4px);
+  padding-top: 10vh;
+  overflow: hidden;
+}
+
+/* 移动端优化定位 */
+@media (max-width: 768px) {
+  .toast-overlay {
+    align-items: flex-start;
+    padding-top: 5vh;
+    padding-bottom: 5vh;
+  }
 }
 
 .toast-container {
@@ -371,6 +394,7 @@ onUnmounted(() => {
   background: linear-gradient(135deg, #218838, #1e7e34);
 }
 
+
 /* Mobile responsive */
 @media (max-width: 768px) {
   .toast-container {
@@ -383,6 +407,7 @@ onUnmounted(() => {
     box-shadow: 6px 6px 0 #000;
     border-radius: 8px;
   }
+
 
   .toast-header {
     padding: 1rem;

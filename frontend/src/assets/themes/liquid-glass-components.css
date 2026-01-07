@@ -1,0 +1,360 @@
+/*
+ * Liquid Glass Theme - Component-Specific Styles
+ * 液态玻璃主题 - 组件专用样式
+ *
+ * 这个文件包含了所有组件的液态玻璃主题样式，
+ * 用于替代分散在各个组件文件中的主题样式定义
+ */
+
+/* ===========================================
+ * NotificationToast 组件样式
+ * =========================================== */
+
+/* 液态玻璃主题下的Toast遮罩 */
+.theme-liquid-glass .toast-overlay {
+  background: rgba(0, 0, 0, 0.4) !important;
+  backdrop-filter: blur(12px) !important;
+  -webkit-backdrop-filter: blur(12px) !important;
+}
+
+/* 液态玻璃主题下的Toast卡片 */
+.theme-liquid-glass .toast-card {
+  background: var(--theme-modal-bg) !important;
+  backdrop-filter: var(--theme-backdrop-filter) !important;
+  -webkit-backdrop-filter: var(--theme-backdrop-filter) !important;
+  border: 1px solid rgba(255, 255, 255, 0.2) !important;
+  border-radius: var(--theme-border-radius-large) !important;
+  box-shadow: var(--theme-shadow-large), var(--theme-glow), var(--theme-inner-glow-strong) !important;
+  animation: liquidToastAppear 0.5s cubic-bezier(0.4, 0.0, 0.2, 1) !important;
+}
+
+@keyframes liquidToastAppear {
+  0% {
+    transform: scale(0.9) translateY(-20px);
+    opacity: 0;
+    backdrop-filter: blur(0px);
+  }
+  100% {
+    transform: scale(1) translateY(0);
+    opacity: 1;
+    backdrop-filter: var(--theme-backdrop-filter);
+  }
+}
+
+/* 液态玻璃主题下的Toast头部 */
+.theme-liquid-glass .toast-header {
+  background: var(--theme-card-bg) !important;
+  backdrop-filter: var(--theme-glass-filter) !important;
+  -webkit-backdrop-filter: var(--theme-glass-filter) !important;
+  border: none !important;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.15) !important;
+  border-radius: var(--theme-border-radius-large) var(--theme-border-radius-large) 0 0 !important;
+  color: var(--theme-text-primary) !important;
+}
+
+/* 液态玻璃主题下的Toast内容 */
+.theme-liquid-glass .toast-content {
+  background: transparent !important;
+  color: var(--theme-text-primary) !important;
+}
+
+.theme-liquid-glass .toast-message {
+  color: var(--theme-text-primary) !important;
+}
+
+.theme-liquid-glass .toast-secondary {
+  color: var(--theme-text-secondary) !important;
+}
+
+/* 液态玻璃主题下的详情区域 */
+.theme-liquid-glass .toast-details {
+  background: var(--theme-tertiary-bg) !important;
+  backdrop-filter: var(--theme-glass-light) !important;
+  -webkit-backdrop-filter: var(--theme-glass-light) !important;
+  border: 1px solid rgba(255, 255, 255, 0.1) !important;
+  border-radius: var(--theme-border-radius) !important;
+  box-shadow: var(--theme-inner-glow) !important;
+}
+
+.theme-liquid-glass .detail-label {
+  color: var(--theme-text-secondary) !important;
+}
+
+.theme-liquid-glass .detail-value {
+  color: var(--theme-text-primary) !important;
+}
+
+/* 液态玻璃主题下的Toast操作区域 */
+.theme-liquid-glass .toast-actions {
+  background: var(--theme-secondary-bg) !important;
+  backdrop-filter: var(--theme-glass-filter) !important;
+  -webkit-backdrop-filter: var(--theme-glass-filter) !important;
+  border-top: 1px solid rgba(255, 255, 255, 0.15) !important;
+  border-radius: 0 0 var(--theme-border-radius-large) var(--theme-border-radius-large) !important;
+}
+
+/* 液态玻璃主题下的Toast按钮 */
+.theme-liquid-glass .toast-action-btn {
+  background: var(--theme-card-bg) !important;
+  backdrop-filter: var(--theme-glass-filter) !important;
+  -webkit-backdrop-filter: var(--theme-glass-filter) !important;
+  border: 1px solid rgba(255, 255, 255, 0.15) !important;
+  border-radius: var(--theme-border-radius) !important;
+  color: var(--theme-text-primary) !important;
+  box-shadow: var(--theme-shadow-small), var(--theme-inner-glow) !important;
+  transition: all var(--theme-transition-fast) !important;
+}
+
+.theme-liquid-glass .toast-action-btn:hover {
+  transform: translateY(-2px) scale(1.02) !important;
+  box-shadow: var(--theme-hover-lift), var(--theme-inner-glow-strong) !important;
+  backdrop-filter: blur(20px) saturate(200%) brightness(1.2) !important;
+  -webkit-backdrop-filter: blur(20px) saturate(200%) brightness(1.2) !important;
+}
+
+.theme-liquid-glass .toast-action-btn.primary {
+  background: rgba(34, 197, 94, 0.15) !important;
+  box-shadow: 0 0 20px rgba(34, 197, 94, 0.2), var(--theme-inner-glow) !important;
+}
+
+.theme-liquid-glass .toast-action-btn.primary:hover {
+  background: rgba(34, 197, 94, 0.8) !important;
+  color: var(--theme-text-inverted) !important;
+  box-shadow: 0 0 30px rgba(34, 197, 94, 0.3), var(--theme-hover-lift) !important;
+}
+
+/* 液态玻璃主题下的关闭按钮 */
+.theme-liquid-glass .toast-close-btn {
+  background: var(--theme-tertiary-bg) !important;
+  backdrop-filter: var(--theme-glass-light) !important;
+  -webkit-backdrop-filter: var(--theme-glass-light) !important;
+  border: 1px solid rgba(255, 255, 255, 0.15) !important;
+  color: var(--theme-text-primary) !important;
+  box-shadow: var(--theme-inner-glow) !important;
+  transition: all var(--theme-transition-fast) !important;
+}
+
+.theme-liquid-glass .toast-close-btn:hover {
+  transform: scale(1.1) !important;
+  background: rgba(220, 53, 69, 0.8) !important;
+  color: var(--theme-text-inverted) !important;
+  box-shadow: var(--theme-shadow-small), var(--theme-inner-glow-strong) !important;
+}
+
+/* ===========================================
+ * Modal 组件样式 (CreateTaskModal, CreatePostModal)
+ * =========================================== */
+
+/* 液态玻璃主题下的Modal遮罩 */
+.theme-liquid-glass .modal-overlay {
+  background: rgba(0, 0, 0, 0.4) !important;
+  backdrop-filter: blur(12px) !important;
+  -webkit-backdrop-filter: blur(12px) !important;
+}
+
+/* 液态玻璃主题下的Modal内容 */
+.theme-liquid-glass .modal-content {
+  background: var(--theme-modal-bg) !important;
+  backdrop-filter: var(--theme-backdrop-filter) !important;
+  -webkit-backdrop-filter: var(--theme-backdrop-filter) !important;
+  border: 1px solid rgba(255, 255, 255, 0.2) !important;
+  border-radius: var(--theme-border-radius-large) !important;
+  box-shadow: var(--theme-shadow-large), var(--theme-glow), var(--theme-inner-glow-strong) !important;
+  color: var(--theme-text-primary) !important;
+}
+
+/* Modal头部 */
+.theme-liquid-glass .modal-header {
+  background: var(--theme-card-bg) !important;
+  backdrop-filter: var(--theme-glass-filter) !important;
+  -webkit-backdrop-filter: var(--theme-glass-filter) !important;
+  border: none !important;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.15) !important;
+  border-radius: var(--theme-border-radius-large) var(--theme-border-radius-large) 0 0 !important;
+  color: var(--theme-text-primary) !important;
+}
+
+.theme-liquid-glass .modal-header h2 {
+  color: var(--theme-text-primary) !important;
+}
+
+/* Modal主体 */
+.theme-liquid-glass .modal-body {
+  background: transparent !important;
+  color: var(--theme-text-primary) !important;
+}
+
+/* Modal表单组件 */
+.theme-liquid-glass .modal-body .form-group {
+  background: transparent !important;
+}
+
+.theme-liquid-glass .modal-body label {
+  color: var(--theme-text-primary) !important;
+}
+
+.theme-liquid-glass .modal-body input,
+.theme-liquid-glass .modal-body textarea,
+.theme-liquid-glass .modal-body select {
+  background: var(--theme-tertiary-bg) !important;
+  backdrop-filter: var(--theme-glass-light) !important;
+  -webkit-backdrop-filter: var(--theme-glass-light) !important;
+  border: 1px solid rgba(255, 255, 255, 0.1) !important;
+  border-radius: var(--theme-border-radius-small) !important;
+  color: var(--theme-text-primary) !important;
+  box-shadow: var(--theme-inner-glow) !important;
+}
+
+.theme-liquid-glass .modal-body input:focus,
+.theme-liquid-glass .modal-body textarea:focus,
+.theme-liquid-glass .modal-body select:focus {
+  box-shadow: var(--theme-focus-glow), var(--theme-inner-glow-strong) !important;
+  backdrop-filter: blur(20px) saturate(200%) brightness(1.1) !important;
+  -webkit-backdrop-filter: blur(20px) saturate(200%) brightness(1.1) !important;
+}
+
+/* Modal按钮 */
+.theme-liquid-glass .modal-body button,
+.theme-liquid-glass .modal-footer button {
+  background: var(--theme-card-bg) !important;
+  backdrop-filter: var(--theme-glass-filter) !important;
+  -webkit-backdrop-filter: var(--theme-glass-filter) !important;
+  border: 1px solid rgba(255, 255, 255, 0.15) !important;
+  border-radius: var(--theme-border-radius) !important;
+  color: var(--theme-text-primary) !important;
+  box-shadow: var(--theme-shadow-small), var(--theme-inner-glow) !important;
+  transition: all var(--theme-transition-fast) !important;
+}
+
+.theme-liquid-glass .modal-body button:hover,
+.theme-liquid-glass .modal-footer button:hover {
+  transform: translateY(-2px) scale(1.02) !important;
+  box-shadow: var(--theme-hover-lift), var(--theme-inner-glow-strong) !important;
+  backdrop-filter: blur(20px) saturate(200%) brightness(1.2) !important;
+  -webkit-backdrop-filter: blur(20px) saturate(200%) brightness(1.2) !important;
+}
+
+/* 关闭按钮 */
+.theme-liquid-glass .close-btn {
+  background: var(--theme-tertiary-bg) !important;
+  backdrop-filter: var(--theme-glass-light) !important;
+  -webkit-backdrop-filter: var(--theme-glass-light) !important;
+  border: 1px solid rgba(255, 255, 255, 0.15) !important;
+  border-radius: 50% !important;
+  color: var(--theme-text-primary) !important;
+  box-shadow: var(--theme-inner-glow) !important;
+  transition: all var(--theme-transition-fast) !important;
+}
+
+.theme-liquid-glass .close-btn:hover {
+  transform: scale(1.1) !important;
+  background: rgba(220, 53, 69, 0.8) !important;
+  color: var(--theme-text-inverted) !important;
+  box-shadow: var(--theme-shadow-small), var(--theme-inner-glow-strong) !important;
+}
+
+/* ===========================================
+ * BackToTopButton 组件样式
+ * =========================================== */
+
+.theme-liquid-glass .back-to-top-btn {
+  background: var(--theme-modal-bg) !important;
+  backdrop-filter: var(--theme-backdrop-filter) !important;
+  -webkit-backdrop-filter: var(--theme-backdrop-filter) !important;
+  border: 1px solid rgba(255, 255, 255, 0.2) !important;
+  border-radius: var(--theme-border-radius-large) !important;
+  box-shadow: var(--theme-shadow-large), var(--theme-glow), var(--theme-inner-glow-strong) !important;
+  color: var(--theme-text-primary) !important;
+  transition: all var(--theme-transition-fast) !important;
+}
+
+.theme-liquid-glass .back-to-top-btn:hover:not(:disabled) {
+  transform: translateY(-2px) scale(1.05) !important;
+  box-shadow: var(--theme-hover-lift), var(--theme-inner-glow-strong) !important;
+  backdrop-filter: blur(20px) saturate(200%) brightness(1.2) !important;
+  -webkit-backdrop-filter: blur(20px) saturate(200%) brightness(1.2) !important;
+  background: var(--theme-card-bg) !important;
+  border-color: rgba(255, 255, 255, 0.3) !important;
+}
+
+.theme-liquid-glass .back-to-top-btn:active:not(:disabled) {
+  transform: scale(0.95) !important;
+  box-shadow: var(--theme-shadow-small), var(--theme-inner-glow) !important;
+}
+
+.theme-liquid-glass .back-to-top-btn:disabled {
+  background: var(--theme-tertiary-bg) !important;
+  color: var(--theme-text-muted) !important;
+  box-shadow: var(--theme-inner-glow) !important;
+  border-color: rgba(255, 255, 255, 0.1) !important;
+  opacity: 0.6;
+}
+
+.theme-liquid-glass .back-to-top-btn.refreshing {
+  background: rgba(23, 162, 184, 0.15) !important;
+  backdrop-filter: var(--theme-glass-filter) !important;
+  -webkit-backdrop-filter: var(--theme-glass-filter) !important;
+  border-color: rgba(23, 162, 184, 0.3) !important;
+  box-shadow: 0 0 20px rgba(23, 162, 184, 0.2), var(--theme-inner-glow) !important;
+  transform: scale(0.98) !important;
+}
+
+/* 液态玻璃主题下的按钮内容 */
+.theme-liquid-glass .btn-content {
+  color: var(--theme-text-primary) !important;
+}
+
+.theme-liquid-glass .arrow-icon,
+.theme-liquid-glass .refresh-icon,
+.theme-liquid-glass .refresh-hint {
+  color: var(--theme-text-primary) !important;
+}
+
+/* 移动端液态玻璃优化 */
+@media (max-width: 768px) {
+  .theme-liquid-glass .back-to-top-btn {
+    border-radius: var(--theme-border-radius) !important;
+  }
+
+  .theme-liquid-glass .back-to-top-btn:hover:not(:disabled) {
+    transform: translateY(-1px) scale(1.03) !important;
+  }
+
+  .theme-liquid-glass .toast-card {
+    border-radius: var(--theme-border-radius) !important;
+  }
+
+  .theme-liquid-glass .modal-content {
+    border-radius: var(--theme-border-radius) !important;
+  }
+}
+
+@media (max-width: 480px) {
+  .theme-liquid-glass .back-to-top-btn {
+    border-radius: var(--theme-border-radius-small) !important;
+  }
+
+  .theme-liquid-glass .toast-card {
+    border-radius: var(--theme-border-radius-small) !important;
+  }
+
+  .theme-liquid-glass .modal-content {
+    border-radius: var(--theme-border-radius-small) !important;
+  }
+}
+
+/* ===========================================
+ * 移动端液态玻璃优化
+ * =========================================== */
+
+@media (max-width: 768px) {
+  .theme-liquid-glass .toast-overlay {
+    padding-top: 3vh !important;
+    padding-bottom: 3vh !important;
+  }
+
+  .theme-liquid-glass .modal-overlay {
+    padding-top: 3vh !important;
+    padding-bottom: 3vh !important;
+  }
+}

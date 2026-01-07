@@ -27,7 +27,7 @@ interface Props {
 }
 
 const props = withDefaults(defineProps<Props>(), {
-  scrollThreshold: 300
+  scrollThreshold: 100
 })
 
 // State
@@ -42,7 +42,22 @@ const emit = defineEmits<{
 
 // 处理滚动事件
 const handleScroll = () => {
-  showButton.value = window.scrollY > props.scrollThreshold
+  // 使用requestAnimationFrame优化性能
+  requestAnimationFrame(() => {
+    const scrollY = window.scrollY || document.documentElement.scrollTop
+    const windowHeight = window.innerHeight
+    const documentHeight = document.documentElement.scrollHeight
+
+    // 智能显示逻辑：
+    // 1. 滚动超过一屏高度，或者
+    // 2. 滚动超过设定阈值，或者
+    // 3. 滚动超过总高度的20%
+    const shouldShow = scrollY > windowHeight ||
+                      scrollY > props.scrollThreshold ||
+                      (scrollY / (documentHeight - windowHeight)) > 0.2
+
+    showButton.value = shouldShow
+  })
 }
 
 // 处理回到顶部点击
@@ -85,8 +100,26 @@ const handleBackToTop = async () => {
 // 生命周期
 onMounted(() => {
   window.addEventListener('scroll', handleScroll, { passive: true })
-  // 初始检查
-  handleScroll()
+
+  // 初始检查函数
+  const checkInitialScroll = () => {
+    const scrollY = window.scrollY || document.documentElement.scrollTop
+    const windowHeight = window.innerHeight
+    const documentHeight = document.documentElement.scrollHeight
+
+    const shouldShow = scrollY > windowHeight ||
+                      scrollY > props.scrollThreshold ||
+                      (scrollY / (documentHeight - windowHeight)) > 0.2
+
+    showButton.value = shouldShow
+  }
+
+  // 立即检查
+  checkInitialScroll()
+
+  // 延迟再次检查，确保页面完全加载后的状态
+  setTimeout(checkInitialScroll, 100)
+  setTimeout(checkInitialScroll, 300)
 })
 
 onUnmounted(() => {
@@ -195,20 +228,23 @@ onUnmounted(() => {
   }
 }
 
-/* 过渡动画 */
-.back-to-top-enter-active,
+/* 过渡动画 - 改进的弹性动画 */
+.back-to-top-enter-active {
+  transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+
 .back-to-top-leave-active {
-  transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+  transition: all 0.3s cubic-bezier(0.25, 0.46, 0.45, 0.94);
 }
 
 .back-to-top-enter-from {
   opacity: 0;
-  transform: translateY(20px) scale(0.8);
+  transform: translateY(30px) scale(0.7) rotate(10deg);
 }
 
 .back-to-top-leave-to {
   opacity: 0;
-  transform: translateY(20px) scale(0.8);
+  transform: translateY(20px) scale(0.8) rotate(-5deg);
 }
 
 /* 响应式设计 */
@@ -302,4 +338,5 @@ onUnmounted(() => {
     }
   }
 }
+
 </style>

@@ -326,7 +326,7 @@
 
     <!-- Back to Top Button -->
     <BackToTopButton
-      :scroll-threshold="300"
+      :scroll-threshold="100"
       @refresh="handleRefreshData"
       @scroll-to-top="handleScrollToTop"
     />
@@ -1443,7 +1443,7 @@ onMounted(async () => {
   gap: 0.5rem;
   position: sticky;
   top: 1rem;
-  z-index: 10;
+  z-index: 100;
   backdrop-filter: blur(10px);
   -webkit-backdrop-filter: blur(10px);
   transition: all 0.3s cubic-bezier(0.4, 0.0, 0.2, 1);

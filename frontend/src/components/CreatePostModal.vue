@@ -141,7 +141,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, watch, computed, onMounted } from 'vue'
+import { ref, reactive, watch, computed, onMounted, onUnmounted } from 'vue'
 import { usePostsStore } from '../stores/posts'
 import { useAuthStore } from '../stores/auth'
 import { tasksApi } from '../lib/api'
@@ -213,10 +213,15 @@ const selectedImages = ref<Array<{ file: File; preview: string }>>([])
 watch(() => props.isVisible, (visible) => {
   if (visible) {
     resetForm()
+    // 禁用body滚动
+    document.body.style.overflow = 'hidden'
     // 如果打开时是打卡模式，获取严格模式任务
     if (isCheckinMode.value) {
       fetchActiveStrictTask()
     }
+  } else {
+    // 恢复body滚动
+    document.body.style.overflow = ''
   }
 })
 
@@ -465,6 +470,11 @@ onMounted(() => {
     fetchActiveStrictTask()
   }
 })
+
+// 组件卸载时确保恢复滚动
+onUnmounted(() => {
+  document.body.style.overflow = ''
+})
 </script>
 
 <style scoped>
@@ -476,9 +486,11 @@ onMounted(() => {
   height: 100%;
   background-color: rgba(0, 0, 0, 0.5);
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: center;
   z-index: 1000;
+  padding-top: 5vh;
+  overflow: hidden;
 }
 
 .modal-content {
@@ -776,11 +788,17 @@ onMounted(() => {
   font-style: normal;
 }
 
+
 /* 移动端优化 */
 @media (max-width: 768px) {
+  .modal-overlay {
+    padding-top: 3vh;
+    padding-bottom: 3vh;
+  }
+
   .modal-content {
     width: 95%;
-    max-height: 95vh;
+    max-height: 94vh;
   }
 
   .modal-header,

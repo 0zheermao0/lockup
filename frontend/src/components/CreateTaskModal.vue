@@ -305,7 +305,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, watch } from 'vue'
+import { ref, reactive, watch, onUnmounted } from 'vue'
 import { tasksApi } from '../lib/api-tasks'
 import { postsApi } from '../lib/api'
 import type { TaskCreateRequest } from '../types/index'
@@ -366,6 +366,11 @@ const form = reactive<TaskCreateRequest>({
 watch(() => props.isVisible, (newValue) => {
   if (newValue) {
     resetForm()
+    // 禁用body滚动
+    document.body.style.overflow = 'hidden'
+  } else {
+    // 恢复body滚动
+    document.body.style.overflow = ''
   }
 })
 
@@ -719,6 +724,11 @@ watch(() => form.duration_type, (newValue) => {
   }
 })
 
+// 组件卸载时确保恢复滚动
+onUnmounted(() => {
+  document.body.style.overflow = ''
+})
+
 </script>
 
 <style scoped>
@@ -730,10 +740,11 @@ watch(() => form.duration_type, (newValue) => {
   height: 100%;
   background-color: rgba(0, 0, 0, 0.7);
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: center;
   z-index: 1000;
-  padding: 1rem;
+  padding-top: 5vh;
+  overflow: hidden;
 }
 
 .modal-content {
@@ -1605,4 +1616,18 @@ watch(() => form.duration_type, (newValue) => {
   color: var(--text-muted, #6c757d);
   line-height: 1.4;
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 </style>
