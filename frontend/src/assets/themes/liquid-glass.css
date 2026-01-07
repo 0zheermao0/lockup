@@ -4,6 +4,8 @@
  * 设计理念：拒绝死板平面感，极度模拟物理特性，呈现"真实存在于空气中"的实体感
  */
 
+
+
 .theme-liquid-glass {
   /* ===========================================
    * 配色方案：自适应半透明色和系统级白色
@@ -1100,24 +1102,6 @@
   border-radius: var(--theme-border-radius-small) !important;
 }
 
-/* Toast通知按钮 */
-.theme-liquid-glass .toast-action-btn,
-.theme-liquid-glass .toast-close-btn {
-  background: var(--theme-tertiary-bg) !important;
-  backdrop-filter: var(--theme-glass-light) !important;
-  -webkit-backdrop-filter: var(--theme-glass-light) !important;
-  border: none !important;
-  border-radius: var(--theme-border-radius-small) !important;
-  color: var(--theme-text-on-glass) !important;
-  box-shadow: var(--theme-inner-glow) !important;
-  transition: all var(--theme-transition-fast) !important;
-}
-
-.theme-liquid-glass .toast-close-btn {
-  border-radius: 50% !important;
-  width: 32px !important;
-  height: 32px !important;
-}
 
 /* 任务快速操作按钮 */
 .theme-liquid-glass .task-quick-btn,
@@ -1222,107 +1206,11 @@
  * 组件特定样式：确保所有组件受主题影响
  * =========================================== */
 
-/* Toast 通知组件 */
-.theme-liquid-glass .toast-overlay {
-  /* 确保Toast显示在所有其他元素之上，包括图片模态框 */
-  z-index: 100000 !important;
-  /* 增强液态玻璃背景效果 */
-  background: rgba(0, 0, 0, 0.4) !important;
-  backdrop-filter: blur(8px) saturate(120%) !important;
-  -webkit-backdrop-filter: blur(8px) saturate(120%) !important;
-}
 
-/* 移动端Toast优化 - 确保在液态玻璃主题下完美可见 */
-@media (max-width: 768px) {
-  .theme-liquid-glass .toast-overlay {
-    /* 移动端更高的z-index，确保在所有元素之上 */
-    z-index: 100001 !important;
-    /* 移动端优化定位，确保用户能直接看到 */
-    align-items: flex-start !important;
-    padding-top: 10vh !important;
-    padding-bottom: 5vh !important;
-    padding-left: 1rem !important;
-    padding-right: 1rem !important;
-    /* 增强背景对比度，提高可见性 */
-    background: rgba(0, 0, 0, 0.6) !important;
-    backdrop-filter: blur(12px) saturate(140%) !important;
-    -webkit-backdrop-filter: blur(12px) saturate(140%) !important;
-  }
 
-  .theme-liquid-glass .toast-container {
-    /* 移动端容器优化 */
-    width: 100% !important;
-    max-width: calc(100vw - 2rem) !important;
-    max-height: calc(100vh - 15vh) !important;
-    /* 确保内容可滚动 */
-    overflow-y: auto !important;
-  }
 
-  .theme-liquid-glass .toast-card {
-    /* 移动端卡片增强可见性 */
-    border: 1px solid rgba(255, 255, 255, 0.3) !important;
-    box-shadow: var(--theme-shadow-large), var(--theme-glow),
-                0 0 30px rgba(255, 255, 255, 0.1) !important;
-    /* 增强背景对比 */
-    background: var(--theme-modal-bg) !important;
-    backdrop-filter: var(--theme-backdrop-filter) !important;
-    -webkit-backdrop-filter: var(--theme-backdrop-filter) !important;
-  }
 
-  .theme-liquid-glass .toast-header {
-    /* 移动端头部增强对比度 */
-    background: var(--theme-secondary-bg) !important;
-    backdrop-filter: var(--theme-glass-filter) !important;
-    -webkit-backdrop-filter: var(--theme-glass-filter) !important;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.2) !important;
-    color: var(--theme-text-primary) !important;
-  }
 
-  .theme-liquid-glass .toast-close-btn {
-    /* 移动端关闭按钮增强可见性 */
-    background: rgba(220, 53, 69, 0.15) !important;
-    backdrop-filter: var(--theme-glass-filter) !important;
-    -webkit-backdrop-filter: var(--theme-glass-filter) !important;
-    border: 1px solid rgba(220, 53, 69, 0.3) !important;
-    color: var(--theme-text-primary) !important;
-    box-shadow: 0 0 10px rgba(220, 53, 69, 0.2), var(--theme-inner-glow) !important;
-  }
-
-  .theme-liquid-glass .toast-close-btn:hover {
-    background: rgba(220, 53, 69, 0.8) !important;
-    color: var(--theme-text-inverted) !important;
-    box-shadow: 0 0 20px rgba(220, 53, 69, 0.4), var(--theme-hover-lift) !important;
-    transform: scale(1.1) !important;
-  }
-
-  .theme-liquid-glass .toast-action-btn {
-    /* 移动端操作按钮增强可见性 */
-    background: rgba(40, 167, 69, 0.15) !important;
-    backdrop-filter: var(--theme-glass-filter) !important;
-    -webkit-backdrop-filter: var(--theme-glass-filter) !important;
-    border: 1px solid rgba(40, 167, 69, 0.3) !important;
-    color: var(--theme-text-primary) !important;
-    box-shadow: 0 0 10px rgba(40, 167, 69, 0.2), var(--theme-inner-glow) !important;
-  }
-
-  .theme-liquid-glass .toast-action-btn:hover {
-    background: rgba(40, 167, 69, 0.8) !important;
-    color: var(--theme-text-inverted) !important;
-    box-shadow: 0 0 20px rgba(40, 167, 69, 0.4), var(--theme-hover-lift) !important;
-    transform: translateY(-1px) scale(1.02) !important;
-  }
-}
-
-.theme-liquid-glass .toast-card,
-.theme-liquid-glass .toast-container {
-  background: var(--theme-modal-bg);
-  backdrop-filter: var(--theme-backdrop-filter);
-  -webkit-backdrop-filter: var(--theme-backdrop-filter);
-  border: none;
-  border-radius: var(--theme-border-radius);
-  box-shadow: var(--theme-shadow-large), var(--theme-glow);
-  color: var(--theme-text-on-glass);
-}
 
 /* 首页等级显示组件 - 保持代表性颜色（参考action-btn实现） */
 .theme-liquid-glass .level,
@@ -2164,21 +2052,135 @@
   transition: all var(--theme-transition-normal) !important;
 }
 
-.theme-liquid-glass .toast-header {
-  background: var(--theme-secondary-bg);
-  backdrop-filter: var(--theme-glass-filter);
-  -webkit-backdrop-filter: var(--theme-glass-filter);
-  border-radius: var(--theme-border-radius-small) var(--theme-border-radius-small) 0 0;
+
+/* NotificationToast 液态玻璃主题 - 使用Teleport到body的专用样式 */
+
+/* 液态玻璃Toast overlay - 渲染到body，完全绕过#app的stacking context */
+.liquid-glass-toast {
+  /* 确保正确的viewport定位 */
+  position: fixed !important;
+  top: 0 !important;
+  left: 0 !important;
+  right: 0 !important;
+  bottom: 0 !important;
+  width: 100vw !important;
+  height: 100vh !important;
+
+  /* 使用合适的z-index，与其他成功的overlay保持一致 */
+  z-index: 9999 !important;
+
+  /* 液态玻璃背景效果 */
+  background: linear-gradient(135deg,
+    rgba(0, 0, 0, 0.3),
+    rgba(0, 0, 0, 0.2),
+    rgba(255, 255, 255, 0.05)
+  ) !important;
+  backdrop-filter: blur(8px) saturate(150%) !important;
+  -webkit-backdrop-filter: blur(8px) saturate(150%) !important;
+
+  /* 确保居中显示 */
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  padding: 2rem !important;
 }
 
-.theme-liquid-glass .toast-close-btn {
-  background: var(--theme-tertiary-bg);
-  backdrop-filter: var(--theme-glass-light);
-  -webkit-backdrop-filter: var(--theme-glass-light);
-  border: none;
-  border-radius: 50%;
-  color: var(--theme-text-primary);
-  box-shadow: var(--theme-inner-glow);
+/* 液态玻璃Toast卡片样式 */
+.liquid-glass-toast .toast-card {
+  background: var(--theme-card-bg) !important;
+  backdrop-filter: var(--theme-glass-filter) !important;
+  -webkit-backdrop-filter: var(--theme-glass-filter) !important;
+  border: 1px solid var(--theme-border-color) !important;
+  border-radius: var(--theme-border-radius-large) !important;
+  box-shadow: var(--theme-shadow-large), var(--theme-glow) !important;
+
+  /* 移除Neo-Brutalism样式 */
+  box-shadow: var(--theme-shadow-large) !important;
+  border: 1px solid rgba(255, 255, 255, 0.2) !important;
+  transform: none !important;
+}
+
+/* 液态玻璃Toast头部 */
+.liquid-glass-toast .toast-header {
+  background: var(--theme-secondary-bg) !important;
+  backdrop-filter: var(--theme-glass-light) !important;
+  -webkit-backdrop-filter: var(--theme-glass-light) !important;
+  color: var(--theme-text-primary) !important;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1) !important;
+}
+
+/* 液态玻璃Toast内容 */
+.liquid-glass-toast .toast-content {
+  background: transparent !important;
+  color: var(--theme-text-primary) !important;
+}
+
+.liquid-glass-toast .toast-message {
+  color: var(--theme-text-primary) !important;
+}
+
+.liquid-glass-toast .toast-secondary {
+  color: var(--theme-text-secondary) !important;
+}
+
+/* 液态玻璃Toast详情区域 */
+.liquid-glass-toast .toast-details {
+  background: var(--theme-tertiary-bg) !important;
+  backdrop-filter: var(--theme-glass-light) !important;
+  -webkit-backdrop-filter: var(--theme-glass-light) !important;
+  border: 1px solid rgba(255, 255, 255, 0.1) !important;
+  border-radius: var(--theme-border-radius-small) !important;
+}
+
+/* 液态玻璃Toast操作区域 */
+.liquid-glass-toast .toast-actions {
+  background: var(--theme-secondary-bg) !important;
+  backdrop-filter: var(--theme-glass-light) !important;
+  -webkit-backdrop-filter: var(--theme-glass-light) !important;
+  border-top: 1px solid rgba(255, 255, 255, 0.1) !important;
+}
+
+/* 液态玻璃Toast按钮 */
+.liquid-glass-toast .toast-action-btn {
+  background: var(--theme-button-bg) !important;
+  backdrop-filter: var(--theme-glass-filter) !important;
+  -webkit-backdrop-filter: var(--theme-glass-filter) !important;
+  color: var(--theme-text-on-glass) !important;
+  border: 1px solid rgba(255, 255, 255, 0.2) !important;
+  border-radius: var(--theme-border-radius-small) !important;
+  box-shadow: var(--theme-inner-glow) !important;
+
+  /* 移除Neo-Brutalism样式 */
+  box-shadow: var(--theme-inner-glow) !important;
+  text-transform: none !important;
+  letter-spacing: normal !important;
+}
+
+.liquid-glass-toast .toast-action-btn:hover {
+  background: var(--theme-button-hover-bg) !important;
+  box-shadow: var(--theme-shadow), var(--theme-inner-glow) !important;
+  transform: translateY(-1px) !important;
+}
+
+/* 液态玻璃Toast关闭按钮 */
+.liquid-glass-toast .toast-close-btn {
+  background: var(--theme-tertiary-bg) !important;
+  backdrop-filter: var(--theme-glass-light) !important;
+  -webkit-backdrop-filter: var(--theme-glass-light) !important;
+  color: var(--theme-text-primary) !important;
+  border: 1px solid rgba(255, 255, 255, 0.2) !important;
+  border-radius: 50% !important;
+  box-shadow: var(--theme-inner-glow) !important;
+
+  /* 移除Neo-Brutalism样式 */
+  box-shadow: var(--theme-inner-glow) !important;
+  font-weight: normal !important;
+}
+
+.liquid-glass-toast .toast-close-btn:hover {
+  background: var(--theme-button-hover-bg) !important;
+  box-shadow: var(--theme-shadow), var(--theme-inner-glow) !important;
+  transform: scale(1.1) !important;
 }
 
 /* 状态指示器和进度条 */

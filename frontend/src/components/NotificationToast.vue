@@ -1,5 +1,55 @@
 <template>
-  <transition name="toast" @after-leave="$emit('closed')">
+  <!-- 液态玻璃主题下使用Teleport渲染到body，避免stacking context问题 -->
+  <Teleport v-if="isLiquidGlassTheme" to="body">
+    <transition name="toast" @after-leave="$emit('closed')">
+      <div v-if="isVisible" class="toast-overlay liquid-glass-toast" @click="closeToast">
+        <div class="toast-container" @click.stop>
+          <div class="toast-card" :class="toastTypeClass">
+            <!-- Header -->
+            <div class="toast-header">
+              <div class="toast-icon">
+                {{ toastIcon }}
+              </div>
+              <div class="toast-title">
+                {{ title }}
+              </div>
+              <button @click="closeToast" class="toast-close-btn" title="关闭">
+                ✕
+              </button>
+            </div>
+
+            <!-- Content -->
+            <div class="toast-content">
+              <div class="toast-message">
+                {{ message }}
+              </div>
+              <div v-if="secondaryMessage" class="toast-secondary">
+                {{ secondaryMessage }}
+              </div>
+
+              <!-- Details Section -->
+              <div v-if="details" class="toast-details">
+                <div v-for="(value, key) in details" :key="key" class="detail-item">
+                  <span class="detail-label">{{ key }}:</span>
+                  <span class="detail-value">{{ value }}</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- Action Buttons -->
+            <div v-if="showActions" class="toast-actions">
+              <button @click="closeToast" class="toast-action-btn primary">
+                确定
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </transition>
+  </Teleport>
+
+  <!-- 非液态玻璃主题使用正常渲染 -->
+  <transition v-else name="toast" @after-leave="$emit('closed')">
     <div v-if="isVisible" class="toast-overlay" @click="closeToast">
       <div class="toast-container" @click.stop>
         <div class="toast-card" :class="toastTypeClass">
@@ -47,7 +97,15 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch } from 'vue'
+import { ref, computed, watch, onUnmounted, nextTick, onMounted } from 'vue'
+
+// 检测当前是否为液态玻璃主题
+const isLiquidGlassTheme = computed(() => {
+  if (typeof document !== 'undefined') {
+    return document.documentElement.classList.contains('theme-liquid-glass')
+  }
+  return false
+})
 
 interface Props {
   isVisible: boolean
@@ -123,7 +181,6 @@ watch(() => props.isVisible, (newVal) => {
 })
 
 // Cleanup on unmount
-import { onUnmounted } from 'vue'
 onUnmounted(() => {
   if (autoCloseTimer.value) {
     clearTimeout(autoCloseTimer.value)
@@ -162,21 +219,20 @@ onUnmounted(() => {
   bottom: 0;
   background: rgba(0, 0, 0, 0.6);
   display: flex;
-  align-items: flex-start;
+  align-items: center; /* 垂直居中，确保在可视区域内 */
   justify-content: center;
   z-index: 9999;
   backdrop-filter: blur(4px);
   -webkit-backdrop-filter: blur(4px);
-  padding-top: 10vh;
+  padding: 2rem; /* 四周留白而不是只有顶部 */
   overflow: hidden;
 }
 
 /* 移动端优化定位 */
 @media (max-width: 768px) {
   .toast-overlay {
-    align-items: flex-start;
-    padding-top: 5vh;
-    padding-bottom: 5vh;
+    align-items: center; /* 移动端也保持居中 */
+    padding: 1rem; /* 移动端减少留白 */
   }
 }
 
@@ -468,4 +524,5 @@ onUnmounted(() => {
     transform: none;
   }
 }
+
 </style>
