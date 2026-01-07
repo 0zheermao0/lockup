@@ -1342,6 +1342,14 @@ const selectedImage = ref<any>(null)
 
 // Toast notification state
 const showToast = ref(false)
+
+// 调试：监听showToast变化
+watch(showToast, (newVal) => {
+  console.log('🔥 TaskDetailView showToast changed:', newVal)
+  if (newVal) {
+    console.log('🔥 Toast data:', toastData.value)
+  }
+})
 const toastData = ref<{
   type: 'success' | 'error' | 'warning' | 'info'
   title: string

@@ -776,6 +776,42 @@ export const storeApi = {
       body: JSON.stringify({ item_id: itemId }),
     });
   },
+
+  // Small Campfire
+  async getFrozenTasks(): Promise<{
+    frozen_tasks: Array<{
+      id: string;
+      title: string;
+      description: string;
+      difficulty: string;
+      status: string;
+      frozen_at?: string;
+      frozen_end_time?: string;
+      frozen_duration_seconds?: number;
+      remaining_time_after_unfreeze_seconds?: number;
+      start_time?: string;
+      end_time?: string;
+    }>;
+    count: number;
+    message: string;
+  }> {
+    return apiRequest('/store/frozen-tasks/');
+  },
+
+  async useSmallCampfireOnTask(data: {
+    item_id: string;
+    task_id: string;
+  }): Promise<{
+    success: boolean;
+    message: string;
+    task_title: string;
+    unfrozen_at: string;
+  }> {
+    return apiRequest('/store/use-small-campfire-on-task/', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  },
 };
 
 // Tasks API
