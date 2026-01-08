@@ -63,7 +63,17 @@
 
           <!-- 图片上传 -->
           <div class="form-group">
-            <label>图片 (可选)</label>
+            <div class="image-label-row">
+              <label>图片 (可选)</label>
+              <button
+                type="button"
+                class="camera-link"
+                @click="openCamera"
+                :disabled="isLoading || selectedImages.length >= 9"
+              >
+                📷 拍照
+              </button>
+            </div>
             <div class="image-upload-area">
               <input
                 ref="fileInput"
@@ -76,7 +86,7 @@
               />
               <div @click="triggerFileInput" class="upload-zone">
                 <div v-if="selectedImages.length === 0" class="upload-placeholder">
-                  📷 点击选择图片
+                  🖼️ 点击选择图片
                   <span class="upload-hint">最多9张，每张不超过2.5MB</span>
                 </div>
                 <div v-else class="selected-images">
@@ -138,6 +148,12 @@
       @close="showToast = false"
     />
   </div>
+
+  <CameraModal
+    :isVisible="showCamera"
+    @success="handleCameraSuccess"
+    @close="showCamera = false"
+  />
 </template>
 
 <script setup lang="ts">
@@ -149,6 +165,7 @@ import RichTextEditor from './RichTextEditor.vue'
 import NotificationToast from './NotificationToast.vue'
 import type { LockTask } from '../types/index'
 import { handleApiError, formatErrorForNotification } from '../utils/errorHandling'
+import CameraModal from './CameraModal.vue';
 
 interface Props {
   isVisible: boolean
@@ -208,6 +225,44 @@ const verificationCodeText = computed(() => {
 // 图片相关
 const fileInput = ref<HTMLInputElement>()
 const selectedImages = ref<Array<{ file: File; preview: string }>>([])
+
+// 拍照相关
+const showCamera = ref(false);
+
+const openCamera = () => {
+  if (!isLoading.value && selectedImages.value.length < 9) {
+    showCamera.value = true;
+  }
+}
+
+const handleCameraSuccess = (photoUrl: string) => {
+  showCamera.value = false
+
+  // 把 camera 返回的 url 接进你现有的图片逻辑
+  fetch(photoUrl)
+    .then(res => res.blob())
+    .then(blob => {
+      // 数量限制（复用你已有逻辑）
+      if (selectedImages.value.length >= 9) {
+        showToast.value = true
+        toastData.value = formatErrorForNotification({
+          title: '图片数量过多',
+          message: '最多只能上传9张图片',
+          severity: 'warning',
+        })
+        return
+      }
+
+      const file = new File([blob], `camera-${Date.now()}.jpg`, {
+        type: blob.type,
+      })
+
+      selectedImages.value.push({
+        file,
+        preview: photoUrl,
+      })
+    })
+}
 
 // 监听props变化
 watch(() => props.isVisible, (visible) => {
@@ -823,4 +878,49 @@ onUnmounted(() => {
     width: 100%;
   }
 }
+
+.image-label-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.image-label-row label {
+  flex: 1;
+  min-width: 0; 
+}
+
+.camera-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+
+  font-size: 15px;
+  font-weight: 500;
+
+  padding: 4px 10px;
+  border-radius: 6px;
+
+  color: #2563eb;
+  border: 1.5px solid #2563eb;
+  background: transparent;
+
+  cursor: pointer;
+  line-height: 1;
+}
+
+.camera-link:hover {
+  background: rgba(37, 99, 235, 0.08);
+}
+
+.camera-link:active {
+  background: rgba(37, 99, 235, 0.15);
+}
+
+.camera-link:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
 </style>
