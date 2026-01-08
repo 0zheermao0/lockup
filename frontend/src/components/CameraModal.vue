@@ -72,7 +72,7 @@ interface Props {
 
 interface Emits {
   (e: "close"): void;
-  (e: "success", payload: string): void;
+  (e: "success", payload: Blob): void;
 }
 
 const emit = defineEmits<Emits>();
@@ -216,7 +216,6 @@ async function renderPreview(): Promise<void> {
   ctx.clearRect(0, 0, canvas.width, canvas.height);
 
   ctx.translate(canvas.width / 2, canvas.height / 2);
-  ctx.rotate(rad);
   ctx.scale(
     mirroredHorizontal.value ? -1 : 1,
     mirroredVertical.value ? -1 : 1,
@@ -227,7 +226,7 @@ async function renderPreview(): Promise<void> {
 
   // 水印（跟着旋转）
   ctx.save();
-  ctx.rotate(-2*rad);
+  ctx.rotate(-rad);
   drawWatermark(ctx, img.width, img.height);
   ctx.restore();
 
@@ -267,7 +266,7 @@ function drawWatermark(
 
 async function exportFinalImage(
   maxBytes = 2.5 * 1024 * 1024,
-): Promise<string> {
+): Promise<Blob> {
   if (!rawBlob.value) {
     throw new Error("No source image");
   }
@@ -292,7 +291,7 @@ async function exportFinalImage(
 
   ctx.drawImage(img, -img.width / 2, -img.height / 2);
   ctx.save();
-  ctx.rotate(-2*rad);
+  ctx.rotate(-rad);
   drawWatermark(ctx, img.width, img.height);
   ctx.restore();
 
@@ -302,7 +301,7 @@ async function exportFinalImage(
     const blob = await new Promise<Blob>((resolve) =>
       canvas.toBlob((b) => resolve(b!), "image/jpeg", quality),
     );
-    if (blob.size <= maxBytes) return URL.createObjectURL(blob);
+    if (blob.size <= maxBytes) return blob;
     quality -= 0.05;
   }
 
@@ -374,8 +373,8 @@ const confirm = async (): Promise<void> => {
   if (!rawBlob.value) return;
 
   try {
-    const url = await exportFinalImage(MAX_IMAGE_SIZE);
-    emit("success", url); 
+    const blob = await exportFinalImage(MAX_IMAGE_SIZE);
+    emit("success", blob); 
   } catch (e) {
     errorMessage.value = "图片生成失败，请重试";
     mode.value = "error";

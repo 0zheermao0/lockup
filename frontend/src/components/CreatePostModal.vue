@@ -235,33 +235,25 @@ const openCamera = () => {
   }
 }
 
-const handleCameraSuccess = (photoUrl: string) => {
+const handleCameraSuccess = (photoBlob: Blob) => {
   showCamera.value = false
+  console.log(photoBlob, typeof photoBlob, photoBlob instanceof Blob)
 
-  // 把 camera 返回的 url 接进你现有的图片逻辑
-  fetch(photoUrl)
-    .then(res => res.blob())
-    .then(blob => {
-      // 数量限制（复用你已有逻辑）
-      if (selectedImages.value.length >= 9) {
-        showToast.value = true
-        toastData.value = formatErrorForNotification({
-          title: '图片数量过多',
-          message: '最多只能上传9张图片',
-          severity: 'warning',
-        })
-        return
-      }
 
-      const file = new File([blob], `camera-${Date.now()}.jpg`, {
-        type: blob.type,
-      })
+  // 把 camera 返回的 blob 接进你现有的图片逻辑
+  try {
+    const file = new File([photoBlob], `camera_${Date.now()}.jpg`, { type: 'image/jpeg', lastModified: Date.now() })
+    const previewUrl = URL.createObjectURL(file)
+    const success = addImageFile(file, previewUrl)
+    if (!success) return
+    console.log(file instanceof File) // true
+    console.log(file.name)            // camera_xxx.jpg
+    console.log(file.type)            // image/jpeg
+    console.log(file.size)            // > 0
 
-      selectedImages.value.push({
-        file,
-        preview: photoUrl,
-      })
-    })
+  } catch (error) {
+    console.error('Error processing captured photo:', error)
+  }
 }
 
 // 监听props变化
@@ -353,73 +345,19 @@ const handleImageSelect = (event: Event) => {
 
   for (let i = 0; i < files.length; i++) {
     const file = files[i]
-    if (!file) continue
-
-    // 验证文件类型
-    if (!file.type.startsWith('image/')) {
-      showToast.value = true
-      const errorData = formatErrorForNotification({
-        title: '文件类型不支持',
-        message: `不支持 ${file.name} 的文件类型`,
-        actionSuggestion: '请选择图片文件（JPG、PNG、GIF等）',
-        severity: 'error'
-      })
-      toastData.value = {
-        ...errorData,
-        details: {}
-      }
-      continue
-    }
-
-    // 验证文件大小（2.5MB限制）
-    if (file.size > 2.5 * 1024 * 1024) {
-      showToast.value = true
-      const errorData = formatErrorForNotification({
-        title: '文件过大',
-        message: `图片 ${file.name} 超过了2.5MB大小限制`,
-        actionSuggestion: '请压缩图片或选择较小的文件',
-        severity: 'error'
-      })
-      toastData.value = {
-        ...errorData,
-        details: {}
-      }
-      continue
-    }
-
-    // 检查图片数量限制（最多9张）
-    if (selectedImages.value.length >= 9) {
-      showToast.value = true
-      const errorData = formatErrorForNotification({
-        title: '图片数量过多',
-        message: '最多只能上传9张图片',
-        actionSuggestion: '请删除一些图片后再添加新的',
-        severity: 'warning'
-      })
-      toastData.value = {
-        ...errorData,
-        details: {}
-      }
-      break
-    }
+    const success = addImageFile(file, URL.createObjectURL(file))
+    if (!success) break
 
     const reader = new FileReader()
-    reader.onload = (e) => {
-      selectedImages.value.push({
-        file: file,
-        preview: e.target?.result as string
-      })
-    }
-    reader.onerror = () => {
+    reader.onerror = (e) => {
       showToast.value = true
-      const errorData = formatErrorForNotification({
-        title: '图片读取失败',
-        message: `无法读取图片 ${file.name}`,
-        actionSuggestion: '请检查文件是否损坏或重新选择',
-        severity: 'error'
-      })
       toastData.value = {
-        ...errorData,
+        ...formatErrorForNotification({
+          title: '图片读取失败',
+          message: `无法读取图片 ${file.name}`,
+          actionSuggestion: '请检查文件是否损坏或重新选择',
+          severity: 'error'
+        }),
         details: {}
       }
     }
@@ -430,6 +368,61 @@ const handleImageSelect = (event: Event) => {
   if (fileInput.value) {
     fileInput.value.value = ''
   }
+}
+
+const addImageFile = (file: File, preview: string): boolean => {
+  if (!file) return
+
+  // 验证文件类型
+  if (!file.type.startsWith('image/')) {
+    showToast.value = true
+    const errorData = formatErrorForNotification({
+      title: '文件类型不支持',
+      message: `不支持 ${file.name} 的文件类型`,
+      actionSuggestion: '请选择图片文件（JPG、PNG、GIF等）',
+      severity: 'error'
+    })
+    toastData.value = {
+      ...errorData,
+      details: {}
+    }
+    return false
+  }
+
+  // 验证文件大小（2.5MB限制）
+  if (file.size > 2.5 * 1024 * 1024) {
+    showToast.value = true
+    const errorData = formatErrorForNotification({
+      title: '文件过大',
+      message: `图片 ${file.name} 超过了2.5MB大小限制`,
+      actionSuggestion: '请压缩图片或选择较小的文件',
+      severity: 'error'
+    })
+    toastData.value = {
+      ...errorData,
+      details: {}
+    }
+    return false
+  }
+
+  // 检查图片数量限制（最多9张）
+  if (selectedImages.value.length >= 9) {
+    showToast.value = true
+    const errorData = formatErrorForNotification({
+      title: '图片数量过多',
+      message: '最多只能上传9张图片',
+      actionSuggestion: '请删除一些图片后再添加新的',
+      severity: 'warning'
+    })
+    toastData.value = {
+      ...errorData,
+      details: {}
+    }
+    return false
+  }
+
+  selectedImages.value.push({ file, preview })
+  return true
 }
 
 const removeImage = (index: number) => {
