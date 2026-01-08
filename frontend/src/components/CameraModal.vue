@@ -9,11 +9,27 @@
 
       <!-- Camera Viewport -->
       <div class="viewport-wrapper">
-        <div class="frame polaroid">
+        <div class="polaroid"
+          :style="{ transform: `rotate(${rotation}deg)` }">
           <div class="viewport">
-            <video v-show="mode === 'camera'" ref="video" autoplay playsinline />
-            <img v-show="mode === 'preview'" :src="photo" />
-            <div v-if="countdown > 0" class="overlay">{{ countdown }}</div>
+            <!-- Camera -->
+            <div v-if="mode === 'camera'" class="viewport-panel">
+              <video ref="video" autoplay playsinline muted />
+              <div v-if="countdown > 0" class="overlay">{{ countdown }}</div>
+            </div>
+
+            <!-- Preview -->
+            <div v-else-if="mode === 'preview'" class="viewport-panel">
+              <div class="preview-image" :style="{ transform: previewTransform }">
+                <img :src="previewUrl" />
+              </div>
+            </div>
+
+            <!-- Error -->
+            <div v-else-if="mode === 'error'" class="viewport-panel error-panel">
+              <div class="error-icon">📷</div>
+              <div class="error-text">{{ errorMessage }}</div>
+            </div>
           </div>
         </div>
       </div>
@@ -25,9 +41,17 @@
           <button class="primary-btn" @click="capture">📸 拍照</button>
         </template>
 
-        <template v-else>
-          <button class="secondary-btn" @click="retake">🔁 重拍</button>
-          <button class="primary-btn" @click="confirm">✅ 使用这张</button>
+        <template v-else-if="mode === 'preview'">
+          <div class="controls grid-2x2">
+            <button class="secondary-btn" @click="rotatePreview">↻ 旋转</button>
+            <button class="secondary-btn" @click="mirrorPreview">↔️ 镜像</button>
+            <button class="secondary-btn" @click="retake">🔁 重拍</button>
+            <button class="primary-btn" @click="confirm">✅ 使用这张</button>
+          </div>
+        </template>
+
+        <template v-else="mode === 'error'">
+          <button class="primary-btn" @click="emit('close')">🔁 关闭</button>
         </template>
       </div>
     </div>
@@ -35,7 +59,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, watch, onBeforeUnmount } from "vue";
+import { ref, onMounted, watch, onBeforeUnmount, computed } from "vue";
 
 /* =======================
  * Props / Emits
@@ -63,13 +87,22 @@ const props = withDefaults(defineProps<Props>(), {
  * ======================= */
 
 const video = ref<HTMLVideoElement | null>(null);
-const photo = ref<string | null>(null);
+const rawBlob = ref<Blob | null>(null);
+// preview 用
+const previewCanvas = ref<HTMLCanvasElement | null>(null);
+const previewUrl = ref<string | null>(null);
 
 const mode = ref<"camera" | "preview">("camera");
 const countdown = ref<number>(0);
-const facingMode = ref<"environment" | "user">("environment");
+const facingMode = ref<"environment" | "user">("user");
+const errorMessage = ref<string>("");
+const rotation = ref<0|90|180|270>(0);
+const mirroredHorizontal = ref<boolean>(false);
+const mirroredVertical = ref<boolean>(false);
 
 let stream: MediaStream | null = null;
+
+const MAX_IMAGE_SIZE = 2.5 * 1024 * 1024; // 2.5MB
 
 /* =======================
  * Camera Control
@@ -134,13 +167,15 @@ const startCamera = async (): Promise<void> => {
         video: { facingMode: "user" },
       });
     }
+  } catch (error) {
+    console.error("Error accessing camera:", error);
+    errorMessage.value = "无法访问摄像头，请检查权限设置，或者摄像头是否可用。";
+    mode.value = "error";
+    return;
+  }
 
-    if (video.value) {
-      video.value.srcObject = stream;
-    }
-  } catch (e) {
-    console.error("Error starting camera:", e);
-    emit("close");
+  if (video.value) {
+    video.value.srcObject = stream;
   }
 };
 
@@ -153,59 +188,127 @@ const switchCamera = async (): Promise<void> => {
  * Image Capture & Compress
  * ======================= */
 
-async function captureCompressedImage(
-  videoEl: HTMLVideoElement,
-  {
-    maxEdge = 1600,
-    quality = 0.8,
-  }: {
-    maxEdge?: number;
-    quality?: number;
-  } = {},
-): Promise<Blob> {
-  const vw = videoEl.videoWidth;
-  const vh = videoEl.videoHeight;
+const previewTransform = computed(() => {
+  const transforms: string[] = [];
 
-  const scale = Math.min(1, maxEdge / Math.max(vw, vh));
-  const cw = Math.round(vw * scale);
-  const ch = Math.round(vh * scale);
+  if (mirroredHorizontal.value) transforms.push("scaleX(-1)");
+  if (mirroredVertical.value) transforms.push("scaleY(-1)");
 
-  const canvas = document.createElement("canvas");
-  canvas.width = cw;
-  canvas.height = ch;
+  return transforms.join(" ");
+});
 
-  const ctx = canvas.getContext("2d");
-  if (!ctx) throw new Error("Canvas context unavailable");
+async function renderPreview(): Promise<void> {
+  if (!rawBlob.value) return;
 
-  ctx.drawImage(videoEl, 0, 0, cw, ch);
+  const img = await createImageBitmap(rawBlob.value);
 
-  return new Promise<Blob>((resolve, reject) => {
-    canvas.toBlob(
-      (blob) => (blob ? resolve(blob) : reject(new Error("toBlob failed"))),
-      "image/jpeg",
-      quality,
-    );
-  });
+  const angle = rotation.value;
+  const rad = (angle * Math.PI) / 180;
+  const swap = Math.abs(angle) % 180 === 90;
+
+  const canvas = previewCanvas.value ?? document.createElement("canvas");
+  previewCanvas.value = canvas;
+
+  canvas.width = swap ? img.height : img.width;
+  canvas.height = swap ? img.width : img.height;
+
+  const ctx = canvas.getContext("2d")!;
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  ctx.translate(canvas.width / 2, canvas.height / 2);
+  ctx.rotate(rad);
+  ctx.scale(
+    mirroredHorizontal.value ? -1 : 1,
+    mirroredVertical.value ? -1 : 1,
+  );
+
+  // 照片
+  ctx.drawImage(img, -img.width / 2, -img.height / 2);
+
+  // 水印（跟着旋转）
+  ctx.save();
+  ctx.rotate(-2*rad);
+  drawWatermark(ctx, img.width, img.height);
+  ctx.restore();
+
+  // 更新预览 URL（只用于 UI）
+  previewUrl.value && URL.revokeObjectURL(previewUrl.value);
+  const blob = await new Promise<Blob>((resolve) =>
+    canvas.toBlob((b) => resolve(b!), "image/jpeg", 0.8),
+  );
+
+  previewUrl.value && URL.revokeObjectURL(previewUrl.value);
+  previewUrl.value = URL.createObjectURL(blob);
 }
 
-async function compressUntilFit(videoEl: HTMLVideoElement, maxBytes: number): Promise<Blob> {
-  let quality = 0.85;
+function drawWatermark(
+  ctx: CanvasRenderingContext2D,
+  imgW: number,
+  imgH: number,
+) {
+  const text = "Lockup-Test";   // TODO:
+  const fontSize = 28;
 
+  ctx.save();
+  ctx.font = `600 ${fontSize}px system-ui, sans-serif`;
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+
+  ctx.shadowColor = "rgba(0,0,0,0.4)";
+  ctx.shadowBlur = 6;
+  ctx.fillStyle = "rgba(255,255,255,0.35)";
+
+  // ⭐ 图像中心永远是 (0, 0)
+  ctx.fillText(text, 0, 0);
+
+  ctx.restore();
+}
+
+
+async function exportFinalImage(
+  maxBytes = 2.5 * 1024 * 1024,
+): Promise<string> {
+  if (!rawBlob.value) {
+    throw new Error("No source image");
+  }
+
+  const img = await createImageBitmap(rawBlob.value);
+
+  const angle = rotation.value;
+  const rad = (angle * Math.PI) / 180;
+  const swap = Math.abs(angle) % 180 === 90;
+
+  const canvas = document.createElement("canvas");
+  canvas.width = swap ? img.height : img.width;
+  canvas.height = swap ? img.width : img.height;
+
+  const ctx = canvas.getContext("2d")!;
+  ctx.translate(canvas.width / 2, canvas.height / 2);
+  ctx.rotate(rad);
+  ctx.scale(
+    mirroredHorizontal.value ? -1 : 1,
+    mirroredVertical.value ? -1 : 1,
+  );
+
+  ctx.drawImage(img, -img.width / 2, -img.height / 2);
+  ctx.save();
+  ctx.rotate(-2*rad);
+  drawWatermark(ctx, img.width, img.height);
+  ctx.restore();
+
+  // === 压缩 ===
+  let quality = 0.9;
   while (quality >= 0.5) {
-    const blob = await captureCompressedImage(videoEl, {
-      maxEdge: 1600,
-      quality,
-    });
-
-    if (blob.size <= maxBytes) {
-      return blob;
-    }
-
+    const blob = await new Promise<Blob>((resolve) =>
+      canvas.toBlob((b) => resolve(b!), "image/jpeg", quality),
+    );
+    if (blob.size <= maxBytes) return URL.createObjectURL(blob);
     quality -= 0.05;
   }
 
   throw new Error("Image too large even after compression");
 }
+
 
 /* =======================
  * Actions
@@ -223,42 +326,86 @@ const capture = async (): Promise<void> => {
 
   await new Promise((resolve) => setTimeout(resolve, 3000));
 
-  let blob = await captureCompressedImage(video.value);
+  // === 1. 截一帧，生成 raw ===
+  const canvas = document.createElement("canvas");
+  canvas.width = video.value.videoWidth;
+  canvas.height = video.value.videoHeight;
 
-  if (blob.size > 2.5 * 1024 * 1024) {
-    try {
-      blob = await compressUntilFit(video.value, 2.5 * 1024 * 1024);
-    } catch {
-      emit("error", "Captured image is too large even after compression.");
-      return;
-    }
-  }
+  const ctx = canvas.getContext("2d")!;
+  ctx.drawImage(video.value, 0, 0);
 
-  if (photo.value) {
-    URL.revokeObjectURL(photo.value);
-  }
+  const raw = await new Promise<Blob>((resolve) =>
+    canvas.toBlob((b) => resolve(b!), "image/jpeg", 0.95),
+  );
 
-  photo.value = URL.createObjectURL(blob);
+  // === 2. 保存 raw ===
+  rawBlob.value = raw;
+
+  // === 3. 初始化编辑状态 ===
+  rotation.value = 0;
+  mirroredHorizontal.value = false;
+  mirroredVertical.value = false;
+
+  // === 4. 生成 preview（canvas / url）===
+  await renderPreview();
 
   stopCamera();
   mode.value = "preview";
 };
 
-const retake = async (): Promise<void> => {
-  if (photo.value) {
-    URL.revokeObjectURL(photo.value);
-  }
 
-  photo.value = null;
+const retake = async (): Promise<void> => {
+  previewUrl.value && URL.revokeObjectURL(previewUrl.value);
+
+  previewUrl.value = null;
+  rawBlob.value = null;
+
+  mirroredHorizontal.value = false;
+  mirroredVertical.value = false;
+  rotation.value = 0;
+
   mode.value = "camera";
   await startCamera();
 };
 
-const confirm = (): void => {
-  if (photo.value) {
-    emit("success", photo.value);
+
+
+const confirm = async (): Promise<void> => {
+  if (!rawBlob.value) return;
+
+  try {
+    const url = await exportFinalImage(MAX_IMAGE_SIZE);
+    emit("success", url); 
+  } catch (e) {
+    errorMessage.value = "图片生成失败，请重试";
+    mode.value = "error";
   }
 };
+
+
+const mirrorPreview = async (): Promise<void> => {
+  if (rotation.value === 0) {         // ↑
+    mirroredHorizontal.value = !mirroredHorizontal.value;
+  } else if (rotation.value === 90) {  // →
+    mirroredVertical.value = !mirroredVertical.value;
+  } else if (rotation.value === 180) { // ↓
+    mirroredHorizontal.value = !mirroredHorizontal.value;
+  }  else if (rotation.value === 270) { // ←
+    mirroredVertical.value = !mirroredVertical.value;
+  }
+  await renderPreview();
+};
+
+const rotatePreview = async (): Promise<void> => {
+  rotation.value = (rotation.value + 90) % 360;
+  await renderPreview();
+};
+
+/* =======================
+ * Lifecycle
+ * ======================= */
+
+// onMounted(startCamera);
 
 watch(
   () => props.isVisible,
@@ -272,16 +419,11 @@ watch(
   { immediate: false },
 );
 
-/* =======================
- * Lifecycle
- * ======================= */
-
-// onMounted(startCamera);
 
 onBeforeUnmount(() => {
   stopCamera();
-  if (photo.value) {
-    URL.revokeObjectURL(photo.value);
+  if (previewUrl.value) {
+    URL.revokeObjectURL(previewUrl.value);
   }
 });
 </script>
@@ -295,7 +437,6 @@ onBeforeUnmount(() => {
   max-width: 420px;
   margin: 0 auto;
   padding: 0;
-  z-index: 99999;
 }
 
 .camera-header {
@@ -319,7 +460,7 @@ onBeforeUnmount(() => {
 
 .polaroid {
   background: #fff;
-  padding: 16px 16px 36px;
+  padding: 16px 16px 48px;
   /* 下边更厚 */
   border-radius: 4px;
   box-shadow:
@@ -328,31 +469,48 @@ onBeforeUnmount(() => {
 
   width: fit-content;
   margin: 0 auto;
-
-  /* 微微歪一点，更像随手拍 */
-  transform: rotate(-1.5deg);
 }
 
-.polaroid:hover {
-  transform: rotate(0deg) scale(1.02);
-  transition: 0.2s ease;
-}
-
-.viewport {
-  width: 280px;
-  aspect-ratio: 3 / 4;
-  /* 拍立得照片是正方形 */
-  overflow: hidden;
-  background: #000;
+.viewport-panel {
+  width: 100%;
+  height: 100%;
   position: relative;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
-.viewport video,
-.viewport img {
+.viewport-panel video,
+.viewport-panel img {
   width: 100%;
   height: 100%;
   object-fit: cover;
-  display: block;
+}
+
+.error-panel {
+  background: #111;
+  color: #fff;
+  flex-direction: column;
+  gap: 12px;
+  text-align: center;
+  padding: 16px;
+}
+
+.error-icon {
+  font-size: 32px;
+}
+
+.error-text {
+  font-size: 14px;
+  opacity: 0.85;
+}
+
+.viewport {
+  width: 260px;
+  aspect-ratio: 3 / 4;
+  overflow: hidden;
+  background: #000;
 }
 
 .overlay {
@@ -412,4 +570,29 @@ onBeforeUnmount(() => {
 
   background: rgba(0, 0, 0, 0.5);
 }
+
+.preview-image {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: transform 0.2s ease;
+}
+
+.preview-image img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.controls.grid-2x2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.75rem;
+  width: 100%;
+}
+
+
+
 </style>
