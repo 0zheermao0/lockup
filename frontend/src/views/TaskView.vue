@@ -1120,8 +1120,7 @@ const isTaskFrozen = (task: Task) => {
   return lockTask.is_frozen || false
 }
 
-const backfillTasksIfNeeded = async () => {
-  const BACKFILL_THRESHOLD = 6
+const backfillTasksIfNeeded = async (BACKFILL_THRESHOLD: number = 6) => {
   if (
     tasks.value.length < BACKFILL_THRESHOLD &&
     hasMore.value &&
