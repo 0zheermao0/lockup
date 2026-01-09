@@ -463,6 +463,7 @@ const {
   isInitialLoading,
   initialize,
   refresh,
+  loadMore,
   getCurrentState
 } = useInfiniteScroll(
   getFilteredTasks,
@@ -1138,6 +1139,10 @@ const addOvertime = async (task: Task, event: Event) => {
 
       // Also refresh task counts to update the filter badge
       await fetchTaskCounts()
+      if (tasks.value.length === 0 && hasMore.value) {
+        // If no tasks left in current view, load more
+        await loadMore()
+      }
     } else {
       // Update the task's end time in the local list for other filters
       const lockTask = task as any
