@@ -23,14 +23,12 @@
               :class="['task-type-tab', { active: activeTaskType === 'lock' }]"
             >
               🔒 带锁任务
-              <span class="count-badge">{{ taskCounts?.lock_tasks?.all || 0 }}</span>
             </button>
             <button
               @click="activeTaskType = 'board'"
               :class="['task-type-tab', { active: activeTaskType === 'board' }]"
             >
               📋 任务板
-              <span class="count-badge">{{ taskCounts?.board_tasks?.all || 0 }}</span>
             </button>
           </div>
         </section>
