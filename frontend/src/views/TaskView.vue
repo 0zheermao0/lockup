@@ -461,6 +461,7 @@ const {
   isInitialLoading,
   initialize,
   refresh,
+  loadMore,
   getCurrentState
 } = useInfiniteScroll(
   getFilteredTasks,
@@ -1117,6 +1118,17 @@ const isTaskFrozen = (task: Task) => {
   return lockTask.is_frozen || false
 }
 
+const backfillTasksIfNeeded = async (BACKFILL_THRESHOLD: number = 6) => {
+  if (
+    tasks.value.length < BACKFILL_THRESHOLD &&
+    hasMore.value &&
+    !isLoadingMore.value
+  ) {
+    console.log('🔄 任务数量低于阈值，尝试回填更多任务...')
+    await loadMore()
+  }
+}
+
 // Add overtime function
 const addOvertime = async (task: Task, event: Event) => {
   event.stopPropagation() // Prevent card click
@@ -1136,6 +1148,7 @@ const addOvertime = async (task: Task, event: Event) => {
 
       // Also refresh task counts to update the filter badge
       await fetchTaskCounts()
+      await backfillTasksIfNeeded()
     } else {
       // Update the task's end time in the local list for other filters
       const lockTask = task as any
