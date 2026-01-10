@@ -13,6 +13,7 @@ import InventoryView from '../views/InventoryView.vue'
 import GameView from '../views/GameView.vue'
 import ExploreView from '../views/ExploreView.vue'
 import ClaimView from '../views/ClaimView.vue'
+import CameraTestView from '../views/CameraTestView.vue'
 
 const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
@@ -104,6 +105,14 @@ const router = createRouter({
       name: 'about',
       component: () => import('../views/AboutView.vue'),
       meta: { requiresAuth: true }
+    },
+    {
+      path: "/camera_test",
+      name: "camera-test",
+      component: CameraTestView,
+      meta: {
+        requiresAuth: false
+      }
     }
   ]
 })
