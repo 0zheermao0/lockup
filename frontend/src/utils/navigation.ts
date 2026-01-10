@@ -120,6 +120,14 @@ export function smartGoBack(
     }
   }
 
+
+  const currentRoute = router.currentRoute.value
+
+  if (currentRoute.name === targetRoute) {
+    console.warn('🔙 Target route is current route, falling back to default')
+    targetRoute = defaultRoute
+  }
+
   // 执行应用内导航 - 永远不使用 router.back()
   console.log('🔙 Final decision - Navigating to target route:', targetRoute)
   router.push({ name: targetRoute })
