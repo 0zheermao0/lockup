@@ -237,6 +237,201 @@
 }
 
 /* ===========================================
+ * 任务管理系统按钮 - 基于成功参考模式的液态玻璃效果
+ * 设计理念：简洁而有效的液态玻璃美学
+ * =========================================== */
+
+/* 任务类型切换按钮 - 带锁任务/任务板 */
+.theme-liquid-glass .task-type-tab {
+  background: var(--theme-secondary-bg);
+  backdrop-filter: var(--theme-glass-filter);
+  -webkit-backdrop-filter: var(--theme-glass-filter);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: var(--theme-border-radius-large);
+  color: var(--theme-text-on-glass);
+  box-shadow: var(--theme-shadow-small), var(--theme-inner-glow);
+  transition: all var(--theme-transition-normal);
+  position: relative;
+}
+
+.theme-liquid-glass .task-type-tab:hover {
+  transform: translateY(-2px) scale(1.02);
+  box-shadow: var(--theme-focus-glow), var(--theme-shadow);
+  backdrop-filter: blur(20px) saturate(200%) brightness(1.2);
+  -webkit-backdrop-filter: blur(20px) saturate(200%) brightness(1.2);
+}
+
+.theme-liquid-glass .task-type-tab.active {
+  background: rgba(59, 130, 246, 0.15);
+  border-color: rgba(59, 130, 246, 0.3);
+  color: rgba(59, 130, 246, 0.95);
+  box-shadow:
+    0 4px 12px rgba(59, 130, 246, 0.15),
+    inset 0 1px 0 rgba(59, 130, 246, 0.2);
+}
+
+/* 计数徽章 */
+.theme-liquid-glass .task-type-tab .count-badge {
+  background: var(--theme-secondary-bg);
+  backdrop-filter: var(--theme-glass-light);
+  -webkit-backdrop-filter: var(--theme-glass-light);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: var(--theme-border-radius-small);
+  color: var(--theme-text-on-glass);
+  box-shadow: var(--theme-shadow-small);
+  transition: all var(--theme-transition-fast);
+}
+
+/* 任务状态筛选按钮 */
+.theme-liquid-glass .filter-tab {
+  background: var(--theme-secondary-bg);
+  backdrop-filter: var(--theme-glass-light);
+  -webkit-backdrop-filter: var(--theme-glass-light);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: var(--theme-border-radius-medium);
+  color: var(--theme-text-on-glass);
+  box-shadow: var(--theme-shadow-small);
+  transition: all var(--theme-transition-normal);
+  position: relative;
+}
+
+.theme-liquid-glass .filter-tab:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--theme-focus-glow), var(--theme-shadow);
+  backdrop-filter: blur(16px) saturate(180%) brightness(1.15);
+  -webkit-backdrop-filter: blur(16px) saturate(180%) brightness(1.15);
+}
+
+.theme-liquid-glass .filter-tab.active {
+  background: rgba(108, 117, 125, 0.15);
+  border-color: rgba(108, 117, 125, 0.25);
+  color: rgba(108, 117, 125, 0.95);
+  box-shadow:
+    0 4px 12px rgba(108, 117, 125, 0.15),
+    inset 0 1px 0 rgba(108, 117, 125, 0.2);
+}
+
+/* 排序按钮 */
+.theme-liquid-glass .sort-btn {
+  background: var(--theme-secondary-bg);
+  backdrop-filter: var(--theme-glass-filter);
+  -webkit-backdrop-filter: var(--theme-glass-filter);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: var(--theme-border-radius-large);
+  color: var(--theme-text-on-glass);
+  box-shadow: var(--theme-shadow-small), var(--theme-inner-glow);
+  transition: all var(--theme-transition-normal);
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.theme-liquid-glass .sort-btn:hover,
+.theme-liquid-glass .sort-btn.active {
+  transform: translateY(-2px) scale(1.02);
+  box-shadow: var(--theme-focus-glow), var(--theme-shadow);
+  backdrop-filter: blur(20px) saturate(200%) brightness(1.2);
+  -webkit-backdrop-filter: blur(20px) saturate(200%) brightness(1.2);
+}
+
+/* 创建任务按钮 */
+.theme-liquid-glass .create-btn,
+.theme-liquid-glass .create-first-btn {
+  background: rgba(34, 197, 94, 0.15);
+  backdrop-filter: var(--theme-glass-filter);
+  -webkit-backdrop-filter: var(--theme-glass-filter);
+  border: 1px solid rgba(34, 197, 94, 0.2);
+  border-radius: var(--theme-border-radius-large);
+  color: rgba(34, 197, 94, 0.95);
+  box-shadow:
+    0 4px 12px rgba(34, 197, 94, 0.15),
+    inset 0 1px 0 rgba(34, 197, 94, 0.2);
+  transition: all var(--theme-transition-normal);
+  position: relative;
+}
+
+.theme-liquid-glass .create-btn:hover,
+.theme-liquid-glass .create-first-btn:hover {
+  transform: translateY(-2px) scale(1.02);
+  background: rgba(34, 197, 94, 0.25);
+  border-color: rgba(34, 197, 94, 0.35);
+  color: white;
+  box-shadow:
+    0 6px 16px rgba(34, 197, 94, 0.2),
+    inset 0 1px 0 rgba(34, 197, 94, 0.25);
+}
+
+/* 返回按钮 */
+.theme-liquid-glass .back-btn {
+  background: var(--theme-secondary-bg);
+  backdrop-filter: var(--theme-glass-light);
+  -webkit-backdrop-filter: var(--theme-glass-light);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: var(--theme-border-radius-medium);
+  color: var(--theme-text-on-glass);
+  box-shadow: var(--theme-shadow-small);
+  transition: all var(--theme-transition-normal);
+  position: relative;
+}
+
+.theme-liquid-glass .back-btn:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--theme-focus-glow), var(--theme-shadow);
+  backdrop-filter: blur(16px) saturate(180%) brightness(1.15);
+  -webkit-backdrop-filter: blur(16px) saturate(180%) brightness(1.15);
+}
+
+/* 排序选项按钮 */
+.theme-liquid-glass .sort-option {
+  background: var(--theme-secondary-bg);
+  backdrop-filter: var(--theme-glass-light);
+  -webkit-backdrop-filter: var(--theme-glass-light);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: var(--theme-border-radius-medium);
+  color: var(--theme-text-on-glass);
+  box-shadow: var(--theme-shadow-small);
+  transition: all var(--theme-transition-fast);
+}
+
+.theme-liquid-glass .sort-option:hover {
+  transform: translateY(-1px);
+  box-shadow: var(--theme-shadow);
+  backdrop-filter: blur(16px) saturate(180%) brightness(1.1);
+  -webkit-backdrop-filter: blur(16px) saturate(180%) brightness(1.1);
+}
+
+.theme-liquid-glass .sort-option.active {
+  background: rgba(111, 66, 193, 0.15);
+  border-color: rgba(111, 66, 193, 0.25);
+  color: rgba(111, 66, 193, 0.95);
+  box-shadow:
+    0 4px 12px rgba(111, 66, 193, 0.15),
+    inset 0 1px 0 rgba(111, 66, 193, 0.2);
+}
+
+/* 排序顺序按钮 */
+.theme-liquid-glass .sort-order-btn {
+  background: var(--theme-secondary-bg);
+  backdrop-filter: var(--theme-glass-light);
+  -webkit-backdrop-filter: var(--theme-glass-light);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: var(--theme-border-radius-medium);
+  color: var(--theme-text-on-glass);
+  box-shadow: var(--theme-shadow-small);
+  transition: all var(--theme-transition-normal);
+}
+
+.theme-liquid-glass .sort-order-btn:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--theme-shadow);
+  backdrop-filter: blur(16px) saturate(180%) brightness(1.1);
+  -webkit-backdrop-filter: blur(16px) saturate(180%) brightness(1.1);
+}
+
+
+
+/* ===========================================
  * 输入框：流动的玻璃质感
  * =========================================== */
 
@@ -281,61 +476,256 @@
   z-index: var(--theme-z-modal);
 }
 
-/* ProfileModal 专用液态玻璃化样式 - 完全重写 */
+/* ==========================================
+   用户资料详情页面卡片组件 - 液态玻璃化效果
+   严格遵循液态玻璃设计原则：空间计算美学
+   ========================================== */
 
-/* 修复 profile-modal-overlay 背景遮罩 */
+/* 模态框背景层 - 真实环境光透过界面 */
 .theme-liquid-glass .profile-modal-overlay {
-  background: rgba(0, 0, 0, 0.4) !important;
-  backdrop-filter: blur(12px) !important;
-  -webkit-backdrop-filter: blur(12px) !important;
-  z-index: var(--theme-z-modal) !important;
+  /* 空间优先布局 - 打破屏幕边界 */
+  position: fixed !important;
+  top: 0 !important;
+  left: 0 !important;
+  right: 0 !important;
+  bottom: 0 !important;
+  width: 100vw !important;
+  height: 100vh !important;
+
+  /* 自适应半透明色 - 让环境光透过，营造空间深度 */
+  background: rgba(0, 0, 0, 0.12) !important;
+
+  /* 高级磨砂玻璃材质 - 多层光学效果，模拟真实物理光学 */
+  backdrop-filter: blur(80px) saturate(200%) brightness(0.6) contrast(1.2) !important;
+  -webkit-backdrop-filter: blur(80px) saturate(200%) brightness(0.6) contrast(1.2) !important;
+
+  /* 确保最高层级显示 */
+  z-index: 99999 !important;
+
+  /* 完美居中 - 界面元素悬浮于三维空间 */
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+
+  /* 空间通透 - 宽大间距，营造浮动感 */
+  padding: 4rem !important;
+  box-sizing: border-box !important;
+
+  /* 环境光感应 - 动态适应，深度层次 */
+  box-shadow:
+    inset 0 0 200px rgba(0, 0, 0, 0.15),
+    inset 0 0 60px rgba(255, 255, 255, 0.05) !important;
+
+  /* 极度物理特性 - 流畅过渡 */
+  transition: all 0.6s cubic-bezier(0.16, 1, 0.3, 1) !important;
 }
 
-/* ProfileModal 主容器 */
-.theme-liquid-glass .profile-modal-content {
-  background: var(--theme-modal-bg) !important;
-  backdrop-filter: var(--theme-backdrop-filter) !important;
-  -webkit-backdrop-filter: var(--theme-backdrop-filter) !important;
-  border: 1px solid rgba(255, 255, 255, 0.2) !important;
-  border-radius: var(--theme-border-radius-large) !important;
-  box-shadow: var(--theme-shadow-large), var(--theme-glow), var(--theme-inner-glow-strong) !important;
+/* ProfileModal 主容器 - 高级磨砂玻璃材质核心 - 高权重覆盖 */
+.theme-liquid-glass .profile-modal-content,
+.theme-liquid-glass .profile-modal-overlay .profile-modal-content {
+  /* 系统级白色基调 - Alpha通道控制透明度 */
+  background: rgba(255, 255, 255, 0.88) !important;
+
+  /* 高级磨砂玻璃 - 多层光学效果叠加 */
+  backdrop-filter: blur(32px) saturate(220%) brightness(1.08) contrast(1.05) !important;
+  -webkit-backdrop-filter: blur(32px) saturate(220%) brightness(1.08) contrast(1.05) !important;
+
+  /* 内发光效果 - 替代传统边框，营造立体感 */
+  box-shadow:
+    /* 主要内发光 - 柔和白光从内部散发 */
+    inset 0 1px 0 rgba(255, 255, 255, 0.95),
+    inset 0 0 30px rgba(255, 255, 255, 0.4),
+    /* 次要内发光 - 增强边缘立体感 */
+    inset 0 -1px 0 rgba(255, 255, 255, 0.6),
+    /* 外部阴影 - 空间深度层次 */
+    0 30px 100px rgba(0, 0, 0, 0.2),
+    0 10px 40px rgba(0, 0, 0, 0.15),
+    /* 环境反射 - 物理真实感 */
+    0 0 0 1px rgba(255, 255, 255, 0.15) !important;
+
+  /* 空间优先布局 - 宽松间距，营造浮动感 */
+  border-radius: 32px !important;
+  border: none !important;
   position: relative !important;
+
   /* 保持原有的滚动功能 */
   overflow-y: auto !important;
   overflow-x: hidden !important;
-  max-height: 90vh !important;
-  /* 移除Neo-Brutalism的旋转效果 */
-  transform: none !important;
+  max-height: 88vh !important;
+
+  /* 极度物理特性 - 浮动感与深度 */
+  transform: translateZ(0) scale(1) !important;
+  transition: all 0.5s cubic-bezier(0.16, 1, 0.3, 1) !important;
 }
 
-/* ProfileModal 顶部高光效果 */
+/* ProfileModal 悬停状态 - 极度物理特性模拟 */
+.theme-liquid-glass .profile-modal-content:hover {
+  /* 增强磨砂玻璃效果 */
+  backdrop-filter: blur(40px) saturate(250%) brightness(1.12) contrast(1.08) !important;
+  -webkit-backdrop-filter: blur(40px) saturate(250%) brightness(1.12) contrast(1.08) !important;
+
+  /* 增强内发光和环境反射 */
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 1),
+    inset 0 0 40px rgba(255, 255, 255, 0.5),
+    inset 0 -1px 0 rgba(255, 255, 255, 0.7),
+    0 40px 120px rgba(0, 0, 0, 0.25),
+    0 15px 50px rgba(0, 0, 0, 0.2),
+    0 0 0 1px rgba(255, 255, 255, 0.25) !important;
+
+  /* 微妙的3D变换 - 浮起效果 */
+  transform: translateZ(0) scale(1.01) translateY(-3px) !important;
+}
+
+/* ProfileModal 顶部高光效果 - 增强版 */
 .theme-liquid-glass .profile-modal-content::before {
   content: '';
   position: absolute;
   top: 0;
   left: 0;
   right: 0;
-  height: 2px;
-  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.5), transparent);
-  border-radius: var(--theme-border-radius-large) var(--theme-border-radius-large) 0 0;
+  height: 4px;
+  background: linear-gradient(90deg,
+    transparent,
+    rgba(255, 255, 255, 0.8) 20%,
+    rgba(255, 255, 255, 0.95) 50%,
+    rgba(255, 255, 255, 0.8) 80%,
+    transparent);
+  border-radius: 32px 32px 0 0;
   z-index: 1;
+  transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
-/* ProfileModal 头部 */
+/* 悬停时顶部高光增强 */
+.theme-liquid-glass .profile-modal-content:hover::before {
+  height: 6px;
+  background: linear-gradient(90deg,
+    transparent,
+    rgba(255, 255, 255, 0.9) 15%,
+    rgba(255, 255, 255, 1) 50%,
+    rgba(255, 255, 255, 0.9) 85%,
+    transparent);
+}
+
+/* ProfileModal 头部 - 空间优先布局，极度物理特性 - 高权重覆盖 */
+.theme-liquid-glass .profile-modal-content .modal-header,
 .theme-liquid-glass .modal-header {
-  background: rgba(59, 130, 246, 0.15) !important;
-  backdrop-filter: var(--theme-glass-filter) !important;
-  -webkit-backdrop-filter: var(--theme-glass-filter) !important;
+  /* 系统级白色 - 微妙的蓝色调 */
+  background: rgba(255, 255, 255, 0.9) !important;
+
+  /* 高级磨砂玻璃 - 增强通透感 */
+  backdrop-filter: blur(28px) saturate(180%) brightness(1.05) !important;
+  -webkit-backdrop-filter: blur(28px) saturate(180%) brightness(1.05) !important;
+
+  /* 内发光效果 - 替代边框 */
+  box-shadow:
+    /* 主要内发光 */
+    inset 0 1px 0 rgba(255, 255, 255, 0.95),
+    inset 0 0 25px rgba(255, 255, 255, 0.3),
+    /* 底部分割线 - 用阴影替代 */
+    inset 0 -1px 0 rgba(59, 130, 246, 0.2),
+    /* 微妙的蓝色环境光 */
+    0 0 30px rgba(59, 130, 246, 0.1) !important;
+
+  /* 空间优先布局 */
   border: none !important;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.15) !important;
-  border-radius: var(--theme-border-radius-large) var(--theme-border-radius-large) 0 0 !important;
-  box-shadow: 0 0 20px rgba(59, 130, 246, 0.2), var(--theme-inner-glow) !important;
+  border-radius: 32px 32px 0 0 !important;
+  padding: 1.5rem 2rem !important;
+
+  /* 极度物理特性 */
   color: var(--theme-text-primary) !important;
-  /* 移除Neo-Brutalism的旋转效果 */
-  transform: none !important;
+  transform: translateZ(0) !important;
+  transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1) !important;
   margin: 0 !important;
-  position: relative;
-  z-index: 2;
+  position: relative !important;
+  z-index: 2 !important;
+}
+
+/* ProfileModal 头部悬停状态 - 极度物理特性模拟 */
+.theme-liquid-glass .modal-header:hover {
+  /* 增强系统级白色透明度 */
+  background: rgba(255, 255, 255, 0.95) !important;
+
+  /* 增强磨砂玻璃效果 */
+  backdrop-filter: blur(32px) saturate(200%) brightness(1.08) !important;
+  -webkit-backdrop-filter: blur(32px) saturate(200%) brightness(1.08) !important;
+
+  /* 增强内发光和环境光 */
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 1),
+    inset 0 0 35px rgba(255, 255, 255, 0.4),
+    inset 0 -1px 0 rgba(59, 130, 246, 0.3),
+    0 0 40px rgba(59, 130, 246, 0.15) !important;
+
+  /* 微妙的浮起效果 */
+  transform: translateZ(0) translateY(-1px) !important;
+}
+
+/* ============================================================================
+ * ProfileModal Neo-Brutalism 样式强制覆盖 - 最高权重
+ * ============================================================================ */
+
+/* 强制移除所有Neo-Brutalism效果 */
+.theme-liquid-glass .profile-modal-overlay,
+.theme-liquid-glass .profile-modal-content,
+.theme-liquid-glass .profile-modal-content *,
+.theme-liquid-glass .profile-modal-content .modal-header,
+.theme-liquid-glass .profile-modal-content .modal-body,
+.theme-liquid-glass .profile-modal-content .modal-footer,
+.theme-liquid-glass .profile-modal-content .profile-section,
+.theme-liquid-glass .profile-modal-content .stat-item,
+.theme-liquid-glass .profile-modal-content .info-item,
+.theme-liquid-glass .profile-modal-content .level-badge,
+.theme-liquid-glass .profile-modal-content .close-btn,
+.theme-liquid-glass .profile-modal-content .footer-btn {
+  /* 强制移除Neo-Brutalism边框和阴影 */
+  border: none !important;
+  box-shadow: none !important;
+
+  /* 强制移除旋转效果 */
+  transform: none !important;
+
+  /* 重置背景 */
+  background: initial !important;
+}
+
+/* 重新应用液态玻璃样式 - 使用更高权重 */
+.theme-liquid-glass .profile-modal-overlay {
+  /* 自适应半透明色 - 让环境光透过，营造空间深度 */
+  background: rgba(0, 0, 0, 0.12) !important;
+
+  /* 高级磨砂玻璃材质 - 多层光学效果，模拟真实物理光学 */
+  backdrop-filter: blur(80px) saturate(200%) brightness(0.6) contrast(1.2) !important;
+  -webkit-backdrop-filter: blur(80px) saturate(200%) brightness(0.6) contrast(1.2) !important;
+
+  /* 环境光感应 - 动态适应，深度层次 */
+  box-shadow:
+    inset 0 0 200px rgba(0, 0, 0, 0.15),
+    inset 0 0 60px rgba(255, 255, 255, 0.05) !important;
+}
+
+.theme-liquid-glass .profile-modal-content {
+  /* 系统级白色基调 - Alpha通道控制透明度 */
+  background: rgba(255, 255, 255, 0.88) !important;
+
+  /* 高级磨砂玻璃 - 多层光学效果叠加 */
+  backdrop-filter: blur(32px) saturate(220%) brightness(1.08) contrast(1.05) !important;
+  -webkit-backdrop-filter: blur(32px) saturate(220%) brightness(1.08) contrast(1.05) !important;
+
+  /* 内发光效果 - 替代传统边框，营造立体感 */
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.95),
+    inset 0 0 30px rgba(255, 255, 255, 0.4),
+    inset 0 -1px 0 rgba(255, 255, 255, 0.6),
+    0 30px 100px rgba(0, 0, 0, 0.2),
+    0 10px 40px rgba(0, 0, 0, 0.15),
+    0 0 0 1px rgba(255, 255, 255, 0.15) !important;
+
+  /* 空间优先布局 - 宽松间距，营造浮动感 */
+  border-radius: 32px !important;
+
+  /* 极度物理特性 - 浮动感与深度 */
+  transform: translateZ(0) scale(1) !important;
 }
 
 /* ProfileModal 主体内容 */
@@ -366,18 +756,54 @@
   z-index: 2;
 }
 
-/* ProfileModal 用户头像容器 - 完全液态玻璃化 */
+/* ProfileModal 用户头像容器 - 空间优先布局，极度物理特性 */
 .theme-liquid-glass .profile-modal .user-avatar,
 .theme-liquid-glass .profile-modal .avatar,
 .theme-liquid-glass .profile-modal .profile-avatar {
   border: none !important;
   border-radius: 50% !important;
-  box-shadow: var(--theme-shadow-large), var(--theme-specular-highlight), 0 0 40px rgba(255, 255, 255, 0.2) !important;
-  backdrop-filter: var(--theme-glass-light) !important;
-  -webkit-backdrop-filter: var(--theme-glass-light) !important;
-  transition: all var(--theme-transition-fast) !important;
-  position: relative;
-  overflow: hidden;
+
+  /* 空间浮动效果 - 立体层次感 */
+  box-shadow:
+    /* 主要阴影 - 空间深度 */
+    0 20px 60px rgba(0, 0, 0, 0.15),
+    0 8px 25px rgba(0, 0, 0, 0.1),
+    /* 内发光 - 头像轮廓发光 */
+    inset 0 0 20px rgba(255, 255, 255, 0.3),
+    /* 环境反射 - 边缘高光 */
+    0 0 0 2px rgba(255, 255, 255, 0.2) !important;
+
+  /* 高级磨砂玻璃边框 */
+  backdrop-filter: blur(16px) saturate(180%) brightness(1.1) !important;
+  -webkit-backdrop-filter: blur(16px) saturate(180%) brightness(1.1) !important;
+
+  /* 极度物理特性 - 3D浮动 */
+  position: relative !important;
+  transform: translateZ(0) scale(1) !important;
+  transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1) !important;
+  overflow: hidden !important;
+
+  /* 空间优先 - 增大间距 */
+  margin: 1.5rem 0 !important;
+}
+
+/* ProfileModal 用户头像悬停状态 - 极度物理特性模拟 */
+.theme-liquid-glass .profile-modal .user-avatar:hover,
+.theme-liquid-glass .profile-modal .avatar:hover,
+.theme-liquid-glass .profile-modal .profile-avatar:hover {
+  /* 增强空间浮动效果 */
+  box-shadow:
+    0 30px 80px rgba(0, 0, 0, 0.2),
+    0 12px 35px rgba(0, 0, 0, 0.15),
+    inset 0 0 30px rgba(255, 255, 255, 0.4),
+    0 0 0 3px rgba(255, 255, 255, 0.3) !important;
+
+  /* 增强磨砂玻璃效果 */
+  backdrop-filter: blur(20px) saturate(220%) brightness(1.15) !important;
+  -webkit-backdrop-filter: blur(20px) saturate(220%) brightness(1.15) !important;
+
+  /* 3D浮起效果 */
+  transform: translateZ(0) scale(1.05) translateY(-5px) !important;
 }
 
 .theme-liquid-glass .profile-modal .user-avatar::before,
@@ -390,9 +816,23 @@
   right: 0;
   bottom: 0;
   border-radius: 50%;
-  background: linear-gradient(135deg, rgba(255, 255, 255, 0.1), transparent);
+  background: linear-gradient(135deg,
+    rgba(255, 255, 255, 0.15),
+    rgba(255, 255, 255, 0.05) 50%,
+    transparent);
   pointer-events: none;
   z-index: 1;
+  transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* 悬停时内部高光增强 */
+.theme-liquid-glass .profile-modal .user-avatar:hover::before,
+.theme-liquid-glass .profile-modal .avatar:hover::before,
+.theme-liquid-glass .profile-modal .profile-avatar:hover::before {
+  background: linear-gradient(135deg,
+    rgba(255, 255, 255, 0.25),
+    rgba(255, 255, 255, 0.1) 50%,
+    transparent);
 }
 
 /* ProfileModal 用户名和昵称 - 液态玻璃样式 */
@@ -422,34 +862,46 @@
   -webkit-backdrop-filter: blur(20px) saturate(200%) brightness(1.1) !important;
 }
 
-/* ProfileModal 信息卡片 - 移除粗野样式，完全液态玻璃化 */
+/* ProfileModal 信息卡片 - 空间优先布局，极度物理特性 - 高权重覆盖 */
+.theme-liquid-glass .profile-modal-content .profile-section,
 .theme-liquid-glass .profile-modal .info-card,
 .theme-liquid-glass .profile-modal .user-stats,
 .theme-liquid-glass .profile-modal .user-info,
 .theme-liquid-glass .profile-modal .profile-card,
 .theme-liquid-glass .profile-modal .stats-card,
 .theme-liquid-glass .profile-modal .profile-section {
-  background: var(--theme-card-bg) !important;
-  backdrop-filter: var(--theme-glass-filter) !important;
-  -webkit-backdrop-filter: var(--theme-glass-filter) !important;
-  border: 1px solid rgba(255, 255, 255, 0.15) !important;
-  border-radius: var(--theme-border-radius-large) !important;
-  box-shadow: var(--theme-shadow), var(--theme-inner-glow) !important;
-  padding: 1.5rem !important;
-  margin: 1rem 0 !important;
-  transition: all var(--theme-transition-normal) !important;
-  position: relative;
-  /* 允许内容正常显示，不隐藏溢出 */
+  /* 系统级白色 - 更高透明度 */
+  background: rgba(255, 255, 255, 0.75) !important;
+
+  /* 高级磨砂玻璃 - 多层光学效果 */
+  backdrop-filter: blur(24px) saturate(200%) brightness(1.06) !important;
+  -webkit-backdrop-filter: blur(24px) saturate(200%) brightness(1.06) !important;
+
+  /* 内发光效果 - 替代边框 */
+  box-shadow:
+    /* 主要内发光 */
+    inset 0 1px 0 rgba(255, 255, 255, 0.9),
+    inset 0 0 20px rgba(255, 255, 255, 0.25),
+    /* 空间深度阴影 */
+    0 15px 40px rgba(0, 0, 0, 0.1),
+    0 5px 15px rgba(0, 0, 0, 0.08),
+    /* 环境反射 */
+    0 0 0 1px rgba(255, 255, 255, 0.1) !important;
+
+  /* 空间优先布局 - 宽松间距 */
+  border: none !important;
+  border-radius: 24px !important;
+  padding: 2rem !important;
+  margin: 1.5rem 0 !important;
+
+  /* 极度物理特性 - 3D浮动 */
+  position: relative !important;
+  transform: translateZ(0) scale(1) !important;
+  transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1) !important;
   overflow: visible !important;
-  /* 强制移除Neo-Brutalism样式 */
-  border-width: 1px !important;
-  border-style: solid !important;
-  border-color: rgba(255, 255, 255, 0.15) !important;
-  /* 移除Neo-Brutalism旋转效果 */
-  transform: none !important;
 }
 
-/* 为信息卡片添加顶部高光 */
+/* 信息卡片内部高光 - 增强立体感 */
 .theme-liquid-glass .profile-modal .info-card::before,
 .theme-liquid-glass .profile-modal .user-stats::before,
 .theme-liquid-glass .profile-modal .user-info::before,
@@ -461,9 +913,32 @@
   top: 0;
   left: 0;
   right: 0;
-  height: 1px;
-  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.4), transparent);
+  height: 3px;
+  background: linear-gradient(90deg,
+    transparent,
+    rgba(255, 255, 255, 0.6) 20%,
+    rgba(255, 255, 255, 0.8) 50%,
+    rgba(255, 255, 255, 0.6) 80%,
+    transparent);
+  border-radius: 24px 24px 0 0;
   z-index: 1;
+  transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* 悬停时内部高光增强 */
+.theme-liquid-glass .profile-modal .info-card:hover::before,
+.theme-liquid-glass .profile-modal .user-stats:hover::before,
+.theme-liquid-glass .profile-modal .user-info:hover::before,
+.theme-liquid-glass .profile-modal .profile-card:hover::before,
+.theme-liquid-glass .profile-modal .stats-card:hover::before,
+.theme-liquid-glass .profile-modal .profile-section:hover::before {
+  height: 4px;
+  background: linear-gradient(90deg,
+    transparent,
+    rgba(255, 255, 255, 0.8) 15%,
+    rgba(255, 255, 255, 1) 50%,
+    rgba(255, 255, 255, 0.8) 85%,
+    transparent);
 }
 
 /* ProfileModal 用户统计网格 - 液态玻璃化 */
@@ -474,31 +949,58 @@
   gap: 1rem !important;
 }
 
-/* ProfileModal 统计项目 - 液态玻璃化 */
+/* ProfileModal 统计项目 - 空间优先布局，极度物理特性 - 高权重覆盖 */
+.theme-liquid-glass .profile-modal-content .stat-item,
 .theme-liquid-glass .profile-modal .stat-item {
-  background: var(--theme-tertiary-bg) !important;
-  backdrop-filter: var(--theme-glass-light) !important;
-  -webkit-backdrop-filter: var(--theme-glass-light) !important;
-  border: 1px solid rgba(255, 255, 255, 0.1) !important;
-  border-radius: var(--theme-border-radius) !important;
+  /* 系统级白色 - 高透明度 */
+  background: rgba(255, 255, 255, 0.7) !important;
+
+  /* 高级磨砂玻璃 - 精细调节 */
+  backdrop-filter: blur(20px) saturate(180%) brightness(1.04) !important;
+  -webkit-backdrop-filter: blur(20px) saturate(180%) brightness(1.04) !important;
+
+  /* 内发光效果 - 微妙立体感 */
+  box-shadow:
+    /* 主要内发光 */
+    inset 0 1px 0 rgba(255, 255, 255, 0.8),
+    inset 0 0 15px rgba(255, 255, 255, 0.2),
+    /* 空间深度 */
+    0 8px 25px rgba(0, 0, 0, 0.06),
+    0 3px 10px rgba(0, 0, 0, 0.04),
+    /* 环境反射 */
+    0 0 0 1px rgba(255, 255, 255, 0.1) !important;
+
+  /* 空间优先布局 */
+  border: none !important;
+  border-radius: 18px !important;
   color: var(--theme-text-primary) !important;
-  box-shadow: var(--theme-inner-glow) !important;
-  transition: all var(--theme-transition-fast) !important;
-  padding: 1rem !important;
-  position: relative;
-  /* 允许内容正常显示 */
+  padding: 1.5rem !important;
+
+  /* 极度物理特性 */
+  position: relative !important;
+  transform: translateZ(0) scale(1) !important;
+  transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1) !important;
   overflow: visible !important;
-  /* 移除Neo-Brutalism效果 */
-  transform: none !important;
 }
 
 .theme-liquid-glass .profile-modal .stat-item:hover {
-  transform: translateY(-2px) scale(1.02) !important;
-  box-shadow: var(--theme-shadow-small), var(--theme-inner-glow-strong) !important;
-  backdrop-filter: blur(20px) saturate(200%) brightness(1.1) !important;
-  -webkit-backdrop-filter: blur(20px) saturate(200%) brightness(1.1) !important;
-  background: var(--theme-card-bg) !important;
-  border-color: rgba(255, 255, 255, 0.2) !important;
+  /* 增强系统级白色透明度 */
+  background: rgba(255, 255, 255, 0.85) !important;
+
+  /* 增强磨砂玻璃效果 */
+  backdrop-filter: blur(28px) saturate(220%) brightness(1.08) !important;
+  -webkit-backdrop-filter: blur(28px) saturate(220%) brightness(1.08) !important;
+
+  /* 增强内发光和空间深度 */
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.9),
+    inset 0 0 20px rgba(255, 255, 255, 0.3),
+    0 12px 35px rgba(0, 0, 0, 0.08),
+    0 5px 15px rgba(0, 0, 0, 0.06),
+    0 0 0 1px rgba(255, 255, 255, 0.15) !important;
+
+  /* 极度物理特性 - 3D浮起和缩放 */
+  transform: translateZ(0) scale(1.03) translateY(-4px) !important;
 }
 
 /* ProfileModal 统计标签和数值 */
@@ -578,6 +1080,165 @@
   margin-bottom: 1rem !important;
 }
 
+/* ProfileModal Lock Status Section - 空间优先布局，极度物理特性 */
+.theme-liquid-glass .profile-modal .lock-status-section,
+.theme-liquid-glass .profile-modal .lock-status-card,
+.theme-liquid-glass .profile-modal .lock-status {
+  /* 系统级白色 - 根据锁定状态调整透明度 */
+  background: rgba(255, 255, 255, 0.8) !important;
+
+  /* 高级磨砂玻璃 - 状态感知 */
+  backdrop-filter: blur(28px) saturate(200%) brightness(1.08) !important;
+  -webkit-backdrop-filter: blur(28px) saturate(200%) brightness(1.08) !important;
+
+  /* 内发光效果 - 状态指示 */
+  box-shadow:
+    /* 主要内发光 */
+    inset 0 1px 0 rgba(255, 255, 255, 0.9),
+    inset 0 0 25px rgba(255, 255, 255, 0.3),
+    /* 状态指示光环 - 默认红色（进行中） */
+    0 0 40px rgba(255, 107, 107, 0.2),
+    0 15px 40px rgba(0, 0, 0, 0.1),
+    /* 环境反射 */
+    0 0 0 1px rgba(255, 107, 107, 0.15) !important;
+
+  /* 空间优先布局 */
+  border: none !important;
+  border-radius: 24px !important;
+  padding: 2rem !important;
+  margin: 1.5rem 0 !important;
+
+  /* 极度物理特性 */
+  position: relative !important;
+  transform: translateZ(0) scale(1) !important;
+  transition: all 0.5s cubic-bezier(0.16, 1, 0.3, 1) !important;
+  overflow: visible !important;
+}
+
+/* ProfileModal Lock Status - 可完成状态 (绿色光环) */
+.theme-liquid-glass .profile-modal .lock-status.is-expired,
+.theme-liquid-glass .profile-modal .lock-status[data-status="ready"] {
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.9),
+    inset 0 0 25px rgba(255, 255, 255, 0.3),
+    /* 绿色状态光环 */
+    0 0 40px rgba(34, 197, 94, 0.25),
+    0 15px 40px rgba(0, 0, 0, 0.1),
+    0 0 0 1px rgba(34, 197, 94, 0.2) !important;
+}
+
+/* ProfileModal Lock Status - 时间隐藏状态 (灰色光环) */
+.theme-liquid-glass .profile-modal .lock-status.time-hidden,
+.theme-liquid-glass .profile-modal .lock-status[data-status="time-hidden"] {
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.9),
+    inset 0 0 25px rgba(255, 255, 255, 0.3),
+    /* 灰色状态光环 */
+    0 0 40px rgba(108, 117, 125, 0.2),
+    0 15px 40px rgba(0, 0, 0, 0.1),
+    0 0 0 1px rgba(108, 117, 125, 0.15) !important;
+}
+
+/* ProfileModal Lock Status - 冻结状态 (蓝色光环) */
+.theme-liquid-glass .profile-modal .lock-status.frozen,
+.theme-liquid-glass .profile-modal .lock-status[data-status="frozen"] {
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.9),
+    inset 0 0 25px rgba(255, 255, 255, 0.3),
+    /* 蓝色状态光环 */
+    0 0 40px rgba(23, 162, 184, 0.25),
+    0 15px 40px rgba(0, 0, 0, 0.1),
+    0 0 0 1px rgba(23, 162, 184, 0.2) !important;
+}
+
+/* ProfileModal Lock Status 悬停状态 - 极度物理特性模拟 */
+.theme-liquid-glass .profile-modal .lock-status-section:hover,
+.theme-liquid-glass .profile-modal .lock-status-card:hover,
+.theme-liquid-glass .profile-modal .lock-status:hover {
+  /* 增强系统级白色透明度 */
+  background: rgba(255, 255, 255, 0.9) !important;
+
+  /* 增强磨砂玻璃效果 */
+  backdrop-filter: blur(35px) saturate(250%) brightness(1.12) !important;
+  -webkit-backdrop-filter: blur(35px) saturate(250%) brightness(1.12) !important;
+
+  /* 3D浮起和缩放 */
+  transform: translateZ(0) scale(1.02) translateY(-5px) !important;
+}
+
+/* ProfileModal Lock Status 内部元素液态玻璃化 */
+.theme-liquid-glass .profile-modal .lock-status .lock-title,
+.theme-liquid-glass .profile-modal .lock-status .lock-meta,
+.theme-liquid-glass .profile-modal .lock-status .countdown,
+.theme-liquid-glass .profile-modal .lock-status .duration-info {
+  color: inherit !important;
+  background: rgba(255, 255, 255, 0.15) !important;
+  backdrop-filter: blur(12px) saturate(150%) !important;
+  -webkit-backdrop-filter: blur(12px) saturate(150%) !important;
+  border: none !important;
+  border-radius: 12px !important;
+  padding: 0.5rem 0.75rem !important;
+  margin: 0.25rem 0 !important;
+  box-shadow: inset 0 0 15px rgba(255, 255, 255, 0.2) !important;
+  transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1) !important;
+}
+
+/* ProfileModal Lock Status 难度标签液态玻璃化 */
+.theme-liquid-glass .profile-modal .lock-status .difficulty,
+.theme-liquid-glass .profile-modal .lock-status .status-badge {
+  background: rgba(255, 255, 255, 0.25) !important;
+  backdrop-filter: blur(16px) saturate(180%) brightness(1.1) !important;
+  -webkit-backdrop-filter: blur(16px) saturate(180%) brightness(1.1) !important;
+  border: none !important;
+  border-radius: 16px !important;
+  color: inherit !important;
+  padding: 0.375rem 0.75rem !important;
+  font-weight: 600 !important;
+  box-shadow:
+    inset 0 0 20px rgba(255, 255, 255, 0.3),
+    0 0 15px rgba(255, 255, 255, 0.1) !important;
+}
+
+/* ProfileModal Lock Status 时间占位符液态玻璃化 */
+.theme-liquid-glass .profile-modal .lock-status .hidden-time-placeholder,
+.theme-liquid-glass .profile-modal .lock-status .frozen-time-placeholder {
+  background: rgba(255, 255, 255, 0.2) !important;
+  backdrop-filter: blur(14px) saturate(160%) !important;
+  -webkit-backdrop-filter: blur(14px) saturate(160%) !important;
+  border: none !important;
+  border-radius: 8px !important;
+  color: inherit !important;
+  padding: 0.25rem 0.5rem !important;
+  font-family: monospace !important;
+  box-shadow: inset 0 0 12px rgba(255, 255, 255, 0.25) !important;
+}
+
+/* ProfileModal Lock Status 完成提示液态玻璃化 */
+.theme-liquid-glass .profile-modal .lock-status .complete-hint,
+.theme-liquid-glass .profile-modal .lock-status .click-hint {
+  background: rgba(255, 255, 255, 0.3) !important;
+  backdrop-filter: blur(18px) saturate(200%) brightness(1.05) !important;
+  -webkit-backdrop-filter: blur(18px) saturate(200%) brightness(1.05) !important;
+  border: none !important;
+  border-radius: 12px !important;
+  color: inherit !important;
+  padding: 0.75rem 1rem !important;
+  font-weight: 600 !important;
+  box-shadow:
+    inset 0 0 20px rgba(255, 255, 255, 0.4),
+    0 5px 15px rgba(0, 0, 0, 0.05) !important;
+  transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1) !important;
+}
+
+.theme-liquid-glass .profile-modal .lock-status .complete-hint:hover,
+.theme-liquid-glass .profile-modal .lock-status .click-hint:hover {
+  background: rgba(255, 255, 255, 0.4) !important;
+  transform: translateY(-2px) scale(1.02) !important;
+  box-shadow:
+    inset 0 0 25px rgba(255, 255, 255, 0.5),
+    0 8px 25px rgba(0, 0, 0, 0.08) !important;
+}
+
 .theme-liquid-glass .profile-modal .avatar-section {
   background: transparent !important;
   border: none !important;
@@ -599,30 +1260,61 @@
   margin: 0 0 0.5rem 0 !important;
 }
 
+.theme-liquid-glass .profile-modal-content .level-badge,
 .theme-liquid-glass .profile-modal .level-badge {
-  background: var(--theme-card-bg) !important;
-  backdrop-filter: var(--theme-glass-filter) !important;
-  -webkit-backdrop-filter: var(--theme-glass-filter) !important;
-  border: 1px solid rgba(255, 255, 255, 0.15) !important;
-  border-radius: var(--theme-border-radius) !important;
+  /* 系统级白色 - 等级特色 */
+  background: rgba(255, 255, 255, 0.8) !important;
+
+  /* 高级磨砂玻璃 - 等级感 */
+  backdrop-filter: blur(24px) saturate(200%) brightness(1.06) !important;
+  -webkit-backdrop-filter: blur(24px) saturate(200%) brightness(1.06) !important;
+
+  /* 内发光效果 - 等级光环 */
+  box-shadow:
+    /* 主要内发光 */
+    inset 0 1px 0 rgba(255, 255, 255, 0.9),
+    inset 0 0 20px rgba(255, 255, 255, 0.25),
+    /* 等级光环 - 根据等级颜色调整 */
+    0 0 30px rgba(234, 179, 8, 0.2),
+    0 8px 20px rgba(0, 0, 0, 0.08),
+    /* 环境反射 */
+    0 0 0 1px rgba(234, 179, 8, 0.15) !important;
+
+  /* 空间优先布局 */
+  border: none !important;
+  border-radius: 16px !important;
   color: var(--theme-text-primary) !important;
-  box-shadow: var(--theme-inner-glow), var(--theme-specular-highlight) !important;
-  padding: 0.375rem 0.75rem !important;
+  padding: 0.5rem 1rem !important;
+
+  /* 等级字体样式 */
   font-weight: 700 !important;
   text-transform: uppercase !important;
-  letter-spacing: 0.5px !important;
+  letter-spacing: 0.8px !important;
   display: inline-block !important;
-  transition: all var(--theme-transition-fast) !important;
-  /* 移除Neo-Brutalism效果 */
-  transform: none !important;
+
+  /* 极度物理特性 */
+  transform: translateZ(0) scale(1) !important;
+  transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1) !important;
 }
 
 .theme-liquid-glass .profile-modal .level-badge:hover {
-  transform: translateY(-1px) scale(1.02) !important;
-  box-shadow: var(--theme-shadow-small), var(--theme-inner-glow-strong) !important;
-  backdrop-filter: blur(20px) saturate(200%) brightness(1.1) !important;
-  -webkit-backdrop-filter: blur(20px) saturate(200%) brightness(1.1) !important;
-  border-color: rgba(255, 255, 255, 0.25) !important;
+  /* 增强系统级白色透明度 */
+  background: rgba(255, 255, 255, 0.9) !important;
+
+  /* 增强磨砂玻璃效果 */
+  backdrop-filter: blur(32px) saturate(250%) brightness(1.1) !important;
+  -webkit-backdrop-filter: blur(32px) saturate(250%) brightness(1.1) !important;
+
+  /* 增强等级光环 */
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.95),
+    inset 0 0 25px rgba(255, 255, 255, 0.35),
+    0 0 40px rgba(234, 179, 8, 0.3),
+    0 12px 30px rgba(0, 0, 0, 0.12),
+    0 0 0 1px rgba(234, 179, 8, 0.25) !important;
+
+  /* 极度物理特性 - 等级浮起效果 */
+  transform: translateZ(0) scale(1.05) translateY(-3px) !important;
 }
 
 .theme-liquid-glass .profile-modal .bio {
@@ -650,7 +1342,8 @@
   transition: all var(--theme-transition-fast) !important;
 }
 
-/* ProfileModal 底部按钮 - 液态玻璃化 */
+/* ProfileModal 底部按钮 - 液态玻璃化 - 高权重覆盖 */
+.theme-liquid-glass .profile-modal-content .modal-footer,
 .theme-liquid-glass .profile-modal .modal-footer {
   background: var(--theme-secondary-bg) !important;
   backdrop-filter: var(--theme-glass-filter) !important;
@@ -664,6 +1357,7 @@
   margin: 0 !important;
 }
 
+.theme-liquid-glass .profile-modal-content .footer-btn,
 .theme-liquid-glass .profile-modal .footer-btn {
   background: var(--theme-card-bg) !important;
   backdrop-filter: var(--theme-glass-filter) !important;
@@ -738,14 +1432,28 @@
 .theme-liquid-glass .profile-modal .user-info:hover,
 .theme-liquid-glass .profile-modal .profile-card:hover,
 .theme-liquid-glass .profile-modal .stats-card:hover {
-  transform: translateY(-4px) scale(1.02) !important;
-  box-shadow: var(--theme-hover-lift), var(--theme-inner-glow-strong), var(--theme-glow) !important;
-  backdrop-filter: blur(28px) saturate(220%) brightness(1.15) !important;
-  -webkit-backdrop-filter: blur(28px) saturate(220%) brightness(1.15) !important;
-  border-color: rgba(255, 255, 255, 0.25) !important;
+  /* 增强系统级白色透明度 */
+  background: rgba(255, 255, 255, 0.85) !important;
+
+  /* 增强磨砂玻璃效果 */
+  backdrop-filter: blur(32px) saturate(250%) brightness(1.12) !important;
+  -webkit-backdrop-filter: blur(32px) saturate(250%) brightness(1.12) !important;
+
+  /* 增强内发光和空间深度 */
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.95),
+    inset 0 0 30px rgba(255, 255, 255, 0.35),
+    0 25px 60px rgba(0, 0, 0, 0.15),
+    0 8px 25px rgba(0, 0, 0, 0.12),
+    0 0 0 1px rgba(255, 255, 255, 0.2) !important;
+
+  /* 极度物理特性 - 3D浮起和缩放 */
+  transform: translateZ(0) scale(1.03) translateY(-8px) !important;
 }
 
-/* ProfileModal 关闭按钮 */
+/* ProfileModal 关闭按钮 - 高权重覆盖 */
+.theme-liquid-glass .profile-modal-content .close-btn,
+.theme-liquid-glass .profile-modal-content .modal-close,
 .theme-liquid-glass .profile-modal .close-btn,
 .theme-liquid-glass .profile-modal .modal-close {
   background: var(--theme-tertiary-bg) !important;
@@ -3895,34 +4603,6 @@
   letter-spacing: 0.5px !important;
 }
 
-/* 返回按钮 */
-.theme-liquid-glass .back-btn {
-  background: rgba(220, 53, 69, 0.15) !important;
-  backdrop-filter: var(--theme-glass-filter) !important;
-  -webkit-backdrop-filter: var(--theme-glass-filter) !important;
-  border: 1px solid rgba(220, 53, 69, 0.2) !important;
-  border-radius: var(--theme-border-radius-small) !important;
-  color: var(--theme-text-on-glass) !important;
-  box-shadow: 0 0 20px rgba(220, 53, 69, 0.2), var(--theme-inner-glow) !important;
-  transition: all var(--theme-transition-fast) !important;
-  padding: 0.75rem 1.5rem !important;
-  font-weight: 700 !important;
-  text-transform: uppercase !important;
-  letter-spacing: 0.5px !important;
-  position: relative;
-  overflow: hidden;
-}
-
-.theme-liquid-glass .back-btn::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  height: 1px;
-  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.4), transparent);
-  z-index: 1;
-}
 
 .theme-liquid-glass .back-btn:hover {
   transform: translateY(-2px) scale(1.02) !important;
@@ -4554,38 +5234,6 @@
   font-weight: 700 !important;
 }
 
-/* 探索页面返回按钮 */
-.theme-liquid-glass .back-btn {
-  background: rgba(220, 53, 69, 0.15) !important;
-  backdrop-filter: var(--theme-glass-filter) !important;
-  -webkit-backdrop-filter: var(--theme-glass-filter) !important;
-  border: 1px solid rgba(220, 53, 69, 0.2) !important;
-  border-radius: var(--theme-border-radius-small) !important;
-  color: var(--theme-text-on-glass) !important;
-  box-shadow: 0 0 20px rgba(220, 53, 69, 0.2), var(--theme-inner-glow) !important;
-  transition: all var(--theme-transition-fast) !important;
-  position: relative;
-  overflow: hidden;
-}
-
-.theme-liquid-glass .back-btn::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  height: 1px;
-  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.4), transparent);
-  z-index: 1;
-}
-
-.theme-liquid-glass .back-btn:hover {
-  transform: translateY(-2px) scale(1.02) !important;
-  background: rgba(220, 53, 69, 0.8) !important;
-  box-shadow: 0 0 30px rgba(220, 53, 69, 0.3), var(--theme-hover-lift) !important;
-  color: var(--theme-text-inverted) !important;
-  border-color: rgba(220, 53, 69, 0.4) !important;
-}
 
 /* 头部动作按钮 */
 .theme-liquid-glass .action-btn.inventory {
@@ -6024,102 +6672,1056 @@
   }
 }
 
-/* ===========================================
- * 图片大图查看模态框液态玻璃化 - 修复移动端显示问题
- * 设计理念：确保图片模态框在液态玻璃主题下完美显示，特别是移动端
- * =========================================== */
-
-/* PostDetailView中的图片模态框 - 液态玻璃化 */
-.theme-liquid-glass .image-modal {
-  position: fixed !important;
-  top: 0 !important;
-  left: 0 !important;
-  width: 100% !important;
-  height: 100% !important;
-  background: rgba(0, 0, 0, 0.85) !important;
-  backdrop-filter: blur(16px) saturate(140%) !important;
-  -webkit-backdrop-filter: blur(16px) saturate(140%) !important;
-  display: flex !important;
-  align-items: center !important;
-  justify-content: center !important;
-  z-index: 99999 !important; /* 确保最高层级 */
-  /* 移除padding，避免影响flex居中 */
-  padding: 0 !important;
-  box-sizing: border-box !important;
-}
-
-.theme-liquid-glass .image-modal-content {
-  position: relative !important;
-  /* PC端智能尺寸：根据图片大小自适应，最大不超过视口的90% */
-  max-width: 90vw !important;
-  max-height: 90vh !important;
-  /* 移除固定最小尺寸，让图片自然适应 */
-  background: var(--theme-modal-bg) !important;
-  backdrop-filter: var(--theme-backdrop-filter) !important;
-  -webkit-backdrop-filter: var(--theme-backdrop-filter) !important;
-  border: 1px solid rgba(255, 255, 255, 0.3) !important;
-  border-radius: var(--theme-border-radius-large) !important;
-  box-shadow: var(--theme-shadow-large), var(--theme-glow), var(--theme-inner-glow-strong) !important;
-  overflow: hidden !important;
-  display: flex !important;
-  flex-direction: column !important;
-  /* 移除margin auto，让父容器的flex布局处理居中 */
-}
-
-.theme-liquid-glass .image-modal-content::before {
+.theme-liquid-glass .sort-btn::before {
   content: '';
   position: absolute;
   top: 0;
   left: 0;
   right: 0;
   height: 2px;
-  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.5), transparent);
-  border-radius: var(--theme-border-radius-large) var(--theme-border-radius-large) 0 0;
+  background: linear-gradient(90deg,
+    transparent,
+    rgba(255, 255, 255, 0.4),
+    transparent);
+  border-radius: 44px 44px 0 0;
   z-index: 1;
+  opacity: 0;
+  transition: opacity 0.3s ease;
 }
 
-.theme-liquid-glass .image-modal-content img {
-  /* 图片智能适应：保持原始比例，不会被过度压缩 */
-  width: auto !important;
-  height: auto !important;
-  max-width: 100% !important;
-  max-height: 85vh !important; /* 为关闭按钮和padding留出空间 */
-  object-fit: contain !important;
-  border-radius: var(--theme-border-radius) !important;
-  position: relative;
-  z-index: 2;
-  /* 确保图片在容器中居中 */
-  margin: auto !important;
-  display: block !important;
+.theme-liquid-glass .sort-btn:hover,
+.theme-liquid-glass .sort-btn.active {
+  transform: translateY(-6px) scale(1.02) !important;
+  background: rgba(255, 255, 255, 0.1) !important;
+  backdrop-filter: blur(38px) saturate(240%) brightness(1.22) !important;
+  -webkit-backdrop-filter: blur(38px) saturate(240%) brightness(1.22) !important;
+
+  box-shadow:
+    0 16px 64px rgba(111, 66, 193, 0.15),
+    0 8px 32px rgba(0, 0, 0, 0.08),
+    inset 0 2px 0 rgba(255, 255, 255, 0.2),
+    inset 0 -1px 0 rgba(111, 66, 193, 0.1) !important;
+
+  color: var(--theme-text-inverted) !important;
+  z-index: 15;
 }
 
-.theme-liquid-glass .close-modal-btn {
-  position: absolute !important;
-  top: 1rem !important;
-  right: 1rem !important;
-  background: var(--theme-tertiary-bg) !important;
-  backdrop-filter: var(--theme-glass-light) !important;
-  -webkit-backdrop-filter: var(--theme-glass-light) !important;
-  color: var(--theme-text-on-glass) !important;
+.theme-liquid-glass .sort-btn:hover::before,
+.theme-liquid-glass .sort-btn.active::before {
+  background: linear-gradient(90deg,
+    transparent,
+    rgba(111, 66, 193, 0.6),
+    transparent);
+  opacity: 1;
+}
+
+/* 排序下拉选项 */
+.theme-liquid-glass .sort-options {
+  background: var(--theme-modal-bg) !important;
+  backdrop-filter: blur(48px) saturate(300%) brightness(1.3) !important;
+  -webkit-backdrop-filter: blur(48px) saturate(300%) brightness(1.3) !important;
+
   border: none !important;
-  border-radius: 50% !important;
-  width: 44px !important;
-  height: 44px !important;
-  cursor: pointer !important;
-  font-size: 1.5rem !important;
+  border-radius: 32px !important;
+
+  box-shadow:
+    0 24px 80px rgba(0, 0, 0, 0.12),
+    0 12px 40px rgba(0, 0, 0, 0.08),
+    inset 0 2px 0 rgba(255, 255, 255, 0.25) !important;
+
+  padding: 1rem !important;
+  margin-top: 0.5rem !important;
+
+  position: absolute !important;
+  z-index: 100 !important;
+  min-width: 240px !important;
+}
+
+.theme-liquid-glass .sort-option {
+  background: rgba(255, 255, 255, 0.03) !important;
+  backdrop-filter: blur(20px) saturate(150%) !important;
+  -webkit-backdrop-filter: blur(20px) saturate(150%) !important;
+
+  border: none !important;
+  border-radius: 24px !important;
+
+  color: var(--theme-text-on-glass) !important;
+  font-weight: 500 !important;
+  padding: 0.75rem 1rem !important;
+  margin: 0.25rem 0 !important;
+  width: 100% !important;
+  text-align: left !important;
+
+  transition: all 0.3s cubic-bezier(0.25, 0.46, 0.45, 0.94) !important;
+  position: relative !important;
+  overflow: hidden !important;
+}
+
+.theme-liquid-glass .sort-option::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background: linear-gradient(90deg,
+    transparent,
+    rgba(255, 255, 255, 0.2),
+    transparent);
+  z-index: 1;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+
+.theme-liquid-glass .sort-option:hover {
+  transform: translateX(4px) scale(1.01) !important;
+  background: rgba(255, 255, 255, 0.08) !important;
+  backdrop-filter: blur(28px) saturate(200%) brightness(1.15) !important;
+  -webkit-backdrop-filter: blur(28px) saturate(200%) brightness(1.15) !important;
+
+  box-shadow:
+    0 8px 32px rgba(0, 0, 0, 0.06),
+    inset 0 1px 0 rgba(255, 255, 255, 0.15) !important;
+
+  color: var(--theme-text-inverted) !important;
+}
+
+.theme-liquid-glass .sort-option:hover::before {
+  opacity: 1;
+}
+
+.theme-liquid-glass .sort-option.active {
+  background: linear-gradient(135deg,
+    rgba(59, 130, 246, 0.12),
+    rgba(99, 102, 241, 0.1)) !important;
+  backdrop-filter: blur(32px) saturate(250%) brightness(1.2) !important;
+  -webkit-backdrop-filter: blur(32px) saturate(250%) brightness(1.2) !important;
+
+  transform: translateX(2px) !important;
+
+  box-shadow:
+    0 12px 48px rgba(59, 130, 246, 0.15),
+    0 6px 24px rgba(0, 0, 0, 0.06),
+    inset 0 1px 0 rgba(255, 255, 255, 0.2),
+    inset 0 -1px 0 rgba(59, 130, 246, 0.1) !important;
+
+  color: var(--theme-text-inverted) !important;
+  font-weight: 700 !important;
+}
+
+.theme-liquid-glass .sort-option.active::before {
+  background: linear-gradient(90deg,
+    transparent,
+    rgba(59, 130, 246, 0.4),
+    transparent);
+  opacity: 1;
+}
+
+/* 排序顺序按钮 */
+.theme-liquid-glass .sort-order-btn {
+  background: rgba(255, 255, 255, 0.04) !important;
+  backdrop-filter: blur(24px) saturate(160%) !important;
+  -webkit-backdrop-filter: blur(24px) saturate(160%) !important;
+
+  border: none !important;
+  border-radius: 20px !important;
+
+  color: var(--theme-text-on-glass) !important;
+  font-weight: 500 !important;
+  padding: 0.5rem 1rem !important;
+  width: 100% !important;
+  text-align: left !important;
+
+  transition: all 0.3s ease !important;
+  position: relative !important;
+  overflow: hidden !important;
+}
+
+.theme-liquid-glass .sort-order-btn:hover {
+  background: rgba(255, 193, 7, 0.12) !important;
+  backdrop-filter: blur(28px) saturate(200%) brightness(1.1) !important;
+  -webkit-backdrop-filter: blur(28px) saturate(200%) brightness(1.1) !important;
+
+  box-shadow:
+    0 6px 24px rgba(255, 193, 7, 0.1),
+    inset 0 1px 0 rgba(255, 255, 255, 0.15) !important;
+
+  color: var(--theme-text-inverted) !important;
+  transform: translateX(2px) !important;
+}
+
+/* 下拉箭头动画 */
+.theme-liquid-glass .dropdown-arrow {
+  transition: all 0.3s cubic-bezier(0.25, 0.46, 0.45, 0.94) !important;
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.1)) !important;
+}
+
+.theme-liquid-glass .dropdown-arrow.rotated {
+  transform: rotate(180deg) !important;
+}
+
+/* 任务管理页面其他系统按钮 */
+
+
+/* 删除按钮 */
+.theme-liquid-glass .delete-btn,
+.theme-liquid-glass .action-btn.delete-btn {
+  background: rgba(220, 53, 69, 0.08) !important;
+  backdrop-filter: blur(24px) saturate(160%) brightness(1.08) !important;
+  -webkit-backdrop-filter: blur(24px) saturate(160%) brightness(1.08) !important;
+
+  border: none !important;
+  border-radius: 32px !important;
+
+  box-shadow:
+    0 6px 24px rgba(220, 53, 69, 0.1),
+    inset 0 1px 0 rgba(255, 255, 255, 0.12) !important;
+
+  color: rgba(220, 53, 69, 0.9) !important;
+  font-weight: 600 !important;
+  padding: 0.5rem 1rem !important;
+
+  transition: all 0.3s cubic-bezier(0.25, 0.46, 0.45, 0.94) !important;
+  position: relative !important;
+  overflow: hidden !important;
+}
+
+.theme-liquid-glass .delete-btn::before,
+.theme-liquid-glass .action-btn.delete-btn::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background: linear-gradient(90deg,
+    transparent,
+    rgba(220, 53, 69, 0.4),
+    transparent);
+  z-index: 1;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+
+.theme-liquid-glass .delete-btn:hover,
+.theme-liquid-glass .action-btn.delete-btn:hover {
+  transform: translateY(-3px) scale(1.05) !important;
+  background: rgba(220, 53, 69, 0.8) !important;
+  backdrop-filter: blur(32px) saturate(200%) brightness(1.15) !important;
+  -webkit-backdrop-filter: blur(32px) saturate(200%) brightness(1.15) !important;
+
+  box-shadow:
+    0 12px 48px rgba(220, 53, 69, 0.25),
+    0 6px 24px rgba(0, 0, 0, 0.08),
+    inset 0 1px 0 rgba(255, 255, 255, 0.2) !important;
+
+  color: var(--theme-text-inverted) !important;
+}
+
+.theme-liquid-glass .delete-btn:hover::before,
+.theme-liquid-glass .action-btn.delete-btn:hover::before {
+  opacity: 1;
+}
+
+/* 任务快捷操作按钮 */
+.theme-liquid-glass .task-quick-btn {
+  background: rgba(255, 255, 255, 0.05) !important;
+  backdrop-filter: blur(20px) saturate(150%) !important;
+  -webkit-backdrop-filter: blur(20px) saturate(150%) !important;
+
+  border: none !important;
+  border-radius: 24px !important;
+
+  box-shadow:
+    0 4px 16px rgba(0, 0, 0, 0.03),
+    inset 0 1px 0 rgba(255, 255, 255, 0.1) !important;
+
+  color: var(--theme-text-on-glass) !important;
+  font-weight: 500 !important;
+  padding: 0.5rem 1rem !important;
+
+  transition: all 0.25s ease !important;
+  position: relative !important;
+  overflow: hidden !important;
+}
+
+.theme-liquid-glass .task-quick-btn:hover {
+  transform: translateY(-2px) scale(1.02) !important;
+  background: rgba(255, 255, 255, 0.1) !important;
+  backdrop-filter: blur(28px) saturate(200%) brightness(1.1) !important;
+  -webkit-backdrop-filter: blur(28px) saturate(200%) brightness(1.1) !important;
+
+  box-shadow:
+    0 8px 32px rgba(0, 0, 0, 0.06),
+    inset 0 1px 0 rgba(255, 255, 255, 0.15) !important;
+
+  color: var(--theme-text-inverted) !important;
+}
+
+/* 加时按钮特殊样式 */
+.theme-liquid-glass .overtime-btn {
+  background: linear-gradient(135deg,
+    rgba(255, 193, 7, 0.1),
+    rgba(255, 152, 0, 0.08)) !important;
+  color: rgba(255, 193, 7, 0.9) !important;
+}
+
+.theme-liquid-glass .overtime-btn:hover {
+  background: linear-gradient(135deg,
+    rgba(255, 193, 7, 0.8),
+    rgba(255, 152, 0, 0.75)) !important;
+  box-shadow:
+    0 12px 48px rgba(255, 193, 7, 0.2),
+    0 6px 24px rgba(0, 0, 0, 0.06),
+    inset 0 1px 0 rgba(255, 255, 255, 0.2) !important;
+}
+
+/* 置顶加时按钮增强效果 */
+.theme-liquid-glass .pinned-overtime {
+  background: linear-gradient(135deg,
+    rgba(255, 193, 7, 0.15),
+    rgba(255, 152, 0, 0.12)) !important;
+  box-shadow:
+    0 8px 32px rgba(255, 193, 7, 0.15),
+    inset 0 1px 0 rgba(255, 255, 255, 0.15),
+    inset 0 -1px 0 rgba(255, 193, 7, 0.1) !important;
+  font-weight: 700 !important;
+}
+
+.theme-liquid-glass .pinned-overtime:hover {
+  transform: translateY(-4px) scale(1.05) !important;
+  box-shadow:
+    0 16px 64px rgba(255, 193, 7, 0.3),
+    0 8px 32px rgba(255, 152, 0, 0.2),
+    inset 0 2px 0 rgba(255, 255, 255, 0.25) !important;
+}
+
+/* 移动端优化 */
+@media (max-width: 768px) {
+  .theme-liquid-glass .task-type-tab,
+  .theme-liquid-glass .filter-tab {
+    padding: 0.75rem 1.25rem !important;
+    font-size: 0.875rem !important;
+    border-radius: 32px !important;
+  }
+
+  .theme-liquid-glass .sort-btn {
+    padding: 0.75rem 1rem !important;
+    border-radius: 32px !important;
+  }
+
+  .theme-liquid-glass .sort-options {
+    border-radius: 24px !important;
+    padding: 0.75rem !important;
+    min-width: 200px !important;
+  }
+
+  .theme-liquid-glass .sort-option {
+    padding: 0.5rem 0.75rem !important;
+    border-radius: 16px !important;
+  }
+
+  .theme-liquid-glass .create-btn,
+  .theme-liquid-glass .create-first-btn {
+    padding: 0.75rem 1.5rem !important;
+    border-radius: 32px !important;
+  }
+
+  .theme-liquid-glass .back-btn {
+    padding: 0.5rem 1rem !important;
+    border-radius: 28px !important;
+  }
+
+  .theme-liquid-glass .task-quick-btn {
+    padding: 0.4rem 0.8rem !important;
+    font-size: 0.8rem !important;
+    border-radius: 20px !important;
+  }
+}
+
+/* ===========================
+   任务标签液态玻璃化效果 - 重新设计
+   Task Tags Liquid Glass Effects - Redesigned
+   ========================== */
+
+/* 设计理念：
+ * 1. 微妙透明 - 极其细腻的透明度层次
+ * 2. 自然融合 - 与背景完美融合的玻璃效果
+ * 3. 精致边框 - 几乎不可见但存在的边界
+ * 4. 语义色彩 - 保持功能识别但更加优雅
+ * 5. 流畅交互 - 自然的悬停和状态变化
+ */
+
+/* 任务标签容器 - Task Tags Container (无轮廓) */
+.theme-liquid-glass .task-meta {
+  display: flex !important;
+  gap: 0.5rem !important;
+  flex-wrap: wrap !important;
+  align-items: center !important;
+  margin: 0.75rem 0 !important;
+  padding: 0 !important;
+  background: none !important;
+  border: none !important;
+  box-shadow: none !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
+/* 基础标签样式 - Base Tag Styles */
+.theme-liquid-glass .task-type,
+.theme-liquid-glass .task-difficulty,
+.theme-liquid-glass .task-status,
+.theme-liquid-glass .task-strict-mode,
+.theme-liquid-glass .task-reward {
+  /* 核心液态玻璃效果 */
+  background: rgba(255, 255, 255, 0.08) !important;
+  backdrop-filter: blur(12px) saturate(120%) brightness(1.05) !important;
+  -webkit-backdrop-filter: blur(12px) saturate(120%) brightness(1.05) !important;
+
+  /* 形状和边框 */
+  border: 1px solid rgba(255, 255, 255, 0.12) !important;
+  border-radius: 6px !important;
+
+  /* 内容样式 */
+  padding: 0.25rem 0.75rem !important;
+  font-size: 0.7rem !important;
+  font-weight: 500 !important;
+  text-transform: uppercase !important;
+  letter-spacing: 0.3px !important;
+  line-height: 1.2 !important;
+
+  /* 阴影和深度 */
+  box-shadow:
+    0 2px 8px rgba(0, 0, 0, 0.06),
+    inset 0 1px 0 rgba(255, 255, 255, 0.08) !important;
+
+  /* 过渡动画 */
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
+
+  /* 定位 */
+  position: relative !important;
+  overflow: hidden !important;
+
+  /* 文本 */
+  color: rgba(255, 255, 255, 0.85) !important;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.1) !important;
+}
+
+/* 微妙的内发光 - Subtle Inner Glow */
+.theme-liquid-glass .task-type::before,
+.theme-liquid-glass .task-difficulty::before,
+.theme-liquid-glass .task-status::before,
+.theme-liquid-glass .task-strict-mode::before,
+.theme-liquid-glass .task-reward::before {
+  content: '' !important;
+  position: absolute !important;
+  top: 0 !important;
+  left: 0 !important;
+  right: 0 !important;
+  bottom: 0 !important;
+  background: linear-gradient(135deg,
+    rgba(255, 255, 255, 0.05) 0%,
+    transparent 50%,
+    rgba(255, 255, 255, 0.02) 100%) !important;
+  border-radius: inherit !important;
+  pointer-events: none !important;
+  z-index: 1 !important;
+}
+
+/* 悬停效果 - Hover Effects */
+.theme-liquid-glass .task-type:hover,
+.theme-liquid-glass .task-difficulty:hover,
+.theme-liquid-glass .task-status:hover,
+.theme-liquid-glass .task-strict-mode:hover,
+.theme-liquid-glass .task-reward:hover {
+  background: rgba(255, 255, 255, 0.12) !important;
+  border-color: rgba(255, 255, 255, 0.18) !important;
+  backdrop-filter: blur(16px) saturate(140%) brightness(1.08) !important;
+  -webkit-backdrop-filter: blur(16px) saturate(140%) brightness(1.08) !important;
+  box-shadow:
+    0 4px 12px rgba(0, 0, 0, 0.1),
+    inset 0 1px 0 rgba(255, 255, 255, 0.12) !important;
+  transform: translateY(-1px) !important;
+}
+
+/* ===========================
+   难度标签特定样式 - Difficulty Specific Styles
+   ========================== */
+
+.theme-liquid-glass .task-difficulty.easy {
+  background: rgba(40, 167, 69, 0.12) !important;
+  border-color: rgba(40, 167, 69, 0.2) !important;
+  color: rgba(40, 167, 69, 0.95) !important;
+}
+
+.theme-liquid-glass .task-difficulty.easy:hover {
+  background: rgba(40, 167, 69, 0.18) !important;
+  border-color: rgba(40, 167, 69, 0.3) !important;
+  box-shadow:
+    0 4px 12px rgba(40, 167, 69, 0.15),
+    inset 0 1px 0 rgba(40, 167, 69, 0.2) !important;
+}
+
+.theme-liquid-glass .task-difficulty.normal {
+  background: rgba(255, 193, 7, 0.12) !important;
+  border-color: rgba(255, 193, 7, 0.2) !important;
+  color: rgba(255, 193, 7, 0.95) !important;
+}
+
+.theme-liquid-glass .task-difficulty.normal:hover {
+  background: rgba(255, 193, 7, 0.18) !important;
+  border-color: rgba(255, 193, 7, 0.3) !important;
+  box-shadow:
+    0 4px 12px rgba(255, 193, 7, 0.15),
+    inset 0 1px 0 rgba(255, 193, 7, 0.2) !important;
+}
+
+.theme-liquid-glass .task-difficulty.hard {
+  background: rgba(253, 126, 20, 0.12) !important;
+  border-color: rgba(253, 126, 20, 0.2) !important;
+  color: rgba(253, 126, 20, 0.95) !important;
+}
+
+.theme-liquid-glass .task-difficulty.hard:hover {
+  background: rgba(253, 126, 20, 0.18) !important;
+  border-color: rgba(253, 126, 20, 0.3) !important;
+  box-shadow:
+    0 4px 12px rgba(253, 126, 20, 0.15),
+    inset 0 1px 0 rgba(253, 126, 20, 0.2) !important;
+}
+
+.theme-liquid-glass .task-difficulty.hell {
+  background: rgba(220, 53, 69, 0.12) !important;
+  border-color: rgba(220, 53, 69, 0.2) !important;
+  color: rgba(220, 53, 69, 0.95) !important;
+}
+
+.theme-liquid-glass .task-difficulty.hell:hover {
+  background: rgba(220, 53, 69, 0.18) !important;
+  border-color: rgba(220, 53, 69, 0.3) !important;
+  box-shadow:
+    0 4px 12px rgba(220, 53, 69, 0.15),
+    inset 0 1px 0 rgba(220, 53, 69, 0.2) !important;
+}
+
+/* 内发光效果 - Inner Glow Effects */
+.theme-liquid-glass .task-type::before,
+.theme-liquid-glass .task-difficulty::before,
+.theme-liquid-glass .task-status::before,
+.theme-liquid-glass .task-strict-mode::before,
+.theme-liquid-glass .task-reward::before {
+  content: '' !important;
+  position: absolute !important;
+  top: 0 !important;
+  left: 0 !important;
+  right: 0 !important;
+  bottom: 0 !important;
+  background: linear-gradient(135deg,
+    rgba(255, 255, 255, 0.1) 0%,
+    transparent 50%,
+    rgba(255, 255, 255, 0.05) 100%) !important;
+  border-radius: inherit !important;
+  pointer-events: none !important;
+  z-index: 1 !important;
+}
+
+/* ===========================
+   任务类型标签 - Task Type Tags
+   ========================== */
+
+.theme-liquid-glass .task-type {
+  background: rgba(23, 162, 184, 0.12) !important;
+  border-color: rgba(23, 162, 184, 0.2) !important;
+  color: rgba(23, 162, 184, 0.95) !important;
+}
+
+.theme-liquid-glass .task-type:hover {
+  background: rgba(23, 162, 184, 0.18) !important;
+  border-color: rgba(23, 162, 184, 0.3) !important;
+  box-shadow:
+    0 4px 12px rgba(23, 162, 184, 0.15),
+    inset 0 1px 0 rgba(23, 162, 184, 0.2) !important;
+}
+
+.theme-liquid-glass .task-reward {
+  background: rgba(111, 66, 193, 0.12) !important;
+  border-color: rgba(111, 66, 193, 0.2) !important;
+  color: rgba(111, 66, 193, 0.95) !important;
+}
+
+.theme-liquid-glass .task-reward:hover {
+  background: rgba(111, 66, 193, 0.18) !important;
+  border-color: rgba(111, 66, 193, 0.3) !important;
+  box-shadow:
+    0 4px 12px rgba(111, 66, 193, 0.15),
+    inset 0 1px 0 rgba(111, 66, 193, 0.2) !important;
+}
+
+/* ===========================
+   任务状态标签 - Task Status Tags
+   ========================== */
+
+.theme-liquid-glass .task-status.pending {
+  background: rgba(108, 117, 125, 0.12) !important;
+  border-color: rgba(108, 117, 125, 0.2) !important;
+  color: rgba(108, 117, 125, 0.95) !important;
+}
+
+.theme-liquid-glass .task-status.active {
+  background: rgba(0, 123, 255, 0.12) !important;
+  border-color: rgba(0, 123, 255, 0.2) !important;
+  color: rgba(0, 123, 255, 0.95) !important;
+}
+
+.theme-liquid-glass .task-status.completed,
+.theme-liquid-glass .task-status.open {
+  background: rgba(40, 167, 69, 0.12) !important;
+  border-color: rgba(40, 167, 69, 0.2) !important;
+  color: rgba(40, 167, 69, 0.95) !important;
+}
+
+.theme-liquid-glass .task-status.failed {
+  background: rgba(220, 53, 69, 0.12) !important;
+  border-color: rgba(220, 53, 69, 0.2) !important;
+  color: rgba(220, 53, 69, 0.95) !important;
+}
+
+.theme-liquid-glass .task-status.taken {
+  background: rgba(253, 126, 20, 0.12) !important;
+  border-color: rgba(253, 126, 20, 0.2) !important;
+  color: rgba(253, 126, 20, 0.95) !important;
+}
+
+.theme-liquid-glass .task-status.submitted {
+  background: rgba(111, 66, 193, 0.12) !important;
+  border-color: rgba(111, 66, 193, 0.2) !important;
+  color: rgba(111, 66, 193, 0.95) !important;
+}
+
+.theme-liquid-glass .task-status.voting {
+  background: rgba(255, 193, 7, 0.12) !important;
+  border-color: rgba(255, 193, 7, 0.2) !important;
+  color: rgba(255, 193, 7, 0.95) !important;
+  animation: gentle-pulse 2s ease-in-out infinite !important;
+}
+
+.theme-liquid-glass .task-status.voting_passed {
+  background: rgba(40, 167, 69, 0.12) !important;
+  border-color: rgba(40, 167, 69, 0.2) !important;
+  color: rgba(40, 167, 69, 0.95) !important;
+  animation: gentle-pulse-success 2s ease-in-out infinite !important;
+}
+
+/* ===========================
+   严格模式标签 - Strict Mode Tag
+   ========================== */
+
+.theme-liquid-glass .task-strict-mode {
+  background: rgba(111, 66, 193, 0.15) !important;
+  border-color: rgba(111, 66, 193, 0.25) !important;
+  color: rgba(111, 66, 193, 0.98) !important;
+  font-weight: 600 !important;
+  position: relative !important;
+}
+
+.theme-liquid-glass .task-strict-mode::after {
+  content: '' !important;
+  position: absolute !important;
+  top: 0 !important;
+  left: 0 !important;
+  right: 0 !important;
+  bottom: 0 !important;
+  background: linear-gradient(45deg,
+    transparent 0%,
+    rgba(111, 66, 193, 0.1) 50%,
+    transparent 100%) !important;
+  transform: translateX(-100%) !important;
+  animation: strict-shimmer 3s ease-in-out infinite !important;
+  border-radius: inherit !important;
+}
+
+.theme-liquid-glass .task-strict-mode:hover {
+  background: rgba(111, 66, 193, 0.22) !important;
+  border-color: rgba(111, 66, 193, 0.35) !important;
+  box-shadow:
+    0 4px 12px rgba(111, 66, 193, 0.2),
+    inset 0 1px 0 rgba(111, 66, 193, 0.25) !important;
+}
+
+/* ===========================
+   动画效果 - Animations
+   ========================== */
+
+@keyframes gentle-pulse {
+  0%, 100% {
+    background: rgba(255, 193, 7, 0.12) !important;
+    border-color: rgba(255, 193, 7, 0.2) !important;
+  }
+  50% {
+    background: rgba(255, 193, 7, 0.18) !important;
+    border-color: rgba(255, 193, 7, 0.3) !important;
+  }
+}
+
+@keyframes gentle-pulse-success {
+  0%, 100% {
+    background: rgba(40, 167, 69, 0.12) !important;
+    border-color: rgba(40, 167, 69, 0.2) !important;
+  }
+  50% {
+    background: rgba(40, 167, 69, 0.18) !important;
+    border-color: rgba(40, 167, 69, 0.3) !important;
+  }
+}
+
+@keyframes strict-shimmer {
+  0% {
+    transform: translateX(-100%) !important;
+  }
+  50% {
+    transform: translateX(100%) !important;
+  }
+  100% {
+    transform: translateX(-100%) !important;
+  }
+}
+
+/* ===========================
+   移动端优化 - Mobile Optimization
+   ========================== */
+
+/* ===========================
+   快捷操作栏液态玻璃化 - Quick Actions Bar Liquid Glass
+   ========================== */
+
+/* 单行布局容器 (无轮廓) */
+.theme-liquid-glass .actions-single-row {
+  background: none !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  border-radius: 0 !important;
+  padding: 0 !important;
+  border: none !important;
+  box-shadow: none !important;
+}
+
+/* 功能分组液态玻璃效果 */
+.theme-liquid-glass .action-group {
+  background: rgba(255, 255, 255, 0.03) !important;
+  backdrop-filter: blur(8px) !important;
+  -webkit-backdrop-filter: blur(8px) !important;
+  border-radius: 8px !important;
+  padding: 0.25rem !important;
+  border: 1px solid rgba(255, 255, 255, 0.05) !important;
+}
+
+/* 分组分隔线液态玻璃效果 */
+.theme-liquid-glass .action-group:not(:first-child):not(:empty)::before {
+  background: linear-gradient(to bottom,
+    transparent 0%,
+    rgba(255, 255, 255, 0.15) 50%,
+    transparent 100%) !important;
+  backdrop-filter: blur(4px) !important;
+  -webkit-backdrop-filter: blur(4px) !important;
+  width: 1px !important;
+  box-shadow: 0 0 4px rgba(255, 255, 255, 0.1) !important;
+}
+
+@media (max-width: 768px) {
+  .theme-liquid-glass .task-meta {
+    gap: 0.375rem !important;
+    margin: 0.5rem 0 !important;
+  }
+
+  .theme-liquid-glass .task-type,
+  .theme-liquid-glass .task-difficulty,
+  .theme-liquid-glass .task-status,
+  .theme-liquid-glass .task-strict-mode,
+  .theme-liquid-glass .task-reward {
+    padding: 0.2rem 0.6rem !important;
+    font-size: 0.65rem !important;
+    border-radius: 4px !important;
+  }
+
+  /* 移动端快捷操作栏 */
+  .theme-liquid-glass .actions-single-row {
+    padding: 0.5rem !important;
+    border-radius: 10px !important;
+  }
+
+  .theme-liquid-glass .action-group {
+    padding: 0.125rem !important;
+    border-radius: 6px !important;
+  }
+}
+
+
+/* ===========================================
+ * 图片大图查看模态框液态玻璃化 - 修复移动端显示问题
+ * 设计理念：确保图片模态框在液态玻璃主题下完美显示，特别是移动端
+ * =========================================== */
+
+/* PostDetailView中的图片模态框 - 液态玻璃化 */
+/* ==========================================
+   图片查看大图模态框 - 液态玻璃主题
+   完全重新实现，实现适应性居中完整显示
+   ========================================== */
+
+/* 模态框背景层 - 全屏覆盖 */
+.theme-liquid-glass .image-modal {
+  position: fixed !important;
+  top: 0 !important;
+  left: 0 !important;
+  width: 100vw !important;
+  height: 100vh !important;
+
+  /* 液态玻璃背景效果 */
+  background: rgba(0, 0, 0, 0.8) !important;
+  backdrop-filter: blur(20px) saturate(120%) !important;
+  -webkit-backdrop-filter: blur(20px) saturate(120%) !important;
+
+  /* 确保最高层级显示 */
+  z-index: 99999 !important;
+
+  /* 使用flex实现完美居中 */
   display: flex !important;
   align-items: center !important;
   justify-content: center !important;
-  box-shadow: var(--theme-shadow-small), var(--theme-inner-glow) !important;
-  transition: all var(--theme-transition-fast) !important;
-  z-index: 3 !important;
+
+  /* 为触摸设备优化 */
+  padding: 2rem !important;
+  box-sizing: border-box !important;
 }
 
+/* 图片容器 - 自适应尺寸 */
+.theme-liquid-glass .image-modal-content {
+  position: relative !important;
+
+  /* 容器自适应图片大小，但不超过视口 */
+  width: auto !important;
+  height: auto !important;
+  max-width: 100% !important;
+  max-height: 100% !important;
+
+  /* 移除所有可能影响布局的样式 */
+  margin: 0 !important;
+  padding: 0 !important;
+  border: none !important;
+  background: transparent !important;
+  box-shadow: none !important;
+
+  /* 简单的块级显示 */
+  display: block !important;
+  overflow: visible !important;
+}
+
+/* 图片本身 - 核心显示逻辑 */
+.theme-liquid-glass .image-modal-content img {
+  /* 图片自然尺寸显示 */
+  width: auto !important;
+  height: auto !important;
+
+  /* 关键：限制最大尺寸确保完整显示 */
+  max-width: calc(100vw - 8rem) !important; /* 减去padding和关闭按钮空间 */
+  max-height: calc(100vh - 8rem) !important; /* 减去padding和关闭按钮空间 */
+
+  /* 保持图片比例，完整显示 */
+  object-fit: contain !important;
+
+  /* 液态玻璃视觉效果 */
+  border-radius: var(--theme-border-radius-large) !important;
+  box-shadow:
+    0 25px 50px rgba(0, 0, 0, 0.5),
+    0 0 0 1px rgba(255, 255, 255, 0.1),
+    inset 0 1px 0 rgba(255, 255, 255, 0.2) !important;
+
+  /* 图片自身的液态玻璃效果 */
+  backdrop-filter: blur(1px) !important;
+  -webkit-backdrop-filter: blur(1px) !important;
+
+  /* 确保图片居中显示 */
+  display: block !important;
+  margin: 0 auto !important;
+
+  /* 添加微妙的发光效果 */
+  position: relative !important;
+  z-index: 1 !important;
+}
+
+/* 图片发光效果 */
+.theme-liquid-glass .image-modal-content img::before {
+  content: '' !important;
+  position: absolute !important;
+  top: -2px !important;
+  left: -2px !important;
+  right: -2px !important;
+  bottom: -2px !important;
+  background: linear-gradient(45deg,
+    rgba(59, 130, 246, 0.3),
+    rgba(168, 85, 247, 0.3),
+    rgba(59, 130, 246, 0.3)) !important;
+  border-radius: var(--theme-border-radius-large) !important;
+  z-index: -1 !important;
+  opacity: 0.6 !important;
+  filter: blur(8px) !important;
+}
+
+/* 关闭按钮 - 浮动式设计 */
+.theme-liquid-glass .close-modal-btn {
+  position: fixed !important; /* 使用fixed确保始终可见 */
+  top: 2rem !important;
+  right: 2rem !important;
+
+  /* 按钮尺寸和形状 */
+  width: 48px !important;
+  height: 48px !important;
+  border-radius: 50% !important;
+
+  /* 液态玻璃按钮效果 */
+  background: rgba(0, 0, 0, 0.6) !important;
+  backdrop-filter: blur(20px) saturate(150%) !important;
+  -webkit-backdrop-filter: blur(20px) saturate(150%) !important;
+  border: 1px solid rgba(255, 255, 255, 0.2) !important;
+
+  /* 阴影和发光 */
+  box-shadow:
+    0 8px 25px rgba(0, 0, 0, 0.3),
+    inset 0 1px 0 rgba(255, 255, 255, 0.2),
+    0 0 20px rgba(255, 255, 255, 0.1) !important;
+
+  /* 文字和交互 */
+  color: rgba(255, 255, 255, 0.9) !important;
+  font-size: 1.5rem !important;
+  font-weight: 300 !important;
+  cursor: pointer !important;
+
+  /* 居中文字 */
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+
+  /* 动画过渡 */
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
+
+  /* 确保最高层级 */
+  z-index: 100000 !important;
+}
+
+/* 关闭按钮悬停效果 */
 .theme-liquid-glass .close-modal-btn:hover {
-  transform: translateY(-2px) scale(1.1) !important;
-  box-shadow: var(--theme-focus-glow), var(--theme-inner-glow-strong) !important;
-  background: rgba(220, 53, 69, 0.8) !important;
-  color: var(--theme-text-inverted) !important;
+  /* 悬停时的变换 */
+  transform: translateY(-2px) scale(1.05) !important;
+
+  /* 增强的阴影和发光 */
+  box-shadow:
+    0 12px 35px rgba(0, 0, 0, 0.4),
+    inset 0 1px 0 rgba(255, 255, 255, 0.3),
+    0 0 30px rgba(220, 53, 69, 0.4) !important;
+
+  /* 悬停时的颜色变化 */
+  background: rgba(220, 53, 69, 0.7) !important;
+  color: rgba(255, 255, 255, 1) !important;
+  border-color: rgba(220, 53, 69, 0.5) !important;
+}
+
+/* 关闭按钮点击效果 */
+.theme-liquid-glass .close-modal-btn:active {
+  transform: translateY(0) scale(0.95) !important;
+  box-shadow:
+    0 4px 15px rgba(0, 0, 0, 0.3),
+    inset 0 1px 0 rgba(255, 255, 255, 0.2) !important;
+}
+
+/* ==========================================
+   移动端响应式优化
+   ========================================== */
+
+/* 平板设备优化 */
+@media (max-width: 1024px) {
+  .theme-liquid-glass .image-modal {
+    padding: 1.5rem !important;
+  }
+
+  .theme-liquid-glass .image-modal-content img {
+    max-width: calc(100vw - 6rem) !important;
+    max-height: calc(100vh - 6rem) !important;
+  }
+
+  .theme-liquid-glass .close-modal-btn {
+    top: 1.5rem !important;
+    right: 1.5rem !important;
+    width: 44px !important;
+    height: 44px !important;
+    font-size: 1.4rem !important;
+  }
+}
+
+/* 手机端优化 */
+@media (max-width: 768px) {
+  .theme-liquid-glass .image-modal {
+    padding: 1rem !important;
+  }
+
+  .theme-liquid-glass .image-modal-content img {
+    max-width: calc(100vw - 4rem) !important;
+    max-height: calc(100vh - 4rem) !important;
+    border-radius: var(--theme-border-radius) !important;
+  }
+
+  .theme-liquid-glass .close-modal-btn {
+    top: 1rem !important;
+    right: 1rem !important;
+    width: 40px !important;
+    height: 40px !important;
+    font-size: 1.2rem !important;
+  }
+}
+
+/* 超小屏幕优化 */
+@media (max-width: 480px) {
+  .theme-liquid-glass .image-modal {
+    padding: 0.5rem !important;
+  }
+
+  .theme-liquid-glass .image-modal-content img {
+    max-width: calc(100vw - 3rem) !important;
+    max-height: calc(100vh - 3rem) !important;
+  }
+
+  .theme-liquid-glass .close-modal-btn {
+    top: 0.5rem !important;
+    right: 0.5rem !important;
+    width: 36px !important;
+    height: 36px !important;
+    font-size: 1.1rem !important;
+  }
+}
+
+/* ==========================================
+   特殊图片尺寸处理
+   ========================================== */
+
+/* 超宽图片优化 */
+.theme-liquid-glass .image-modal-content img[style*="aspect-ratio"] {
+  /* 对于已知宽高比的图片，进一步优化显示 */
+  max-width: 95vw !important;
+  max-height: 95vh !important;
+}
+
+/* 超高图片优化 */
+@media (orientation: portrait) {
+  .theme-liquid-glass .image-modal-content img {
+    /* 竖屏模式下，优先保证高度完整显示 */
+    max-height: calc(100vh - 6rem) !important;
+  }
+}
+
+/* 横屏模式优化 */
+@media (orientation: landscape) {
+  .theme-liquid-glass .image-modal-content img {
+    /* 横屏模式下，优先保证宽度完整显示 */
+    max-width: calc(100vw - 6rem) !important;
+  }
 }
 
 /* TaskDetailView中的图片模态框 - 液态玻璃化 */
