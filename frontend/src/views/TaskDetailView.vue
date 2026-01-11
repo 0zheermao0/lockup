@@ -43,48 +43,128 @@
           <!-- Quick Actions Bar - 高频操作区域 -->
           <section v-if="canManageTask || canClaimTask || canSubmitProof || canReviewTask || canEndTask || canAddOvertime || canStartVoting || canVote" class="quick-actions-bar">
             <div class="quick-actions-content">
-              <div class="actions-primary">
-                <!-- Lock task primary actions -->
-                <button
-                  v-if="task.status === 'pending' && canManageTask"
-                  @click="startTask"
-                  class="quick-action-btn primary large"
-                  :title="'开始任务'"
-                >
-                  <span class="btn-icon">🚀</span>
-                  <span class="btn-text">开始任务</span>
-                </button>
-                <button
-                  v-if="(task.status === 'active' || task.status === 'voting_passed') && canCompleteTask"
-                  @click="completeTask"
-                  class="quick-action-btn success large"
-                  :title="'完成任务'"
-                >
-                  <span class="btn-icon">✅</span>
-                  <span class="btn-text">完成任务</span>
-                </button>
-                <button
-                  v-if="(task.status === 'active' || task.status === 'voting' || task.status === 'voting_passed') && isOwnTask"
-                  @click="stopTask"
-                  class="quick-action-btn danger large"
-                  :title="'停止任务'"
-                >
-                  <span class="btn-icon">⏹️</span>
-                  <span class="btn-text">停止任务</span>
-                </button>
+              <!-- 单行布局，按功能分组 -->
+              <div class="actions-single-row">
+                <!-- 第一组：随机加时 (最高优先级) -->
+                <div class="action-group action-group-timing">
+                  <button
+                    v-if="canAddOvertime"
+                    @click="addOvertime"
+                    class="quick-action-btn secondary"
+                    :title="'随机加时'"
+                  >
+                    <span class="btn-icon">⏰</span>
+                    <span class="btn-text">随机加时</span>
+                  </button>
+                </div>
 
-                <!-- Board task primary actions -->
-                <button
-                  v-if="canClaimTask"
-                  @click="claimTask"
-                  class="quick-action-btn warning large"
-                  :title="'揭榜任务'"
-                >
-                  <span class="btn-icon">📋</span>
-                  <span class="btn-text">揭榜任务</span>
-                </button>
+                <!-- 第二组：任务管理 (开始、完成、停止、结束) -->
+                <div class="action-group action-group-management">
+                  <button
+                    v-if="task.status === 'pending' && canManageTask"
+                    @click="startTask"
+                    class="quick-action-btn primary large"
+                    :title="'开始任务'"
+                  >
+                    <span class="btn-icon">🚀</span>
+                    <span class="btn-text">开始任务</span>
+                  </button>
+                  <button
+                    v-if="(task.status === 'active' || task.status === 'voting_passed') && canCompleteTask"
+                    @click="completeTask"
+                    class="quick-action-btn success large"
+                    :title="'完成任务'"
+                  >
+                    <span class="btn-icon">✅</span>
+                    <span class="btn-text">完成任务</span>
+                  </button>
+                  <button
+                    v-if="(task.status === 'active' || task.status === 'voting' || task.status === 'voting_passed') && isOwnTask"
+                    @click="stopTask"
+                    class="quick-action-btn danger large"
+                    :title="'停止任务'"
+                  >
+                    <span class="btn-icon">⏹️</span>
+                    <span class="btn-text">停止任务</span>
+                  </button>
+                  <button
+                    v-if="canEndTask"
+                    @click="endTask"
+                    class="quick-action-btn danger large"
+                    :title="'结束任务'"
+                  >
+                    <span class="btn-icon">🏁</span>
+                    <span class="btn-text">结束任务</span>
+                  </button>
+                </div>
 
-                <!-- Completion rate warning -->
+                <!-- 第三组：悬赏任务相关 -->
+                <div class="action-group action-group-board">
+                  <button
+                    v-if="canClaimTask"
+                    @click="claimTask"
+                    class="quick-action-btn warning large"
+                    :title="'揭榜任务'"
+                  >
+                    <span class="btn-icon">📋</span>
+                    <span class="btn-text">揭榜任务</span>
+                  </button>
+                  <button
+                    v-if="canSubmitProof"
+                    @click="openSubmissionModal"
+                    class="quick-action-btn info large"
+                    :title="'提交完成证明'"
+                  >
+                    <span class="btn-icon">📤</span>
+                    <span class="btn-text">提交完成证明</span>
+                  </button>
+                </div>
+
+                <!-- 第四组：审核相关 -->
+                <div class="action-group action-group-review">
+                  <button
+                    v-if="canReviewTask"
+                    @click="approveTask"
+                    class="quick-action-btn success large"
+                    :title="'审核通过'"
+                  >
+                    <span class="btn-icon">✅</span>
+                    <span class="btn-text">审核通过</span>
+                  </button>
+                  <button
+                    v-if="canReviewTask"
+                    @click="rejectTask"
+                    class="quick-action-btn danger large"
+                    :title="'审核拒绝'"
+                  >
+                    <span class="btn-icon">❌</span>
+                    <span class="btn-text">审核拒绝</span>
+                  </button>
+                </div>
+
+                <!-- 第五组：投票相关 -->
+                <div class="action-group action-group-voting">
+                  <button
+                    v-if="canStartVoting"
+                    @click="startVoting"
+                    class="quick-action-btn vote large pulse"
+                    :title="'发起投票'"
+                  >
+                    <span class="btn-icon">🗳️</span>
+                    <span class="btn-text">发起投票</span>
+                  </button>
+                  <button
+                    v-else-if="canVote"
+                    @click="openVoteModal"
+                    class="quick-action-btn vote large"
+                    :title="'参与投票'"
+                  >
+                    <span class="btn-icon">🗳️</span>
+                    <span class="btn-text">参与投票</span>
+                  </button>
+                </div>
+
+                <!-- 完成率警告 -->
                 <div
                   v-if="showCompletionRateWarning"
                   class="completion-rate-warning"
@@ -98,78 +178,6 @@
                     </div>
                   </div>
                 </div>
-                <button
-                  v-if="canSubmitProof"
-                  @click="openSubmissionModal"
-                  class="quick-action-btn info large"
-                  :title="'提交完成证明'"
-                >
-                  <span class="btn-icon">📤</span>
-                  <span class="btn-text">提交完成证明</span>
-                </button>
-                <button
-                  v-if="canReviewTask"
-                  @click="approveTask"
-                  class="quick-action-btn success large"
-                  :title="'审核通过'"
-                >
-                  <span class="btn-icon">✅</span>
-                  <span class="btn-text">审核通过</span>
-                </button>
-                <button
-                  v-if="canReviewTask"
-                  @click="rejectTask"
-                  class="quick-action-btn danger large"
-                  :title="'审核拒绝'"
-                >
-                  <span class="btn-icon">❌</span>
-                  <span class="btn-text">审核拒绝</span>
-                </button>
-
-                <!-- End task button -->
-                <button
-                  v-if="canEndTask"
-                  @click="endTask"
-                  class="quick-action-btn danger large"
-                  :title="'结束任务'"
-                >
-                  <span class="btn-icon">🏁</span>
-                  <span class="btn-text">结束任务</span>
-                </button>
-
-                <!-- Voting actions -->
-                <button
-                  v-if="canStartVoting"
-                  @click="startVoting"
-                  class="quick-action-btn vote large pulse"
-                  :title="'发起投票'"
-                >
-                  <span class="btn-icon">🗳️</span>
-                  <span class="btn-text">发起投票</span>
-                </button>
-                <button
-                  v-else-if="canVote"
-                  @click="openVoteModal"
-                  class="quick-action-btn vote large"
-                  :title="'参与投票'"
-                >
-                  <span class="btn-icon">🗳️</span>
-                  <span class="btn-text">参与投票</span>
-                </button>
-              </div>
-
-              <div class="actions-secondary">
-                <!-- Secondary actions -->
-                <button
-                  v-if="canAddOvertime"
-                  @click="addOvertime"
-                  class="quick-action-btn secondary"
-                  :title="'随机加时'"
-                >
-                  <span class="btn-icon">⏰</span>
-                  <span class="btn-text">随机加时</span>
-                </button>
-
               </div>
             </div>
           </section>
@@ -5063,18 +5071,76 @@ onUnmounted(() => {
   gap: 1rem;
 }
 
-.actions-primary {
+/* 单行布局容器 - Single Row Layout Container */
+.actions-single-row {
   display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  justify-content: flex-start;
   flex-wrap: wrap;
-  gap: 1rem;
-  justify-content: center;
+  min-height: 48px;
+}
+
+/* 功能分组 - Action Groups */
+.action-group {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-shrink: 0;
+}
+
+/* 分组间隔 - Group Spacing */
+.action-group:not(:first-child):not(:empty) {
+  margin-left: 0.75rem;
+  position: relative;
+}
+
+/* 分组分隔线 - Group Separator */
+.action-group:not(:first-child):not(:empty)::before {
+  content: '';
+  position: absolute;
+  left: -0.5rem;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 2px;
+  height: 24px;
+  background-color: rgba(0, 0, 0, 0.1);
+  border-radius: 1px;
+}
+
+/* 特殊分组样式 */
+.action-group-timing {
+  /* 随机加时组 - 最高优先级 */
+  order: 1;
+}
+
+.action-group-management {
+  /* 任务管理组 */
+  order: 2;
+}
+
+.action-group-board {
+  /* 悬赏任务组 */
+  order: 3;
+}
+
+.action-group-review {
+  /* 审核组 */
+  order: 4;
+}
+
+.action-group-voting {
+  /* 投票组 */
+  order: 5;
+}
+
+/* 保持原有样式兼容性 */
+.actions-primary {
+  display: none; /* 隐藏旧的布局 */
 }
 
 .actions-secondary {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.75rem;
-  justify-content: center;
+  display: none; /* 隐藏旧的布局 */
 }
 
 .quick-action-btn {
@@ -5173,21 +5239,46 @@ onUnmounted(() => {
     transition: all 0.3s cubic-bezier(0.4, 0.0, 0.2, 1);
   }
 
-  .actions-primary {
+  /* 移动端单行布局 - Mobile Single Row Layout */
+  .actions-single-row {
     display: flex;
-    flex-wrap: wrap;
-    gap: 0.5rem;
     align-items: center;
+    gap: 0.375rem;
     justify-content: flex-start;
+    flex-wrap: nowrap; /* 移动端强制单行 */
+    overflow-x: auto; /* 允许横向滚动 */
+    padding: 0 0.25rem;
+    min-height: 48px;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  /* 移动端分组样式 */
+  .action-group {
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+    flex-shrink: 0;
+  }
+
+  /* 移动端分组间隔 */
+  .action-group:not(:first-child):not(:empty) {
+    margin-left: 0.5rem;
+  }
+
+  .action-group:not(:first-child):not(:empty)::before {
+    left: -0.375rem;
+    width: 1px;
+    height: 20px;
+    background-color: rgba(0, 0, 0, 0.15);
+  }
+
+  /* 隐藏旧的移动端布局 */
+  .actions-primary {
+    display: none;
   }
 
   .actions-secondary {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 0.375rem;
-    align-items: center;
-    justify-content: flex-start;
-    margin-top: 0.5rem;
+    display: none;
   }
 
   /* Mobile icon-only buttons following homepage pattern */
@@ -5420,9 +5511,24 @@ onUnmounted(() => {
     padding: 0.5rem 0.75rem;
   }
 
-  .actions-primary,
-  .actions-secondary {
-    gap: 0.375rem;
+  /* 超小屏幕单行布局 */
+  .actions-single-row {
+    gap: 0.25rem;
+    padding: 0 0.125rem;
+  }
+
+  .action-group {
+    gap: 0.25rem;
+  }
+
+  .action-group:not(:first-child):not(:empty) {
+    margin-left: 0.375rem;
+  }
+
+  .action-group:not(:first-child):not(:empty)::before {
+    left: -0.25rem;
+    width: 1px;
+    height: 16px;
   }
 
   /* Extra compact icon-only buttons for very small screens */

@@ -1,4 +1,4 @@
-import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted, nextTick } from 'vue'
 
 export interface InfiniteScrollOptions {
   threshold?: number // Distance from bottom to trigger load (in pixels)
@@ -155,6 +155,17 @@ export function useInfiniteScroll<T>(
         loadMore()
       }, 100)
     }
+
+    // 新增：检查页面内容是否足够
+    // 如果页面总高度小于视窗高度的1.5倍，也触发加载
+    if (scrollHeight < clientHeight * 1.5 && hasMore.value) {
+      if (loadTimeout) {
+        clearTimeout(loadTimeout)
+      }
+      loadTimeout = setTimeout(() => {
+        loadMore()
+      }, 100)
+    }
   }
 
   // Initialize
@@ -176,6 +187,21 @@ export function useInfiniteScroll<T>(
   onMounted(() => {
     window.addEventListener('scroll', handleScroll, { passive: true })
   })
+
+  // 手动触发懒加载检查
+  const triggerLoadIfNeeded = async () => {
+    if (loading.value || !hasMore.value) return
+
+    await nextTick() // 等待DOM更新
+
+    const scrollHeight = document.documentElement.scrollHeight
+    const clientHeight = document.documentElement.clientHeight
+
+    // 如果页面高度不足，触发加载
+    if (scrollHeight <= clientHeight + 200) {
+      await loadMore()
+    }
+  }
 
   onUnmounted(() => {
     window.removeEventListener('scroll', handleScroll)
@@ -206,6 +232,7 @@ export function useInfiniteScroll<T>(
     reset,
     fetchData,
     restoreState,
-    getCurrentState
+    getCurrentState,
+    triggerLoadIfNeeded
   }
 }

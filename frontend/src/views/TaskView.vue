@@ -23,14 +23,12 @@
               :class="['task-type-tab', { active: activeTaskType === 'lock' }]"
             >
               🔒 带锁任务
-              <span class="count-badge">{{ taskCounts?.lock_tasks?.all || 0 }}</span>
             </button>
             <button
               @click="activeTaskType = 'board'"
               :class="['task-type-tab', { active: activeTaskType === 'board' }]"
             >
               📋 任务板
-              <span class="count-badge">{{ taskCounts?.board_tasks?.all || 0 }}</span>
             </button>
           </div>
         </section>
@@ -463,7 +461,8 @@ const {
   isInitialLoading,
   initialize,
   refresh,
-  getCurrentState
+  getCurrentState,
+  triggerLoadIfNeeded
 } = useInfiniteScroll(
   getFilteredTasks,
   {
@@ -1119,6 +1118,17 @@ const isTaskFrozen = (task: Task) => {
   return lockTask.is_frozen || false
 }
 
+// 检查并触发懒加载
+const checkAndTriggerLazyLoad = async () => {
+  try {
+    console.log('🔄 检查是否需要触发懒加载')
+    await triggerLoadIfNeeded()
+  } catch (error) {
+    console.error('懒加载触发失败:', error)
+    // 降级：不影响正常功能
+  }
+}
+
 // Add overtime function
 const addOvertime = async (task: Task, event: Event) => {
   event.stopPropagation() // Prevent card click
@@ -1134,6 +1144,12 @@ const addOvertime = async (task: Task, event: Event) => {
       const taskIndex = tasks.value.findIndex(t => t.id === task.id)
       if (taskIndex !== -1) {
         tasks.value.splice(taskIndex, 1)
+
+        // 等待Vue DOM更新完成
+        await nextTick()
+
+        // 检查页面高度并主动触发懒加载
+        await checkAndTriggerLazyLoad()
       }
 
       // Also refresh task counts to update the filter badge

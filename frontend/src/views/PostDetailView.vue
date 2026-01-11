@@ -1433,6 +1433,7 @@ onUnmounted(() => {
   border-top: 1px solid #e9ecef;
 }
 
+/* Image modal styles - Simple fallback */
 .image-modal {
   position: fixed;
   top: 0;
@@ -1448,21 +1449,24 @@ onUnmounted(() => {
 
 .image-modal-content {
   position: relative;
-  max-width: 90%;
-  max-height: 90%;
+  max-width: 90vw;
+  max-height: 90vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2rem;
 }
 
 .image-modal-content img {
-  width: 100%;
-  height: auto;
-  max-height: 90vh;
+  max-width: 100%;
+  max-height: 85vh;
   object-fit: contain;
 }
 
 .close-modal-btn {
   position: absolute;
-  top: 10px;
-  right: 10px;
+  top: 1rem;
+  right: 1rem;
   background: rgba(0, 0, 0, 0.7);
   color: white;
   border: none;
@@ -1474,6 +1478,7 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   justify-content: center;
+  z-index: 10;
 }
 
 .close-modal-btn:hover {
@@ -1939,8 +1944,13 @@ onUnmounted(() => {
   }
 
   .image-modal-content {
-    max-width: 95%;
-    max-height: 95%;
+    max-width: 95vw;
+    max-height: 95vh;
+    padding: 1rem;
+  }
+
+  .image-modal-content img {
+    max-height: 80vh;
   }
 
   .comment-image-upload .selected-images {
