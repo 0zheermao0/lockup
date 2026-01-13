@@ -25,6 +25,9 @@
             </span>
             <span v-else-if="lockTask.time_display_hidden" class="hidden-time-placeholder">
               🔒 时间已隐藏
+              <span class="hidden-time-hint">
+                (提前完成将被加时惩罚)
+              </span>
             </span>
             <span v-else>
               {{ lockTask.is_expired ? '时间已到' : formatTimeRemaining(timeRemaining) }}
@@ -355,6 +358,17 @@ watch(
   text-transform: uppercase;
   letter-spacing: 0.5px;
   box-shadow: 1px 1px 0 #000;
+}
+
+.hidden-time-hint {
+  display: block;
+  font-size: 0.6rem;
+  font-weight: 400;
+  color: #ffc107;
+  margin-top: 0.125rem;
+  line-height: 1.2;
+  text-transform: none;
+  letter-spacing: normal;
 }
 
 /* 冻结状态样式 */

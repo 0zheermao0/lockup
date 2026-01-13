@@ -7,7 +7,7 @@ from django.utils import timezone
 from rest_framework import status
 from rest_framework.response import Response
 
-from .models import LockTask
+from .models import LockTask, TaskViolationAttempt
 from store.models import Item
 
 
@@ -44,10 +44,43 @@ def validate_task_completion_conditions(
 
     # 条件2: 倒计时必须结束
     if task.end_time and timezone.now() < task.end_time:
-        return False, Response(
-            {'error': '带锁任务必须等待倒计时结束后才能完成'},
-            status=status.HTTP_400_BAD_REQUEST
-        )
+        # 新增：时间隐藏状态下的违规检测和惩罚
+        if task.time_display_hidden:
+            # 导入工具函数（避免循环导入）
+            from .utils import record_violation_attempt, calculate_penalty_overtime, apply_penalty_overtime
+
+            # 记录违规尝试
+            violation_record = record_violation_attempt(task, user, 'premature_completion_hidden_time')
+
+            # 执行惩罚性加时
+            penalty_minutes = calculate_penalty_overtime(task, user)
+            apply_penalty_overtime(task, user, penalty_minutes)
+
+            # 返回详细的违规错误信息
+            remaining_seconds = (task.end_time - timezone.now()).total_seconds()
+            remaining_minutes = int(remaining_seconds / 60)
+
+            return False, Response({
+                'error': '时间隐藏状态下不能提前完成任务',
+                'error_code': 'HIDDEN_TIME_VIOLATION',
+                'penalty_applied': True,
+                'penalty_minutes': penalty_minutes,
+                'time_remaining_minutes': remaining_minutes,
+                'message': f'检测到违规尝试，已追加 {penalty_minutes} 分钟惩罚时间',
+                'violation_id': str(violation_record.id),
+                'details': {
+                    '违规类型': '时间隐藏状态下提前完成',
+                    '剩余时间': f'{remaining_minutes} 分钟',
+                    '惩罚加时': f'{penalty_minutes} 分钟',
+                    '建议': '请等待真实时间结束或使用探测雷达确认时间'
+                }
+            }, status=status.HTTP_403_FORBIDDEN)
+        else:
+            # 原有的普通错误处理
+            return False, Response(
+                {'error': '带锁任务必须等待倒计时结束后才能完成'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
 
     # 条件3: 投票解锁类型的任务需要检查投票是否通过
     if task.unlock_type == 'vote':

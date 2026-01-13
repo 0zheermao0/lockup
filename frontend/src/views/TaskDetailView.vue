@@ -69,6 +69,21 @@
                     <span class="btn-icon">🚀</span>
                     <span class="btn-text">开始任务</span>
                   </button>
+                  <!-- 时间隐藏状态警告 -->
+                  <div
+                    v-if="(task.status === 'active' || task.status === 'voting_passed') && canCompleteTask && taskTimeDisplayHidden && !isTaskExpired"
+                    class="hidden-time-warning"
+                  >
+                    <div class="warning-content">
+                      <span class="warning-icon">⚠️</span>
+                      <div class="warning-text">
+                        <p><strong>时间隐藏模式警告</strong></p>
+                        <p>在此模式下提前完成任务将触发惩罚性加时（30-180分钟）</p>
+                        <p>建议：使用探测雷达确认剩余时间，或等待确定时间结束</p>
+                      </div>
+                    </div>
+                  </div>
+
                   <button
                     v-if="(task.status === 'active' || task.status === 'voting_passed') && canCompleteTask"
                     @click="completeTask"
@@ -2438,24 +2453,62 @@ const completeTask = async () => {
   } catch (error: any) {
     console.error('Error completing task:', error)
 
-    // 处理特定错误消息
+    // 特殊处理：时间隐藏违规错误
+    if (error.response?.data?.error_code === 'HIDDEN_TIME_VIOLATION') {
+      const errorData = error.response.data
+
+      showToast.value = true
+      toastData.value = {
+        type: 'error',
+        title: '⚠️ 违规操作检测',
+        message: errorData.message || '时间隐藏状态下不能提前完成任务',
+        secondaryMessage: '系统已自动应用惩罚加时，请等待真实倒计时结束',
+        details: {
+          '违规类型': '时间隐藏状态下提前完成',
+          '惩罚加时': `${errorData.penalty_minutes} 分钟`,
+          '剩余时间': `约 ${errorData.time_remaining_minutes} 分钟`,
+          '建议操作': '使用探测雷达确认时间或等待确定结束',
+          '提醒': '重复违规将面临更严重的惩罚'
+        },
+        duration: 10000 // 显示更长时间
+      }
+
+      // 刷新任务数据以显示新的结束时间
+      await fetchTaskDetail()
+      return
+    }
+
+    // 处理其他错误消息
     let errorMessage = '完成任务失败，请重试'
 
     if (error.data?.error) {
       // 直接显示后端返回的具体错误信息
       errorMessage = error.data.error
+    } else if (error.response?.data?.error) {
+      // 检查 response.data.error（某些情况下错误数据可能在这里）
+      errorMessage = error.response.data.error
     } else if (error.status === 404) {
       errorMessage = '任务不存在或已被删除'
     } else if (error.status === 403) {
       errorMessage = '您没有权限完成此任务'
     } else if (error.status === 500) {
       errorMessage = '服务器内部错误，请稍后重试'
+    } else if (error.message && !error.message.includes('Network error') && !error.message.includes('HTTP ')) {
+      // 如果error.message包含有用信息且不是通用错误，使用它
+      errorMessage = error.message
     } else if (error.message) {
       // 网络错误或其他客户端错误
       errorMessage = `网络错误：${error.message}`
     }
 
-    alert(`❌ 完成失败：${errorMessage}`)
+    // 显示错误通知而不是alert
+    showToast.value = true
+    toastData.value = {
+      type: 'error',
+      title: '❌ 完成任务失败',
+      message: errorMessage,
+      secondaryMessage: '请检查任务状态或稍后重试'
+    }
   }
 }
 
@@ -8078,6 +8131,89 @@ onUnmounted(() => {
 
   .completion-rate-warning .warning-text {
     font-size: 0.8rem;
+  }
+}
+
+/* 时间隐藏状态警告样式 */
+.hidden-time-warning {
+  background: linear-gradient(135deg, #ff6b6b, #ee5a52);
+  border: 3px solid #000;
+  border-radius: 8px;
+  padding: 1rem;
+  margin-bottom: 1rem;
+  box-shadow: 4px 4px 0 #000;
+  animation: gentle-warning-pulse 3s ease-in-out infinite;
+}
+
+.warning-content {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+}
+
+.warning-icon {
+  font-size: 1.5rem;
+  flex-shrink: 0;
+  margin-top: 0.125rem;
+}
+
+.warning-text {
+  flex: 1;
+}
+
+.warning-text p {
+  margin: 0;
+  color: white;
+  line-height: 1.4;
+}
+
+.warning-text p:first-child {
+  font-weight: 700;
+  font-size: 0.9rem;
+  margin-bottom: 0.5rem;
+}
+
+.warning-text p:not(:first-child) {
+  font-size: 0.8rem;
+  margin-bottom: 0.25rem;
+}
+
+@keyframes gentle-warning-pulse {
+  0%, 100% {
+    opacity: 1;
+    transform: scale(1);
+    box-shadow: 4px 4px 0 #000;
+  }
+  50% {
+    opacity: 0.9;
+    transform: scale(1.01);
+    box-shadow: 5px 5px 0 #000;
+  }
+}
+
+/* 移动端适配 */
+@media (max-width: 768px) {
+  .hidden-time-warning {
+    padding: 0.75rem;
+    margin-bottom: 0.75rem;
+    border-width: 2px;
+    box-shadow: 2px 2px 0 #000;
+  }
+
+  .warning-content {
+    gap: 0.5rem;
+  }
+
+  .warning-icon {
+    font-size: 1.25rem;
+  }
+
+  .warning-text p:first-child {
+    font-size: 0.85rem;
+  }
+
+  .warning-text p:not(:first-child) {
+    font-size: 0.75rem;
   }
 }
 

@@ -478,3 +478,35 @@ ALLOWED_EMAIL_DOMAINS = [domain.strip() for domain in _allowed_domains_str.split
 EMAIL_VERIFICATION_CODE_LENGTH = int(os.getenv('EMAIL_VERIFICATION_CODE_LENGTH', '6'))
 EMAIL_VERIFICATION_CODE_EXPIRE_MINUTES = int(os.getenv('EMAIL_VERIFICATION_CODE_EXPIRE_MINUTES', '15'))
 EMAIL_VERIFICATION_MAX_ATTEMPTS_PER_HOUR = int(os.getenv('EMAIL_VERIFICATION_MAX_ATTEMPTS_PER_HOUR', '5'))
+
+
+# =============================================================================
+# 时间隐藏功能违规惩罚配置
+# =============================================================================
+
+# 时间隐藏违规惩罚设置
+HIDDEN_TIME_VIOLATION_SETTINGS = {
+    # 基础惩罚时间（分钟）
+    'BASE_PENALTY_MINUTES': int(os.getenv('HIDDEN_TIME_BASE_PENALTY_MINUTES', '30')),
+
+    # 最大惩罚时间（分钟）
+    'MAX_PENALTY_MINUTES': int(os.getenv('HIDDEN_TIME_MAX_PENALTY_MINUTES', '180')),
+
+    # 违规次数加成系数（每次违规增加的惩罚倍数）
+    'VIOLATION_MULTIPLIER': float(os.getenv('HIDDEN_TIME_VIOLATION_MULTIPLIER', '0.5')),
+
+    # 剩余时间比例系数（根据剩余时间计算额外惩罚）
+    'TIME_RATIO_FACTOR': float(os.getenv('HIDDEN_TIME_RATIO_FACTOR', '0.2')),
+
+    # 是否启用惩罚机制
+    'ENABLE_PENALTY': os.getenv('HIDDEN_TIME_ENABLE_PENALTY', 'True').lower() == 'true',
+
+    # 是否记录违规日志
+    'LOG_VIOLATIONS': os.getenv('HIDDEN_TIME_LOG_VIOLATIONS', 'True').lower() == 'true',
+
+    # 最大违规次数加成倍数（防止无限递增）
+    'MAX_VIOLATION_MULTIPLIER': float(os.getenv('HIDDEN_TIME_MAX_VIOLATION_MULTIPLIER', '2.0')),
+
+    # 最大时间比例惩罚（分钟）
+    'MAX_TIME_RATIO_PENALTY': int(os.getenv('HIDDEN_TIME_MAX_TIME_RATIO_PENALTY', '60')),
+}
