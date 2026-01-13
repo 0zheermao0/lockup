@@ -1869,6 +1869,10 @@ const taskFrozen = computed(() => {
   return (task.value as any).is_frozen || false
 })
 
+const isTaskExpired = computed(() => {
+  return timeRemaining.value <= 0
+})
+
 const canManageKeyActions = computed(() => {
   if (!task.value || task.value.task_type !== 'lock') return false
 
@@ -2498,8 +2502,7 @@ const completeTask = async () => {
           '剩余时间': `约 ${errorData.time_remaining_minutes} 分钟`,
           '建议操作': '使用探测雷达确认时间或等待确定结束',
           '提醒': '重复违规将面临更严重的惩罚'
-        },
-        duration: 10000 // 显示更长时间
+        }
       }
 
       // 刷新任务数据以显示新的结束时间
