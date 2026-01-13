@@ -2473,10 +2473,18 @@ const completeTask = async () => {
     }
   } catch (error: any) {
     console.error('Error completing task:', error)
+    console.log('Error structure:', {
+      error: error,
+      data: error.data,
+      response: error.response,
+      responseData: error.response?.data,
+      errorCode: error.response?.data?.error_code
+    })
 
     // 特殊处理：时间隐藏违规错误
-    if (error.response?.data?.error_code === 'HIDDEN_TIME_VIOLATION') {
-      const errorData = error.response.data
+    // 检查多种可能的错误数据结构
+    const errorData = error.data || error.response?.data
+    if (errorData?.error_code === 'HIDDEN_TIME_VIOLATION') {
 
       showToast.value = true
       toastData.value = {
@@ -2495,7 +2503,7 @@ const completeTask = async () => {
       }
 
       // 刷新任务数据以显示新的结束时间
-      await fetchTaskDetail()
+      await fetchTask()
       return
     }
 
