@@ -686,7 +686,7 @@
                         ✅ 投票已通过！等待倒计时结束后可手动完成任务：{{ formatTimeRemaining(timeRemaining) }}
                       </span>
                       <span v-else>
-                        ✅ 投票已通过！等待倒计时结束后可手动完成任务：<span class="hidden-time-placeholder">🔒 时间已隐藏</span>
+                        ✅ 投票已通过！时间已隐藏，您可以尝试完成任务，但若时间未到将面临惩罚加时
                       </span>
                     </div>
                     <div v-else class="hint-ready">
@@ -694,7 +694,12 @@
                     </div>
                   </div>
                   <div v-else-if="timeRemaining > 0" class="hint-waiting">
-                    ⏳ 定时解锁任务：需要等待倒计时结束后才能手动完成
+                    <span v-if="!taskTimeDisplayHidden">
+                      ⏳ 定时解锁任务：需要等待倒计时结束后才能手动完成
+                    </span>
+                    <span v-else>
+                      🔒 定时解锁任务：时间已隐藏，您可以尝试完成任务，但若时间未到将面临惩罚加时
+                    </span>
                   </div>
                   <div v-else class="hint-ready">
                     ✅ 倒计时已结束，您持有钥匙，可以手动完成任务
@@ -1672,6 +1677,14 @@ const canCompleteTask = computed(() => {
         const now = currentTime.value
         const endTime = new Date(taskEndTime.value).getTime()
         const canComplete = now >= endTime
+
+        // 特殊处理：如果时间被隐藏，钥匙持有者应该始终能看到完成任务按钮
+        // 这样他们可以尝试完成，如果时间未到，后端会拒绝并应用惩罚
+        if (taskTimeDisplayHidden.value && hasTaskKey.value) {
+          console.log('🎯 canCompleteTask (vote unlock, time hidden, key holder can always try):', true)
+          return true
+        }
+
         console.log('🎯 canCompleteTask (vote unlock, voting passed, checking time):', canComplete, 'now:', now, 'endTime:', endTime)
         return canComplete
       }
@@ -1686,6 +1699,14 @@ const canCompleteTask = computed(() => {
       const now = currentTime.value
       const endTime = new Date(taskEndTime.value).getTime()
       const canComplete = now >= endTime
+
+      // 特殊处理：如果时间被隐藏，钥匙持有者应该始终能看到完成任务按钮
+      // 这样他们可以尝试完成，如果时间未到，后端会拒绝并应用惩罚
+      if (taskTimeDisplayHidden.value && hasTaskKey.value) {
+        console.log('🎯 canCompleteTask (time hidden, key holder can always try):', true)
+        return true
+      }
+
       console.log('🎯 canCompleteTask (time unlock with key):', canComplete, 'now:', now, 'endTime:', endTime)
       return canComplete
     }
