@@ -570,3 +570,72 @@ class TaskDeadlineReminder(models.Model):
 
     def __str__(self):
         return f"{self.participant.username} - {self.task.title} ({self.get_reminder_type_display()})"
+
+
+class TaskViolationAttempt(models.Model):
+    """任务违规尝试记录 - 时间隐藏状态下的违规检测"""
+
+    VIOLATION_TYPE_CHOICES = [
+        ('premature_completion_hidden_time', '时间隐藏状态下提前完成'),
+        ('multiple_rapid_attempts', '快速多次违规尝试'),
+    ]
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    task = models.ForeignKey(LockTask, on_delete=models.CASCADE, related_name='violation_attempts',
+                            help_text='相关任务')
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE,
+                            related_name='violation_attempts', help_text='违规用户')
+    violation_type = models.CharField(max_length=50, choices=VIOLATION_TYPE_CHOICES,
+                                     help_text='违规类型')
+
+    # 时间信息
+    attempted_at = models.DateTimeField(auto_now_add=True, help_text='尝试时间')
+    actual_end_time = models.DateTimeField(help_text='任务实际结束时间')
+    attempted_completion_time = models.DateTimeField(help_text='尝试完成时间')
+    time_remaining_seconds = models.IntegerField(help_text='剩余时间（秒）')
+
+    # 惩罚信息
+    penalty_applied = models.BooleanField(default=False, help_text='是否已应用惩罚')
+    penalty_minutes = models.IntegerField(null=True, blank=True, help_text='惩罚加时分钟数')
+
+    # 审计信息
+    user_ip = models.GenericIPAddressField(null=True, blank=True, help_text='用户IP地址')
+    user_agent = models.TextField(null=True, blank=True, help_text='用户代理字符串')
+
+    # 元数据
+    metadata = models.JSONField(default=dict, blank=True, help_text='额外的违规数据')
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-attempted_at']
+        indexes = [
+            models.Index(fields=['task', '-attempted_at']),
+            models.Index(fields=['user', '-attempted_at']),
+            models.Index(fields=['violation_type', '-attempted_at']),
+            models.Index(fields=['penalty_applied', '-attempted_at']),
+        ]
+        verbose_name = '任务违规尝试记录'
+        verbose_name_plural = '任务违规尝试记录'
+
+    def __str__(self):
+        return f"{self.user.username} - {self.task.title} ({self.get_violation_type_display()}) - {self.attempted_at.strftime('%Y-%m-%d %H:%M')}"
+
+    @property
+    def time_remaining_minutes(self):
+        """剩余时间（分钟）"""
+        return round(self.time_remaining_seconds / 60, 2)
+
+    @property
+    def violation_severity(self):
+        """违规严重程度（基于剩余时间）"""
+        minutes = self.time_remaining_minutes
+        if minutes > 60:
+            return 'high'  # 高严重程度：剩余1小时以上
+        elif minutes > 30:
+            return 'medium'  # 中等严重程度：剩余30分钟-1小时
+        elif minutes > 10:
+            return 'low'  # 低严重程度：剩余10-30分钟
+        else:
+            return 'minimal'  # 轻微：剩余10分钟以内

@@ -1176,48 +1176,50 @@ Telegram 通知：{'✅ 已开启' if user.telegram_notifications_enabled else '
         logger.info(f"Processing share claim callback: share_token={share_token}, user_id={current_user.id}")
 
         try:
-            # 导入必要的模型
+            # 导入必要的模型和事务
             from store.models import SharedItem
+            from django.db import transaction
 
-            # 查找分享记录
-            shared_item_query = await sync_to_async(SharedItem.objects.filter)(
-                share_token=share_token,
-                status='active'
-            )
-            shared_item = await sync_to_async(shared_item_query.select_related('sharer', 'item', 'item__item_type').first)()
+            # 使用事务保护整个操作
+            async with transaction.atomic():
+                # 查找分享记录（添加行锁防止并发）
+                shared_item_query = await sync_to_async(SharedItem.objects.select_for_update().filter)(
+                    share_token=share_token,
+                    status='active'
+                )
+                shared_item = await sync_to_async(shared_item_query.select_related('sharer', 'item', 'item__item_type').first)()
 
-            if not shared_item:
-                await self._safe_callback_response(query, "❌ 分享链接无效或已过期", show_alert=True)
-                return
+                if not shared_item:
+                    await self._safe_callback_response(query, "❌ 分享链接无效或已过期", show_alert=True)
+                    return
 
-            # 检查是否是分享者自己
-            if shared_item.sharer.id == current_user.id:
-                await self._safe_callback_response(query, "❌ 不能获取自己分享的物品", show_alert=True)
-                return
+                # 检查是否是分享者自己
+                if shared_item.sharer.id == current_user.id:
+                    await self._safe_callback_response(query, "❌ 不能获取自己分享的物品", show_alert=True)
+                    return
 
-            # 检查是否已被其他人获取
-            if shared_item.claimer:
-                await self._safe_callback_response(query, f"❌ 物品已被 {shared_item.claimer.username} 获取", show_alert=True)
-                return
+                # 检查是否已被其他人获取
+                if shared_item.claimer:
+                    await self._safe_callback_response(query, f"❌ 物品已被 {shared_item.claimer.username} 获取", show_alert=True)
+                    return
 
-            # 检查获取者的背包空间
-            claimer_inventory_query = await sync_to_async(UserInventory.objects.filter)(user=current_user)
-            claimer_inventory = await sync_to_async(claimer_inventory_query.first)()
+                # 检查获取者的背包空间
+                claimer_inventory_query = await sync_to_async(UserInventory.objects.filter)(user=current_user)
+                claimer_inventory = await sync_to_async(claimer_inventory_query.first)()
 
-            if not claimer_inventory:
-                await self._safe_callback_response(query, "❌ 您还没有背包，请先前往应用购买背包", show_alert=True)
-                return
+                if not claimer_inventory:
+                    await self._safe_callback_response(query, "❌ 您还没有背包，请先前往应用购买背包", show_alert=True)
+                    return
 
-            if claimer_inventory.available_slots <= 0:
-                await self._safe_callback_response(query, "❌ 您的背包空间不足，请先清理背包", show_alert=True)
-                return
+                if claimer_inventory.available_slots <= 0:
+                    await self._safe_callback_response(query, "❌ 您的背包空间不足，请先清理背包", show_alert=True)
+                    return
 
-            # 执行物品转移
-            try:
-                # 更新物品所有者和背包
+                # 执行物品转移
                 item = shared_item.item
                 item.owner = current_user
                 item.inventory = claimer_inventory
+                item.status = 'available'  # 确保物品状态正确
                 await sync_to_async(item.save)()
 
                 # 更新分享记录
@@ -1226,62 +1228,67 @@ Telegram 通知：{'✅ 已开启' if user.telegram_notifications_enabled else '
                 shared_item.claimed_at = timezone.now()
                 await sync_to_async(shared_item.save)()
 
-                # 更新背包容量
-                await sync_to_async(claimer_inventory.update_slots)()
+                # ✅ UserInventory 的 available_slots 是 @property，自动计算
+                # 不需要手动调用 update_slots() 方法
 
-                # 创建通知给分享者（与web API保持一致）
-                from users.models import Notification
-                await sync_to_async(Notification.create_notification)(
-                    recipient=shared_item.sharer,
-                    notification_type='item_shared',
-                    actor=current_user,
-                    title='物品被领取',
-                    message=f'{current_user.username} 领取了您分享的 {item.item_type.display_name}',
-                    related_object_type='shared_item',
-                    related_object_id=shared_item.id,
-                    extra_data={
-                        'item_type': item.item_type.name,
-                        'item_display_name': item.item_type.display_name,
-                        'claimer_id': current_user.id,
-                        'claimer_username': current_user.username,
-                        'claimed_at': shared_item.claimed_at.isoformat()
-                    }
-                )
+            # 创建通知给分享者（与web API保持一致）
+            from users.models import Notification
+            await sync_to_async(Notification.create_notification)(
+                recipient=shared_item.sharer,
+                notification_type='item_shared',
+                actor=current_user,
+                title='物品被领取',
+                message=f'{current_user.username} 领取了您分享的 {item.item_type.display_name}',
+                related_object_type='shared_item',
+                related_object_id=shared_item.id,
+                extra_data={
+                    'item_type': item.item_type.name,
+                    'item_display_name': item.item_type.display_name,
+                    'claimer_id': current_user.id,
+                    'claimer_username': current_user.username,
+                    'claimed_at': shared_item.claimed_at.isoformat()
+                }
+            )
 
-                # 更新消息显示获取成功
-                original_text = query.message.text
-                updated_text = f"{original_text}\n\n🎉 @{current_user.username} 已成功获取此物品！"
+            # 更新消息显示获取成功
+            original_text = query.message.text
+            updated_text = f"{original_text}\n\n🎉 @{current_user.username} 已成功获取此物品！"
 
-                # 移除按钮
-                edit_success = await self._safe_edit_message(
-                    query,
-                    updated_text,
-                    reply_markup=None,
-                    parse_mode='Markdown'
-                )
+            # 移除按钮
+            edit_success = await self._safe_edit_message(
+                query,
+                updated_text,
+                reply_markup=None,
+                parse_mode='Markdown'
+            )
 
-                # 发送成功消息
-                success_message = f"🎉 成功获取 {item.item_type.icon} {item.item_type.display_name}！\n\n物品已添加到您的背包中。"
-                response_success = await self._safe_callback_response(
-                    query,
-                    success_message,
-                    show_alert=True
-                )
+            # 发送成功消息
+            success_message = f"🎉 成功获取 {item.item_type.icon} {item.item_type.display_name}！\n\n物品已添加到您的背包中。"
+            response_success = await self._safe_callback_response(
+                query,
+                success_message,
+                show_alert=True
+            )
 
-                if edit_success and response_success:
-                    logger.info(f"Item {item.item_type.display_name} successfully transferred from {shared_item.sharer.username} to {current_user.username}")
-                else:
-                    logger.warning(f"Item transfer successful but message update failed: edit={edit_success}, response={response_success}")
-
-            except Exception as e:
-                logger.error(f"Failed to transfer item: {e}")
-                await self._safe_callback_response(query, "❌ 物品转移失败，请稍后重试", show_alert=True)
+            if edit_success and response_success:
+                logger.info(f"Item {item.item_type.display_name} successfully transferred from {shared_item.sharer.username} to {current_user.username}")
+            else:
+                logger.warning(f"Item transfer successful but message update failed: edit={edit_success}, response={response_success}")
 
         except Exception as e:
-            logger.error(f"Error in share claim callback: {e}")
-            import traceback
-            logger.error(f"Traceback: {traceback.format_exc()}")
-            await self._safe_callback_response(query, "❌ 获取物品失败，请稍后重试", show_alert=True)
+            logger.error(f"Error in share claim callback: {e}", exc_info=True)
+
+            # 根据错误类型提供不同的用户消息
+            if "does not exist" in str(e):
+                error_msg = "❌ 物品已被领取或不存在"
+            elif "space" in str(e).lower() or "slot" in str(e).lower():
+                error_msg = "❌ 背包空间不足"
+            elif "inventory" in str(e).lower():
+                error_msg = "❌ 背包系统错误"
+            else:
+                error_msg = "❌ 获取物品失败，请稍后重试"
+
+            await self._safe_callback_response(query, error_msg, show_alert=True)
 
     def _create_telegram_share_link(self, item, sharer_user):
         """创建Telegram分享链接（同步方法）"""
@@ -1577,21 +1584,34 @@ Telegram 通知：{'✅ 已开启' if user.telegram_notifications_enabled else '
             # 计算剩余时间
             remaining_time = self._format_remaining_time(task.deadline)
 
-            # 计算参与者信息
-            participant_count = getattr(task, 'participant_count', 0)
-            participant_info = f"{participant_count}/{task.max_participants}人"
+            # 获取详细参与者信息
+            from tasks.models import TaskParticipant
+            participants = TaskParticipant.objects.filter(task=task)
+            current_count = participants.count()
 
-            # 难度显示
-            difficulty_map = {
-                'easy': '🟢 简单',
-                'normal': '🟡 普通',
-                'hard': '🔴 困难',
-                'hell': '🔥 地狱'
-            }
-            difficulty = difficulty_map.get(task.difficulty, task.difficulty)
+            # 构建参与者预览（显示前3个参与者）
+            participant_preview = ""
+            if participants.exists():
+                preview_participants = participants[:3]
+                names = [p.participant.username for p in preview_participants]
+                participant_preview = f" ({', '.join(names)}{'...' if current_count > 3 else ''})"
+
+            participant_info = f"{current_count}/{task.max_participants}人{participant_preview}"
+
+            # 根据任务类型决定是否显示难度
+            difficulty_info = ""
+            if task.task_type == 'lock' and task.difficulty:
+                difficulty_map = {
+                    'easy': '🟢 简单',
+                    'normal': '🟡 普通',
+                    'hard': '🔴 困难',
+                    'hell': '🔥 地狱'
+                }
+                difficulty = difficulty_map.get(task.difficulty, task.difficulty)
+                difficulty_info = f"📊 {difficulty} | "
 
             message_text += f"""{i}. **{task.title}**
-   📊 {difficulty} | 👥 {participant_info} | ⏰ {remaining_time}
+   {difficulty_info}👥 {participant_info} | ⏰ {remaining_time}
    💰 奖励: {task.reward}积分
 
 """
@@ -1675,18 +1695,7 @@ Telegram 通知：{'✅ 已开启' if user.telegram_notifications_enabled else '
             if task.status not in ['open', 'taken', 'submitted']:
                 return await self._safe_callback_response(query, "❌ 任务已结束或不可接取", show_alert=True)
 
-            # 检查是否是任务创建者
-            if task.user.id == current_user.id:  # 修正：使用 user 而不是 creator
-                return await self._safe_callback_response(query, "❌ 不能接取自己创建的任务", show_alert=True)
-
-            # 检查是否已经参与
-            existing_participant = await sync_to_async(
-                task.participants.filter(participant=current_user).first  # 修正：使用正确的关系名称和字段
-            )()
-            if existing_participant:
-                return await self._safe_callback_response(query, "❌ 您已经参与了这个任务", show_alert=True)
-
-            # 执行任务接取逻辑
+            # 执行任务接取逻辑（所有验证都在_take_board_task中进行）
             success, message = await self._take_board_task(task, current_user)
 
             if success:
@@ -1704,49 +1713,118 @@ Telegram 通知：{'✅ 已开启' if user.telegram_notifications_enabled else '
 
                 logger.info(f"User {current_user.username} successfully took board task {task.title}")
             else:
-                await self._safe_callback_response(query, f"❌ {message}", show_alert=True)
+                # 改进错误消息显示
+                error_messages = {
+                    "任务已满员": "😔 任务已满员，请尝试其他任务",
+                    "您已经参与了这个任务": "ℹ️ 您已经参与了这个任务",
+                    "不能接取自己发布的任务": "⚠️ 不能接取自己发布的任务",
+                    "任务已过期": "⏰ 任务已过期，无法接取",
+                    "任务不可接取": "❌ 任务当前状态不允许接取",
+                    "任务不是开放状态": "❌ 任务不是开放状态"
+                }
+
+                # 检查是否是完成率限制错误
+                if "完成率" in message:
+                    display_message = f"📊 {message}"
+                else:
+                    display_message = error_messages.get(message, f"❌ {message}")
+
+                await self._safe_callback_response(query, display_message, show_alert=True)
 
         except Exception as e:
             logger.error(f"Error in board take callback: {e}")
             await self._safe_callback_response(query, "❌ 接取任务失败，请稍后重试", show_alert=True)
 
     async def _take_board_task(self, task, user):
-        """执行任务接取逻辑"""
+        """执行任务接取逻辑 - 与Web应用验证保持一致"""
         try:
             from django.utils import timezone
-
-            # 检查任务状态和容量
-            current_participants = await sync_to_async(
-                task.participants.filter(status='joined').count  # 修正：使用正确的关系名称和状态
-            )()
-
-            if current_participants >= task.max_participants:
-                return False, "任务已满员"
-
-            if task.status not in ['open', 'taken', 'submitted']:
-                return False, "任务已结束或不可接取"
-
-            # 创建参与记录
             from tasks.models import TaskParticipant
-            await sync_to_async(TaskParticipant.objects.create)(
-                task=task,
-                participant=user,  # 修正：使用 participant 而不是 user
-                status='joined',   # 修正：使用正确的状态
-                joined_at=timezone.now()
-            )
 
-            # 检查是否满员，如果满员则开始任务
-            new_participant_count = current_participants + 1
-            if new_participant_count >= task.max_participants:
-                task.status = 'active'
-                task.started_at = timezone.now()
+            # 验证1: 检查是否是任务板
+            if task.task_type != 'board':
+                return False, "只能接取任务板任务"
+
+            # 验证2: 检查是否是自己发布的任务
+            if task.user == user:
+                return False, "不能接取自己发布的任务"
+
+            # 验证3: 检查是否已经参与过
+            existing_participant = await sync_to_async(
+                TaskParticipant.objects.filter(task=task, participant=user).exists
+            )()
+            if existing_participant:
+                return False, "您已经参与了这个任务"
+
+            # 验证4: 检查完成率门槛（新增）
+            if task.completion_rate_threshold and task.completion_rate_threshold > 0:
+                user_completion_rate = await sync_to_async(user.get_task_completion_rate)()
+                if user_completion_rate < task.completion_rate_threshold:
+                    return False, f"您的任务完成率为{user_completion_rate:.1f}%，需要达到{task.completion_rate_threshold}%才能接取此任务"
+
+            # 验证5: 检查截止时间（新增）
+            if task.deadline and timezone.now() > task.deadline:
+                return False, "任务已过期"
+
+            # 判断是单人还是多人任务
+            is_multi_person = task.max_participants and task.max_participants > 1
+
+            if is_multi_person:
+                # 验证6: 多人任务状态检查
+                if task.status not in ['open', 'taken', 'submitted']:
+                    return False, "任务不可接取"
+
+                # 验证7: 检查是否已满员
+                current_participants = await sync_to_async(
+                    TaskParticipant.objects.filter(task=task).count
+                )()
+                if current_participants >= task.max_participants:
+                    return False, "任务已满员"
+
+                # 创建参与记录
+                participant = await sync_to_async(TaskParticipant.objects.create)(
+                    task=task,
+                    participant=user
+                )
+
+                # 多人任务状态更新逻辑
+                if current_participants == 0 and task.status == 'open':
+                    task.status = 'taken'
+                    task.taker = user
+                    task.taken_at = timezone.now()
+
+                    # 设置截止时间
+                    if task.max_duration:
+                        task.deadline = task.taken_at + timezone.timedelta(hours=task.max_duration)
+
+                    await sync_to_async(task.save)()
+
+            else:
+                # 单人任务状态检查
+                if task.status != 'open':
+                    return False, "任务不是开放状态"
+
+                # 创建参与记录
+                await sync_to_async(TaskParticipant.objects.create)(
+                    task=task,
+                    participant=user
+                )
+
+                # 单人任务状态更新
+                task.status = 'taken'
+                task.taker = user
+                task.taken_at = timezone.now()
+
+                if task.max_duration:
+                    task.deadline = task.taken_at + timezone.timedelta(hours=task.max_duration)
+
                 await sync_to_async(task.save)()
 
-            return True, "成功接取任务"
+            return True, "任务接取成功"
 
         except Exception as e:
             logger.error(f"Error in _take_board_task: {e}")
-            return False, f"接取失败: {str(e)}"
+            return False, f"接取任务时发生错误: {str(e)}"
 
     async def _update_to_take_interface(self, query, task, creator):
         """更新消息为接取界面"""
@@ -1774,22 +1852,27 @@ Telegram 通知：{'✅ 已开启' if user.telegram_notifications_enabled else '
         # 计算剩余时间
         remaining_time = self._format_remaining_time(task.deadline)
 
-        # 难度显示
-        difficulty_map = {
-            'easy': '🟢 简单',
-            'normal': '🟡 普通',
-            'hard': '🔴 困难',
-            'hell': '🔥 地狱'
-        }
-        difficulty = difficulty_map.get(task.difficulty, task.difficulty)
+        # 根据任务类型决定是否显示难度
+        difficulty_line = ""
+        if task.task_type == 'lock' and task.difficulty:
+            difficulty_map = {
+                'easy': '🟢 简单',
+                'normal': '🟡 普通',
+                'hard': '🔴 困难',
+                'hell': '🔥 地狱'
+            }
+            difficulty = difficulty_map.get(task.difficulty, task.difficulty)
+            difficulty_line = f"📊 **难度**：{difficulty}\n"
+
+        # 获取参与者信息
+        participants_info = self._get_participants_info(task)
 
         if chat_type == 'private':
             message_text = f"""🎯 **任务详情**
 
 📋 **任务标题**：{task.title}
 👤 **创建者**：{creator.username}
-📊 **难度**：{difficulty}
-👥 **参与者**：{task.max_participants}人
+{difficulty_line}{participants_info}
 ⏰ **截止时间**：{remaining_time}
 💰 **奖励**：{task.reward}积分
 
@@ -1802,8 +1885,7 @@ Telegram 通知：{'✅ 已开启' if user.telegram_notifications_enabled else '
 
 📋 **任务标题**：{task.title}
 👤 **创建者**：{creator.username}
-📊 **难度**：{difficulty}
-👥 **参与者**：{task.max_participants}人
+{difficulty_line}{participants_info}
 ⏰ **截止时间**：{remaining_time}
 💰 **奖励**：{task.reward}积分
 
@@ -1813,6 +1895,38 @@ Telegram 通知：{'✅ 已开启' if user.telegram_notifications_enabled else '
 🎯 点击下方按钮接取任务！"""
 
         return message_text
+
+    def _get_participants_info(self, task):
+        """获取参与者详细信息"""
+        from tasks.models import TaskParticipant
+
+        participants = TaskParticipant.objects.filter(task=task).select_related('participant')
+        current_count = participants.count()
+
+        if current_count == 0:
+            return f"👥 **参与者**：0/{task.max_participants}人"
+
+        # 状态图标映射
+        status_emojis = {
+            'joined': '✅',
+            'submitted': '📋',
+            'approved': '🎉',
+            'rejected': '❌'
+        }
+
+        participant_lines = []
+        for participant in participants[:5]:  # 最多显示5个参与者
+            emoji = status_emojis.get(participant.status, '❓')
+            participant_lines.append(f"  {emoji} {participant.participant.username}")
+
+        # 如果参与者超过5个，显示省略号
+        if current_count > 5:
+            participant_lines.append(f"  ... 还有{current_count - 5}人")
+
+        participants_text = "\n".join(participant_lines)
+
+        return f"""👥 **参与者**：{current_count}/{task.max_participants}人
+{participants_text}"""
 
     async def _update_message_with_participant(self, query, task, new_participant):
         """更新消息显示新参与者"""

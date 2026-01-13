@@ -65,6 +65,7 @@ watch(
 @import './assets/themes/shared-variables.css';
 @import './assets/themes/neo-brutalism.css';
 @import './assets/themes/liquid-glass.css';
+@import './assets/themes/liquid-glass-components.css';
 @import './assets/themes/theme-transitions.css';
 
 /* Global styles */

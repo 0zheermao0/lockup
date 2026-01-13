@@ -621,3 +621,185 @@ def calculate_rollback_state(task, events_to_revert):
         'frozen_at': current_frozen_at,
         'frozen_end_time': current_frozen_end_time
     }
+
+
+def calculate_penalty_overtime(task, user):
+    """
+    计算时间隐藏违规的惩罚性加时时长
+
+    Args:
+        task: LockTask 实例
+        user: 违规用户
+
+    Returns:
+        int: 惩罚加时分钟数
+    """
+    from .models import TaskViolationAttempt
+    from django.conf import settings
+
+    # 获取配置参数
+    violation_settings = getattr(settings, 'HIDDEN_TIME_VIOLATION_SETTINGS', {})
+    base_penalty = violation_settings.get('BASE_PENALTY_MINUTES', 30)
+    max_penalty = violation_settings.get('MAX_PENALTY_MINUTES', 180)
+    violation_multiplier_factor = violation_settings.get('VIOLATION_MULTIPLIER', 0.5)
+    time_ratio_factor = violation_settings.get('TIME_RATIO_FACTOR', 0.2)
+    max_violation_multiplier = violation_settings.get('MAX_VIOLATION_MULTIPLIER', 2.0)
+    max_time_ratio_penalty = violation_settings.get('MAX_TIME_RATIO_PENALTY', 60)
+
+    # 检查是否启用惩罚机制
+    if not violation_settings.get('ENABLE_PENALTY', True):
+        return 0
+
+    # 获取该用户对此任务的历史违规次数
+    violation_count = TaskViolationAttempt.objects.filter(
+        task=task,
+        user=user,
+        violation_type='premature_completion_hidden_time'
+    ).count()
+
+    # 计算剩余时间（分钟）
+    remaining_seconds = (task.end_time - timezone.now()).total_seconds()
+    remaining_minutes = max(1, int(remaining_seconds / 60))
+
+    # 递增惩罚公式：基础惩罚 + 违规次数加成 + 剩余时间比例
+    violation_multiplier = min(violation_count * violation_multiplier_factor, max_violation_multiplier)
+    time_ratio_penalty = min(remaining_minutes * time_ratio_factor, max_time_ratio_penalty)
+
+    total_penalty = int(base_penalty * (1 + violation_multiplier) + time_ratio_penalty)
+
+    # 限制惩罚上限，避免过度惩罚
+    return min(total_penalty, max_penalty)
+
+
+def apply_penalty_overtime(task, user, penalty_minutes):
+    """
+    应用惩罚性加时
+
+    Args:
+        task: LockTask 实例
+        user: 违规用户
+        penalty_minutes: 惩罚加时分钟数
+    """
+    # 记录时间变化前的状态
+    old_end_time = task.end_time
+    old_frozen_end_time = task.frozen_end_time
+
+    # 应用惩罚加时 - 需要考虑冻结状态
+    if task.is_frozen:
+        # 冻结状态：修改 frozen_end_time
+        if task.frozen_end_time:
+            task.frozen_end_time += timedelta(minutes=penalty_minutes)
+        else:
+            # 如果没有冻结结束时间，使用原结束时间作为基础
+            if task.end_time:
+                task.frozen_end_time = task.end_time + timedelta(minutes=penalty_minutes)
+            else:
+                # 如果都没有，从现在开始加时
+                task.frozen_end_time = timezone.now() + timedelta(minutes=penalty_minutes)
+    else:
+        # 非冻结状态：修改 end_time
+        task.end_time += timedelta(minutes=penalty_minutes)
+
+    task.save(update_fields=['end_time', 'frozen_end_time'])
+
+    # 创建时间线事件
+    TaskTimelineEvent.objects.create(
+        task=task,
+        event_type='overtime_added',  # 使用现有的加时事件类型
+        user=user,
+        time_change_minutes=penalty_minutes,
+        previous_end_time=old_end_time,
+        new_end_time=task.end_time,
+        description=f'{user.username} 违规尝试提前完成任务，系统自动加时 {penalty_minutes} 分钟作为惩罚',
+        metadata={
+            'penalty_type': 'hidden_time_violation',
+            'automatic': True,
+            'penalty_minutes': penalty_minutes,
+            'is_frozen': task.is_frozen,
+            'previous_frozen_end_time': old_frozen_end_time.isoformat() if old_frozen_end_time else None,
+            'new_frozen_end_time': task.frozen_end_time.isoformat() if task.frozen_end_time else None,
+        }
+    )
+
+
+def record_violation_attempt(task, user, violation_type, request=None):
+    """
+    记录违规尝试
+
+    Args:
+        task: LockTask 实例
+        user: 违规用户
+        violation_type: 违规类型
+        request: HTTP请求对象（可选，用于获取IP和User-Agent）
+
+    Returns:
+        TaskViolationAttempt: 创建的违规记录实例或None（如果日志记录被禁用）
+    """
+    from .models import TaskViolationAttempt
+    from django.conf import settings
+
+    # 获取配置参数
+    violation_settings = getattr(settings, 'HIDDEN_TIME_VIOLATION_SETTINGS', {})
+
+    # 检查是否启用违规日志记录
+    if not violation_settings.get('LOG_VIOLATIONS', True):
+        return None
+
+    time_remaining = (task.end_time - timezone.now()).total_seconds()
+
+    # 获取用户IP和User-Agent
+    user_ip = None
+    user_agent = None
+    if request:
+        user_ip = get_client_ip(request)
+        user_agent = request.META.get('HTTP_USER_AGENT', '')
+
+    # 计算将要应用的惩罚时间
+    penalty_minutes = calculate_penalty_overtime(task, user)
+
+    violation_record = TaskViolationAttempt.objects.create(
+        task=task,
+        user=user,
+        violation_type=violation_type,
+        actual_end_time=task.end_time,
+        attempted_completion_time=timezone.now(),
+        time_remaining_seconds=int(time_remaining),
+        penalty_applied=violation_settings.get('ENABLE_PENALTY', True),
+        penalty_minutes=penalty_minutes if violation_settings.get('ENABLE_PENALTY', True) else 0,
+        user_ip=user_ip,
+        user_agent=user_agent,
+        metadata={
+            'task_status': task.status,
+            'time_display_hidden': task.time_display_hidden,
+            'is_frozen': task.is_frozen,
+            'violation_count_before': TaskViolationAttempt.objects.filter(
+                task=task, user=user, violation_type=violation_type
+            ).count(),
+            'settings_used': {
+                'base_penalty': violation_settings.get('BASE_PENALTY_MINUTES', 30),
+                'max_penalty': violation_settings.get('MAX_PENALTY_MINUTES', 180),
+                'violation_multiplier': violation_settings.get('VIOLATION_MULTIPLIER', 0.5),
+                'penalty_enabled': violation_settings.get('ENABLE_PENALTY', True)
+            }
+        }
+    )
+
+    return violation_record
+
+
+def get_client_ip(request):
+    """
+    获取客户端真实IP地址
+
+    Args:
+        request: HTTP请求对象
+
+    Returns:
+        str: 客户端IP地址
+    """
+    x_forwarded_for = request.META.get('HTTP_X_FORWARDED_FOR')
+    if x_forwarded_for:
+        ip = x_forwarded_for.split(',')[0].strip()
+    else:
+        ip = request.META.get('REMOTE_ADDR')
+    return ip

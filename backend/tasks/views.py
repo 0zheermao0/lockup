@@ -3370,7 +3370,7 @@ def use_detection_radar(request, pk):
     if not task.time_display_hidden:
         return Response({'error': '任务时间未隐藏，无需使用探测雷达'}, status=400)
 
-    if task.status not in ['active', 'voting']:
+    if task.status not in ['active', 'voting', 'voting_passed']:
         return Response({'error': '任务已结束，无法使用探测雷达'}, status=400)
 
     # REQUIREMENT: Only allow detection on user's own lock tasks
