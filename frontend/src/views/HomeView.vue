@@ -289,12 +289,14 @@
               <div class="post-content" v-html="post.content"></div>
 
               <div v-if="post.images && post.images.length > 0" class="post-images">
-                <img
+                <CensoredImage
                   v-for="(image, index) in post.images"
                   :key="index"
                   :src="image.image"
                   :alt="`图片 ${index + 1}`"
+                  :likes-count="post.likes_count"
                   class="post-image"
+                  @click="openImageModal(image.image)"
                 />
               </div>
 
@@ -371,6 +373,14 @@
       @close="closeChatModal"
     />
 
+    <!-- 图片预览模态框 -->
+    <div v-if="showImageModal" class="image-modal" @click="closeImageModal">
+      <div class="image-modal-content" @click.stop>
+        <img :src="selectedImage" alt="查看图片" />
+        <button @click="closeImageModal" class="close-modal-btn">×</button>
+      </div>
+    </div>
+
     <!-- Back to Top Button -->
     <BackToTopButton
       :scroll-threshold="100"
@@ -404,6 +414,7 @@ import UserAvatar from '../components/UserAvatar.vue'
 import BackToTopButton from '../components/BackToTopButton.vue'
 import LogoutConfirmModal from '../components/LogoutConfirmModal.vue'
 import ChatModal from '../components/ChatModal.vue'
+import CensoredImage from '../components/CensoredImage.vue'
 import type { Post } from '../types/index'
 
 const router = useRouter()
@@ -431,6 +442,10 @@ const showLogoutModal = ref(false)
 
 // 聊天模态框状态
 const isChatModalVisible = ref(false)
+
+// 图片预览模态框状态
+const showImageModal = ref(false)
+const selectedImage = ref('')
 
 // 移动端更多操作展开状态
 const showMoreActions = ref(false)
@@ -512,6 +527,16 @@ const openChatModal = () => {
 
 const closeChatModal = () => {
   isChatModalVisible.value = false
+}
+
+const openImageModal = (imageUrl: string) => {
+  selectedImage.value = imageUrl
+  showImageModal.value = true
+}
+
+const closeImageModal = () => {
+  showImageModal.value = false
+  selectedImage.value = ''
 }
 
 const openCreateModal = (checkinMode: boolean = false) => {
@@ -2163,6 +2188,70 @@ onMounted(async () => {
   .logout-circle {
     width: 28px;
     height: 28px;
+  }
+}
+
+/* Image modal styles */
+.image-modal {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background-color: rgba(0, 0, 0, 0.9);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.image-modal-content {
+  position: relative;
+  max-width: 90vw;
+  max-height: 90vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2rem;
+}
+
+.image-modal-content img {
+  max-width: 100%;
+  max-height: 85vh;
+  object-fit: contain;
+}
+
+.close-modal-btn {
+  position: absolute;
+  top: 1rem;
+  right: 1rem;
+  background: rgba(0, 0, 0, 0.7);
+  color: white;
+  border: none;
+  border-radius: 50%;
+  width: 40px;
+  height: 40px;
+  cursor: pointer;
+  font-size: 1.5rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10;
+}
+
+.close-modal-btn:hover {
+  background: rgba(0, 0, 0, 0.9);
+}
+
+@media (max-width: 768px) {
+  .image-modal-content {
+    max-width: 95vw;
+    max-height: 95vh;
+    padding: 1rem;
+  }
+
+  .image-modal-content img {
+    max-height: 80vh;
   }
 }
 </style>

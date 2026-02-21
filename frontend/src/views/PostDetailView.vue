@@ -58,11 +58,12 @@
             <div class="post-content" v-html="post.content"></div>
 
             <div v-if="post.images && post.images.length > 0" class="post-images">
-              <img
+              <CensoredImage
                 v-for="(image, index) in post.images"
                 :key="index"
                 :src="image.image"
                 :alt="`图片 ${index + 1}`"
+                :likes-count="post.likes_count"
                 class="post-image"
                 @click="openImageModal(image.image)"
               />
@@ -454,6 +455,7 @@ import { smartGoBack } from '../utils/navigation'
 import LockIndicator from '../components/LockIndicator.vue'
 import ProfileModal from '../components/ProfileModal.vue'
 import RichTextEditor from '../components/RichTextEditor.vue'
+import CensoredImage from '../components/CensoredImage.vue'
 import type { Post, Comment } from '../types/index'
 
 const route = useRoute()
