@@ -36,8 +36,12 @@ urlpatterns = [
     # 等级管理
     path('users/<int:user_id>/promote/', views.promote_user, name='promote-user'),
 
-    # 每日登录奖励
+    # 每日登录奖励（已废弃，保留用于兼容）
     path('daily-reward/', views.daily_login_reward, name='daily-login-reward'),
+
+    # 每日签到
+    path('checkin/', views.check_in, name='check-in'),
+    path('checkin/calendar/', views.get_checkin_calendar, name='checkin-calendar'),
 
     # 通知系统
     path('notifications/', views.NotificationListView.as_view(), name='notification-list'),

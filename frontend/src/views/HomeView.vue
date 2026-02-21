@@ -78,21 +78,8 @@
             />
           </div>
 
-          <div class="user-card">
-            <h3>用户信息</h3>
-            <div class="info-item">
-              <span class="label">活跃度</span>
-              <span class="value">{{ authStore.user?.activity_score || 0 }}</span>
-            </div>
-            <div class="info-item">
-              <span class="label">发布动态</span>
-              <span class="value">{{ authStore.user?.total_posts || 0 }}</span>
-            </div>
-            <div class="info-item">
-              <span class="label">获得点赞</span>
-              <span class="value">{{ authStore.user?.total_likes_received || 0 }}</span>
-            </div>
-          </div>
+          <!-- Calendar Check-in Component -->
+          <CalendarCheckIn />
 
           <div class="actions-card">
             <h3>快速操作</h3>
@@ -156,17 +143,8 @@
               </div>
             </div>
 
-            <!-- User Stats (only when no lock) -->
-            <div v-if="!authStore.user?.active_lock_task" class="mobile-user-stats-inline">
-              <div class="stat-inline">
-                <span class="stat-emoji">⚡</span>
-                <span class="stat-value">{{ authStore.user?.activity_score || 0 }}</span>
-              </div>
-              <div class="stat-inline">
-                <span class="stat-emoji">🪙</span>
-                <span class="stat-value">{{ authStore.user?.coins || 0 }}</span>
-              </div>
-            </div>
+            <!-- Mini Calendar Check-in (only when no lock) -->
+            <CalendarCheckInMini v-if="!authStore.user?.active_lock_task" />
 
             <!-- Action Buttons -->
             <div class="mobile-actions-inline" :class="{ 'with-lock': authStore.user?.active_lock_task, 'without-lock': !authStore.user?.active_lock_task }">
@@ -408,6 +386,8 @@ import { tasksApi } from '../lib/api-tasks'
 import CreatePostModal from '../components/CreatePostModal.vue'
 import CreateTaskModal from '../components/CreateTaskModal.vue'
 import LockStatus from '../components/LockStatus.vue'
+import CalendarCheckIn from '../components/CalendarCheckIn.vue'
+import CalendarCheckInMini from '../components/CalendarCheckInMini.vue'
 import ProfileModal from '../components/ProfileModal.vue'
 import NotificationBell from '../components/NotificationBell.vue'
 import TaskBroadcast from '../components/TaskBroadcast.vue'
@@ -1739,13 +1719,9 @@ onMounted(async () => {
   font-weight: 600;
 }
 
-/* Inline User Stats */
+/* Inline User Stats - Replaced by CalendarCheckInMini */
 .mobile-user-stats-inline {
-  display: flex;
-  gap: 0.75rem;
-  align-items: center;
-  flex: 1;
-  padding: 0 0.5rem;
+  display: none;
 }
 
 .stat-inline {
@@ -2072,8 +2048,7 @@ onMounted(async () => {
   }
 
   .mobile-user-stats-inline {
-    max-width: 45%;
-    gap: 0.5rem;
+    display: none; /* Legacy - replaced by CalendarCheckInMini */
   }
 
   .mobile-actions-inline {
@@ -2136,7 +2111,7 @@ onMounted(async () => {
 /* Extra small screens */
 @media (max-width: 320px) {
   .mobile-user-stats-inline {
-    display: none; /* Hide stats on very small screens to save space */
+    display: none; /* Legacy - stats replaced by CalendarCheckInMini */
   }
 
   .mobile-lock-status-inline {

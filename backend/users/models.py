@@ -671,8 +671,76 @@ class UserLevelUpgrade(models.Model):
         return f"{self.user.username}: Level {self.from_level} -> {self.to_level}"
 
 
+class UserCheckIn(models.Model):
+    """用户每日签到记录"""
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    user = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name='checkins',
+        help_text="签到用户"
+    )
+    check_in_date = models.DateField(help_text="签到日期")
+    created_at = models.DateTimeField(auto_now_add=True)
+    coins_earned = models.IntegerField(default=0, help_text="获得的积分数量")
+    consecutive_days = models.IntegerField(default=1, help_text="连续签到天数")
+
+    class Meta:
+        db_table = 'user_checkins'
+        unique_together = ['user', 'check_in_date']  # 确保每个用户每天只能签到一次
+        ordering = ['-check_in_date']
+        verbose_name = '用户签到记录'
+        verbose_name_plural = '用户签到记录'
+
+    def __str__(self):
+        return f"{self.user.username} - {self.check_in_date} - 连续{self.consecutive_days}天 - {self.coins_earned}积分"
+
+    @classmethod
+    def get_month_checkins(cls, user, year, month):
+        """Get all check-ins for a specific month"""
+        from datetime import date, timedelta
+        start_date = date(year, month, 1)
+        end_date = (start_date + timedelta(days=32)).replace(day=1)
+        return cls.objects.filter(
+            user=user,
+            check_in_date__gte=start_date,
+            check_in_date__lt=end_date
+        )
+
+    @classmethod
+    def get_consecutive_days(cls, user):
+        """Calculate current consecutive check-in days"""
+        from datetime import date, timedelta
+        today = date.today()
+        yesterday = today - timedelta(days=1)
+
+        # Check if checked in today
+        today_checkin = cls.objects.filter(user=user, check_in_date=today).first()
+        if today_checkin:
+            return today_checkin.consecutive_days
+
+        # Check if checked in yesterday
+        yesterday_checkin = cls.objects.filter(user=user, check_in_date=yesterday).first()
+        if yesterday_checkin:
+            return yesterday_checkin.consecutive_days
+
+        return 0
+
+    @classmethod
+    def calculate_bonus(cls, consecutive_days):
+        """Calculate bonus using Fibonacci sequence (capped at 5)"""
+        if consecutive_days <= 0:
+            return 0
+        if consecutive_days >= 5:
+            return 5
+        # Fibonacci: 1, 1, 2, 3, 5
+        fib = [0, 1, 1, 2, 3, 5]
+        return fib[consecutive_days]
+
+
 class DailyLoginReward(models.Model):
-    """每日登录奖励记录"""
+    """每日登录奖励记录 - 已废弃，保留用于历史数据"""
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     user = models.ForeignKey(
@@ -689,8 +757,8 @@ class DailyLoginReward(models.Model):
     class Meta:
         db_table = 'daily_login_rewards'
         unique_together = ['user', 'date']  # 确保每个用户每天只能获得一次奖励
-        verbose_name = '每日登录奖励'
-        verbose_name_plural = '每日登录奖励'
+        verbose_name = '每日登录奖励（已废弃）'
+        verbose_name_plural = '每日登录奖励（已废弃）'
 
     def __str__(self):
         return f"{self.user.username} - {self.date} - Level {self.user_level} - {self.reward_amount}积分"
@@ -698,11 +766,9 @@ class DailyLoginReward(models.Model):
     @classmethod
     def claim_daily_reward(cls, user):
         """
-        领取每日登录奖励
+        领取每日登录奖励 - 已废弃，不再发放积分
         返回: (reward_record, is_new, message)
-        - reward_record: DailyLoginReward 对象
-        - is_new: 是否新创建的（True表示成功领取，False表示已领取过）
-        - message: 提示消息
+        现在只返回已废弃的提示，不实际发放奖励
         """
         from django.utils import timezone
 
@@ -716,60 +782,30 @@ class DailyLoginReward(models.Model):
             date=today,
             defaults={
                 'user_level': user.level,
-                'reward_amount': reward_amount
+                'reward_amount': 0  # 不再发放奖励
             }
         )
 
-        if created:
-            # 新创建的记录，发放积分
-            user.add_coins(
-                amount=reward_amount,
-                change_type='daily_login',
-                description='每日登录奖励',
-                metadata={
-                    'user_level': user.level,
-                    'daily_reward_date': today.isoformat()
-                }
-            )
-
-            # 创建通知
-            Notification.create_notification(
-                recipient=user,
-                notification_type='coins_earned_daily_login',
-                actor=None,
-                extra_data={
-                    'user_level': user.level,
-                    'reward_amount': reward_amount,
-                    'daily_reward_date': today.isoformat()
-                },
-                priority='normal'
-            )
-
-            return reward, True, f"获得每日登录奖励{reward_amount}积分"
-        else:
-            # 已领取过
-            return reward, False, "今日已领取过登录奖励"
+        # 不再发放积分，只返回记录
+        return reward, False, "每日登录奖励已改为签到系统，请使用日历签到功能"
 
     @classmethod
     def check_today_reward(cls, user):
-        """检查用户今天是否已领取奖励"""
-        from django.utils import timezone
-        today = timezone.localtime().date()
-        return cls.objects.filter(user=user, date=today).exists()
+        """检查用户今天是否已领取奖励 - 已废弃"""
+        return False
 
     @classmethod
     def get_today_reward_info(cls, user):
-        """获取今日奖励信息"""
+        """获取今日奖励信息 - 已废弃"""
         from django.utils import timezone
         today = timezone.localtime().date()
-        reward_amount = user.get_daily_login_reward()
-        has_claimed = cls.objects.filter(user=user, date=today).exists()
 
         return {
             'date': today.isoformat(),
-            'reward_amount': reward_amount,
-            'has_claimed': has_claimed,
-            'user_level': user.level
+            'reward_amount': 0,
+            'has_claimed': True,  # 标记为已领取，引导用户使用签到系统
+            'user_level': user.level,
+            'message': '请使用日历签到功能获取每日奖励'
         }
 
 

@@ -139,6 +139,35 @@ export const authApi = {
     });
   },
 
+  // Check-in API
+  async checkIn(): Promise<{
+    success: boolean;
+    coins_earned: number;
+    consecutive_days: number;
+    base_reward: number;
+    bonus: number;
+    message: string;
+  }> {
+    return apiRequest('/auth/checkin/', {
+      method: 'POST',
+    });
+  },
+
+  async getCheckinCalendar(year: number, month: number): Promise<{
+    year: number;
+    month: number;
+    checkins: Array<{
+      date: string;
+      coins_earned: number;
+      consecutive_days: number;
+    }>;
+    today: string;
+    can_checkin: boolean;
+    current_streak: number;
+  }> {
+    return apiRequest(`/auth/checkin/calendar/?year=${year}&month=${month}`);
+  },
+
   // Notification Settings API
   async getNotificationSettings(): Promise<{
     task_deadline_reminder_minutes: number;

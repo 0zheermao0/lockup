@@ -10,7 +10,8 @@ from django.utils import timezone
 from django.shortcuts import get_object_or_404
 from datetime import timedelta
 from tasks.pagination import DynamicPageNumberPagination
-from .models import User, Friendship, UserLevelUpgrade, DailyLoginReward, Notification, EmailVerification, PasswordReset, ActivityLog, CoinsLog, Conversation, PrivateMessage
+from .models import User, Friendship, UserLevelUpgrade, DailyLoginReward, UserCheckIn, Notification, EmailVerification, PasswordReset, ActivityLog, CoinsLog, Conversation, PrivateMessage
+from datetime import date, timedelta
 from .serializers import (
     UserSerializer, UserPublicSerializer, UserRegistrationSerializer,
     UserLoginSerializer, UserProfileUpdateSerializer, FriendshipSerializer,
@@ -1575,3 +1576,112 @@ class GetOrCreateConversationView(APIView):
             'conversation': serializer.data,
             'created': created
         }, status=status.HTTP_201_CREATED if created else status.HTTP_200_OK)
+
+
+@api_view(['POST'])
+@permission_classes([permissions.IsAuthenticated])
+def check_in(request):
+    """Handle daily check-in"""
+    user = request.user
+    today = date.today()
+
+    # Check if already checked in today
+    if UserCheckIn.objects.filter(user=user, check_in_date=today).exists():
+        return Response({
+            'success': False,
+            'error': '今天已经签到过了'
+        })
+
+    # Calculate consecutive days
+    yesterday = today - timedelta(days=1)
+    yesterday_checkin = UserCheckIn.objects.filter(
+        user=user,
+        check_in_date=yesterday
+    ).first()
+
+    if yesterday_checkin:
+        consecutive_days = yesterday_checkin.consecutive_days + 1
+    else:
+        consecutive_days = 1
+
+    # Calculate reward (base 1 + Fibonacci bonus)
+    base_reward = 1
+    bonus = UserCheckIn.calculate_bonus(consecutive_days)
+    total_reward = base_reward + bonus
+
+    # Create check-in record
+    checkin = UserCheckIn.objects.create(
+        user=user,
+        check_in_date=today,
+        coins_earned=total_reward,
+        consecutive_days=consecutive_days
+    )
+
+    # Add coins to user
+    user.add_coins(
+        amount=total_reward,
+        change_type='daily_checkin',
+        description=f'第{consecutive_days}天连续签到奖励',
+        metadata={
+            'consecutive_days': consecutive_days,
+            'base_reward': base_reward,
+            'bonus': bonus
+        }
+    )
+
+    # Create notification
+    Notification.create_notification(
+        recipient=user,
+        notification_type='coins_earned_daily_checkin',
+        actor=None,
+        extra_data={
+            'consecutive_days': consecutive_days,
+            'coins_earned': total_reward,
+            'base_reward': base_reward,
+            'bonus': bonus
+        },
+        priority='normal'
+    )
+
+    return Response({
+        'success': True,
+        'coins_earned': total_reward,
+        'consecutive_days': consecutive_days,
+        'base_reward': base_reward,
+        'bonus': bonus,
+        'message': f'签到成功！获得 {total_reward} 积分（连续{consecutive_days}天）'
+    })
+
+
+@api_view(['GET'])
+@permission_classes([permissions.IsAuthenticated])
+def get_checkin_calendar(request):
+    """Get check-in calendar data for a month"""
+    user = request.user
+    year = int(request.query_params.get('year', date.today().year))
+    month = int(request.query_params.get('month', date.today().month))
+
+    checkins = UserCheckIn.get_month_checkins(user, year, month)
+    checkin_dates = {c.check_in_date: c for c in checkins}
+
+    # Get task completion data for each day (optional enhancement)
+    # This would show if user completed tasks on specific days
+
+    return Response({
+        'year': year,
+        'month': month,
+        'checkins': [
+            {
+                'date': c.check_in_date.isoformat(),
+                'coins_earned': c.coins_earned,
+                'consecutive_days': c.consecutive_days
+            }
+            for c in checkins
+        ],
+        'today': date.today().isoformat(),
+        'can_checkin': not UserCheckIn.objects.filter(
+            user=user,
+            check_in_date=date.today()
+        ).exists(),
+        'current_streak': UserCheckIn.get_consecutive_days(user)
+    })
