@@ -57,9 +57,11 @@ export interface TelegramOvertimeResult {
 export interface TelegramTaskShareData {
   message_text: string;
   telegram_share_url: string;
+  deeplink_url: string;
   task_id: string;
   task_title: string;
   callback_data: string;
+  share_type?: string;
 }
 
 export interface TelegramTaskShareResult {
