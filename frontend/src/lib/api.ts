@@ -5,7 +5,10 @@ import type {
   SimplePasswordChangeRequest, EmailVerificationSendRequest, EmailVerificationSendResponse,
   EmailVerificationVerifyRequest, EmailVerificationVerifyResponse,
   PasswordResetRequestRequest, PasswordResetRequestResponse,
-  PasswordResetConfirmRequest, PasswordResetConfirmResponse
+  PasswordResetConfirmRequest, PasswordResetConfirmResponse,
+  ActivityLog, CoinsLog, LevelProgress,
+  TelegramLoginRequest, TelegramLoginConfig,
+  CommunityLeaderboard
 } from '../types/index';
 
 import { apiRequest, handleResponse, ApiError } from './api-commons'
@@ -86,6 +89,29 @@ export const authApi = {
     });
   },
 
+  // 每日登录奖励 - 检查状态
+  async checkDailyReward(): Promise<{
+    has_claimed: boolean;
+    reward_amount: number;
+    date: string;
+    user_level: number;
+  }> {
+    return apiRequest('/auth/daily-reward/');
+  },
+
+  // 每日登录奖励 - 领取
+  async claimDailyReward(): Promise<{
+    success: boolean;
+    message: string;
+    reward_amount: number;
+    date: string;
+    current_coins: number;
+  }> {
+    return apiRequest('/auth/daily-reward/', {
+      method: 'POST',
+    });
+  },
+
   // Password Reset API
   async requestPasswordReset(data: PasswordResetRequestRequest): Promise<PasswordResetRequestResponse> {
     return apiRequest('/auth/password/reset-request/', {
@@ -96,6 +122,18 @@ export const authApi = {
 
   async confirmPasswordReset(data: PasswordResetConfirmRequest): Promise<PasswordResetConfirmResponse> {
     return apiRequest('/auth/password/reset-confirm/', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  },
+
+  // Telegram Login API
+  async getTelegramLoginConfig(): Promise<TelegramLoginConfig> {
+    return apiRequest('/auth/telegram-config/');
+  },
+
+  async telegramLogin(data: TelegramLoginRequest): Promise<{ token: string; user: User; message: string }> {
+    return apiRequest('/auth/telegram-auth/', {
       method: 'POST',
       body: JSON.stringify(data),
     });
@@ -1077,6 +1115,40 @@ export const notificationsApi = {
       method: 'POST',
       body: JSON.stringify(data)
     });
+  }
+};
+
+// User Stats API (Activity Logs, Coins Logs, Level Progress)
+export const userStatsApi = {
+  // 获取活跃度日志
+  async getActivityLogs(params?: { page?: number; page_size?: number }): Promise<PaginatedResponse<ActivityLog>> {
+    const query = new URLSearchParams();
+    if (params?.page) query.append('page', params.page.toString());
+    if (params?.page_size) query.append('page_size', params.page_size.toString());
+
+    const queryString = query.toString();
+    return apiRequest<PaginatedResponse<ActivityLog>>(`/auth/activity-logs/${queryString ? `?${queryString}` : ''}`);
+  },
+
+  // 获取积分日志
+  async getCoinsLogs(params?: { page?: number; page_size?: number; type?: string }): Promise<PaginatedResponse<CoinsLog>> {
+    const query = new URLSearchParams();
+    if (params?.page) query.append('page', params.page.toString());
+    if (params?.page_size) query.append('page_size', params.page_size.toString());
+    if (params?.type) query.append('type', params.type);
+
+    const queryString = query.toString();
+    return apiRequest<PaginatedResponse<CoinsLog>>(`/auth/coins-logs/${queryString ? `?${queryString}` : ''}`);
+  },
+
+  // 获取等级进度
+  async getLevelProgress(): Promise<LevelProgress> {
+    return apiRequest<LevelProgress>('/auth/level-progress/');
+  },
+
+  // 获取社区排行榜
+  async getCommunityLeaderboard(): Promise<CommunityLeaderboard> {
+    return apiRequest<CommunityLeaderboard>('/auth/community-leaderboard/');
   }
 };
 

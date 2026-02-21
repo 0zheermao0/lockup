@@ -1,7 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import { authApi } from '../lib/api'
-import type { User, LoginRequest, RegisterRequest } from '../types/index'
+import type { User, LoginRequest, RegisterRequest, TelegramLoginRequest } from '../types/index'
 
 export const useAuthStore = defineStore('auth', () => {
   // State
@@ -60,6 +60,25 @@ export const useAuthStore = defineStore('auth', () => {
       return response
     } catch (error) {
       console.error('Register error:', error)
+      throw error
+    } finally {
+      isLoading.value = false
+    }
+  }
+
+  const telegramLogin = async (telegramData: TelegramLoginRequest) => {
+    isLoading.value = true
+    try {
+      const response = await authApi.telegramLogin(telegramData)
+      token.value = response.token
+      user.value = response.user
+
+      localStorage.setItem('token', response.token)
+      localStorage.setItem('user', JSON.stringify(response.user))
+
+      return response
+    } catch (error) {
+      console.error('Telegram login error:', error)
       throw error
     } finally {
       isLoading.value = false
@@ -155,6 +174,7 @@ export const useAuthStore = defineStore('auth', () => {
     initAuth,
     login,
     register,
+    telegramLogin,
     logout,
     clearAuth,
     updateUser,

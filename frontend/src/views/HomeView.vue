@@ -12,14 +12,29 @@
         </h1>
         <div class="user-info">
           <div class="user-stats">
+            <!-- 排行榜按钮 -->
+            <button
+              class="leaderboard-btn"
+              @click="$router.push('/community-stats')"
+              title="查看社区排行榜"
+            >
+              🏆
+            </button>
             <span
-              class="level"
+              class="level clickable"
               :class="getLevelCSSClass(authStore.user?.level || 1)"
               :style="getLevelCSSProperties(authStore.user?.level || 1)"
+              @click="$router.push('/level-detail')"
+              title="点击查看等级详情"
             >
               {{ getLevelDisplayName(authStore.user?.level || 1) }}
             </span>
-            <span class="coins" :class="getLevelCSSClass(authStore.user?.level || 1)">
+            <span
+              class="coins clickable"
+              :class="getLevelCSSClass(authStore.user?.level || 1)"
+              @click="$router.push('/coins-detail')"
+              title="点击查看积分详情"
+            >
               🪙 {{ authStore.user?.coins || 0 }}
             </span>
           </div>
@@ -162,6 +177,7 @@
             <button @click="goToGames" class="mobile-action-btn-small" title="小游戏">🎮 游戏</button>
             <button @click="goToInventory" class="mobile-action-btn-small" title="背包">🎒 背包</button>
             <button @click="goToExplore" class="mobile-action-btn-small" title="探索">🗺️ 探索</button>
+            <button @click="goToCommunityStats" class="mobile-action-btn-small" title="排行榜">🏆 排行榜</button>
           </div>
         </div>
 
@@ -324,6 +340,13 @@
       @close="closeProfileModal"
     />
 
+    <!-- 登出确认模态框 -->
+    <LogoutConfirmModal
+      :is-visible="showLogoutModal"
+      @close="closeLogoutModal"
+      @confirm="confirmLogout"
+    />
+
     <!-- Back to Top Button -->
     <BackToTopButton
       :scroll-threshold="100"
@@ -353,6 +376,7 @@ import TaskBroadcast from '../components/TaskBroadcast.vue'
 import PinnedUserCarousel from '../components/PinnedUserCarousel.vue'
 import UserAvatar from '../components/UserAvatar.vue'
 import BackToTopButton from '../components/BackToTopButton.vue'
+import LogoutConfirmModal from '../components/LogoutConfirmModal.vue'
 import type { Post } from '../types/index'
 
 const router = useRouter()
@@ -369,6 +393,9 @@ const isCheckinMode = ref(false)
 // 用户资料模态框状态
 const showProfileModal = ref(false)
 const selectedUser = ref<any>(null)
+
+// 登出确认模态框状态
+const showLogoutModal = ref(false)
 
 // 移动端更多操作展开状态
 const showMoreActions = ref(false)
@@ -431,8 +458,17 @@ const {
 )
 
 const handleLogout = () => {
+  showLogoutModal.value = true
+}
+
+const confirmLogout = () => {
+  showLogoutModal.value = false
   authStore.logout()
   router.push('/login')
+}
+
+const closeLogoutModal = () => {
+  showLogoutModal.value = false
 }
 
 const openCreateModal = (checkinMode: boolean = false) => {
@@ -543,6 +579,10 @@ const goToInventory = () => {
 
 const goToExplore = () => {
   router.push({ name: 'explore' })
+}
+
+const goToCommunityStats = () => {
+  router.push({ name: 'community-stats' })
 }
 
 const openProfileModal = (user: any) => {
@@ -842,6 +882,36 @@ onMounted(async () => {
   background: #f8f9fa;
 }
 
+/* 排行榜按钮 */
+.leaderboard-btn {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #ffd700, #ffb347);
+  border: 2px solid #000;
+  box-shadow: 2px 2px 0 rgba(0, 0, 0, 0.2);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1rem;
+  transition: all 0.2s ease;
+  flex-shrink: 0;
+  padding: 0;
+  margin: 0;
+}
+
+.leaderboard-btn:hover {
+  transform: translateY(-2px) scale(1.1);
+  box-shadow: 3px 3px 0 rgba(0, 0, 0, 0.3);
+  background: linear-gradient(135deg, #ffed4e, #ffc107);
+}
+
+.leaderboard-btn:active {
+  transform: translateY(0) scale(1);
+  box-shadow: 1px 1px 0 rgba(0, 0, 0, 0.2);
+}
+
 .level {
   background: var(--level-bg, #007bff);
   color: var(--level-color, white);
@@ -878,6 +948,11 @@ onMounted(async () => {
   box-shadow: 3px 3px 0 var(--level-bg, #333);
   background: var(--level-bg, #333);
   color: var(--level-color, white);
+}
+
+.level.clickable,
+.coins.clickable {
+  cursor: pointer;
 }
 
 /* 通知铃铛圆圈容器 */
@@ -934,8 +1009,11 @@ onMounted(async () => {
   height: fit-content;
   max-height: calc(100vh - 4rem);
   overflow-y: auto;
+  overflow-x: visible;
   padding-right: 8px;
   margin-right: -8px;
+  scrollbar-width: thin;
+  scrollbar-color: linear-gradient(135deg, #667eea, #764ba2) #f1f1f1;
 }
 
 /* Custom scrollbar for Neo-Brutalism style */
@@ -981,7 +1059,9 @@ onMounted(async () => {
 
 .lock-status-card {
   padding: 0; /* LockStatus component handles its own padding */
-  overflow: hidden;
+  overflow: visible;
+  flex-shrink: 0;
+  min-height: fit-content;
 }
 
 .user-card h3,
@@ -1694,6 +1774,30 @@ onMounted(async () => {
   background: linear-gradient(135deg, #f093fb, #f5576c);
 }
 
+/* Medium screen adjustments - prevent lock card truncation */
+@media (max-width: 1024px) and (min-width: 769px) {
+  .container {
+    grid-template-columns: 280px 1fr;
+    gap: 1.5rem;
+  }
+
+  .sidebar {
+    top: 1rem;
+    max-height: calc(100vh - 2rem);
+    gap: 0.75rem;
+  }
+
+  .lock-status-card,
+  .user-card,
+  .actions-card {
+    padding: 0.875rem;
+  }
+
+  .lock-status-card {
+    padding: 0;
+  }
+}
+
 /* Mobile responsive */
 @media (max-width: 768px) {
   .container {
@@ -1763,6 +1867,12 @@ onMounted(async () => {
   .user-stats {
     padding: 0.4rem 0.8rem;
     gap: 0.75rem;
+  }
+
+  .leaderboard-btn {
+    width: 28px;
+    height: 28px;
+    font-size: 0.875rem;
   }
 
   .level {
