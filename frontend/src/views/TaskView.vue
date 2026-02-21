@@ -130,9 +130,8 @@
           </div>
 
           <div v-else class="tasks-list">
-            <StaggerList tag="div" :stagger-delay="60">
-              <!-- Integrated pinned and regular tasks -->
-              <template v-for="(task, index) in integratedTasksList" :key="task.id + (task.isPinned ? '-pinned' : '')">
+            <!-- Integrated pinned and regular tasks -->
+            <template v-for="task in integratedTasksList" :key="task.id + (task.isPinned ? '-pinned' : '')">
               <!-- Task card (both pinned and regular use same structure) -->
               <div
                 class="task-card"
@@ -294,7 +293,6 @@
                 </div>
               </div>
             </template>
-            </StaggerList>
 
             <!-- 加载更多指示器 -->
             <div v-if="isLoadingMore" class="loading-more">
@@ -354,7 +352,6 @@ import NotificationToast from '../components/NotificationToast.vue'
 import UserAvatar from '../components/UserAvatar.vue'
 import BackToTopButton from '../components/BackToTopButton.vue'
 import SkeletonLoader from '../components/SkeletonLoader.vue'
-import StaggerList from '../components/transitions/StaggerList.vue'
 import type { Task, PinningQueueStatus, PinnedUser, User } from '../types/index'
 import type { LockTask } from '../types'
 
@@ -1741,30 +1738,21 @@ onUnmounted(() => {
   background: white;
   padding: 1rem;
   border-radius: 8px;
-  border: 3px solid #000;
+  border: 2px solid #000;
   box-shadow: 4px 4px 0 #000;
   cursor: pointer;
-  transition: all var(--duration-fast, 200ms) var(--ease-bounce, cubic-bezier(0.175, 0.885, 0.32, 1.275));
+  transition: all 0.2s ease;
   display: flex;
   flex-direction: column;
   height: auto;
-  min-height: 300px;
-  max-height: 400px;
   width: 100%;
   box-sizing: border-box;
   overflow: hidden;
-  will-change: transform, box-shadow;
 }
 
 .task-card:hover {
-  transform: translate(-4px, -4px);
-  box-shadow: 8px 8px 0 #000;
-}
-
-.task-card:active {
-  transform: translate(2px, 2px);
-  box-shadow: 2px 2px 0 #000;
-  transition-duration: var(--duration-micro, 150ms);
+  transform: translateY(-2px);
+  box-shadow: 6px 6px 0 #000;
 }
 
 .task-header {
