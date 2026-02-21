@@ -238,14 +238,18 @@ export const telegramApi = {
   },
 
   /**
-   * 直接打开Telegram分享任务
+   * 直接打开Telegram分享任务（使用 deeplink 方式）
+   * 通过 via bot 方式分享，支持 inline 按钮
    */
-  async shareTaskDirectly(taskId: string): Promise<void> {
+  async shareTaskDirectly(taskId: string): Promise<{ deeplink_url: string }> {
     try {
       const shareResult = await this.shareTaskToTelegram(taskId);
 
-      // 直接打开Telegram分享链接
-      window.open(shareResult.share_data.telegram_share_url, '_blank');
+      // 返回 deeplink URL，让调用者决定如何打开
+      // deeplink 格式: https://t.me/{bot_username}?start=share_{task_id}
+      return {
+        deeplink_url: shareResult.share_data.deeplink_url || shareResult.share_data.telegram_share_url
+      };
     } catch (error) {
       console.error('Error sharing task to Telegram:', error);
       throw error;

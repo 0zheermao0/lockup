@@ -487,12 +487,7 @@ def share_task_to_telegram(request):
                 status=status.HTTP_404_NOT_FOUND
             )
 
-        # 检查是否是自己的任务
-        if task.user != request.user:
-            return Response(
-                {'error': '只能分享自己的任务'},
-                status=status.HTTP_403_FORBIDDEN
-            )
+        # 注意：现在允许分享任何人的任务，不仅限于自己的任务
 
         # 检查任务状态
         if task.task_type != 'lock' or task.status not in ['active', 'voting']:
@@ -501,22 +496,25 @@ def share_task_to_telegram(request):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-        # 生成分享消息和按钮
-        message_text, keyboard = telegram_service.generate_task_share_message(task, request.user)
+        # 生成 deeplink 分享链接
+        # 格式: https://t.me/{bot_username}?start=share_{task_id}
+        # 用户点击后会跳转到 Bot，Bot 会发送带 inline 按钮的分享消息
+        bot_username = getattr(settings, 'TELEGRAM_BOT_USERNAME', 'lock_up_bot')
+        deeplink_url = f"https://t.me/{bot_username}?start=share_{task.id}"
 
-        # 生成Telegram分享URL
-        import urllib.parse
-        encoded_text = urllib.parse.quote(message_text)
-        telegram_share_url = f"https://t.me/share/url?url=&text={encoded_text}"
+        # 生成分享消息（用于 Bot 发送时的内容预览）
+        message_text, keyboard = telegram_service.generate_task_share_message(task, task.user)
 
         return Response({
-            'message': '分享内容生成成功',
+            'message': '分享链接生成成功',
             'share_data': {
                 'message_text': message_text,
-                'telegram_share_url': telegram_share_url,
+                'telegram_share_url': deeplink_url,  # 现在返回 deeplink
+                'deeplink_url': deeplink_url,
                 'task_id': str(task.id),
                 'task_title': task.title,
-                'callback_data': f"overtime_{task.id}"
+                'callback_data': f"task_overtime_{task.id}",  # 使用与 /task 命令相同的格式
+                'share_type': 'deeplink'
             }
         })
 

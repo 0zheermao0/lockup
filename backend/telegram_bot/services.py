@@ -254,6 +254,10 @@ class TelegramBotService:
                 # 处理绑定请求
                 await self._process_binding(update, context, bind_token, user_id, chat_id, username)
                 return
+            elif bind_token.startswith('share_'):
+                # 处理任务分享 deeplink
+                await self._handle_share_deeplink(update, context, bind_token, user_id, chat_id)
+                return
 
         # 自动绑定逻辑已移到 _process_binding 方法中
         # 这里不再需要查找等待绑定的用户
@@ -302,6 +306,102 @@ class TelegramBotService:
         except Exception as e:
             logger.error(f"Failed to send welcome message to user {user_id}: {e}")
             # In case of failure, we still continue processing
+
+    async def _handle_share_deeplink(self, update, context, share_token, user_id, chat_id):
+        """处理任务分享 deeplink - 生成带 inline 按钮的分享消息"""
+        try:
+            # 解析任务 ID
+            # share_token 格式: share_{task_id}
+            task_id = share_token.replace('share_', '')
+
+            if not task_id:
+                await update.message.reply_text("❌ 无效的任务分享链接")
+                return
+
+            # 获取任务信息
+            from tasks.models import LockTask
+            try:
+                task = await sync_to_async(LockTask.objects.get)(id=task_id)
+            except LockTask.DoesNotExist:
+                await update.message.reply_text("❌ 任务不存在或已被删除")
+                return
+
+            # 检查任务状态
+            if task.task_type != 'lock' or task.status not in ['active', 'voting']:
+                await update.message.reply_text("❌ 该任务已结束或不是带锁任务，无法分享")
+                return
+
+            # 获取任务创建者信息
+            task_creator = await sync_to_async(lambda: task.user)()
+            creator_username = await sync_to_async(lambda: task_creator.username)()
+
+            # 计算剩余时间
+            from django.utils import timezone
+            from datetime import timedelta
+
+            now = timezone.now()
+            if task.end_time:
+                remaining = task.end_time - now
+                if remaining.total_seconds() > 0:
+                    hours = int(remaining.total_seconds() // 3600)
+                    minutes = int((remaining.total_seconds() % 3600) // 60)
+                    time_left = f"{hours}小时{minutes}分钟" if hours > 0 else f"{minutes}分钟"
+                else:
+                    time_left = "已截止"
+            else:
+                time_left = "未知"
+
+            # 难度映射
+            difficulty_map = {
+                'easy': '⭐ 简单',
+                'normal': '⭐⭐ 普通',
+                'hard': '⭐⭐⭐ 困难',
+                'hell': '💀 地狱'
+            }
+
+            # 构建分享消息
+            share_text = f"""🔒 **带锁任务分享**
+
+📋 **任务标题**：{task.title}
+👤 **任务者**：{creator_username}
+📊 **难度**：{difficulty_map.get(task.difficulty, task.difficulty)}
+⏰ **剩余时间**：{time_left}
+📅 **状态**：{'🔄 进行中' if task.status == 'active' else '🗳️ 投票期'}
+
+💡 **描述**：{task.description[:100] + '...' if len(task.description) > 100 else task.description}
+
+💪 帮助 {creator_username} 坚持完成任务！"""
+
+            # 创建 inline 按钮 - 使用与 /task 命令相同的格式
+            from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+            keyboard = InlineKeyboardMarkup([
+                [InlineKeyboardButton("⏰ 给TA加时", callback_data=f"task_overtime_{task.id}")]
+            ])
+
+            # 发送分享消息给用户
+            await update.message.reply_text(
+                share_text,
+                reply_markup=keyboard,
+                parse_mode='Markdown'
+            )
+
+            logger.info(f"Generated share message for task {task_id} to user {user_id}")
+
+            # 提示用户转发消息给朋友
+            hint_text = """
+✅ **分享消息已生成！**
+
+👉 **下一步**：点击上方的 "转发" 按钮，选择要分享的聊天或群组
+
+您的朋友点击 "⏰ 给TA加时" 按钮即可为任务加时！
+            """
+            await update.message.reply_text(hint_text, parse_mode='Markdown')
+
+        except Exception as e:
+            logger.error(f"Error handling share deeplink: {e}")
+            import traceback
+            logger.error(f"Traceback: {traceback.format_exc()}")
+            await update.message.reply_text("❌ 处理分享链接时出错，请重试")
 
     async def _handle_bind(self, update, context):
         """处理 /bind 命令"""
