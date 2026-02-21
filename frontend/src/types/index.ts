@@ -393,8 +393,23 @@ export interface PaginatedData<T> {
 
 // Auth Types
 export interface LoginRequest {
-  username: string
+  account: string  // 用户名或邮箱
   password: string
+}
+
+export interface TelegramLoginRequest {
+  id: number
+  first_name: string
+  last_name?: string
+  username?: string
+  photo_url?: string
+  auth_date: number
+  hash: string
+}
+
+export interface TelegramLoginConfig {
+  bot_name: string
+  auth_url: string
 }
 
 export interface RegisterRequest {
@@ -762,4 +777,80 @@ export interface SunBottleResponse {
     owner: string
   }>
   item_destroyed: boolean
+}
+
+// Activity Log Types
+export interface ActivityLog {
+  id: string
+  action_type: 'activity_gain' | 'time_decay'
+  action_type_display: string
+  points_change: number
+  new_total: number
+  metadata: Record<string, any>
+  created_at: string
+  time_ago: string
+}
+
+// Coins Log Types
+export interface CoinsLog {
+  id: string
+  change_type: string
+  change_type_display: string
+  amount: number
+  balance_after: number
+  description: string
+  metadata: Record<string, any>
+  created_at: string
+  time_ago: string
+  is_income: boolean
+}
+
+// Level Progress Types
+export interface LevelDimension {
+  name: string
+  label: string
+  current: number
+  required: number
+  unit: string
+  percentage: number
+  is_met: boolean
+}
+
+export interface LevelProgress {
+  current_level: number
+  target_level: number | null
+  is_max_level: boolean
+  dimensions: LevelDimension[]
+  overall_progress: number
+}
+
+// Community Leaderboard Types
+export interface LeaderboardEntry {
+  rank: number
+  user: {
+    id: number
+    username: string
+    level: number
+    avatar?: string
+  }
+  value: number
+}
+
+export interface LeaderboardCategory {
+  title: string
+  icon: string
+  description: string
+  unit: string
+  data: LeaderboardEntry[]
+}
+
+export interface CommunityLeaderboard {
+  most_likes_received: LeaderboardCategory
+  most_comments_received: LeaderboardCategory
+  most_activity_gained: LeaderboardCategory
+  most_coins_earned: LeaderboardCategory
+  most_posts_created: LeaderboardCategory
+  most_tasks_created: LeaderboardCategory
+  most_tasks_completed: LeaderboardCategory
+  updated_at: string
 }

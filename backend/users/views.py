@@ -8,13 +8,14 @@ from django.db.models import Q, Count
 from django.utils import timezone
 from datetime import timedelta
 from tasks.pagination import DynamicPageNumberPagination
-from .models import User, Friendship, UserLevelUpgrade, DailyLoginReward, Notification, EmailVerification, PasswordReset
+from .models import User, Friendship, UserLevelUpgrade, DailyLoginReward, Notification, EmailVerification, PasswordReset, ActivityLog, CoinsLog
 from .serializers import (
     UserSerializer, UserPublicSerializer, UserRegistrationSerializer,
     UserLoginSerializer, UserProfileUpdateSerializer, FriendshipSerializer,
     FriendRequestSerializer, UserLevelUpgradeSerializer, UserStatsSerializer,
     PasswordChangeSerializer, SimplePasswordChangeSerializer, NotificationSerializer, NotificationCreateSerializer,
-    PasswordResetRequestSerializer, PasswordResetConfirmSerializer
+    PasswordResetRequestSerializer, PasswordResetConfirmSerializer, ActivityLogSerializer, CoinsLogSerializer,
+    TelegramLoginRequestSerializer
 )
 from utils.email_verification import (
     create_and_send_verification, verify_email_code, is_email_domain_allowed
@@ -154,42 +155,8 @@ class UserLoginView(generics.GenericAPIView):
         user.update_activity()
 
         # 处理每日登录奖励
-        today = timezone.now().date()
-
-        # 使用get_or_create避免竞争条件
-        reward_amount = user.get_daily_login_reward()
-        daily_reward, created = DailyLoginReward.objects.get_or_create(
-            user=user,
-            date=today,
-            defaults={
-                'user_level': user.level,
-                'reward_amount': reward_amount
-            }
-        )
-
-        daily_reward_message = ""
-        if created:
-            # 只有在新创建奖励记录时才给用户增加积分
-            user.coins += reward_amount
-            user.save()
-
-            # 创建每日登录奖励通知
-            Notification.create_notification(
-                recipient=user,
-                notification_type='coins_earned_daily_login',
-                actor=None,  # 系统通知
-                extra_data={
-                    'user_level': user.level,
-                    'reward_amount': reward_amount,
-                    'daily_reward_date': today.isoformat()
-                },
-                priority='normal'
-            )
-
-            daily_reward_message = f"，获得每日登录奖励{reward_amount}积分"
-            print(f"Daily login reward created for user {user.username} on {today}: {reward_amount} coins")
-        else:
-            print(f"Daily login reward already exists for user {user.username} on {today}")
+        daily_reward, is_new, reward_message = DailyLoginReward.claim_daily_reward(user)
+        daily_reward_message = f"，{reward_message}" if is_new else ""
 
         return Response({
             'user': UserSerializer(user).data,
@@ -802,3 +769,489 @@ def create_notification(request):
             )
 
     return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+@api_view(['GET', 'POST'])
+@permission_classes([permissions.IsAuthenticated])
+def daily_login_reward(request):
+    """
+    每日登录奖励接口
+    GET: 检查今日奖励状态
+    POST: 领取今日奖励
+    """
+    user = request.user
+
+    if request.method == 'GET':
+        # 检查今日奖励状态
+        reward_info = DailyLoginReward.get_today_reward_info(user)
+        return Response({
+            'has_claimed': reward_info['has_claimed'],
+            'reward_amount': reward_info['reward_amount'],
+            'date': reward_info['date'],
+            'user_level': reward_info['user_level']
+        })
+
+    elif request.method == 'POST':
+        # 领取今日奖励
+        reward, is_new, message = DailyLoginReward.claim_daily_reward(user)
+
+        return Response({
+            'success': is_new,
+            'message': message,
+            'reward_amount': reward.reward_amount,
+            'date': reward.date.isoformat(),
+            'current_coins': user.coins
+        })
+
+
+class ActivityLogListView(generics.ListAPIView):
+    """获取当前用户的活跃度变化日志"""
+    serializer_class = ActivityLogSerializer
+    permission_classes = [permissions.IsAuthenticated]
+    pagination_class = DynamicPageNumberPagination
+
+    def get_queryset(self):
+        return ActivityLog.objects.filter(
+            user=self.request.user
+        ).select_related('user')
+
+
+class CoinsLogListView(generics.ListAPIView):
+    """获取当前用户的积分变化日志"""
+    serializer_class = CoinsLogSerializer
+    permission_classes = [permissions.IsAuthenticated]
+    pagination_class = DynamicPageNumberPagination
+
+    def get_queryset(self):
+        queryset = CoinsLog.objects.filter(user=self.request.user)
+
+        # 按类型过滤
+        change_type = self.request.query_params.get('type', None)
+        if change_type:
+            if change_type == 'income':
+                queryset = queryset.filter(amount__gt=0)
+            elif change_type == 'expense':
+                queryset = queryset.filter(amount__lt=0)
+            else:
+                queryset = queryset.filter(change_type=change_type)
+
+        return queryset
+
+
+class LevelProgressView(APIView):
+    """获取当前用户的等级升级进度"""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        user = request.user
+        current_level = user.level
+
+        # 获取下一级要求
+        requirements = self._get_level_requirements(user, current_level + 1)
+
+        # 计算各维度进度
+        progress = {
+            'current_level': current_level,
+            'target_level': current_level + 1 if current_level < 4 else None,
+            'is_max_level': current_level >= 4,
+            'dimensions': requirements,
+            'overall_progress': self._calculate_overall_progress(requirements),
+        }
+
+        return Response(progress)
+
+    def _get_level_requirements(self, user, target_level):
+        """获取各维度升级要求"""
+        if target_level > 4:
+            return []
+
+        # 等级要求定义
+        level_requirements = {
+            2: {
+                'activity_score': {'required': 100, 'label': '活跃度', 'unit': ''},
+                'total_posts': {'required': 5, 'label': '发布动态', 'unit': '条'},
+                'total_likes_received': {'required': 10, 'label': '收到点赞', 'unit': '个'},
+                'lock_duration_hours': {'required': 24, 'label': '带锁时长', 'unit': '小时'},
+            },
+            3: {
+                'activity_score': {'required': 300, 'label': '活跃度', 'unit': ''},
+                'total_posts': {'required': 20, 'label': '发布动态', 'unit': '条'},
+                'total_likes_received': {'required': 50, 'label': '收到点赞', 'unit': '个'},
+                'lock_duration_hours': {'required': 7 * 24, 'label': '带锁时长', 'unit': '小时'},
+                'task_completion_rate': {'required': 80.0, 'label': '任务完成率', 'unit': '%'},
+            },
+            4: {
+                'activity_score': {'required': 1000, 'label': '活跃度', 'unit': ''},
+                'total_posts': {'required': 50, 'label': '发布动态', 'unit': '条'},
+                'total_likes_received': {'required': 1000, 'label': '收到点赞', 'unit': '个'},
+                'lock_duration_hours': {'required': 30 * 24, 'label': '带锁时长', 'unit': '小时'},
+                'task_completion_rate': {'required': 90.0, 'label': '任务完成率', 'unit': '%'},
+            }
+        }
+
+        requirements_def = level_requirements.get(target_level, {})
+        dimensions = []
+
+        # 获取用户当前值
+        lock_duration_hours = user.get_total_lock_duration() / 60  # 分钟转小时
+        task_completion_rate = user.get_task_completion_rate()
+
+        current_values = {
+            'activity_score': user.activity_score,
+            'total_posts': user.total_posts,
+            'total_likes_received': user.total_likes_received,
+            'lock_duration_hours': lock_duration_hours,
+            'task_completion_rate': task_completion_rate,
+        }
+
+        for key, config in requirements_def.items():
+            current = current_values.get(key, 0)
+            required = config['required']
+
+            # 计算百分比（最高100%）
+            if required > 0:
+                percentage = min(100, round((current / required) * 100, 1))
+            else:
+                percentage = 100
+
+            is_met = current >= required
+
+            dimensions.append({
+                'name': key,
+                'label': config['label'],
+                'current': current,
+                'required': required,
+                'unit': config['unit'],
+                'percentage': percentage,
+                'is_met': is_met
+            })
+
+        return dimensions
+
+    def _calculate_overall_progress(self, dimensions):
+        """计算总体进度"""
+        if not dimensions:
+            return 100
+
+        total_percentage = sum(d['percentage'] for d in dimensions)
+        return round(total_percentage / len(dimensions), 1)
+
+
+class TelegramAuthLoginView(APIView):
+    """Telegram授权登录视图"""
+    permission_classes = [permissions.AllowAny]
+
+    def post(self, request):
+        """处理Telegram登录请求"""
+        # 获取Telegram登录数据
+        telegram_data = request.data
+
+        # 验证必需字段
+        required_fields = ['id', 'auth_date', 'hash']
+        for field in required_fields:
+            if field not in telegram_data:
+                return Response(
+                    {'error': f'缺少必需字段: {field}'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+        # 验证Telegram数据签名
+        if not self._verify_telegram_auth(telegram_data):
+            return Response(
+                {'error': 'Telegram登录验证失败，数据可能被篡改'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # 检查auth_date是否过期（24小时内有效）
+        import time
+        from django.utils import timezone
+
+        auth_date = telegram_data.get('auth_date', 0)
+        current_time = int(time.time())
+        if current_time - auth_date > 86400:  # 24小时 = 86400秒
+            return Response(
+                {'error': '登录链接已过期，请重新登录'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # 获取Telegram用户ID
+        telegram_user_id = str(telegram_data.get('id'))
+
+        # 查找已绑定的用户
+        try:
+            user = User.objects.get(telegram_user_id=telegram_user_id)
+        except User.DoesNotExist:
+            return Response(
+                {'error': '该Telegram账号未绑定任何用户，请先注册并绑定Telegram账号'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        # 更新用户的Telegram信息
+        user.telegram_username = telegram_data.get('username', '')
+        if telegram_data.get('first_name') or telegram_data.get('last_name'):
+            full_name = ' '.join(filter(None, [
+                telegram_data.get('first_name', ''),
+                telegram_data.get('last_name', '')
+            ]))
+            # 如果用户没有设置bio，可以保存Telegram名称
+            if not user.bio and full_name:
+                pass  # 可选：保存到某个字段
+
+        user.save()
+
+        # 登录用户
+        login(request, user)
+
+        # 获取或创建token
+        token, created = Token.objects.get_or_create(user=user)
+
+        # 更新用户活跃度
+        user.update_activity()
+
+        # 处理每日登录奖励
+        daily_reward, is_new, reward_message = DailyLoginReward.claim_daily_reward(user)
+        daily_reward_message = f"，{reward_message}" if is_new else ""
+
+        return Response({
+            'user': UserSerializer(user).data,
+            'token': token.key,
+            'message': f'Telegram登录成功{daily_reward_message}'
+        })
+
+    def _verify_telegram_auth(self, data):
+        """验证Telegram登录数据的签名"""
+        from django.conf import settings
+        import hashlib
+        import hmac
+
+        # 获取Bot Token
+        bot_token = getattr(settings, 'TELEGRAM_BOT_TOKEN', '')
+        if not bot_token:
+            return False
+
+        # 创建数据检查字符串（按字母顺序排列的字段）
+        data_check_string = []
+
+        # 按字母顺序排列所有字段（除了hash）
+        for key in sorted(data.keys()):
+            if key != 'hash' and data[key] is not None:
+                data_check_string.append(f"{key}={data[key]}")
+
+        data_check_string = '\n'.join(data_check_string)
+
+        # 使用Bot Token的SHA256哈希作为密钥
+        secret_key = hashlib.sha256(bot_token.encode()).digest()
+
+        # 计算HMAC-SHA256
+        computed_hash = hmac.new(
+            secret_key,
+            data_check_string.encode(),
+            hashlib.sha256
+        ).hexdigest()
+
+        # 比较计算的hash与提供的hash
+        return computed_hash == data.get('hash')
+
+
+class CommunityLeaderboardView(APIView):
+    """社区排行榜 - 滚动7天统计"""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        """获取社区排行榜数据（最近7天）"""
+        from datetime import timedelta
+        from django.db.models import Sum, Count
+        from posts.models import Post, PostLike, Comment
+        from tasks.models import LockTask
+        from .models import ActivityLog, CoinsLog
+
+        # 获取用户详细信息的辅助函数
+        def get_user_info(user_id):
+            if not user_id:
+                return None
+            try:
+                user = User.objects.get(id=user_id)
+                return {
+                    'id': user.id,
+                    'username': user.username,
+                    'level': user.level,
+                    'avatar': user.avatar.url if user.avatar else None
+                }
+            except User.DoesNotExist:
+                return None
+
+        # 格式化排行榜数据的辅助函数
+        def format_leaderboard(queryset, value_key, user_key='user'):
+            result = []
+            rank = 1
+            for item in queryset:
+                user_id = item.get(user_key)
+                user_info = get_user_info(user_id)
+                if user_info:
+                    result.append({
+                        'rank': rank,
+                        'user': user_info,
+                        'value': item[value_key]
+                    })
+                    rank += 1
+            return result
+
+        try:
+            # 计算7天前的时间点
+            seven_days_ago = timezone.now() - timedelta(days=7)
+
+            # 1. 获赞最多的用户（最近7天发布的动态获得的点赞）
+            top_likes_received = PostLike.objects.filter(
+                post__created_at__gte=seven_days_ago
+            ).values('post__user').annotate(
+                total_likes=Count('id')
+            ).filter(
+                total_likes__gt=0
+            ).order_by('-total_likes')[:3]
+
+            # 2. 获得评论最多的用户（最近7天发布的动态获得的评论）
+            top_comments_received = Comment.objects.filter(
+                post__created_at__gte=seven_days_ago
+            ).values('post__user').annotate(
+                total_comments=Count('id')
+            ).filter(
+                total_comments__gt=0
+            ).order_by('-total_comments')[:3]
+
+            # 3. 活跃度提升最多的用户（最近7天的activity_gain总和）
+            top_activity_gained = ActivityLog.objects.filter(
+                created_at__gte=seven_days_ago,
+                action_type='activity_gain'
+            ).values('user').annotate(
+                total_gained=Sum('points_change')
+            ).filter(
+                total_gained__gt=0
+            ).order_by('-total_gained')[:3]
+
+            # 4. 获得积分最多的用户（最近7天的正积分总和）
+            top_coins_earned = CoinsLog.objects.filter(
+                created_at__gte=seven_days_ago,
+                amount__gt=0
+            ).values('user').annotate(
+                total_earned=Sum('amount')
+            ).filter(
+                total_earned__gt=0
+            ).order_by('-total_earned')[:3]
+
+            # 5. 发布动态最多的用户（最近7天）
+            top_posts_created = Post.objects.filter(
+                created_at__gte=seven_days_ago
+            ).values('user').annotate(
+                post_count=Count('id')
+            ).filter(
+                post_count__gt=0
+            ).order_by('-post_count')[:3]
+
+            # 6. 发布任务最多的用户（最近7天创建的带锁任务）
+            top_tasks_created = LockTask.objects.filter(
+                created_at__gte=seven_days_ago,
+                task_type='lock'
+            ).values('user').annotate(
+                task_count=Count('id')
+            ).filter(
+                task_count__gt=0
+            ).order_by('-task_count')[:3]
+
+            # 7. 完成任务最多的用户（最近7天完成的带锁任务）
+            top_tasks_completed = LockTask.objects.filter(
+                completed_at__gte=seven_days_ago,
+                task_type='lock',
+                status='completed'
+            ).values('user').annotate(
+                completed_count=Count('id')
+            ).filter(
+                completed_count__gt=0
+            ).order_by('-completed_count')[:3]
+
+            leaderboard_data = {
+                'most_likes_received': {
+                    'title': '获赞最多',
+                    'icon': '👍',
+                    'description': '最近7天发布的动态获得最多点赞',
+                    'unit': '赞',
+                    'data': format_leaderboard(top_likes_received, 'total_likes', 'post__user')
+                },
+                'most_comments_received': {
+                    'title': '获评论最多',
+                    'icon': '💬',
+                    'description': '最近7天发布的动态获得最多评论',
+                    'unit': '评论',
+                    'data': format_leaderboard(top_comments_received, 'total_comments', 'post__user')
+                },
+                'most_activity_gained': {
+                    'title': '活跃度提升最多',
+                    'icon': '⚡',
+                    'description': '最近7天活跃度提升最多',
+                    'unit': '活跃度',
+                    'data': format_leaderboard(top_activity_gained, 'total_gained')
+                },
+                'most_coins_earned': {
+                    'title': '积分获取最多',
+                    'icon': '🪙',
+                    'description': '最近7天获得积分最多',
+                    'unit': '积分',
+                    'data': format_leaderboard(top_coins_earned, 'total_earned')
+                },
+                'most_posts_created': {
+                    'title': '发布动态最多',
+                    'icon': '📝',
+                    'description': '最近7天发布动态最多',
+                    'unit': '条动态',
+                    'data': format_leaderboard(top_posts_created, 'post_count')
+                },
+                'most_tasks_created': {
+                    'title': '发布任务最多',
+                    'icon': '📋',
+                    'description': '最近7天发布带锁任务最多',
+                    'unit': '个任务',
+                    'data': format_leaderboard(top_tasks_created, 'task_count')
+                },
+                'most_tasks_completed': {
+                    'title': '完成任务最多',
+                    'icon': '✅',
+                    'description': '最近7天完成带锁任务最多',
+                    'unit': '个任务',
+                    'data': format_leaderboard(top_tasks_completed, 'completed_count')
+                },
+                'updated_at': timezone.now().isoformat()
+            }
+
+            return Response(leaderboard_data)
+
+        except Exception as e:
+            import traceback
+            print(f"CommunityLeaderboardView error: {str(e)}")
+            print(traceback.format_exc())
+            return Response(
+                {'error': f'获取排行榜数据失败: {str(e)}'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+
+class TelegramLoginConfigView(APIView):
+    """获取Telegram Login Widget配置"""
+    permission_classes = [permissions.AllowAny]
+
+    def get(self, request):
+        """返回Telegram Login Widget所需的配置"""
+        from django.conf import settings
+
+        # 使用 TELEGRAM_BOT_USERNAME 作为 bot_name
+        bot_name = getattr(settings, 'TELEGRAM_BOT_USERNAME', '')
+        frontend_url = getattr(settings, 'FRONTEND_URL', '')
+
+        if not bot_name:
+            return Response(
+                {'error': 'Telegram Bot未配置'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+        return Response({
+            'bot_name': bot_name,
+            'auth_url': f"{frontend_url}/auth/telegram-callback"
+        })

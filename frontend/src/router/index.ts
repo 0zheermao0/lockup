@@ -13,6 +13,8 @@ import InventoryView from '../views/InventoryView.vue'
 import GameView from '../views/GameView.vue'
 import ExploreView from '../views/ExploreView.vue'
 import ClaimView from '../views/ClaimView.vue'
+import TelegramCallbackView from '../views/TelegramCallbackView.vue'
+import CommunityStatsView from '../views/CommunityStatsView.vue'
 
 const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
@@ -100,10 +102,34 @@ const router = createRouter({
       meta: { requiresGuest: true }
     },
     {
+      path: '/auth/telegram-callback',
+      name: 'telegram-callback',
+      component: TelegramCallbackView,
+      meta: { requiresGuest: true }
+    },
+    {
       path: '/about',
       name: 'about',
       component: () => import('../views/AboutView.vue'),
       meta: { requiresAuth: true }
+    },
+    {
+      path: '/level-detail',
+      name: 'level-detail',
+      component: () => import('../views/LevelDetailView.vue'),
+      meta: { requiresAuth: true, title: '等级详情' }
+    },
+    {
+      path: '/coins-detail',
+      name: 'coins-detail',
+      component: () => import('../views/CoinsDetailView.vue'),
+      meta: { requiresAuth: true, title: '积分详情' }
+    },
+    {
+      path: '/community-stats',
+      name: 'community-stats',
+      component: CommunityStatsView,
+      meta: { requiresAuth: true, title: '社区排行榜' }
     }
   ]
 })

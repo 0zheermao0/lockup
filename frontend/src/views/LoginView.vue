@@ -4,15 +4,17 @@
       <h1>锁芯社区</h1>
       <h2>登录</h2>
 
+      <!-- 普通登录表单 -->
       <form @submit.prevent="handleLogin">
         <div class="form-group">
-          <label for="username">用户名</label>
+          <label for="account">用户名或邮箱</label>
           <input
-            id="username"
-            v-model="form.username"
+            id="account"
+            v-model="form.account"
             type="text"
             required
             :disabled="authStore.isLoading"
+            placeholder="输入用户名或邮箱"
           />
         </div>
 
@@ -38,6 +40,24 @@
         </button>
       </form>
 
+      <!-- 分隔线 -->
+      <div class="divider">
+        <span>或</span>
+      </div>
+
+      <!-- Telegram登录按钮 -->
+      <div class="telegram-login-section">
+        <div v-if="telegramLoading" class="telegram-loading">
+          <span class="loading-spinner"></span>
+          加载中...
+        </div>
+        <div v-else-if="telegramError" class="telegram-error">
+          <span>{{ telegramError }}</span>
+          <button @click="loadTelegramWidget" class="retry-btn">重试</button>
+        </div>
+        <div v-else id="telegram-login-container"></div>
+      </div>
+
       <div class="auth-links">
         <p>还没有账号？ <router-link to="/register">立即注册</router-link></p>
         <p>忘记密码？ <router-link to="/password-reset">重置密码</router-link></p>
@@ -47,20 +67,24 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive } from 'vue'
+import { ref, reactive, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '../stores/auth'
+import { authApi } from '../lib/api'
 import type { LoginRequest } from '../types/index'
 
 const router = useRouter()
 const authStore = useAuthStore()
 
 const form = reactive<LoginRequest>({
-  username: '',
+  account: '',
   password: ''
 })
 
 const error = ref('')
+const telegramLoading = ref(true)
+const telegramError = ref('')
+let telegramScript: HTMLScriptElement | null = null
 
 // Helper function to parse Django REST Framework validation errors for login
 const parseLoginError = (err: any): string => {
@@ -152,6 +176,79 @@ const handleLogin = async () => {
     error.value = parseLoginError(err)
   }
 }
+
+// 加载Telegram Login Widget
+const loadTelegramWidget = async () => {
+  try {
+    telegramLoading.value = true
+    telegramError.value = ''
+
+    // 获取Telegram配置
+    const config = await authApi.getTelegramLoginConfig()
+
+    // 检查配置是否有效
+    if (!config.bot_name) {
+      telegramError.value = 'Telegram登录未配置'
+      telegramLoading.value = false
+      return
+    }
+
+    // 动态加载Telegram Login Widget脚本
+    telegramScript = document.createElement('script')
+    telegramScript.src = 'https://telegram.org/js/telegram-widget.js?22'
+    telegramScript.setAttribute('data-telegram-login', config.bot_name)
+    telegramScript.setAttribute('data-size', 'large')
+    telegramScript.setAttribute('data-auth-url', config.auth_url)
+    telegramScript.setAttribute('data-request-access', 'write')
+    telegramScript.async = true
+
+    // 设置加载超时（最多等待3秒）
+    const loadTimeout = setTimeout(() => {
+      telegramLoading.value = false
+    }, 3000)
+
+    // 脚本加载完成后的处理
+    telegramScript.onload = () => {
+      clearTimeout(loadTimeout)
+      // 给Telegram Widget一些时间来渲染
+      setTimeout(() => {
+        telegramLoading.value = false
+      }, 500)
+    }
+
+    telegramScript.onerror = () => {
+      clearTimeout(loadTimeout)
+      telegramError.value = '加载Telegram登录失败，请刷新页面重试'
+      telegramLoading.value = false
+    }
+
+    document.getElementById('telegram-login-container')?.appendChild(telegramScript)
+  } catch (err: any) {
+    // 提供更详细的错误信息
+    if (err.response?.status === 500) {
+      telegramError.value = '服务器配置错误，请联系管理员'
+    } else if (err.response?.data?.error) {
+      telegramError.value = err.response.data.error
+    } else if (!navigator.onLine) {
+      telegramError.value = '网络连接已断开'
+    } else {
+      telegramError.value = '加载Telegram登录失败，请稍后重试'
+    }
+    telegramLoading.value = false
+    console.error('Failed to load Telegram widget:', err)
+  }
+}
+
+onMounted(() => {
+  loadTelegramWidget()
+})
+
+onUnmounted(() => {
+  // 清理Telegram脚本
+  if (telegramScript && telegramScript.parentNode) {
+    telegramScript.parentNode.removeChild(telegramScript)
+  }
+})
 </script>
 
 <style scoped>
@@ -268,5 +365,81 @@ button:disabled {
 
 .auth-links a:hover {
   text-decoration: underline;
+}
+
+/* Telegram登录区域样式 */
+.divider {
+  display: flex;
+  align-items: center;
+  margin: 1.5rem 0;
+  color: #666;
+}
+
+.divider::before,
+.divider::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background-color: #ddd;
+}
+
+.divider span {
+  padding: 0 1rem;
+  font-size: 0.9rem;
+}
+
+.telegram-login-section {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 40px;
+}
+
+.telegram-loading {
+  color: #666;
+  font-size: 0.9rem;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.loading-spinner {
+  width: 16px;
+  height: 16px;
+  border: 2px solid #ddd;
+  border-top-color: #007bff;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.telegram-error {
+  color: #dc3545;
+  font-size: 0.9rem;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.retry-btn {
+  padding: 0.25rem 0.75rem;
+  background-color: #6c757d;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  font-size: 0.8rem;
+  cursor: pointer;
+  margin-top: 0;
+}
+
+.retry-btn:hover {
+  background-color: #5a6268;
 }
 </style>

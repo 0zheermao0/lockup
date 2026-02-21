@@ -522,6 +522,34 @@ watch(
   font-size: 1rem;
 }
 
+/* Medium screen adjustments */
+@media (max-width: 1024px) and (min-width: 769px) {
+  .lock-status {
+    padding: 0.875rem;
+    gap: 0.75rem;
+  }
+
+  .lock-icon {
+    font-size: 1.75rem;
+  }
+
+  .lock-title {
+    font-size: 1rem;
+  }
+
+  .lock-meta {
+    font-size: 0.8rem;
+    margin-bottom: 0.375rem;
+  }
+
+  .click-hint,
+  .complete-hint {
+    padding: 0.375rem 0.75rem;
+    font-size: 0.8rem;
+    margin-top: 0.375rem;
+  }
+}
+
 /* Mobile responsive */
 @media (max-width: 768px) {
   .lock-status {

@@ -2,7 +2,7 @@ from rest_framework import serializers
 from django.contrib.auth import authenticate
 from django.contrib.auth.password_validation import validate_password, ValidationError as DjangoValidationError
 from django.utils import timezone
-from .models import User, Friendship, UserLevelUpgrade, Notification
+from .models import User, Friendship, UserLevelUpgrade, Notification, ActivityLog, CoinsLog
 
 
 def validate_password_with_detailed_messages(password, user=None):
@@ -303,26 +303,48 @@ class UserRegistrationSerializer(serializers.ModelSerializer):
 
 
 class UserLoginSerializer(serializers.Serializer):
-    """用户登录序列化器"""
+    """用户登录序列化器 - 支持用户名或邮箱"""
 
-    username = serializers.CharField()
+    account = serializers.CharField()  # 可以是用户名或邮箱
     password = serializers.CharField(write_only=True)
 
     def validate(self, attrs):
-        username = attrs.get('username')
+        account = attrs.get('account')
         password = attrs.get('password')
 
-        if username and password:
-            user = authenticate(username=username, password=password)
-            if not user:
-                raise serializers.ValidationError('用户名或密码错误')
+        if not account or not password:
+            raise serializers.ValidationError('必须提供用户名/邮箱和密码')
+
+        # 判断是邮箱还是用户名
+        if '@' in account:
+            # 邮箱登录
+            user_query = User.objects.filter(email=account.lower())
+        else:
+            # 用户名登录
+            user_query = User.objects.filter(username=account)
+
+        user = user_query.first()
+
+        if user and user.check_password(password):
             if not user.is_active:
                 raise serializers.ValidationError('账户已被禁用')
             attrs['user'] = user
         else:
-            raise serializers.ValidationError('必须提供用户名和密码')
+            raise serializers.ValidationError('用户名/邮箱或密码错误')
 
         return attrs
+
+
+class TelegramLoginRequestSerializer(serializers.Serializer):
+    """Telegram登录请求序列化器"""
+
+    id = serializers.IntegerField()
+    first_name = serializers.CharField(required=False, allow_blank=True)
+    last_name = serializers.CharField(required=False, allow_blank=True)
+    username = serializers.CharField(required=False, allow_blank=True)
+    photo_url = serializers.URLField(required=False, allow_blank=True)
+    auth_date = serializers.IntegerField()
+    hash = serializers.CharField()
 
 
 class UserProfileUpdateSerializer(serializers.ModelSerializer):
@@ -583,3 +605,79 @@ class NotificationCreateSerializer(serializers.Serializer):
     related_object_type = serializers.CharField(max_length=50, required=False)
     related_object_id = serializers.CharField(max_length=50, required=False)
     extra_data = serializers.JSONField(default=dict)
+
+
+class ActivityLogSerializer(serializers.ModelSerializer):
+    """活跃度日志序列化器"""
+    time_ago = serializers.SerializerMethodField()
+    action_type_display = serializers.CharField(source='get_action_type_display', read_only=True)
+
+    class Meta:
+        model = ActivityLog
+        fields = [
+            'id', 'action_type', 'action_type_display', 'points_change',
+            'new_total', 'metadata', 'created_at', 'time_ago'
+        ]
+
+    def get_time_ago(self, obj):
+        """获取相对时间显示"""
+        from datetime import timedelta
+        from django.utils import timezone
+
+        now = timezone.now()
+        diff = now - obj.created_at
+
+        if diff < timedelta(minutes=1):
+            return "刚刚"
+        elif diff < timedelta(hours=1):
+            minutes = int(diff.total_seconds() // 60)
+            return f"{minutes}分钟前"
+        elif diff < timedelta(days=1):
+            hours = int(diff.total_seconds() // 3600)
+            return f"{hours}小时前"
+        elif diff < timedelta(days=7):
+            days = diff.days
+            return f"{days}天前"
+        else:
+            return obj.created_at.strftime("%Y-%m-%d")
+
+
+class CoinsLogSerializer(serializers.ModelSerializer):
+    """积分日志序列化器"""
+    time_ago = serializers.SerializerMethodField()
+    change_type_display = serializers.CharField(source='get_change_type_display', read_only=True)
+    is_income = serializers.SerializerMethodField()
+
+    class Meta:
+        model = CoinsLog
+        fields = [
+            'id', 'change_type', 'change_type_display', 'amount',
+            'balance_after', 'description', 'metadata', 'created_at',
+            'time_ago', 'is_income'
+        ]
+
+    def get_time_ago(self, obj):
+        """获取相对时间显示"""
+        from datetime import timedelta
+        from django.utils import timezone
+
+        now = timezone.now()
+        diff = now - obj.created_at
+
+        if diff < timedelta(minutes=1):
+            return "刚刚"
+        elif diff < timedelta(hours=1):
+            minutes = int(diff.total_seconds() // 60)
+            return f"{minutes}分钟前"
+        elif diff < timedelta(days=1):
+            hours = int(diff.total_seconds() // 3600)
+            return f"{hours}小时前"
+        elif diff < timedelta(days=7):
+            days = diff.days
+            return f"{days}天前"
+        else:
+            return obj.created_at.strftime("%Y-%m-%d")
+
+    def get_is_income(self, obj):
+        """判断是否为收入"""
+        return obj.amount > 0
