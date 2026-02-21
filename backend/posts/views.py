@@ -237,8 +237,12 @@ class PostListCreateView(generics.ListCreateAPIView):
 
             # 符合条件：用户有活跃带锁任务且今日首次打卡
             # 奖励1积分
-            user.coins += 1
-            user.save(update_fields=['coins'])
+            user.add_coins(
+                amount=1,
+                change_type='daily_checkin',
+                description='每日首次打卡奖励',
+                metadata={'post_id': str(post.id)}
+            )
 
             # 创建通知
             Notification.create_notification(
@@ -860,8 +864,12 @@ def vote_checkin_post(request, pk):
         )
 
     # 扣除用户积分
-    request.user.coins -= 5
-    request.user.save(update_fields=['coins'])
+    request.user.deduct_coins(
+        amount=5,
+        change_type='checkin_vote',
+        description='打卡投票消耗',
+        metadata={'post_id': str(post.id)}
+    )
 
     # 创建投票记录
     vote = CheckinVote.objects.create(

@@ -716,7 +716,7 @@ export interface NotificationItem {
                      'task_overtime_added' | 'task_board_taken' | 'task_board_submitted' | 'task_board_approved' | 'task_board_rejected' |
                      'coins_earned_hourly' | 'coins_earned_daily_login' | 'coins_earned_daily_checkin' | 'coins_earned_daily_board_post' | 'coins_earned_task_reward' | 'coins_spent_task_creation' |
                      'treasure_found' | 'photo_viewed' | 'note_viewed' | 'drift_bottle_found' | 'item_received' | 'item_shared' |
-                     'friend_request' | 'friend_accepted' |
+                     'friend_request' | 'friend_accepted' | 'private_message' |
                      'level_upgraded' | 'system_announcement' | 'game_result' | 'task_frozen_auto_strict'
   title: string
   message: string
@@ -853,4 +853,43 @@ export interface CommunityLeaderboard {
   most_tasks_created: LeaderboardCategory
   most_tasks_completed: LeaderboardCategory
   updated_at: string
+}
+
+// Private Message Types
+export interface PrivateMessage {
+  id: string
+  conversation: string
+  sender: User
+  message_type: 'text' | 'image' | 'voice'
+  content: string  // 文本内容或图片描述
+  file_url?: string  // 图片/语音文件URL
+  file_duration?: number  // 语音时长（秒）
+  is_read: boolean
+  read_at?: string
+  created_at: string
+  time_ago: string
+}
+
+export interface Conversation {
+  id: string
+  participants: User[]
+  other_participant: User | null
+  last_message: {
+    id: string
+    content: string
+    sender: string
+    created_at: string
+    is_read: boolean
+  } | null
+  unread_count: number
+  created_at: string
+  updated_at: string
+}
+
+export interface SendMessageRequest {
+  recipient_id: number
+  message_type: 'text' | 'image' | 'voice'
+  content: string
+  file?: File  // 上传的文件
+  file_duration?: number  // 语音时长（秒）
 }

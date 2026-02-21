@@ -403,8 +403,12 @@ class LockTaskListCreateView(generics.ListCreateAPIView):
 
         if not today_boards.exists():
             # 首次发布，奖励5积分
-            task.user.coins += 5
-            task.user.save()
+            task.user.add_coins(
+                amount=5,
+                change_type='daily_board_post',
+                description='每日首次发布任务板奖励',
+                metadata={'task_id': str(task.id)}
+            )
 
             # 创建低优先级通知
             Notification.create_notification(
@@ -692,8 +696,12 @@ def complete_task(request, pk):
         # 2. 计算并发放完成奖励（基于难度的一次性奖励）
         completion_bonus = _calculate_completion_bonus(task)
         if completion_bonus > 0:
-            task.user.coins += completion_bonus
-            task.user.save()
+            task.user.add_coins(
+                amount=completion_bonus,
+                change_type='task_completion_bonus',
+                description='任务完成奖励',
+                metadata={'task_id': str(task.id), 'difficulty': task.difficulty}
+            )
             completion_rewards = completion_bonus
 
             # 创建完成奖励通知
@@ -1411,8 +1419,12 @@ def approve_board_task(request, pk):
 
         # 处理奖励积分转移
         if task.reward and task.reward > 0:
-            task.taker.coins += task.reward
-            task.taker.save()
+            task.taker.add_coins(
+                amount=task.reward,
+                change_type='board_task_reward',
+                description='任务板任务奖励',
+                metadata={'task_id': str(task.id), 'approved_by': request.user.username}
+            )
 
             # 创建奖励转移事件
             TaskTimelineEvent.objects.create(
@@ -2044,8 +2056,12 @@ def _process_task_hourly_rewards(task):
                 total_bonus_coins += bonus_reward
 
         # 给用户增加积分
-        task.user.coins += actual_reward
-        task.user.save()
+        task.user.add_coins(
+            amount=actual_reward,
+            change_type='hourly_reward',
+            description=f'任务第{hour_num}小时奖励',
+            metadata={'task_id': str(task.id), 'hour_count': hour_num, 'bonus_reward': bonus_reward}
+        )
 
         # 创建奖励记录
         HourlyReward.objects.create(

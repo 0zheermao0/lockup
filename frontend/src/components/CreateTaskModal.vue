@@ -724,6 +724,26 @@ watch(() => form.duration_type, (newValue) => {
   }
 })
 
+// Watch for strict_mode changes to show notification when enabled
+watch(() => form.strict_mode, (newValue) => {
+  if (newValue) {
+    // 显示严格模式说明的 toast 通知
+    showToast.value = true
+    toastData.value = {
+      type: 'warning',
+      title: '⚠️ 严格模式已启用',
+      message: '严格模式需要您每天发布包含验证码的打卡动态，并接受社区监督投票。',
+      secondaryMessage: '如果未能按时打卡，或社区监督投票未通过（同意比例未达到要求），您的任务将被冻结！',
+      details: {
+        '打卡要求': '每天首次打卡自动包含验证码',
+        '社区监督': '其他用户可对您的打卡进行投票',
+        '冻结条件': '未按时打卡 或 投票未通过',
+        '解冻方式': '支付积分或使用道具解除冻结'
+      }
+    }
+  }
+})
+
 // 组件卸载时确保恢复滚动
 onUnmounted(() => {
   document.body.style.overflow = ''

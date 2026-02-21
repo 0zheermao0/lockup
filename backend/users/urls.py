@@ -59,4 +59,11 @@ urlpatterns = [
 
     # 社区排行榜
     path('community-leaderboard/', views.CommunityLeaderboardView.as_view(), name='community-leaderboard'),
+
+    # 私信系统
+    path('conversations/', views.ConversationListView.as_view(), name='conversation-list'),
+    path('conversations/<uuid:conversation_id>/messages/', views.MessageListView.as_view(), name='conversation-messages'),
+    path('messages/send/', views.SendMessageView.as_view(), name='send-message'),
+    path('conversations/<uuid:conversation_id>/mark-read/', views.MarkMessageReadView.as_view(), name='mark-conversation-read'),
+    path('conversations/get-or-create/', views.GetOrCreateConversationView.as_view(), name='get-or-create-conversation'),
 ]

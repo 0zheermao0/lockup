@@ -1213,7 +1213,8 @@ Telegram 通知：{'✅ 已开启' if user.telegram_notifications_enabled else '
                 await self._safe_callback_response(query, "❌ 您还没有背包，请先前往应用购买背包", show_alert=True)
                 return
 
-            if claimer_inventory.available_slots <= 0:
+            available_slots = await sync_to_async(lambda: claimer_inventory.available_slots)()
+            if available_slots <= 0:
                 await self._safe_callback_response(query, "❌ 您的背包空间不足，请先清理背包", show_alert=True)
                 return
 

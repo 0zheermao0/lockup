@@ -97,8 +97,8 @@
           <div class="actions-card">
             <h3>快速操作</h3>
             <button @click="openCreateModal(false)" class="action-btn blue">📝 发布动态</button>
-            <button @click="openCreateModal(true)" class="action-btn green">✅ 打卡任务</button>
-            <button @click="goToTasks" class="action-btn orange">📋 任务管理</button>
+            <button @click="openCreateTaskModal('lock')" class="action-btn green">➕ 创建任务</button>
+            <button @click="goToTasks" class="action-btn orange">📋 任务广场</button>
             <button @click="goToGames" class="action-btn purple">🎮 小游戏</button>
           </div>
 
@@ -107,6 +107,16 @@
             <button @click="goToStore" class="action-btn yellow">🛍️ 商店</button>
             <button @click="goToInventory" class="action-btn teal">🎒 背包</button>
             <button @click="goToExplore" class="action-btn brown">🗺️ 探索</button>
+          </div>
+
+          <div class="actions-card">
+            <h3>消息中心</h3>
+            <button @click="openChatModal" class="action-btn pink" style="position: relative;">
+              💬 私信
+              <span v-if="messagingStore.totalUnreadCount > 0" class="sidebar-chat-badge">
+                {{ messagingStore.totalUnreadCount > 99 ? '99+' : messagingStore.totalUnreadCount }}
+              </span>
+            </button>
           </div>
         </aside>
 
@@ -161,8 +171,8 @@
             <!-- Action Buttons -->
             <div class="mobile-actions-inline" :class="{ 'with-lock': authStore.user?.active_lock_task, 'without-lock': !authStore.user?.active_lock_task }">
               <button @click="openCreateModal(false)" class="mobile-btn primary" title="发布动态">📝</button>
-              <button @click="openCreateModal(true)" class="mobile-btn success" title="打卡任务">✅</button>
-              <button @click="goToTasks" class="mobile-btn info" title="任务管理">📋</button>
+              <button @click="openCreateTaskModal('lock')" class="mobile-btn success" title="创建任务">➕</button>
+              <button @click="goToTasks" class="mobile-btn info" title="任务广场">📋</button>
 
               <!-- Always show more button to prevent overflow -->
               <button @click="showMoreActions = !showMoreActions" class="mobile-btn secondary" title="更多">
@@ -333,6 +343,14 @@
       @success="handlePostCreated"
     />
 
+    <!-- 创建任务模态框 -->
+    <CreateTaskModal
+      :is-visible="showCreateTaskModal"
+      :initial-task-type="initialTaskType"
+      @close="closeCreateTaskModal"
+      @success="handleTaskCreated"
+    />
+
     <!-- 用户资料模态框 -->
     <ProfileModal
       :is-visible="showProfileModal"
@@ -345,6 +363,12 @@
       :is-visible="showLogoutModal"
       @close="closeLogoutModal"
       @confirm="confirmLogout"
+    />
+
+    <!-- 聊天模态框 -->
+    <ChatModal
+      :is-visible="isChatModalVisible"
+      @close="closeChatModal"
     />
 
     <!-- Back to Top Button -->
@@ -364,11 +388,13 @@ import { usePostsStore } from '../stores/posts'
 import { useNotificationStore } from '../stores/notifications'
 import { useNavigationStore } from '../stores/navigation'
 import { useThemeStore } from '../stores/theme'
+import { useMessagingStore } from '../stores/messaging'
 import { useInfiniteScroll } from '../composables/useInfiniteScroll'
 import { formatDistanceToNow } from '../lib/utils'
 import { getLevelColorScheme, getLevelCSSProperties, getLevelCSSClass, getLevelDisplayName, getLevelUsernameColor } from '../lib/level-colors'
 import { tasksApi } from '../lib/api-tasks'
 import CreatePostModal from '../components/CreatePostModal.vue'
+import CreateTaskModal from '../components/CreateTaskModal.vue'
 import LockStatus from '../components/LockStatus.vue'
 import ProfileModal from '../components/ProfileModal.vue'
 import NotificationBell from '../components/NotificationBell.vue'
@@ -377,6 +403,7 @@ import PinnedUserCarousel from '../components/PinnedUserCarousel.vue'
 import UserAvatar from '../components/UserAvatar.vue'
 import BackToTopButton from '../components/BackToTopButton.vue'
 import LogoutConfirmModal from '../components/LogoutConfirmModal.vue'
+import ChatModal from '../components/ChatModal.vue'
 import type { Post } from '../types/index'
 
 const router = useRouter()
@@ -385,10 +412,15 @@ const postsStore = usePostsStore()
 const notificationStore = useNotificationStore()
 const navigationStore = useNavigationStore()
 const themeStore = useThemeStore()
+const messagingStore = useMessagingStore()
 
 // 创建动态模态框状态
 const showCreateModal = ref(false)
 const isCheckinMode = ref(false)
+
+// 创建任务模态框状态
+const showCreateTaskModal = ref(false)
+const initialTaskType = ref<'lock' | 'board'>('lock')
 
 // 用户资料模态框状态
 const showProfileModal = ref(false)
@@ -396,6 +428,9 @@ const selectedUser = ref<any>(null)
 
 // 登出确认模态框状态
 const showLogoutModal = ref(false)
+
+// 聊天模态框状态
+const isChatModalVisible = ref(false)
 
 // 移动端更多操作展开状态
 const showMoreActions = ref(false)
@@ -471,6 +506,14 @@ const closeLogoutModal = () => {
   showLogoutModal.value = false
 }
 
+const openChatModal = () => {
+  isChatModalVisible.value = true
+}
+
+const closeChatModal = () => {
+  isChatModalVisible.value = false
+}
+
 const openCreateModal = (checkinMode: boolean = false) => {
   isCheckinMode.value = checkinMode
   showCreateModal.value = true
@@ -478,6 +521,20 @@ const openCreateModal = (checkinMode: boolean = false) => {
 
 const closeCreateModal = () => {
   showCreateModal.value = false
+}
+
+const openCreateTaskModal = (taskType: 'lock' | 'board' = 'lock') => {
+  initialTaskType.value = taskType
+  showCreateTaskModal.value = true
+}
+
+const closeCreateTaskModal = () => {
+  showCreateTaskModal.value = false
+}
+
+const handleTaskCreated = () => {
+  // 任务创建成功后的处理
+  closeCreateTaskModal()
 }
 
 const handlePostCreated = () => {
@@ -960,6 +1017,25 @@ onMounted(async () => {
   position: relative;
 }
 
+/* 侧边栏私信按钮徽章 */
+.sidebar-chat-badge {
+  position: absolute;
+  top: -4px;
+  right: -4px;
+  min-width: 20px;
+  height: 20px;
+  background: #dc3545;
+  color: white;
+  font-size: 0.7rem;
+  font-weight: 700;
+  border-radius: 50%;
+  border: 2px solid #000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 4px;
+  box-shadow: 2px 2px 0 rgba(0, 0, 0, 0.2);
+}
 
 /* 退出按钮正圆 */
 .logout-circle {
@@ -1173,6 +1249,10 @@ onMounted(async () => {
 
 .action-btn.brown {
   background: linear-gradient(135deg, #8d6e63, #6d4c41);
+}
+
+.action-btn.pink {
+  background: linear-gradient(135deg, #e91e63, #c2185b);
 }
 
 .action-btn:hover {
@@ -1865,23 +1945,37 @@ onMounted(async () => {
   }
 
   .user-stats {
-    padding: 0.4rem 0.8rem;
-    gap: 0.75rem;
+    padding: 0.35rem 0.6rem;
+    gap: 0.5rem;
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
   }
 
   .leaderboard-btn {
     width: 28px;
     height: 28px;
     font-size: 0.875rem;
+    flex-shrink: 0;
   }
 
   .level {
-    padding: 0.2rem 0.6rem;
+    padding: 0.2rem 0.5rem;
     font-size: 0.7rem;
+    flex-shrink: 1;
+    white-space: nowrap;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
 
   .coins {
-    font-size: 0.8rem;
+    font-size: 0.75rem;
+    flex-shrink: 1;
+    white-space: nowrap;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
 
   .header-actions {
@@ -1991,6 +2085,34 @@ onMounted(async () => {
   .mobile-main-row {
     gap: 0.25rem;
   }
+
+  /* Header user-stats adaptive scaling for small screens */
+  .user-stats {
+    padding: 0.3rem 0.5rem;
+    gap: 0.375rem;
+  }
+
+  .leaderboard-btn {
+    width: 26px;
+    height: 26px;
+    font-size: 0.8rem;
+  }
+
+  .level {
+    padding: 0.15rem 0.4rem;
+    font-size: 0.65rem;
+    max-width: 80px;
+  }
+
+  .coins {
+    font-size: 0.7rem;
+    padding: 0.15rem 0.3rem;
+    max-width: 100px;
+  }
+
+  .header-actions {
+    gap: 0.5rem;
+  }
 }
 
 /* Extra small screens */
@@ -2008,6 +2130,39 @@ onMounted(async () => {
     height: 28px;
     font-size: 0.8rem;
     padding: 0 0.2rem;
+  }
+
+  /* Header user-stats: prioritize essential elements */
+  .user-stats {
+    padding: 0.25rem 0.4rem;
+    gap: 0.25rem;
+  }
+
+  .leaderboard-btn {
+    width: 24px;
+    height: 24px;
+    font-size: 0.75rem;
+  }
+
+  .level {
+    padding: 0.1rem 0.3rem;
+    font-size: 0.6rem;
+    max-width: 60px;
+  }
+
+  .coins {
+    font-size: 0.65rem;
+    padding: 0.1rem 0.25rem;
+    max-width: 80px;
+  }
+
+  .header-actions {
+    gap: 0.4rem;
+  }
+
+  .logout-circle {
+    width: 28px;
+    height: 28px;
   }
 }
 </style>

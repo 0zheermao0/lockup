@@ -142,6 +142,13 @@
           </button>
           <button
             v-if="userProfile && userProfile.id !== currentUserId"
+            @click="startChat"
+            class="footer-btn chat-btn"
+          >
+            💬 私聊
+          </button>
+          <button
+            v-if="userProfile && userProfile.id !== currentUserId"
             @click="viewFullProfile"
             class="footer-btn view-profile-btn"
           >
@@ -157,6 +164,7 @@
 import { ref, watch, computed, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '../stores/auth'
+import { useMessagingStore } from '../stores/messaging'
 import { authApi } from '../lib/api'
 import LockIndicator from './LockIndicator.vue'
 import LockStatus from './LockStatus.vue'
@@ -179,6 +187,7 @@ const emit = defineEmits<{
 
 const router = useRouter()
 const authStore = useAuthStore()
+const messagingStore = useMessagingStore()
 
 // State
 const userProfile = ref<User | null>(null)
@@ -252,6 +261,26 @@ const viewFullProfile = () => {
     emit('close')
     router.push({ name: 'profile', params: { id: userProfile.value.id.toString() } })
   }
+}
+
+const startChat = async () => {
+  if (!userProfile.value) return
+
+  console.log('[ProfileModal] Start chat clicked for user:', userProfile.value.id, userProfile.value.username)
+
+  emit('close')
+
+  // Small delay to allow modal to close before opening chat
+  await new Promise(resolve => setTimeout(resolve, 100))
+
+  // Get the store directly
+  const { useMessagingStore } = await import('../stores/messaging')
+  const store = useMessagingStore()
+
+  console.log('[ProfileModal] Got store:', store)
+  console.log('[ProfileModal] openChatModal:', store.openChatModal)
+
+  store.openChatModal(userProfile.value.id, userProfile.value.username)
 }
 
 const handleLockIndicatorNavigation = (taskId: string) => {
@@ -646,6 +675,11 @@ onUnmounted(() => {
 
 .view-profile-btn {
   background: #007bff;
+  color: white;
+}
+
+.chat-btn {
+  background: #28a745;
   color: white;
 }
 

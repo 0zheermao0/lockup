@@ -8,7 +8,7 @@ import type {
   PasswordResetConfirmRequest, PasswordResetConfirmResponse,
   ActivityLog, CoinsLog, LevelProgress,
   TelegramLoginRequest, TelegramLoginConfig,
-  CommunityLeaderboard
+  CommunityLeaderboard, Conversation, PrivateMessage, SendMessageRequest
 } from '../types/index';
 
 import { apiRequest, handleResponse, ApiError } from './api-commons'
@@ -1153,6 +1153,71 @@ export const userStatsApi = {
 };
 
 export { ApiError };
+
+// Messaging API
+export const messagingApi = {
+  async getConversations(params?: { page?: number; page_size?: number }): Promise<PaginatedResponse<Conversation>> {
+    const query = new URLSearchParams();
+    if (params?.page) query.append('page', params.page.toString());
+    if (params?.page_size) query.append('page_size', params.page_size.toString());
+
+    const queryString = query.toString();
+    return apiRequest<PaginatedResponse<Conversation>>(`/auth/conversations/${queryString ? `?${queryString}` : ''}`);
+  },
+
+  async getMessages(conversationId: string, params?: { page?: number; page_size?: number }): Promise<PaginatedResponse<PrivateMessage>> {
+    const query = new URLSearchParams();
+    if (params?.page) query.append('page', params.page.toString());
+    if (params?.page_size) query.append('page_size', params.page_size.toString());
+
+    const queryString = query.toString();
+    return apiRequest<PaginatedResponse<PrivateMessage>>(`/auth/conversations/${conversationId}/messages/${queryString ? `?${queryString}` : ''}`);
+  },
+
+  async sendMessage(data: SendMessageRequest): Promise<{ message: string; data: PrivateMessage }> {
+    // 如果有文件，使用 FormData
+    if (data.file) {
+      const formData = new FormData();
+      formData.append('recipient_id', data.recipient_id.toString());
+      formData.append('message_type', data.message_type);
+      formData.append('content', data.content);
+      formData.append('file', data.file);
+      if (data.file_duration) {
+        formData.append('file_duration', data.file_duration.toString());
+      }
+
+      const token = localStorage.getItem('token');
+      const response = await fetch(`${API_BASE_URL}/auth/messages/send/`, {
+        method: 'POST',
+        headers: {
+          ...(token && { Authorization: `Token ${token}` }),
+        },
+        body: formData,
+      });
+
+      return handleResponse<{ message: string; data: PrivateMessage }>(response);
+    }
+
+    // 纯文本消息使用 JSON
+    return apiRequest('/auth/messages/send/', {
+      method: 'POST',
+      body: JSON.stringify(data)
+    });
+  },
+
+  async markConversationAsRead(conversationId: string): Promise<{ message: string; marked_count: number }> {
+    return apiRequest(`/auth/conversations/${conversationId}/mark-read/`, {
+      method: 'POST'
+    });
+  },
+
+  async getOrCreateConversation(userId: number): Promise<{ conversation: Conversation; created: boolean }> {
+    return apiRequest('/auth/conversations/get-or-create/', {
+      method: 'POST',
+      body: JSON.stringify({ user_id: userId })
+    });
+  }
+};
 
 // 通用API对象，供其他模块使用
 export const api = {

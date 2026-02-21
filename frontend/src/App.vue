@@ -1,6 +1,11 @@
 <template>
   <div id="app">
     <RouterView />
+    <!-- Global Chat Modal -->
+    <ChatModal
+      :is-visible="messagingStore.isChatModalVisible"
+      @close="messagingStore.closeChatModal"
+    />
   </div>
 </template>
 
@@ -10,10 +15,13 @@ import { onMounted, watch } from 'vue'
 import { useAuthStore } from './stores/auth'
 import { useNotificationStore } from './stores/notifications'
 import { useThemeStore } from './stores/theme'
+import { useMessagingStore } from './stores/messaging'
+import ChatModal from './components/ChatModal.vue'
 
 const authStore = useAuthStore()
 const notificationStore = useNotificationStore()
 const themeStore = useThemeStore()
+const messagingStore = useMessagingStore()
 
 onMounted(async () => {
   // Initialize theme system first
@@ -23,11 +31,13 @@ onMounted(async () => {
   // Initialize auth state on app startup
   await authStore.initAuth()
 
-  // Initialize notification system if user is authenticated
+  // Initialize notification and messaging systems if user is authenticated
   if (authStore.isAuthenticated) {
     try {
       await notificationStore.initNotifications()
       notificationStore.startAutoRefresh()
+      // Fetch conversations for unread count
+      await messagingStore.fetchConversations()
     } catch (error) {
       console.error('Failed to initialize notifications:', error)
     }

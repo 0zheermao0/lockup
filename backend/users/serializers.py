@@ -2,7 +2,7 @@ from rest_framework import serializers
 from django.contrib.auth import authenticate
 from django.contrib.auth.password_validation import validate_password, ValidationError as DjangoValidationError
 from django.utils import timezone
-from .models import User, Friendship, UserLevelUpgrade, Notification, ActivityLog, CoinsLog
+from .models import User, Friendship, UserLevelUpgrade, Notification, ActivityLog, CoinsLog, Conversation, PrivateMessage
 
 
 def validate_password_with_detailed_messages(password, user=None):
@@ -681,3 +681,80 @@ class CoinsLogSerializer(serializers.ModelSerializer):
     def get_is_income(self, obj):
         """判断是否为收入"""
         return obj.amount > 0
+
+
+class PrivateMessageSerializer(serializers.ModelSerializer):
+    """私聊消息序列化器"""
+    sender = UserPublicSerializer(read_only=True)
+    time_ago = serializers.SerializerMethodField()
+    message_type_display = serializers.CharField(source='get_message_type_display', read_only=True)
+
+    class Meta:
+        model = PrivateMessage
+        fields = ['id', 'conversation', 'sender', 'message_type', 'message_type_display', 'content',
+                  'file_url', 'file_duration', 'is_read', 'read_at', 'created_at', 'time_ago']
+
+    def get_time_ago(self, obj):
+        from datetime import timedelta
+        now = timezone.now()
+        diff = now - obj.created_at
+
+        if diff < timedelta(minutes=1):
+            return "刚刚"
+        elif diff < timedelta(hours=1):
+            minutes = int(diff.total_seconds() // 60)
+            return f"{minutes}分钟前"
+        elif diff < timedelta(days=1):
+            hours = int(diff.total_seconds() // 3600)
+            return f"{hours}小时前"
+        elif diff < timedelta(days=7):
+            days = diff.days
+            return f"{days}天前"
+        else:
+            return obj.created_at.strftime("%Y-%m-%d")
+
+
+class ConversationSerializer(serializers.ModelSerializer):
+    """会话序列化器"""
+    participants = UserPublicSerializer(many=True, read_only=True)
+    last_message = serializers.SerializerMethodField()
+    unread_count = serializers.SerializerMethodField()
+    other_participant = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Conversation
+        fields = ['id', 'participants', 'other_participant', 'last_message', 'unread_count', 'created_at', 'updated_at']
+
+    def get_last_message(self, obj):
+        last_msg = obj.messages.first()
+        if last_msg:
+            # 根据消息类型生成预览内容
+            content_preview = last_msg.content[:100] if last_msg.content else ''
+            if last_msg.message_type == 'image':
+                content_preview = '[图片]' + (' ' + content_preview if content_preview else '')
+            elif last_msg.message_type == 'voice':
+                content_preview = '[语音]' + (' ' + content_preview if content_preview else '')
+
+            return {
+                'id': str(last_msg.id),
+                'content': content_preview,
+                'sender': last_msg.sender.username,
+                'created_at': last_msg.created_at,
+                'is_read': last_msg.is_read,
+                'message_type': last_msg.message_type
+            }
+        return None
+
+    def get_unread_count(self, obj):
+        request = self.context.get('request')
+        if request and request.user:
+            return obj.messages.filter(is_read=False).exclude(sender=request.user).count()
+        return 0
+
+    def get_other_participant(self, obj):
+        request = self.context.get('request')
+        if request and request.user:
+            other = obj.participants.exclude(id=request.user.id).first()
+            if other:
+                return UserPublicSerializer(other).data
+        return None

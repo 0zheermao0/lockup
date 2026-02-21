@@ -3,19 +3,21 @@ from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework.authtoken.models import Token
+from rest_framework.exceptions import PermissionDenied
 from django.contrib.auth import login, logout
 from django.db.models import Q, Count
 from django.utils import timezone
+from django.shortcuts import get_object_or_404
 from datetime import timedelta
 from tasks.pagination import DynamicPageNumberPagination
-from .models import User, Friendship, UserLevelUpgrade, DailyLoginReward, Notification, EmailVerification, PasswordReset, ActivityLog, CoinsLog
+from .models import User, Friendship, UserLevelUpgrade, DailyLoginReward, Notification, EmailVerification, PasswordReset, ActivityLog, CoinsLog, Conversation, PrivateMessage
 from .serializers import (
     UserSerializer, UserPublicSerializer, UserRegistrationSerializer,
     UserLoginSerializer, UserProfileUpdateSerializer, FriendshipSerializer,
     FriendRequestSerializer, UserLevelUpgradeSerializer, UserStatsSerializer,
     PasswordChangeSerializer, SimplePasswordChangeSerializer, NotificationSerializer, NotificationCreateSerializer,
     PasswordResetRequestSerializer, PasswordResetConfirmSerializer, ActivityLogSerializer, CoinsLogSerializer,
-    TelegramLoginRequestSerializer
+    TelegramLoginRequestSerializer, ConversationSerializer, PrivateMessageSerializer
 )
 from utils.email_verification import (
     create_and_send_verification, verify_email_code, is_email_domain_allowed
@@ -1071,11 +1073,12 @@ class CommunityLeaderboardView(APIView):
                 return None
             try:
                 user = User.objects.get(id=user_id)
+                from utils.media import get_full_media_url
                 return {
                     'id': user.id,
                     'username': user.username,
                     'level': user.level,
-                    'avatar': user.avatar.url if user.avatar else None
+                    'avatar': get_full_media_url(user.avatar.url) if user.avatar else None
                 }
             except User.DoesNotExist:
                 return None
@@ -1255,3 +1258,264 @@ class TelegramLoginConfigView(APIView):
             'bot_name': bot_name,
             'auth_url': f"{frontend_url}/auth/telegram-callback"
         })
+
+
+class ConversationListView(generics.ListAPIView):
+    """获取当前用户的所有会话"""
+    serializer_class = ConversationSerializer
+    permission_classes = [permissions.IsAuthenticated]
+    pagination_class = DynamicPageNumberPagination
+
+    def get_queryset(self):
+        return Conversation.objects.filter(
+            participants=self.request.user
+        ).prefetch_related('participants', 'messages__sender')
+
+    def get_serializer_context(self):
+        context = super().get_serializer_context()
+        context['request'] = self.request
+        return context
+
+
+class MessageListView(generics.ListAPIView):
+    """获取指定会话的消息列表"""
+    serializer_class = PrivateMessageSerializer
+    permission_classes = [permissions.IsAuthenticated]
+    pagination_class = DynamicPageNumberPagination
+
+    def get_queryset(self):
+        conversation_id = self.kwargs.get('conversation_id')
+        conversation = get_object_or_404(Conversation, id=conversation_id)
+
+        # 检查用户是否是参与者
+        if not conversation.participants.filter(id=self.request.user.id).exists():
+            raise PermissionDenied("您不是该会话的参与者")
+
+        return PrivateMessage.objects.filter(
+            conversation=conversation
+        ).select_related('sender').order_by('-created_at')
+
+
+class SendMessageView(APIView):
+    """发送私聊消息"""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request):
+        recipient_id = request.data.get('recipient_id')
+        content = request.data.get('content', '').strip()
+        message_type = request.data.get('message_type', 'text')
+        file_duration = request.data.get('file_duration')
+
+        if not recipient_id:
+            return Response({'error': '请指定接收者'}, status=status.HTTP_400_BAD_REQUEST)
+
+        # 验证消息类型
+        if message_type not in ['text', 'image', 'voice']:
+            return Response({'error': '无效的消息类型'}, status=status.HTTP_400_BAD_REQUEST)
+
+        # 文本消息需要内容
+        if message_type == 'text' and not content:
+            return Response({'error': '消息内容不能为空'}, status=status.HTTP_400_BAD_REQUEST)
+
+        # 图片和语音消息需要文件
+        file_url = None
+        if message_type in ['image', 'voice']:
+            uploaded_file = request.FILES.get('file')
+            if uploaded_file:
+                file_url = self._handle_file_upload(uploaded_file, message_type)
+                if not file_url:
+                    return Response({'error': '文件上传失败'}, status=status.HTTP_400_BAD_REQUEST)
+            elif not content:  # 如果没有文件且没有内容，返回错误
+                return Response({'error': '请上传文件'}, status=status.HTTP_400_BAD_REQUEST)
+
+        if content and len(content) > 2000:
+            return Response({'error': '消息内容不能超过2000字'}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            recipient = User.objects.get(id=recipient_id)
+        except User.DoesNotExist:
+            return Response({'error': '接收者不存在'}, status=status.HTTP_404_NOT_FOUND)
+
+        # 不能给自己发消息
+        if recipient.id == request.user.id:
+            return Response({'error': '不能给自己发送消息'}, status=status.HTTP_400_BAD_REQUEST)
+
+        # 获取或创建会话
+        conversation = self._get_or_create_conversation(request.user, recipient)
+
+        # 创建消息
+        message_data = {
+            'conversation': conversation,
+            'sender': request.user,
+            'message_type': message_type,
+            'content': content or '',
+        }
+
+        if file_url:
+            message_data['file_url'] = file_url
+        if file_duration and message_type == 'voice':
+            try:
+                message_data['file_duration'] = int(file_duration)
+            except (ValueError, TypeError):
+                pass
+
+        message = PrivateMessage.objects.create(**message_data)
+
+        # 更新会话更新时间
+        conversation.save()  # triggers auto_now
+
+        # 创建通知
+        notification_message = content[:100] + ('...' if len(content) > 100 else '')
+        if message_type == 'image':
+            notification_message = '[图片]' + (' ' + notification_message if notification_message else '')
+        elif message_type == 'voice':
+            notification_message = '[语音]' + (' ' + notification_message if notification_message else '')
+
+        Notification.create_notification(
+            recipient=recipient,
+            notification_type='private_message',
+            title=f"{request.user.username} 发来一条私信",
+            message=notification_message,
+            actor=request.user,
+            related_object_type='private_message',
+            related_object_id=str(message.id),
+            extra_data={
+                'conversation_id': str(conversation.id),
+                'sender_id': request.user.id,
+                'sender_username': request.user.username,
+                'message_preview': content[:50] if content else '[媒体消息]',
+                'message_type': message_type
+            },
+            priority='normal'
+        )
+
+        serializer = PrivateMessageSerializer(message, context={'request': request})
+        return Response({
+            'message': '发送成功',
+            'data': serializer.data
+        }, status=status.HTTP_201_CREATED)
+
+    def _handle_file_upload(self, file, message_type):
+        """处理文件上传，返回文件URL"""
+        from django.conf import settings
+        from django.core.files.storage import default_storage
+        from django.core.files.base import ContentFile
+        import os
+        import uuid
+
+        # 验证文件类型
+        if message_type == 'image':
+            allowed_types = ['image/jpeg', 'image/png', 'image/gif', 'image/webp']
+            max_size = 5 * 1024 * 1024  # 5MB
+        elif message_type == 'voice':
+            allowed_types = ['audio/mpeg', 'audio/mp3', 'audio/wav', 'audio/ogg', 'audio/webm']
+            max_size = 10 * 1024 * 1024  # 10MB
+        else:
+            return None
+
+        if file.content_type not in allowed_types:
+            return None
+
+        if file.size > max_size:
+            return None
+
+        # 生成唯一文件名
+        ext = os.path.splitext(file.name)[1].lower()
+        if not ext:
+            if message_type == 'image':
+                ext = '.jpg'
+            else:
+                ext = '.mp3'
+
+        filename = f"{uuid.uuid4()}{ext}"
+        upload_path = f"private_messages/{message_type}s/{filename}"
+
+        # 保存文件
+        try:
+            path = default_storage.save(upload_path, ContentFile(file.read()))
+            # 返回完整URL
+            return f"{settings.MEDIA_URL}{path}"
+        except Exception as e:
+            print(f"File upload error: {e}")
+            return None
+
+    def _get_or_create_conversation(self, user1, user2):
+        """获取或创建两个用户之间的会话"""
+        conversation = Conversation.objects.filter(
+            participants=user1
+        ).filter(
+            participants=user2
+        ).first()
+
+        if not conversation:
+            conversation = Conversation.objects.create()
+            conversation.participants.add(user1, user2)
+
+        return conversation
+
+
+class MarkMessageReadView(APIView):
+    """标记会话消息为已读"""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request, conversation_id):
+        conversation = get_object_or_404(Conversation, id=conversation_id)
+
+        # 检查用户是否是参与者
+        if not conversation.participants.filter(id=request.user.id).exists():
+            raise PermissionDenied("您不是该会话的参与者")
+
+        # 标记对方发送的消息为已读
+        unread_messages = PrivateMessage.objects.filter(
+            conversation=conversation,
+            is_read=False
+        ).exclude(sender=request.user)
+
+        count = unread_messages.count()
+        unread_messages.update(is_read=True, read_at=timezone.now())
+
+        return Response({
+            'message': f'已标记 {count} 条消息为已读',
+            'marked_count': count
+        })
+
+
+class GetOrCreateConversationView(APIView):
+    """获取或创建两个用户之间的会话"""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request):
+        user_id = request.data.get('user_id')
+
+        if not user_id:
+            return Response({'error': '请指定用户ID'}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            other_user = User.objects.get(id=user_id)
+        except User.DoesNotExist:
+            return Response({'error': '用户不存在'}, status=status.HTTP_404_NOT_FOUND)
+
+        # 不能和自己创建会话
+        if other_user.id == request.user.id:
+            return Response({'error': '不能和自己创建会话'}, status=status.HTTP_400_BAD_REQUEST)
+
+        # 查找现有会话
+        conversation = Conversation.objects.filter(
+            participants=request.user
+        ).filter(
+            participants=other_user
+        ).first()
+
+        created = False
+        if not conversation:
+            # 创建新会话
+            conversation = Conversation.objects.create()
+            conversation.participants.add(request.user, other_user)
+            created = True
+
+        # 序列化并返回
+        serializer = ConversationSerializer(conversation, context={'request': request})
+        return Response({
+            'conversation': serializer.data,
+            'created': created
+        }, status=status.HTTP_201_CREATED if created else status.HTTP_200_OK)

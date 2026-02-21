@@ -804,6 +804,9 @@ class Notification(models.Model):
         ('friend_request', '好友请求'),
         ('friend_accepted', '好友请求被接受'),
 
+        # 私信系统类
+        ('private_message', '收到私信'),
+
         # 系统类
         ('level_upgraded', '等级提升'),
         ('system_announcement', '系统公告'),
@@ -936,6 +939,7 @@ class Notification(models.Model):
             'drift_bottle_found': f'/store/bottles/{self.related_object_id}',
             'friend_request': '/friends',
             'friend_accepted': f'/profile/{self.actor.username}' if self.actor else '/friends',
+            'private_message': f'/chat/{self.extra_data.get("conversation_id")}' if self.extra_data and self.extra_data.get('conversation_id') else '/chat',
         }
 
         return url_mapping.get(self.notification_type, '/')
@@ -1050,6 +1054,7 @@ class Notification(models.Model):
             'drift_bottle_found': f"{actor_name}发现了你的漂流瓶",
             'friend_request': f"{actor_name}向你发送了好友请求",
             'friend_accepted': f"{actor_name}接受了你的好友请求",
+            'private_message': f"{actor_name}发来一条私信",
             'level_upgraded': "恭喜你等级提升！",
             'item_shared': f"{actor_name}分享了物品给你",
             'game_result': "游戏结果通知",
@@ -1100,6 +1105,7 @@ class Notification(models.Model):
             'drift_bottle_found': f"你的漂流瓶被{actor_name}发现了",
             'friend_request': f"{actor_name}想要和你成为好友",
             'friend_accepted': f"你们现在是好友了，可以开始聊天",
+            'private_message': f"{actor_name}发来一条私信，点击查看",
             'level_upgraded': "你的等级已经提升，解锁了新功能",
             'system_event_occurred': "系统事件已触发，可能对你的游戏体验产生影响",
         }
@@ -1159,13 +1165,23 @@ class CoinsLog(models.Model):
         # 收入类型
         ('hourly_reward', '小时奖励'),
         ('daily_login', '每日登录奖励'),
+        ('daily_checkin', '每日首次打卡奖励'),
+        ('daily_board_post', '每日首次发布任务板奖励'),
         ('task_complete', '任务完成奖励'),
+        ('task_completion_bonus', '任务完成额外奖励'),
         ('board_task_reward', '任务板奖励'),
+        ('treasure_discovered', '宝物被发现奖励'),
+        ('game_refund', '游戏退款'),
+        ('treasury_withdrawal', '小金库提取'),
         ('event_reward', '活动奖励'),
         ('admin_grant', '管理员发放'),
         ('other_income', '其他收入'),
         # 支出类型
         ('task_creation', '创建任务消耗'),
+        ('checkin_vote', '打卡投票消耗'),
+        ('game_participation', '游戏参与消耗'),
+        ('exploration', '探索消耗'),
+        ('time_wheel_adjustment', '时间转盘调整费用'),
         ('store_purchase', '商店购买'),
         ('event_cost', '活动消耗'),
         ('admin_deduct', '管理员扣除'),
@@ -1330,3 +1346,65 @@ class PasswordReset(models.Model):
             expires_at=expires_at,
             ip_address=ip_address
         )
+
+
+class Conversation(models.Model):
+    """私聊会话模型"""
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    participants = models.ManyToManyField(User, related_name='conversations')
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'conversations'
+        ordering = ['-updated_at']
+        indexes = [
+            models.Index(fields=['-updated_at']),
+        ]
+        verbose_name = '私聊会话'
+        verbose_name_plural = '私聊会话'
+
+    def __str__(self):
+        participant_names = ', '.join([u.username for u in self.participants.all()])
+        return f"会话: {participant_names}"
+
+
+class PrivateMessage(models.Model):
+    """私聊消息模型"""
+    MESSAGE_TYPE_CHOICES = [
+        ('text', '文本'),
+        ('image', '图片'),
+        ('voice', '语音'),
+    ]
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    conversation = models.ForeignKey(Conversation, on_delete=models.CASCADE, related_name='messages')
+    sender = models.ForeignKey(User, on_delete=models.CASCADE, related_name='sent_messages')
+    message_type = models.CharField(max_length=10, choices=MESSAGE_TYPE_CHOICES, default='text', help_text="消息类型")
+    content = models.TextField(max_length=2000, help_text="消息内容（文本内容或图片描述）")
+    file_url = models.URLField(null=True, blank=True, help_text="图片/语音文件URL")
+    file_duration = models.IntegerField(null=True, blank=True, help_text="语音时长（秒）")
+    is_read = models.BooleanField(default=False, help_text="是否已读")
+    read_at = models.DateTimeField(null=True, blank=True, help_text="读取时间")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'private_messages'
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['conversation', '-created_at']),
+            models.Index(fields=['conversation', 'is_read']),
+            models.Index(fields=['sender', '-created_at']),
+        ]
+        verbose_name = '私聊消息'
+        verbose_name_plural = '私聊消息'
+
+    def __str__(self):
+        return f"{self.sender.username}: {self.content[:50]}..."
+
+    def mark_as_read(self):
+        """标记消息为已读"""
+        if not self.is_read:
+            self.is_read = True
+            self.read_at = timezone.now()
+            self.save(update_fields=['is_read', 'read_at'])

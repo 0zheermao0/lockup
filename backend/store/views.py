@@ -396,8 +396,12 @@ def play_time_wheel(request):
 
             # 扣除积分
             if hasattr(user, 'coins'):
-                user.coins -= bet_amount
-                user.save()
+                user.deduct_coins(
+                    amount=bet_amount,
+                    change_type='time_wheel_adjustment',
+                    description='时间转盘调整任务时间费用',
+                    metadata={'task_id': str(lock_task.id), 'time_change_minutes': time_change_minutes, 'is_increase': is_increase}
+                )
 
             # 记录时间变化前的状态
             previous_end_time = lock_task.end_time
@@ -642,8 +646,12 @@ def join_game(request, game_id):
 
                 # 扣除积分
                 if hasattr(user, 'coins'):
-                    user.coins -= game.bet_amount
-                    user.save()
+                    user.deduct_coins(
+                        amount=game.bet_amount,
+                        change_type='game_participation',
+                        description=f'参与{game.get_game_type_display()}游戏消耗',
+                        metadata={'game_id': str(game.id), 'game_type': game.game_type}
+                    )
 
                 # 获取玩家的行动选择
                 action_data = serializer.validated_data.get('action', {})
@@ -705,8 +713,12 @@ def join_game(request, game_id):
                                 # 平局时返还发起人（游戏创建者）的积分
                                 creator = game.creator
                                 if hasattr(creator, 'coins'):
-                                    creator.coins += game.bet_amount
-                                    creator.save()
+                                    creator.add_coins(
+                                        amount=game.bet_amount,
+                                        change_type='game_refund',
+                                        description='石头剪刀布游戏平局返还',
+                                        metadata={'game_id': str(game.id), 'result': 'tie'}
+                                    )
 
                                 # 给双方发送平局通知
                                 for participant in valid_participants:
@@ -1145,8 +1157,12 @@ def explore_zone(request):
 
                 # 扣除探索费用
                 if hasattr(user, 'coins'):
-                    user.coins -= 1
-                    user.save()
+                    user.deduct_coins(
+                        amount=1,
+                        change_type='exploration',
+                        description='探索消耗',
+                        metadata={'zone': zone_name}
+                    )
 
                 # 探索活跃度奖励
                 request.user.update_activity(points=1)
@@ -1221,8 +1237,16 @@ def explore_zone(request):
                                 'normal': 10,
                                 'hard': 20
                             }.get(selected_treasure.difficulty, 10)
-                            selected_treasure.burier.coins += reward_amount
-                            selected_treasure.burier.save()
+                            selected_treasure.burier.add_coins(
+                                amount=reward_amount,
+                                change_type='treasure_discovered',
+                                description='宝物被发现奖励',
+                                metadata={
+                                    'treasure_id': str(selected_treasure.id),
+                                    'finder': user.username,
+                                    'difficulty': selected_treasure.difficulty
+                                }
+                            )
 
                         # 创建宝物发现通知
                         Notification.create_notification(
@@ -2167,11 +2191,15 @@ def withdraw_treasury_coins(request, item_id):
                 }, status=status.HTTP_400_BAD_REQUEST)
 
             # 将积分添加到用户账户
-            if hasattr(user, 'coins'):
-                user.coins += stored_coins
-            else:
-                user.coins = stored_coins
-            user.save(update_fields=['coins'])
+            user.add_coins(
+                amount=stored_coins,
+                change_type='treasury_withdrawal',
+                description='小金库提取',
+                metadata={
+                    'depositor_username': treasury_item.properties.get('depositor_username'),
+                    'deposit_time': treasury_item.properties.get('deposit_time')
+                }
+            )
 
             # 记录存入者信息（用于通知）
             depositor_username = treasury_item.properties.get('depositor_username')

@@ -211,8 +211,8 @@
                   class="actor clickable-actor"
                   :class="getLevelCSSClass(notification.actor.level || 1)"
                   :style="{ color: getLevelUsernameColor(notification.actor.level || 1) }"
-                  @click.stop="openActorProfile(notification.actor.id, notification.actor.username)"
-                  :title="`查看 ${notification.actor.username} 的个人资料 (${getLevelDisplayName(notification.actor.level || 1)})`"
+                  @click.stop="openActorProfile(notification.actor.id, notification.actor.username, $event)"
+                  :title="`查看 ${notification.actor.username} 的个人资料 (${getLevelDisplayName(notification.actor.level || 1)}) - Ctrl+点击发送私信`"
                 >
                   {{ notification.actor.username }}
                 </span>
@@ -272,11 +272,13 @@
 import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useNotificationStore } from '../stores/notifications'
+import { useMessagingStore } from '../stores/messaging'
 import { getLevelCSSClass, getLevelDisplayName, getLevelUsernameColor } from '../lib/level-colors'
 import type { NotificationItem } from '../types/index'
 
 const router = useRouter()
 const notificationStore = useNotificationStore()
+const messagingStore = useMessagingStore()
 
 // 响应式数据
 const showDropdown = ref(false)
@@ -320,6 +322,7 @@ const getNotificationIcon = (type: string) => {
     item_shared: '🔗',
     friend_request: '👋',
     friend_accepted: '🤝',
+    private_message: '💬',
     level_upgraded: '⬆️',
     system_announcement: '📢',
     game_result: '🎮',
@@ -390,6 +393,17 @@ const handleNotificationClick = async (notification: NotificationItem) => {
     await markAsRead(notification.id)
   }
 
+  // 处理私信通知 - 打开聊天弹窗
+  if (notification.notification_type === 'private_message') {
+    const senderId = notification.extra_data?.sender_id || notification.actor?.id
+    const senderUsername = notification.extra_data?.sender_username || notification.actor?.username
+    if (senderId) {
+      messagingStore.openChatModal(senderId, senderUsername)
+      showDropdown.value = false
+      return
+    }
+  }
+
   // 如果有目标链接，跳转
   if (notification.target_url) {
     router.push(notification.target_url)
@@ -410,8 +424,14 @@ const openClaimerProfile = (claimerId: string, claimerUsername: string) => {
   showDropdown.value = false
 }
 
-const openActorProfile = (actorId: number, actorUsername: string) => {
+const openActorProfile = (actorId: number, actorUsername: string, event?: MouseEvent) => {
   console.log('openActorProfile called:', actorId, actorUsername)
+  // Ctrl/Cmd + 点击打开私信弹窗
+  if (event && (event.ctrlKey || event.metaKey)) {
+    messagingStore.openChatModal(actorId, actorUsername)
+    showDropdown.value = false
+    return
+  }
   // 打开通知触发者的个人资料页面
   router.push({ name: 'profile', params: { id: actorId.toString() } })
   showDropdown.value = false
