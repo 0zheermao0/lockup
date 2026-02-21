@@ -2027,3 +2027,104 @@ def process_deadline_reminders_8h(self):
             exc=exc,
             countdown=min(60 * (2 ** self.request.retries), 300)
         )
+
+
+@shared_task(bind=True, max_retries=3, default_retry_delay=60)
+def process_deadline_reminders_custom(self):
+    """
+    处理自定义时间截止提醒 - 每5分钟运行一次
+    查找即将到期的带锁任务，根据用户设置的提醒时间发送通知
+    """
+    logger.info("Starting custom deadline reminders processing")
+
+    try:
+        with transaction.atomic():
+            now = timezone.now()
+
+            # 查找所有活跃的带锁任务
+            active_lock_tasks = LockTask.objects.filter(
+                task_type='lock',
+                status='active',
+                end_time__isnull=False
+            ).select_related('user')
+
+            reminder_count = 0
+            tasks_processed = 0
+
+            for task in active_lock_tasks:
+                tasks_processed += 1
+
+                # 获取任务创建者的自定义提醒时间设置（分钟）
+                reminder_minutes = task.user.task_deadline_reminder_minutes
+
+                # 计算提醒时间窗口
+                reminder_window_start = now + timedelta(minutes=reminder_minutes - 2.5)
+                reminder_window_end = now + timedelta(minutes=reminder_minutes + 2.5)
+
+                # 检查任务是否在该时间窗口内到期
+                if not (reminder_window_start <= task.end_time <= reminder_window_end):
+                    continue
+
+                # 检查是否已经发送过自定义提醒
+                existing_reminder = TaskDeadlineReminder.objects.filter(
+                    task=task,
+                    participant=task.user,
+                    reminder_type='custom'
+                ).first()
+
+                if existing_reminder:
+                    logger.debug(f"Custom reminder already sent for task {task.id}")
+                    continue
+
+                # 创建提醒记录
+                TaskDeadlineReminder.objects.create(
+                    task=task,
+                    participant=task.user,
+                    reminder_type='custom'
+                )
+
+                # 计算剩余时间
+                time_remaining = task.end_time - now
+                minutes_remaining = int(time_remaining.total_seconds() // 60)
+
+                logger.info(f"Sending custom deadline reminder to {task.user.username} for task {task.id}")
+
+                # 创建通知
+                Notification.create_notification(
+                    recipient=task.user,
+                    notification_type='task_deadline_reminder_custom',
+                    title='任务即将截止提醒',
+                    message=f'您的带锁任务"{task.title}"将在约 {minutes_remaining} 分钟后截止',
+                    actor=None,  # 系统通知
+                    related_object_type='task',
+                    related_object_id=task.id,
+                    extra_data={
+                        'task_title': task.title,
+                        'task_id': str(task.id),
+                        'end_time': task.end_time.isoformat(),
+                        'minutes_remaining': minutes_remaining,
+                        'reminder_type': 'custom',
+                        'reminder_minutes_setting': reminder_minutes
+                    },
+                    priority='normal'
+                )
+
+                reminder_count += 1
+                logger.info(f"Successfully sent custom reminder to {task.user.username}")
+
+            result = {
+                'status': 'success',
+                'reminders_sent': reminder_count,
+                'tasks_processed': tasks_processed,
+                'timestamp': now.isoformat()
+            }
+
+            logger.info(f"Custom deadline reminders processing completed: {result}")
+            return result
+
+    except Exception as exc:
+        logger.error(f"Failed to process custom deadline reminders: {exc}", exc_info=True)
+        raise self.retry(
+            exc=exc,
+            countdown=min(60 * (2 ** self.request.retries), 300)
+        )

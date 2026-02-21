@@ -88,6 +88,24 @@ class User(AbstractUser):
         help_text="临时绑定令牌，用于自动绑定流程"
     )
 
+    # 通知设置
+    task_deadline_reminder_minutes = models.IntegerField(
+        default=30,
+        validators=[MinValueValidator(5), MaxValueValidator(120)],
+        help_text="任务截止前提醒时间（分钟），范围 5-120"
+    )
+    telegram_min_priority = models.CharField(
+        max_length=10,
+        choices=[
+            ('low', '低'),
+            ('normal', '普通'),
+            ('high', '高'),
+            ('urgent', '紧急'),
+        ],
+        default='urgent',
+        help_text="Telegram 通知最低优先级"
+    )
+
     # 统计信息
     total_posts = models.IntegerField(default=0, help_text="发布动态总数")
     total_likes_received = models.IntegerField(default=0, help_text="收到点赞总数")
@@ -773,6 +791,7 @@ class Notification(models.Model):
         ('task_board_rejected', '任务板任务被拒绝'),
         ('task_board_assigned_exclusive', '专属任务指派'),
         ('task_deadline_reminder_8h', '任务截止前8小时提醒'),
+        ('task_deadline_reminder_custom', '任务截止前自定义时间提醒'),
 
         # 打卡投票系统类
         ('checkin_vote_cast', '打卡投票'),
@@ -977,10 +996,23 @@ class Notification(models.Model):
             # 导入放在方法内部避免循环导入
             from telegram_bot.services import telegram_service
 
-            # 检查用户是否可以接收 Telegram 通知，并且只转发 urgent 优先级的通知
-            if (notification.recipient.can_receive_telegram_notifications() and
-                notification.priority == 'urgent'):
-                # 异步发送通知（这里简化处理，实际生产环境可能需要使用 Celery 等任务队列）
+            # 优先级顺序映射
+            priority_order = {'low': 0, 'normal': 1, 'high': 2, 'urgent': 3}
+
+            # 检查用户是否可以接收 Telegram 通知
+            if not notification.recipient.can_receive_telegram_notifications():
+                return
+
+            # 获取用户设置的最低优先级
+            user_min_priority = notification.recipient.telegram_min_priority
+            notification_priority = notification.priority
+
+            # 检查通知优先级是否满足用户设置的最低要求
+            if priority_order.get(notification_priority, 0) < priority_order.get(user_min_priority, 3):
+                # 优先级不够，不发送通知
+                return
+
+            # 异步发送通知（这里简化处理，实际生产环境可能需要使用 Celery 等任务队列）
                 import asyncio
                 import threading
 

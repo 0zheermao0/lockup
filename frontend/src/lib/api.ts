@@ -138,6 +138,30 @@ export const authApi = {
       body: JSON.stringify(data),
     });
   },
+
+  // Notification Settings API
+  async getNotificationSettings(): Promise<{
+    task_deadline_reminder_minutes: number;
+    telegram_min_priority: string;
+    telegram_min_priority_display: string;
+  }> {
+    return apiRequest('/auth/me/notification-settings/');
+  },
+
+  async updateNotificationSettings(data: {
+    task_deadline_reminder_minutes?: number;
+    telegram_min_priority?: string;
+  }): Promise<{
+    message: string;
+    task_deadline_reminder_minutes: number;
+    telegram_min_priority: string;
+    telegram_min_priority_display: string;
+  }> {
+    return apiRequest('/auth/me/notification-settings/', {
+      method: 'PATCH',
+      body: JSON.stringify(data)
+    });
+  },
 };
 
 export const postsApi = {

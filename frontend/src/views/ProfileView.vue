@@ -282,6 +282,59 @@
           </section>
 
 
+          <!-- Notification Settings Section (只对自己显示) -->
+          <section v-if="isOwnProfile" class="notification-settings-section">
+            <h3>🔔 通知设置</h3>
+            <div class="notification-settings-content">
+              <!-- Task Deadline Reminder Minutes -->
+              <div class="setting-item">
+                <div class="setting-info">
+                  <span class="setting-label">任务截止提醒时间</span>
+                  <span class="setting-description">
+                    带锁任务结束前 {{ notificationSettings.task_deadline_reminder_minutes }} 分钟发送提醒
+                  </span>
+                </div>
+                <div v-if="editMode" class="setting-control">
+                  <input
+                    type="range"
+                    v-model.number="notificationSettings.task_deadline_reminder_minutes"
+                    min="5"
+                    max="120"
+                    step="5"
+                    class="setting-slider"
+                  />
+                  <span class="slider-value">{{ notificationSettings.task_deadline_reminder_minutes }} 分钟</span>
+                </div>
+                <span v-else class="setting-value">
+                  {{ notificationSettings.task_deadline_reminder_minutes }} 分钟
+                </span>
+              </div>
+
+              <!-- Telegram Min Priority -->
+              <div class="setting-item">
+                <div class="setting-info">
+                  <span class="setting-label">Telegram 通知优先级</span>
+                  <span class="setting-description">
+                    只接收指定优先级及以上的 Telegram 通知
+                  </span>
+                </div>
+                <select
+                  v-if="editMode"
+                  v-model="notificationSettings.telegram_min_priority"
+                  class="setting-select"
+                >
+                  <option value="urgent">紧急 - 仅紧急通知</option>
+                  <option value="high">高 - 高优先级及以上</option>
+                  <option value="normal">普通 - 普通优先级及以上</option>
+                  <option value="low">低 - 所有通知</option>
+                </select>
+                <span v-else class="setting-value">
+                  {{ getTelegramPriorityText(notificationSettings.telegram_min_priority) }}
+                </span>
+              </div>
+            </div>
+          </section>
+
           <!-- Settings Section (只对自己显示) -->
           <section v-if="isOwnProfile" class="settings-section">
             <h3>隐私设置</h3>
@@ -346,6 +399,13 @@ const telegramStatus = ref<TelegramStatus | null>(null)
 const telegramLoading = ref(false)
 const telegramError = ref('')
 const telegramActionLoading = ref(false)
+
+// 通知设置相关状态
+const notificationSettings = ref({
+  task_deadline_reminder_minutes: 30,
+  telegram_min_priority: 'urgent'
+})
+const notificationSettingsLoading = ref(false)
 
 const editForm = reactive({
   username: '',
@@ -554,6 +614,9 @@ const saveProfile = async () => {
     // 然后处理密码修改（如果有）
     const passwordSuccess = await changePassword()
 
+    // 保存通知设置
+    await saveNotificationSettings()
+
     if (passwordSuccess) {
       // 更新本地数据
       userProfile.value = { ...userProfile.value, ...updatedProfile }
@@ -580,6 +643,48 @@ const getLocationPrecisionText = (precision: number) => {
     4: '仅显示城市'
   }
   return texts[precision as keyof typeof texts] || '未知'
+}
+
+const getTelegramPriorityText = (priority: string) => {
+  const texts: Record<string, string> = {
+    'urgent': '紧急 - 仅紧急通知',
+    'high': '高 - 高优先级及以上',
+    'normal': '普通 - 普通优先级及以上',
+    'low': '低 - 所有通知'
+  }
+  return texts[priority] || '未知'
+}
+
+const fetchNotificationSettings = async () => {
+  if (!isOwnProfile.value) return
+
+  notificationSettingsLoading.value = true
+  try {
+    const response = await authApi.getNotificationSettings()
+    notificationSettings.value = {
+      task_deadline_reminder_minutes: response.task_deadline_reminder_minutes,
+      telegram_min_priority: response.telegram_min_priority
+    }
+  } catch (error: any) {
+    console.error('Error fetching notification settings:', error)
+  } finally {
+    notificationSettingsLoading.value = false
+  }
+}
+
+const saveNotificationSettings = async () => {
+  if (!isOwnProfile.value) return
+
+  try {
+    await authApi.updateNotificationSettings({
+      task_deadline_reminder_minutes: notificationSettings.value.task_deadline_reminder_minutes,
+      telegram_min_priority: notificationSettings.value.telegram_min_priority
+    })
+    console.log('通知设置已保存')
+  } catch (error: any) {
+    console.error('Error saving notification settings:', error)
+    alert('通知设置保存失败，请重试')
+  }
 }
 
 const formatTotalLockDuration = (minutes: number) => {
@@ -768,9 +873,10 @@ const openTelegramChat = (username: string) => {
 onMounted(async () => {
   await fetchUserProfile()
 
-  // 如果是自己的资料页，加载 Telegram 状态
+  // 如果是自己的资料页，加载 Telegram 状态和通知设置
   if (isOwnProfile.value) {
     await fetchTelegramStatus()
+    await fetchNotificationSettings()
   }
 })
 </script>
@@ -1012,7 +1118,7 @@ onMounted(async () => {
   color: #f39c12;
 }
 
-.lock-status-section, .stats-section, .settings-section, .telegram-section {
+.lock-status-section, .stats-section, .settings-section, .telegram-section, .notification-settings-section {
   background: white;
   padding: 2rem;
   border-radius: 8px;
@@ -1020,7 +1126,7 @@ onMounted(async () => {
   box-shadow: 4px 4px 0 #000;
 }
 
-.lock-status-section h3, .stats-section h3, .settings-section h3 {
+.lock-status-section h3, .stats-section h3, .settings-section h3, .notification-settings-section h3 {
   margin: 0 0 1.5rem 0;
   font-weight: 900;
   text-transform: uppercase;
@@ -1114,6 +1220,67 @@ onMounted(async () => {
   cursor: not-allowed;
 }
 
+/* Notification Settings Section Styles */
+.notification-settings-section h3 {
+  margin: 0 0 1.5rem 0;
+  font-weight: 900;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+.notification-settings-content {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.notification-settings-content .setting-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 1rem 0;
+  border-bottom: 1px solid #e9ecef;
+}
+
+.notification-settings-content .setting-item:last-child {
+  border-bottom: none;
+}
+
+.notification-settings-content .setting-info {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.notification-settings-content .setting-label {
+  font-weight: 600;
+  color: #333;
+}
+
+.notification-settings-content .setting-description {
+  font-size: 0.875rem;
+  color: #666;
+}
+
+.notification-settings-content .setting-control {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5rem;
+  min-width: 150px;
+}
+
+.notification-settings-content .setting-slider {
+  width: 100%;
+  cursor: pointer;
+}
+
+.notification-settings-content .slider-value {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: #007bff;
+}
+
 /* Mobile responsive */
 @media (max-width: 768px) {
   .header-content {
@@ -1124,7 +1291,7 @@ onMounted(async () => {
     padding: 1rem;
   }
 
-  .lock-status-section, .stats-section, .settings-section, .telegram-section {
+  .lock-status-section, .stats-section, .settings-section, .telegram-section, .notification-settings-section {
     padding: 1.5rem;
   }
 
@@ -1159,6 +1326,17 @@ onMounted(async () => {
     flex-direction: column;
     align-items: flex-start;
     gap: 0.5rem;
+  }
+
+  .notification-settings-content .setting-item {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.75rem;
+  }
+
+  .notification-settings-content .setting-control {
+    width: 100%;
+    align-items: flex-start;
   }
 }
 

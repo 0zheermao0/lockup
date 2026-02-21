@@ -545,6 +545,7 @@ class TaskDeadlineReminder(models.Model):
 
     REMINDER_TYPE_CHOICES = [
         ('8h', '8小时前'),
+        ('custom', '自定义时间'),
     ]
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)

@@ -1260,6 +1260,62 @@ class TelegramLoginConfigView(APIView):
         })
 
 
+class NotificationSettingsView(APIView):
+    """用户通知设置视图"""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        """获取用户通知设置"""
+        user = request.user
+        return Response({
+            'task_deadline_reminder_minutes': user.task_deadline_reminder_minutes,
+            'telegram_min_priority': user.telegram_min_priority,
+            'telegram_min_priority_display': user.get_telegram_min_priority_display(),
+        })
+
+    def patch(self, request):
+        """更新用户通知设置"""
+        user = request.user
+        data = request.data
+
+        # 验证并更新任务截止提醒时间
+        if 'task_deadline_reminder_minutes' in data:
+            minutes = data['task_deadline_reminder_minutes']
+            try:
+                minutes = int(minutes)
+                if not (5 <= minutes <= 120):
+                    return Response(
+                        {'error': '任务截止提醒时间必须在 5-120 分钟之间'},
+                        status=status.HTTP_400_BAD_REQUEST
+                    )
+                user.task_deadline_reminder_minutes = minutes
+            except (ValueError, TypeError):
+                return Response(
+                    {'error': '任务截止提醒时间必须是有效的整数'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+        # 验证并更新 Telegram 最低优先级
+        if 'telegram_min_priority' in data:
+            priority = data['telegram_min_priority']
+            valid_priorities = ['low', 'normal', 'high', 'urgent']
+            if priority not in valid_priorities:
+                return Response(
+                    {'error': f'Telegram 最低优先级必须是以下之一: {", ".join(valid_priorities)}'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            user.telegram_min_priority = priority
+
+        user.save(update_fields=['task_deadline_reminder_minutes', 'telegram_min_priority'])
+
+        return Response({
+            'message': '通知设置已更新',
+            'task_deadline_reminder_minutes': user.task_deadline_reminder_minutes,
+            'telegram_min_priority': user.telegram_min_priority,
+            'telegram_min_priority_display': user.get_telegram_min_priority_display(),
+        })
+
+
 class ConversationListView(generics.ListAPIView):
     """获取当前用户的所有会话"""
     serializer_class = ConversationSerializer

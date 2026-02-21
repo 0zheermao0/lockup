@@ -48,6 +48,9 @@ urlpatterns = [
     path('notifications/mark-all-read/', views.mark_all_notifications_read, name='mark-all-notifications-read'),
     path('notifications/clear-read/', views.clear_read_notifications, name='clear-read-notifications'),
 
+    # 通知设置
+    path('me/notification-settings/', views.NotificationSettingsView.as_view(), name='notification-settings'),
+
     # 活跃度日志
     path('activity-logs/', views.ActivityLogListView.as_view(), name='activity-logs'),
 

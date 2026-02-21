@@ -718,6 +718,87 @@ class Command(BaseCommand):
                     )
 
         # ========================================================================
+        # Custom Deadline Reminders Task Setup
+        # ========================================================================
+
+        self.stdout.write('\n' + '=' * 60)
+        self.stdout.write(self.style.SUCCESS('Setting up custom deadline reminders task...'))
+
+        # Create every-5-minutes interval schedule
+        custom_reminders_schedule, created = IntervalSchedule.objects.get_or_create(
+            every=5,  # 5 minutes
+            period=IntervalSchedule.MINUTES,
+        )
+
+        if created and not dry_run:
+            self.stdout.write(f'Created custom reminders interval schedule: {custom_reminders_schedule}')
+        elif created:
+            self.stdout.write(f'[DRY RUN] Would create custom reminders interval schedule: {custom_reminders_schedule}')
+        else:
+            self.stdout.write(f'Using existing custom reminders interval schedule: {custom_reminders_schedule}')
+
+        # Create periodic task for custom deadline reminders
+        custom_reminders_task_name = 'process-deadline-reminders-custom'
+        custom_reminders_task_function = 'tasks.celery_tasks.process_deadline_reminders_custom'
+
+        if dry_run:
+            existing_custom_reminders_task = PeriodicTask.objects.filter(name=custom_reminders_task_name).first()
+            if existing_custom_reminders_task:
+                self.stdout.write(
+                    self.style.WARNING(f'[DRY RUN] Task "{custom_reminders_task_name}" already exists')
+                )
+            else:
+                self.stdout.write(
+                    self.style.SUCCESS(f'[DRY RUN] Would create periodic task: {custom_reminders_task_name}')
+                )
+        else:
+            custom_reminders_periodic_task, created = PeriodicTask.objects.get_or_create(
+                name=custom_reminders_task_name,
+                defaults={
+                    'interval': custom_reminders_schedule,
+                    'task': custom_reminders_task_function,
+                    'kwargs': json.dumps({}),
+                    'enabled': True,
+                    'description': 'Send custom deadline reminders for lock tasks based on user settings (Every 5 minutes)',
+                    'queue': 'default',
+                }
+            )
+
+            if created:
+                self.stdout.write(
+                    self.style.SUCCESS(f'Created periodic task: {custom_reminders_task_name}')
+                )
+                self.stdout.write(f'  Task: {custom_reminders_task_function}')
+                self.stdout.write(f'  Schedule: {custom_reminders_schedule}')
+                self.stdout.write(f'  Queue: default')
+                self.stdout.write(f'  Enabled: {custom_reminders_periodic_task.enabled}')
+            else:
+                # Update existing task if needed
+                updated = False
+                if custom_reminders_periodic_task.task != custom_reminders_task_function:
+                    custom_reminders_periodic_task.task = custom_reminders_task_function
+                    updated = True
+                if custom_reminders_periodic_task.interval != custom_reminders_schedule:
+                    custom_reminders_periodic_task.interval = custom_reminders_schedule
+                    updated = True
+                if not custom_reminders_periodic_task.enabled:
+                    custom_reminders_periodic_task.enabled = True
+                    updated = True
+                if getattr(custom_reminders_periodic_task, 'queue', None) != 'default':
+                    custom_reminders_periodic_task.queue = 'default'
+                    updated = True
+
+                if updated:
+                    custom_reminders_periodic_task.save()
+                    self.stdout.write(
+                        self.style.SUCCESS(f'Updated existing periodic task: {custom_reminders_task_name}')
+                    )
+                else:
+                    self.stdout.write(
+                        self.style.WARNING(f'Periodic task "{custom_reminders_task_name}" already exists and is up to date')
+                    )
+
+        # ========================================================================
         # Event System Tasks Setup
         # ========================================================================
 
@@ -1223,6 +1304,7 @@ class Command(BaseCommand):
             'process-pinning-queue',
             'pinning-health-check',
             'process-deadline-reminders-8h',
+            'process-deadline-reminders-custom',
             'schedule-pending-events',
             'execute-pending-events',
             'process-expired-effects',
