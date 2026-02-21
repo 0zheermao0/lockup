@@ -1,0 +1,456 @@
+/* Skeleton Screen Animations - NeoBrutal Design */
+
+/* ============================================
+   SHIMMER ANIMATION
+   ============================================ */
+
+@keyframes shimmer {
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
+}
+
+@keyframes pulse-skeleton {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
+}
+
+@keyframes wave {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(100%);
+  }
+}
+
+/* ============================================
+   BASE SKELETON STYLES
+   ============================================ */
+
+.skeleton {
+  background: linear-gradient(
+    90deg,
+    #f0f0f0 25%,
+    #e0e0e0 50%,
+    #f0f0f0 75%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 1.5s infinite;
+  border: 2px solid #000;
+}
+
+.skeleton-pulse {
+  background: #e0e0e0;
+  border: 2px solid #000;
+  animation: pulse-skeleton 1.5s ease-in-out infinite;
+}
+
+.skeleton-wave {
+  position: relative;
+  overflow: hidden;
+  background: #f0f0f0;
+  border: 2px solid #000;
+}
+
+.skeleton-wave::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(255, 255, 255, 0.5),
+    transparent
+  );
+  animation: wave 1.5s infinite;
+}
+
+/* ============================================
+   SKELETON SHAPES
+   ============================================ */
+
+.skeleton-text {
+  height: 1em;
+  border-radius: 4px;
+  margin-bottom: 0.5em;
+}
+
+.skeleton-text-sm {
+  width: 60%;
+}
+
+.skeleton-text-md {
+  width: 80%;
+}
+
+.skeleton-text-lg {
+  width: 100%;
+}
+
+.skeleton-title {
+  height: 1.5em;
+  width: 70%;
+  border-radius: 4px;
+  margin-bottom: 1em;
+}
+
+.skeleton-avatar {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.skeleton-avatar-sm {
+  width: 32px;
+  height: 32px;
+}
+
+.skeleton-avatar-lg {
+  width: 64px;
+  height: 64px;
+}
+
+.skeleton-image {
+  width: 100%;
+  aspect-ratio: 16/9;
+  border-radius: 8px;
+}
+
+.skeleton-image-square {
+  aspect-ratio: 1;
+}
+
+.skeleton-button {
+  height: 40px;
+  width: 120px;
+  border-radius: 6px;
+}
+
+.skeleton-card {
+  border-radius: 8px;
+  padding: 1.5rem;
+  background: white;
+  border: 3px solid #000;
+  box-shadow: 4px 4px 0 #000;
+}
+
+/* ============================================
+   SKELETON CARD LAYOUTS
+   ============================================ */
+
+.skeleton-card-header {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+
+.skeleton-card-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.skeleton-card-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 1rem;
+  padding-top: 1rem;
+  border-top: 2px solid #e0e0e0;
+}
+
+/* ============================================
+   SKELETON LIST
+   ============================================ */
+
+.skeleton-list {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.skeleton-list-item {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 1rem;
+  background: white;
+  border: 2px solid #000;
+  border-radius: 8px;
+}
+
+.skeleton-list-content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+/* ============================================
+   SKELETON GRID
+   ============================================ */
+
+.skeleton-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 1.5rem;
+}
+
+.skeleton-grid-2 {
+  grid-template-columns: repeat(2, 1fr);
+}
+
+.skeleton-grid-3 {
+  grid-template-columns: repeat(3, 1fr);
+}
+
+.skeleton-grid-4 {
+  grid-template-columns: repeat(4, 1fr);
+}
+
+@media (max-width: 768px) {
+  .skeleton-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .skeleton-grid-2,
+  .skeleton-grid-3,
+  .skeleton-grid-4 {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ============================================
+   STAGGERED SKELETON ANIMATION
+   ============================================ */
+
+.skeleton-stagger > *:nth-child(1) { animation-delay: 0ms; }
+.skeleton-stagger > *:nth-child(2) { animation-delay: 100ms; }
+.skeleton-stagger > *:nth-child(3) { animation-delay: 200ms; }
+.skeleton-stagger > *:nth-child(4) { animation-delay: 300ms; }
+.skeleton-stagger > *:nth-child(5) { animation-delay: 400ms; }
+.skeleton-stagger > *:nth-child(6) { animation-delay: 500ms; }
+.skeleton-stagger > *:nth-child(7) { animation-delay: 600ms; }
+.skeleton-stagger > *:nth-child(8) { animation-delay: 700ms; }
+.skeleton-stagger > *:nth-child(9) { animation-delay: 800ms; }
+.skeleton-stagger > *:nth-child(10) { animation-delay: 900ms; }
+
+/* ============================================
+   CONTENT LOADING FADE
+   ============================================ */
+
+.content-fade-in {
+  animation: contentFadeIn var(--duration-normal) var(--ease-standard) forwards;
+}
+
+@keyframes contentFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* ============================================
+   IMAGE LOADING PLACEHOLDER
+   ============================================ */
+
+.image-placeholder {
+  background: linear-gradient(135deg, #f0f0f0 0%, #e0e0e0 100%);
+  border: 3px solid #000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #999;
+  font-size: 2rem;
+}
+
+.image-placeholder::before {
+  content: '🖼️';
+  opacity: 0.5;
+}
+
+/* Image fade in when loaded */
+.image-fade-in {
+  opacity: 0;
+  transition: opacity var(--duration-normal) var(--ease-standard);
+}
+
+.image-fade-in.loaded {
+  opacity: 1;
+}
+
+/* ============================================
+   SPINNER LOADER
+   ============================================ */
+
+.neo-spinner {
+  width: 40px;
+  height: 40px;
+  border: 4px solid #f0f0f0;
+  border-top-color: #007bff;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+.neo-spinner-sm {
+  width: 24px;
+  height: 24px;
+  border-width: 3px;
+}
+
+.neo-spinner-lg {
+  width: 64px;
+  height: 64px;
+  border-width: 6px;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* NeoBrutal Spinner */
+.neo-spinner-brutal {
+  width: 40px;
+  height: 40px;
+  border: 4px solid #000;
+  border-top-color: transparent;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+  box-shadow: 3px 3px 0 #000;
+}
+
+/* ============================================
+   DOTS LOADING ANIMATION
+   ============================================ */
+
+.neo-dots {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  justify-content: center;
+}
+
+.neo-dot {
+  width: 12px;
+  height: 12px;
+  background: #000;
+  border: 2px solid #000;
+  border-radius: 50%;
+  animation: dotBounce 1.4s ease-in-out infinite both;
+}
+
+.neo-dot:nth-child(1) { animation-delay: -0.32s; }
+.neo-dot:nth-child(2) { animation-delay: -0.16s; }
+
+@keyframes dotBounce {
+  0%, 80%, 100% {
+    transform: scale(0);
+  }
+  40% {
+    transform: scale(1);
+  }
+}
+
+/* ============================================
+   PROGRESSIVE LOADING BAR
+   ============================================ */
+
+.neo-progress-bar {
+  width: 100%;
+  height: 8px;
+  background: #f0f0f0;
+  border: 2px solid #000;
+  border-radius: 4px;
+  overflow: hidden;
+  box-shadow: 2px 2px 0 #000;
+}
+
+.neo-progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #007bff, #0056b3);
+  transition: width var(--duration-normal) var(--ease-decelerate);
+  position: relative;
+}
+
+.neo-progress-fill::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(255, 255, 255, 0.4),
+    transparent
+  );
+  animation: progressShimmer 2s infinite;
+}
+
+@keyframes progressShimmer {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(100%); }
+}
+
+/* ============================================
+   SKELETON THEME VARIANTS
+   ============================================ */
+
+/* Dark theme skeleton */
+.skeleton-dark {
+  background: linear-gradient(
+    90deg,
+    #2a2a2a 25%,
+    #3a3a3a 50%,
+    #2a2a2a 75%
+  );
+  background-size: 200% 100%;
+  border-color: #555;
+}
+
+.skeleton-dark.skeleton-pulse {
+  background: #3a3a3a;
+}
+
+/* Colored skeleton accents */
+.skeleton-primary {
+  background: linear-gradient(
+    90deg,
+    #e3f2fd 25%,
+    #bbdefb 50%,
+    #e3f2fd 75%
+  );
+  background-size: 200% 100%;
+  border-color: #007bff;
+}
+
+.skeleton-success {
+  background: linear-gradient(
+    90deg,
+    #d4edda 25%,
+    #c3e6cb 50%,
+    #d4edda 75%
+  );
+  background-size: 200% 100%;
+  border-color: #28a745;
+}

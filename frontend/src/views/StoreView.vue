@@ -201,11 +201,12 @@ const canPurchase = (item: StoreItem): boolean => {
 
 const getMaxQuantity = (item: StoreItem): number => {
   const maxByCoins = Math.floor(userCoins.value / (item.price || 1))
-  const maxByInventory = inventoryMax.value - inventoryUsed.value
-  const maxByStock = item.stock || 999
-  const maxByDaily = item.daily_limit || 999
+  const maxByInventory = Math.max(0, inventoryMax.value - inventoryUsed.value)
+  const maxByStock = item.stock ?? 999
+  const maxByDaily = item.daily_limit ?? 999
 
-  return Math.min(maxByCoins, maxByInventory, maxByStock, maxByDaily, 10)
+  const maxQuantity = Math.min(maxByCoins, maxByInventory, maxByStock, maxByDaily, 10)
+  return Math.max(1, maxQuantity)
 }
 
 const purchaseItem = async (item: StoreItem) => {

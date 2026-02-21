@@ -45,7 +45,7 @@
               v-if="canShareToTelegramBot"
               @click="shareToTelegramBot"
               class="share-btn telegram-bot-btn"
-              title="分享到 Telegram Bot，朋友可以直接点击按钮为您的任务加时"
+              title="分享到 Telegram Bot，朋友可以直接点击按钮为任务加时"
             >
               <span class="share-icon">🤖</span>
               <span class="share-text">Telegram Bot 加时分享</span>
@@ -117,6 +117,7 @@ const taskTypeText = computed(() => {
 })
 
 // Check if this is a shareable lock task (active or voting)
+// Now supports sharing others' tasks too
 const canShareToTelegramBot = computed(() => {
   return props.taskType === 'lock' &&
          props.taskId &&
@@ -124,6 +125,9 @@ const canShareToTelegramBot = computed(() => {
          ['active', 'voting'].includes(props.taskStatus) &&
          authStore.isAuthenticated
 })
+
+// Bot username for generating deeplinks
+const BOT_USERNAME = 'lock_up_bot'
 
 // Check if user is the task owner
 const isOwnTask = computed(() => {
@@ -208,14 +212,24 @@ const shareToTelegramBot = async () => {
 
   try {
     showToast.value = true
-    toastMessage.value = '正在生成 Telegram Bot 分享内容...'
+    toastMessage.value = '正在打开 Telegram...'
 
-    await telegramApi.shareTaskDirectly(props.taskId)
+    // Get share data from API (for message text and callback data)
+    const shareResult = await telegramApi.shareTaskToTelegram(props.taskId)
+    const shareData = shareResult.share_data
 
-    toastMessage.value = '已在 Telegram 中打开任务分享！'
+    // Build deeplink with startgroup parameter
+    // This allows user to select a group/user to share to
+    // Format: https://t.me/{bot_username}?startgroup={task_id}
+    const deeplinkUrl = `https://t.me/${BOT_USERNAME}?startgroup=${props.taskId}`
+
+    // Open Telegram with the deeplink
+    window.open(deeplinkUrl, '_blank')
+
+    toastMessage.value = '请选择要分享到的聊天'
     setTimeout(() => {
       showToast.value = false
-      emit('close') // Close the modal after successful share
+      emit('close') // Close the modal after opening Telegram
     }, 2000)
 
   } catch (error: any) {
@@ -224,8 +238,6 @@ const shareToTelegramBot = async () => {
     let errorMessage = '分享到 Telegram Bot 失败'
     if (error.data?.error) {
       errorMessage = error.data.error
-    } else if (error.status === 403) {
-      errorMessage = '只能分享自己的任务'
     } else if (error.status === 404) {
       errorMessage = '任务不存在'
     } else if (error.status === 400) {

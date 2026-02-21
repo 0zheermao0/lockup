@@ -1,6 +1,13 @@
 <template>
   <div id="app">
-    <RouterView />
+    <RouterView v-slot="{ Component, route }">
+      <transition
+        :name="getTransitionName(route)"
+        mode="out-in"
+      >
+        <component :is="Component" :key="route.path" />
+      </transition>
+    </RouterView>
     <!-- Global Chat Modal -->
     <ChatModal
       :is-visible="messagingStore.isChatModalVisible"
@@ -17,6 +24,31 @@ import { useNotificationStore } from './stores/notifications'
 import { useThemeStore } from './stores/theme'
 import { useMessagingStore } from './stores/messaging'
 import ChatModal from './components/ChatModal.vue'
+import type { RouteLocationNormalized } from 'vue-router'
+
+// Page transition logic
+const getTransitionName = (route: RouteLocationNormalized): string => {
+  // Use route meta transition if specified
+  if (route.meta?.transition) {
+    return route.meta.transition as string
+  }
+
+  // Auto-detect based on route patterns
+  const path = route.path
+
+  // Detail pages - use slide
+  if (path.includes('/tasks/') || path.includes('/post/')) {
+    return 'page-slide'
+  }
+
+  // Profile page - use scale
+  if (path.includes('/profile')) {
+    return 'page-scale'
+  }
+
+  // Default fade
+  return 'page-fade'
+}
 
 const authStore = useAuthStore()
 const notificationStore = useNotificationStore()

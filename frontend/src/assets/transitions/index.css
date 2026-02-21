@@ -1,0 +1,60 @@
+/* Animation System Entry Point - NeoBrutal Design Language */
+
+/* Import all transition modules - must be first */
+@import './page-transitions.css';
+@import './modal-transitions.css';
+@import './form-transitions.css';
+@import './interaction-transitions.css';
+@import './skeleton.css';
+
+/* CSS Custom Properties for Animation */
+:root {
+  /* Easing Functions */
+  --ease-standard: cubic-bezier(0.4, 0.0, 0.2, 1);
+  --ease-bounce: cubic-bezier(0.175, 0.885, 0.32, 1.275);
+  --ease-decelerate: cubic-bezier(0.0, 0.0, 0.2, 1);
+  --ease-accelerate: cubic-bezier(0.4, 0.0, 1, 1);
+  --ease-elastic: cubic-bezier(0.68, -0.55, 0.265, 1.55);
+
+  /* Durations */
+  --duration-micro: 150ms;
+  --duration-fast: 200ms;
+  --duration-normal: 300ms;
+  --duration-slow: 500ms;
+  --duration-complex: 800ms;
+
+  /* Stagger Delays */
+  --stagger-base: 50ms;
+  --stagger-increment: 60ms;
+}
+
+/* Reduced Motion Support */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* High Contrast Mode Adjustments */
+@media (prefers-contrast: high) {
+  .neo-card,
+  .neo-button,
+  .neo-input {
+    border-width: 3px !important;
+  }
+}
+
+/* Print Mode - Disable Animations */
+@media print {
+  *,
+  *::before,
+  *::after {
+    animation: none !important;
+    transition: none !important;
+  }
+}

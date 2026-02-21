@@ -259,6 +259,15 @@ export const telegramApi = {
   },
 
   /**
+   * 生成通过 startgroup 参数分享任务的 deeplink
+   * 用户点击后可以选择要分享到的群组/用户
+   * 格式: https://t.me/{bot_username}?startgroup={task_id}
+   */
+  generateTaskShareDeeplink(taskId: string, botUsername: string = 'lock_up_bot'): string {
+    return `https://t.me/${botUsername}?startgroup=${taskId}`;
+  },
+
+  /**
    * 生成游戏分享到Telegram的内容
    */
   async shareGameToTelegram(gameId: string): Promise<TelegramGameShareResult> {

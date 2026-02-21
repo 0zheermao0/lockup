@@ -209,8 +209,8 @@
             </div>
           </div>
 
-          <div v-if="isInitialLoading" class="loading">
-            加载中...
+          <div v-if="isInitialLoading" class="loading-skeleton">
+            <SkeletonLoader :count="3" :animated="true" />
           </div>
 
           <div v-else-if="error" class="error">
@@ -222,12 +222,14 @@
           </div>
 
           <div v-else class="posts-list">
-            <article
-              v-for="post in posts"
-              :key="post.id"
-              class="post-card"
-              @click="goToPostDetail(post.id)"
-            >
+            <StaggerList tag="div" :stagger-delay="60">
+              <article
+                v-for="(post, index) in posts"
+                :key="post.id"
+                class="post-card"
+                :style="{ '--stagger-delay': `${index * 60}ms` }"
+                @click="goToPostDetail(post.id)"
+              >
               <div class="post-header">
                 <div class="user-info">
                   <UserAvatar
@@ -296,7 +298,7 @@
                   :alt="`图片 ${index + 1}`"
                   :likes-count="post.likes_count"
                   class="post-image"
-                  @click="openImageModal(image.image)"
+                  @click.stop="openImageModal(image.image)"
                 />
               </div>
 
@@ -322,10 +324,11 @@
                 </button>
               </div>
             </article>
+            </StaggerList>
 
             <!-- 加载更多指示器 -->
             <div v-if="isLoadingMore" class="loading-more">
-              正在加载更多...
+              <SkeletonLoader :count="2" :animated="true" />
             </div>
 
             <!-- 没有更多内容提示 -->
@@ -374,12 +377,14 @@
     />
 
     <!-- 图片预览模态框 -->
-    <div v-if="showImageModal" class="image-modal" @click="closeImageModal">
-      <div class="image-modal-content" @click.stop>
-        <img :src="selectedImage" alt="查看图片" />
-        <button @click="closeImageModal" class="close-modal-btn">×</button>
+    <Transition name="image-modal">
+      <div v-if="showImageModal" class="image-modal" @click="closeImageModal">
+        <div class="image-modal-content" @click.stop>
+          <img :src="selectedImage" alt="查看图片" />
+          <button @click="closeImageModal" class="close-modal-btn">×</button>
+        </div>
       </div>
-    </div>
+    </Transition>
 
     <!-- Back to Top Button -->
     <BackToTopButton
@@ -415,6 +420,8 @@ import BackToTopButton from '../components/BackToTopButton.vue'
 import LogoutConfirmModal from '../components/LogoutConfirmModal.vue'
 import ChatModal from '../components/ChatModal.vue'
 import CensoredImage from '../components/CensoredImage.vue'
+import SkeletonLoader from '../components/SkeletonLoader.vue'
+import StaggerList from '../components/transitions/StaggerList.vue'
 import type { Post } from '../types/index'
 
 const router = useRouter()
@@ -1240,8 +1247,8 @@ onMounted(async () => {
   cursor: pointer;
   text-transform: uppercase;
   letter-spacing: 0.5px;
-  box-shadow: 3px 3px 0 #000;
-  transition: all 0.2s cubic-bezier(0.4, 0.0, 0.2, 1);
+  box-shadow: 4px 4px 0 #000;
+  transition: all var(--duration-fast, 200ms) var(--ease-bounce, cubic-bezier(0.175, 0.885, 0.32, 1.275));
   font-size: 0.8rem;
   position: relative;
   overflow: hidden;
@@ -1281,13 +1288,14 @@ onMounted(async () => {
 }
 
 .action-btn:hover {
-  transform: translate(-2px, -2px);
-  box-shadow: 5px 5px 0 #000, 0 5px 10px rgba(0, 0, 0, 0.2);
+  transform: translate(-3px, -3px) scale(1.02);
+  box-shadow: 7px 7px 0 #000;
 }
 
 .action-btn:active {
-  transform: translate(0, 0);
-  box-shadow: 2px 2px 0 #000, 0 2px 4px rgba(0, 0, 0, 0.1);
+  transform: translate(2px, 2px) scale(0.98);
+  box-shadow: 2px 2px 0 #000;
+  transition-duration: var(--duration-micro, 150ms);
 }
 
 .posts-feed-header {
@@ -1373,17 +1381,24 @@ onMounted(async () => {
   background: white;
   padding: 1.5rem;
   border-radius: 8px;
-  border: 2px solid #000;
+  border: 3px solid #000;
   box-shadow: 4px 4px 0 #000;
   cursor: pointer;
-  transition: transform 0.2s ease, box-shadow 0.2s ease;
+  transition: all var(--duration-fast, 200ms) var(--ease-bounce, cubic-bezier(0.175, 0.885, 0.32, 1.275));
   max-width: 100%;
   overflow: hidden;
+  will-change: transform, box-shadow;
 }
 
 .post-card:hover {
-  transform: translateY(-2px);
-  box-shadow: 6px 6px 0 #000;
+  transform: translate(-4px, -4px);
+  box-shadow: 8px 8px 0 #000;
+}
+
+.post-card:active {
+  transform: translate(2px, 2px);
+  box-shadow: 2px 2px 0 #000;
+  transition-duration: var(--duration-micro, 150ms);
 }
 
 .post-header {
@@ -2213,34 +2228,72 @@ onMounted(async () => {
   align-items: center;
   justify-content: center;
   padding: 2rem;
+  background: white;
+  border: 3px solid #000;
+  box-shadow: 8px 8px 0 #000;
+  border-radius: 8px;
 }
 
 .image-modal-content img {
   max-width: 100%;
-  max-height: 85vh;
+  max-height: 80vh;
   object-fit: contain;
+  border: 2px solid #000;
 }
 
 .close-modal-btn {
   position: absolute;
-  top: 1rem;
-  right: 1rem;
-  background: rgba(0, 0, 0, 0.7);
+  top: -20px;
+  right: -20px;
+  background: #dc3545;
   color: white;
-  border: none;
+  border: 3px solid #000;
   border-radius: 50%;
-  width: 40px;
-  height: 40px;
+  width: 48px;
+  height: 48px;
   cursor: pointer;
   font-size: 1.5rem;
+  font-weight: bold;
   display: flex;
   align-items: center;
   justify-content: center;
+  box-shadow: 4px 4px 0 #000;
+  transition: all 200ms cubic-bezier(0.175, 0.885, 0.32, 1.275);
   z-index: 10;
 }
 
 .close-modal-btn:hover {
-  background: rgba(0, 0, 0, 0.9);
+  transform: translate(-2px, -2px) rotate(90deg);
+  box-shadow: 6px 6px 0 #000;
+}
+
+.close-modal-btn:active {
+  transform: translate(2px, 2px);
+  box-shadow: 2px 2px 0 #000;
+}
+
+/* Image Modal Transition */
+.image-modal-enter-active {
+  transition: all 300ms cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+
+.image-modal-leave-active {
+  transition: all 200ms ease;
+}
+
+.image-modal-enter-from,
+.image-modal-leave-to {
+  opacity: 0;
+}
+
+.image-modal-enter-from .image-modal-content,
+.image-modal-leave-to .image-modal-content {
+  transform: scale(0.8);
+  opacity: 0;
+}
+
+.image-modal-content {
+  transition: all 300ms cubic-bezier(0.175, 0.885, 0.32, 1.275);
 }
 
 @media (max-width: 768px) {
@@ -2248,10 +2301,20 @@ onMounted(async () => {
     max-width: 95vw;
     max-height: 95vh;
     padding: 1rem;
+    box-shadow: 6px 6px 0 #000;
   }
 
   .image-modal-content img {
-    max-height: 80vh;
+    max-height: 75vh;
+  }
+
+  .close-modal-btn {
+    width: 40px;
+    height: 40px;
+    font-size: 1.25rem;
+    top: -16px;
+    right: -16px;
+    box-shadow: 3px 3px 0 #000;
   }
 }
 </style>

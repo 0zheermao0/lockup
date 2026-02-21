@@ -1,0 +1,462 @@
+/* Form Interaction Animations - NeoBrutal Design */
+
+/* ============================================
+   INPUT FOCUS STATES
+   ============================================ */
+
+.form-input {
+  transition: all var(--duration-fast) var(--ease-standard);
+  border: 3px solid #000;
+  box-shadow: 4px 4px 0 #000;
+}
+
+.form-input:focus {
+  outline: none;
+  transform: translate(-2px, -2px);
+  box-shadow: 6px 6px 0 #000;
+  border-color: #007bff;
+}
+
+.form-input:focus-visible {
+  outline: 2px solid #007bff;
+  outline-offset: 2px;
+}
+
+/* ============================================
+   INPUT VALIDATION STATES
+   ============================================ */
+
+/* Error State with Shake Animation */
+@keyframes shake {
+  0%, 100% { transform: translateX(0); }
+  10%, 30%, 50%, 70%, 90% { transform: translateX(-5px); }
+  20%, 40%, 60%, 80% { transform: translateX(5px); }
+}
+
+.form-input.error {
+  animation: shake 400ms ease-in-out;
+  border-color: #dc3545;
+  box-shadow: 4px 4px 0 #dc3545;
+}
+
+.form-input.error:focus {
+  box-shadow: 6px 6px 0 #dc3545;
+}
+
+/* Success State */
+.form-input.success {
+  border-color: #28a745;
+  box-shadow: 4px 4px 0 #28a745;
+}
+
+.form-input.success:focus {
+  box-shadow: 6px 6px 0 #28a745;
+}
+
+/* Warning State */
+.form-input.warning {
+  border-color: #ffc107;
+  box-shadow: 4px 4px 0 #ffc107;
+}
+
+.form-input.warning:focus {
+  box-shadow: 6px 6px 0 #ffc107;
+}
+
+/* ============================================
+   FORM LABEL ANIMATIONS
+   ============================================ */
+
+.form-label {
+  transition: all var(--duration-fast) var(--ease-standard);
+  display: block;
+  margin-bottom: 0.5rem;
+  font-weight: 600;
+}
+
+.form-label.focused {
+  color: #007bff;
+  transform: translateX(4px);
+}
+
+/* Floating Label */
+.form-label-floating {
+  position: absolute;
+  left: 1rem;
+  top: 50%;
+  transform: translateY(-50%);
+  transition: all var(--duration-fast) var(--ease-standard);
+  pointer-events: none;
+  color: #666;
+  background: white;
+  padding: 0 0.25rem;
+}
+
+.form-input:focus ~ .form-label-floating,
+.form-input:not(:placeholder-shown) ~ .form-label-floating {
+  top: 0;
+  transform: translateY(-50%) scale(0.85);
+  color: #007bff;
+}
+
+/* ============================================
+   BUTTON LOADING STATE
+   ============================================ */
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.btn-loading {
+  position: relative;
+  pointer-events: none;
+  color: transparent !important;
+}
+
+.btn-loading::after {
+  content: '';
+  position: absolute;
+  width: 20px;
+  height: 20px;
+  top: 50%;
+  left: 50%;
+  margin-top: -10px;
+  margin-left: -10px;
+  border: 3px solid transparent;
+  border-top-color: currentColor;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+  color: inherit;
+}
+
+/* ============================================
+   BUTTON SUCCESS STATE
+   ============================================ */
+
+@keyframes successPop {
+  0% { transform: scale(1); }
+  50% { transform: scale(1.1); }
+  100% { transform: scale(1); }
+}
+
+.btn-success {
+  animation: successPop 300ms var(--ease-bounce);
+  background-color: #28a745 !important;
+  border-color: #1e7e34 !important;
+}
+
+/* ============================================
+   CHECKBOX & RADIO ANIMATIONS
+   ============================================ */
+
+.checkbox-wrapper,
+.radio-wrapper {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  cursor: pointer;
+}
+
+.checkbox-input,
+.radio-input {
+  appearance: none;
+  width: 20px;
+  height: 20px;
+  border: 3px solid #000;
+  background: white;
+  transition: all var(--duration-fast) var(--ease-standard);
+  cursor: pointer;
+  position: relative;
+}
+
+.checkbox-input {
+  border-radius: 4px;
+  box-shadow: 2px 2px 0 #000;
+}
+
+.radio-input {
+  border-radius: 50%;
+  box-shadow: 2px 2px 0 #000;
+}
+
+.checkbox-input:checked {
+  background: #007bff;
+  border-color: #000;
+  box-shadow: 2px 2px 0 #0056b3;
+  transform: translate(-1px, -1px);
+}
+
+.checkbox-input:checked::after {
+  content: '✓';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  color: white;
+  font-weight: bold;
+  font-size: 12px;
+}
+
+.radio-input:checked {
+  background: #007bff;
+  border-color: #000;
+  box-shadow: 2px 2px 0 #0056b3;
+  transform: translate(-1px, -1px);
+}
+
+.radio-input:checked::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 8px;
+  height: 8px;
+  background: white;
+  border-radius: 50%;
+}
+
+.checkbox-input:hover,
+.radio-input:hover {
+  transform: translate(-1px, -1px);
+  box-shadow: 3px 3px 0 #000;
+}
+
+/* ============================================
+   SELECT DROPDOWN ANIMATION
+   ============================================ */
+
+.form-select {
+  transition: all var(--duration-fast) var(--ease-standard);
+  border: 3px solid #000;
+  box-shadow: 4px 4px 0 #000;
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23000' d='M6 8L1 3h10z'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 1rem center;
+  padding-right: 2.5rem;
+}
+
+.form-select:focus {
+  outline: none;
+  transform: translate(-2px, -2px);
+  box-shadow: 6px 6px 0 #000;
+  border-color: #007bff;
+}
+
+/* ============================================
+   TEXTAREA AUTO-RESIZE ANIMATION
+   ============================================ */
+
+.form-textarea {
+  transition: all var(--duration-fast) var(--ease-standard), height 0s;
+  border: 3px solid #000;
+  box-shadow: 4px 4px 0 #000;
+  resize: vertical;
+  min-height: 100px;
+}
+
+.form-textarea:focus {
+  outline: none;
+  transform: translate(-2px, -2px);
+  box-shadow: 6px 6px 0 #000;
+  border-color: #007bff;
+}
+
+/* ============================================
+   FORM GROUP STAGGER ANIMATION
+   ============================================ */
+
+.form-group {
+  opacity: 0;
+  transform: translateY(20px);
+  animation: formGroupEnter var(--duration-normal) var(--ease-decelerate) forwards;
+}
+
+@keyframes formGroupEnter {
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.form-group:nth-child(1) { animation-delay: 0ms; }
+.form-group:nth-child(2) { animation-delay: 50ms; }
+.form-group:nth-child(3) { animation-delay: 100ms; }
+.form-group:nth-child(4) { animation-delay: 150ms; }
+.form-group:nth-child(5) { animation-delay: 200ms; }
+.form-group:nth-child(6) { animation-delay: 250ms; }
+.form-group:nth-child(7) { animation-delay: 300ms; }
+.form-group:nth-child(8) { animation-delay: 350ms; }
+
+/* ============================================
+   ERROR MESSAGE ANIMATION
+   ============================================ */
+
+.form-error-message {
+  animation: errorMessageEnter var(--duration-fast) var(--ease-bounce);
+  color: #dc3545;
+  font-size: 0.875rem;
+  margin-top: 0.5rem;
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+@keyframes errorMessageEnter {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.form-error-message::before {
+  content: '⚠️';
+  font-size: 0.875rem;
+}
+
+/* ============================================
+   HELP TEXT ANIMATION
+   ============================================ */
+
+.form-help-text {
+  color: #6c757d;
+  font-size: 0.875rem;
+  margin-top: 0.5rem;
+  transition: all var(--duration-fast) var(--ease-standard);
+}
+
+.form-input:focus ~ .form-help-text {
+  color: #007bff;
+}
+
+/* ============================================
+   CHARACTER COUNTER
+   ============================================ */
+
+.char-counter {
+  text-align: right;
+  font-size: 0.75rem;
+  color: #6c757d;
+  margin-top: 0.25rem;
+  transition: all var(--duration-fast) var(--ease-standard);
+}
+
+.char-counter.warning {
+  color: #ffc107;
+  font-weight: 600;
+}
+
+.char-counter.error {
+  color: #dc3545;
+  font-weight: 600;
+  animation: shake 400ms ease-in-out;
+}
+
+/* ============================================
+   FILE UPLOAD ZONE
+   ============================================ */
+
+.upload-zone {
+  transition: all var(--duration-fast) var(--ease-standard);
+  border: 3px dashed #000;
+  background: #f8f9fa;
+  cursor: pointer;
+}
+
+.upload-zone:hover {
+  border-color: #007bff;
+  background: #e3f2fd;
+  transform: translate(-2px, -2px);
+  box-shadow: 4px 4px 0 #007bff;
+}
+
+.upload-zone.dragover {
+  border-color: #28a745;
+  background: #d4edda;
+  transform: scale(1.02);
+}
+
+/* ============================================
+   TOGGLE SWITCH
+   ============================================ */
+
+.toggle-switch {
+  position: relative;
+  width: 50px;
+  height: 26px;
+  background: #ccc;
+  border: 2px solid #000;
+  border-radius: 13px;
+  cursor: pointer;
+  transition: all var(--duration-fast) var(--ease-standard);
+  box-shadow: 2px 2px 0 #000;
+}
+
+.toggle-switch.active {
+  background: #007bff;
+}
+
+.toggle-switch::after {
+  content: '';
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 18px;
+  height: 18px;
+  background: white;
+  border: 2px solid #000;
+  border-radius: 50%;
+  transition: all var(--duration-fast) var(--ease-bounce);
+  box-shadow: 1px 1px 0 #000;
+}
+
+.toggle-switch.active::after {
+  transform: translateX(24px);
+}
+
+/* ============================================
+   PROGRESS BAR
+   ============================================ */
+
+.form-progress {
+  width: 100%;
+  height: 8px;
+  background: #e9ecef;
+  border: 2px solid #000;
+  border-radius: 4px;
+  overflow: hidden;
+  box-shadow: 2px 2px 0 #000;
+}
+
+.form-progress-bar {
+  height: 100%;
+  background: linear-gradient(90deg, #007bff, #0056b3);
+  transition: width var(--duration-normal) var(--ease-decelerate);
+  position: relative;
+}
+
+.form-progress-bar::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(255, 255, 255, 0.3),
+    transparent
+  );
+  animation: progressShimmer 2s infinite;
+}
+
+@keyframes progressShimmer {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(100%); }
+}

@@ -302,6 +302,27 @@
           </div>
         </div>
       </div>
+
+      <!-- Degrees of Lewdity Game -->
+      <div v-if="activeTab === 'dol'" class="space-y-6">
+        <div class="game-section">
+          <h2 class="section-title">📖 欲都孤儿</h2>
+          <p class="section-description">
+            Degrees of Lewdity 中文版 - 一款文字冒险游戏，在这个陌生的城市中探索、生存并寻找属于自己的道路。
+          </p>
+
+          <!-- Game iframe container -->
+          <div class="game-iframe-container">
+            <iframe
+              src="https://eltirosto.github.io/Degrees-of-Lewdity-Chinese-Localization/Degrees%20of%20Lewdity%20VERSION.html.mod.html"
+              class="game-iframe"
+              title="欲都孤儿"
+              sandbox="allow-scripts allow-same-origin allow-popups allow-forms"
+              loading="lazy"
+            ></iframe>
+          </div>
+        </div>
+      </div>
     </div>
   </div>
 </template>
@@ -394,7 +415,8 @@ const filteredRPSGames = computed(() => {
 const tabs = [
   { id: 'dice', name: '掷骰子' },
   { id: 'rockPaperScissors', name: '石头剪刀布' },
-  { id: 'timeWheel', name: '时间转盘' }
+  { id: 'timeWheel', name: '时间转盘' },
+  { id: 'dol', name: '欲都孤儿' }
 ]
 
 const choices = [
@@ -1967,6 +1989,31 @@ onUnmounted(() => {
   .join-actions {
     flex-direction: column;
     gap: 0.75rem;
+  }
+}
+
+/* Game iframe container */
+.game-iframe-container {
+  width: 100%;
+  border: 4px solid #000;
+  box-shadow: 8px 8px 0 #000;
+  background: white;
+  overflow: hidden;
+}
+
+.game-iframe {
+  width: 100%;
+  height: 80vh;
+  min-height: 600px;
+  border: none;
+  display: block;
+}
+
+/* Mobile responsive */
+@media (max-width: 768px) {
+  .game-iframe {
+    height: 70vh;
+    min-height: 400px;
   }
 }
 </style>

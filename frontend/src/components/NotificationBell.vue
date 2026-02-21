@@ -10,10 +10,13 @@
     </div>
 
     <!-- 移动端遮罩层 -->
-    <div v-if="showDropdown" class="mobile-overlay" @click="showDropdown = false"></div>
+    <Transition name="fade">
+      <div v-if="showDropdown" class="mobile-overlay" @click="showDropdown = false"></div>
+    </Transition>
 
     <!-- 通知下拉列表 -->
-    <div v-if="showDropdown" class="notification-dropdown" @click.stop>
+    <Transition name="dropdown">
+      <div v-if="showDropdown" class="notification-dropdown" @click.stop>
       <div class="dropdown-header">
         <h3>通知</h3>
         <div class="header-actions">
@@ -265,6 +268,7 @@
       </div>
 
     </div>
+    </Transition>
   </div>
 </template>
 
@@ -505,6 +509,38 @@ onUnmounted(() => {
 </script>
 
 <style scoped>
+/* Dropdown animation */
+.dropdown-enter-active {
+  transition: all var(--duration-fast, 200ms) var(--ease-bounce, cubic-bezier(0.175, 0.885, 0.32, 1.275));
+  transform-origin: top right;
+}
+
+.dropdown-leave-active {
+  transition: all var(--duration-fast, 200ms) var(--ease-accelerate, cubic-bezier(0.4, 0.0, 1, 1));
+  transform-origin: top right;
+}
+
+.dropdown-enter-from {
+  opacity: 0;
+  transform: translateY(-10px) scale(0.95);
+}
+
+.dropdown-leave-to {
+  opacity: 0;
+  transform: translateY(-10px) scale(0.95);
+}
+
+/* Fade animation for overlay */
+.fade-enter-active,
+.fade-leave-active {
+  transition: opacity var(--duration-fast, 200ms) ease;
+}
+
+.fade-enter-from,
+.fade-leave-to {
+  opacity: 0;
+}
+
 .notification-bell {
   position: relative;
   display: inline-block;

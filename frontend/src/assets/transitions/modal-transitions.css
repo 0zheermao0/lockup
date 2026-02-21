@@ -1,0 +1,351 @@
+/* Modal Transition Animations - NeoBrutal Design */
+
+/* ============================================
+   MODAL OVERLAY TRANSITIONS
+   ============================================ */
+
+.modal-overlay-enter-active,
+.modal-overlay-leave-active {
+  transition: opacity var(--duration-normal) var(--ease-standard);
+}
+
+.modal-overlay-enter-from,
+.modal-overlay-leave-to {
+  opacity: 0;
+}
+
+/* ============================================
+   MODAL CONTENT - NEOBRUTAL POP EFFECT
+   ============================================ */
+
+.modal-content-enter-active {
+  transition: all var(--duration-slow) var(--ease-bounce);
+}
+
+.modal-content-leave-active {
+  transition: all var(--duration-fast) var(--ease-accelerate);
+}
+
+.modal-content-enter-from {
+  opacity: 0;
+  transform: translateY(40px) scale(0.9);
+}
+
+.modal-content-enter-to {
+  opacity: 1;
+  transform: translateY(0) scale(1);
+}
+
+.modal-content-leave-to {
+  opacity: 0;
+  transform: translateY(-20px) scale(0.95);
+}
+
+/* ============================================
+   MODAL BODY CONTENT STAGGER
+   ============================================ */
+
+.modal-body-enter-active {
+  transition: all var(--duration-normal) var(--ease-standard);
+  transition-delay: 100ms;
+}
+
+.modal-body-enter-from {
+  opacity: 0;
+  transform: translateY(10px);
+}
+
+.modal-body-enter-to {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+/* ============================================
+   MODAL SLIDE UP (Mobile Style)
+   ============================================ */
+
+.modal-slide-up-enter-active {
+  transition: all var(--duration-slow) var(--ease-bounce);
+}
+
+.modal-slide-up-leave-active {
+  transition: all var(--duration-fast) var(--ease-accelerate);
+}
+
+.modal-slide-up-enter-from {
+  opacity: 0;
+  transform: translateY(100%);
+}
+
+.modal-slide-up-leave-to {
+  opacity: 0;
+  transform: translateY(100%);
+}
+
+/* ============================================
+   MODAL ZOOM EFFECT
+   ============================================ */
+
+.modal-zoom-enter-active {
+  transition: all var(--duration-slow) var(--ease-elastic);
+}
+
+.modal-zoom-leave-active {
+  transition: all var(--duration-fast) var(--ease-standard);
+}
+
+.modal-zoom-enter-from {
+  opacity: 0;
+  transform: scale(0.5);
+}
+
+.modal-zoom-leave-to {
+  opacity: 0;
+  transform: scale(0.8);
+}
+
+/* ============================================
+   MODAL FLIP EFFECT
+   ============================================ */
+
+.modal-flip-enter-active {
+  transition: all var(--duration-slow) var(--ease-bounce);
+  transform-style: preserve-3d;
+  perspective: 1000px;
+}
+
+.modal-flip-leave-active {
+  transition: all var(--duration-fast) var(--ease-standard);
+  transform-style: preserve-3d;
+  perspective: 1000px;
+}
+
+.modal-flip-enter-from {
+  opacity: 0;
+  transform: rotateX(-30deg) translateY(-30px);
+}
+
+.modal-flip-leave-to {
+  opacity: 0;
+  transform: rotateX(30deg) translateY(-30px);
+}
+
+/* ============================================
+   DROPDOWN/EXPAND TRANSITIONS
+   ============================================ */
+
+.dropdown-enter-active {
+  transition: all var(--duration-fast) var(--ease-bounce);
+  transform-origin: top right;
+}
+
+.dropdown-leave-active {
+  transition: all var(--duration-fast) var(--ease-accelerate);
+  transform-origin: top right;
+}
+
+.dropdown-enter-from {
+  opacity: 0;
+  transform: translateY(-10px) scale(0.95);
+}
+
+.dropdown-leave-to {
+  opacity: 0;
+  transform: translateY(-10px) scale(0.95);
+}
+
+/* Dropdown from bottom (for mobile) */
+.dropdown-up-enter-active {
+  transition: all var(--duration-fast) var(--ease-bounce);
+  transform-origin: bottom center;
+}
+
+.dropdown-up-leave-active {
+  transition: all var(--duration-fast) var(--ease-accelerate);
+  transform-origin: bottom center;
+}
+
+.dropdown-up-enter-from {
+  opacity: 0;
+  transform: translateY(10px) scale(0.95);
+}
+
+.dropdown-up-leave-to {
+  opacity: 0;
+  transform: translateY(10px) scale(0.95);
+}
+
+/* ============================================
+   EXPAND/COLLAPSE TRANSITIONS
+   ============================================ */
+
+.expand-enter-active,
+.expand-leave-active {
+  transition: all var(--duration-normal) var(--ease-standard);
+  overflow: hidden;
+}
+
+.expand-enter-from,
+.expand-leave-to {
+  opacity: 0;
+  max-height: 0;
+  transform: translateY(-10px);
+}
+
+.expand-enter-to,
+.expand-leave-from {
+  opacity: 1;
+  max-height: 500px;
+  transform: translateY(0);
+}
+
+/* ============================================
+   TOAST/NOTIFICATION TRANSITIONS
+   ============================================ */
+
+.toast-enter-active {
+  transition: all var(--duration-normal) var(--ease-bounce);
+}
+
+.toast-leave-active {
+  transition: all var(--duration-fast) var(--ease-accelerate);
+}
+
+.toast-enter-from {
+  opacity: 0;
+  transform: translateX(100%) scale(0.9);
+}
+
+.toast-leave-to {
+  opacity: 0;
+  transform: translateX(100%) scale(0.9);
+}
+
+/* Toast from bottom */
+.toast-bottom-enter-active {
+  transition: all var(--duration-normal) var(--ease-bounce);
+}
+
+.toast-bottom-leave-active {
+  transition: all var(--duration-fast) var(--ease-accelerate);
+}
+
+.toast-bottom-enter-from {
+  opacity: 0;
+  transform: translateY(100%) scale(0.9);
+}
+
+.toast-bottom-leave-to {
+  opacity: 0;
+  transform: translateY(100%) scale(0.9);
+}
+
+/* ============================================
+   DRAWER/SIDEBAR TRANSITIONS
+   ============================================ */
+
+.drawer-right-enter-active {
+  transition: all var(--duration-slow) var(--ease-decelerate);
+}
+
+.drawer-right-leave-active {
+  transition: all var(--duration-normal) var(--ease-accelerate);
+}
+
+.drawer-right-enter-from {
+  transform: translateX(100%);
+}
+
+.drawer-right-leave-to {
+  transform: translateX(100%);
+}
+
+.drawer-left-enter-active {
+  transition: all var(--duration-slow) var(--ease-decelerate);
+}
+
+.drawer-left-leave-active {
+  transition: all var(--duration-normal) var(--ease-accelerate);
+}
+
+.drawer-left-enter-from {
+  transform: translateX(-100%);
+}
+
+.drawer-left-leave-to {
+  transform: translateX(-100%);
+}
+
+/* ============================================
+   NEOBRUTAL MODAL STYLES
+   ============================================ */
+
+.neo-brutal-modal {
+  background: white;
+  border: 3px solid #000;
+  border-radius: 8px;
+  box-shadow: 8px 8px 0 #000;
+  transition: box-shadow var(--duration-fast) var(--ease-standard);
+}
+
+.neo-brutal-modal:hover {
+  box-shadow: 10px 10px 0 #000;
+}
+
+/* Modal with colored accent */
+.neo-brutal-modal-primary {
+  border-color: #007bff;
+  box-shadow: 8px 8px 0 #0056b3;
+}
+
+.neo-brutal-modal-success {
+  border-color: #28a745;
+  box-shadow: 8px 8px 0 #1e7e34;
+}
+
+.neo-brutal-modal-warning {
+  border-color: #ffc107;
+  box-shadow: 8px 8px 0 #d39e00;
+}
+
+.neo-brutal-modal-danger {
+  border-color: #dc3545;
+  box-shadow: 8px 8px 0 #bd2130;
+}
+
+/* ============================================
+   MODAL BACKDROP BLUR
+   ============================================ */
+
+.modal-backdrop-blur {
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+}
+
+/* ============================================
+   CONFETTI/SUCCESS CELEBRATION
+   ============================================ */
+
+@keyframes confetti-fall {
+  0% {
+    opacity: 1;
+    transform: translateY(-20px) rotate(0deg);
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(100px) rotate(720deg);
+  }
+}
+
+.confetti {
+  position: absolute;
+  width: 10px;
+  height: 10px;
+  background: #ffd700;
+  animation: confetti-fall 1s ease-out forwards;
+}
+
+.confetti:nth-child(2) { background: #ff6b6b; animation-delay: 0.1s; }
+.confetti:nth-child(3) { background: #4ecdc4; animation-delay: 0.2s; }
+.confetti:nth-child(4) { background: #45b7d1; animation-delay: 0.3s; }
+.confetti:nth-child(5) { background: #96ceb4; animation-delay: 0.4s; }

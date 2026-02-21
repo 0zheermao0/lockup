@@ -1,0 +1,171 @@
+/* Page Route Transition Animations */
+
+/* ============================================
+   PAGE FADE TRANSITION
+   ============================================ */
+
+.page-fade-enter-active,
+.page-fade-leave-active {
+  transition: opacity var(--duration-normal) var(--ease-standard);
+}
+
+.page-fade-enter-from,
+.page-fade-leave-to {
+  opacity: 0;
+}
+
+/* ============================================
+   PAGE SLIDE TRANSITION
+   ============================================ */
+
+.page-slide-enter-active {
+  transition: all var(--duration-slow) var(--ease-decelerate);
+}
+
+.page-slide-leave-active {
+  transition: all var(--duration-normal) var(--ease-accelerate);
+}
+
+.page-slide-enter-from {
+  opacity: 0;
+  transform: translateX(30px);
+}
+
+.page-slide-leave-to {
+  opacity: 0;
+  transform: translateX(-30px);
+}
+
+/* Reverse slide (for back navigation) */
+.page-slide-reverse-enter-active {
+  transition: all var(--duration-slow) var(--ease-decelerate);
+}
+
+.page-slide-reverse-leave-active {
+  transition: all var(--duration-normal) var(--ease-accelerate);
+}
+
+.page-slide-reverse-enter-from {
+  opacity: 0;
+  transform: translateX(-30px);
+}
+
+.page-slide-reverse-leave-to {
+  opacity: 0;
+  transform: translateX(30px);
+}
+
+/* ============================================
+   PAGE SCALE TRANSITION (NeoBrutal Pop)
+   ============================================ */
+
+.page-scale-enter-active {
+  transition: all var(--duration-slow) var(--ease-bounce);
+}
+
+.page-scale-leave-active {
+  transition: all var(--duration-normal) var(--ease-standard);
+}
+
+.page-scale-enter-from {
+  opacity: 0;
+  transform: scale(0.95) translateY(20px);
+}
+
+.page-scale-leave-to {
+  opacity: 0;
+  transform: scale(1.02);
+}
+
+/* ============================================
+   PAGE FLIP TRANSITION
+   ============================================ */
+
+.page-flip-enter-active {
+  transition: all var(--duration-slow) var(--ease-bounce);
+  transform-style: preserve-3d;
+  perspective: 1000px;
+}
+
+.page-flip-leave-active {
+  transition: all var(--duration-normal) var(--ease-standard);
+  transform-style: preserve-3d;
+  perspective: 1000px;
+}
+
+.page-flip-enter-from {
+  opacity: 0;
+  transform: rotateY(-15deg) translateX(-30px);
+}
+
+.page-flip-leave-to {
+  opacity: 0;
+  transform: rotateY(15deg) translateX(30px);
+}
+
+/* ============================================
+   ROUTER VIEW WRAPPER
+   ============================================ */
+
+.router-view-wrapper {
+  position: relative;
+  width: 100%;
+  min-height: 100vh;
+}
+
+/* Ensure smooth page transitions don't cause layout shifts */
+.router-view-wrapper > * {
+  will-change: opacity, transform;
+  backface-visibility: hidden;
+}
+
+/* ============================================
+   PAGE LOADING STATE
+   ============================================ */
+
+.page-loading-enter-active,
+.page-loading-leave-active {
+  transition: all var(--duration-normal) var(--ease-standard);
+}
+
+.page-loading-enter-from,
+.page-loading-leave-to {
+  opacity: 0;
+  transform: translateY(10px);
+}
+
+/* ============================================
+   CONTENT REVEAL ANIMATION
+   ============================================ */
+
+@keyframes contentReveal {
+  0% {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.content-reveal {
+  animation: contentReveal var(--duration-normal) var(--ease-decelerate) forwards;
+}
+
+/* Staggered content reveal */
+.content-reveal-stagger > *:nth-child(1) { animation-delay: calc(var(--stagger-base) * 0); }
+.content-reveal-stagger > *:nth-child(2) { animation-delay: calc(var(--stagger-base) * 1); }
+.content-reveal-stagger > *:nth-child(3) { animation-delay: calc(var(--stagger-base) * 2); }
+.content-reveal-stagger > *:nth-child(4) { animation-delay: calc(var(--stagger-base) * 3); }
+.content-reveal-stagger > *:nth-child(5) { animation-delay: calc(var(--stagger-base) * 4); }
+.content-reveal-stagger > *:nth-child(6) { animation-delay: calc(var(--stagger-base) * 5); }
+.content-reveal-stagger > *:nth-child(7) { animation-delay: calc(var(--stagger-base) * 6); }
+.content-reveal-stagger > *:nth-child(8) { animation-delay: calc(var(--stagger-base) * 7); }
+.content-reveal-stagger > *:nth-child(9) { animation-delay: calc(var(--stagger-base) * 8); }
+.content-reveal-stagger > *:nth-child(10) { animation-delay: calc(var(--stagger-base) * 9); }
+
+.content-reveal-stagger > * {
+  opacity: 0;
+  animation: contentReveal var(--duration-normal) var(--ease-decelerate) forwards;
+}

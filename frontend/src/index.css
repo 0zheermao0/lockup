@@ -67,36 +67,70 @@ body {
 }
 
 .neo-brutal-button {
-  border: 2px solid #000;
+  border: 3px solid #000;
   font-weight: bold;
   text-transform: uppercase;
   letter-spacing: 0.05em;
-  transition: all 0.2s;
+  transition: all var(--duration-fast, 200ms) var(--ease-bounce, cubic-bezier(0.175, 0.885, 0.32, 1.275));
   box-shadow: 4px 4px 0px 0px #000;
+  cursor: pointer;
 }
 
 .neo-brutal-button:hover {
-  transform: translate(4px, 4px);
-  box-shadow: none;
+  transform: translate(-3px, -3px) scale(1.02);
+  box-shadow: 7px 7px 0 #000;
+}
+
+.neo-brutal-button:active {
+  transform: translate(2px, 2px) scale(0.98);
+  box-shadow: 2px 2px 0 #000;
+  transition-duration: var(--duration-micro, 150ms);
 }
 
 .neo-brutal-card {
-  border: 2px solid #000;
+  border: 3px solid #000;
   background-color: #fff;
-  box-shadow: 6px 6px 0px 0px #000;
+  box-shadow: 4px 4px 0px 0px #000;
+  transition: all var(--duration-fast, 200ms) var(--ease-standard, cubic-bezier(0.4, 0.0, 0.2, 1));
+}
+
+.neo-brutal-card:hover {
+  transform: translate(-4px, -4px);
+  box-shadow: 8px 8px 0 #000;
 }
 
 .neo-brutal-input {
-  border: 2px solid #000;
+  border: 3px solid #000;
   background-color: #fff;
   padding: 8px 16px;
   font-weight: 500;
-  box-shadow: 2px 2px 0px 0px #000;
+  box-shadow: 4px 4px 0px 0px #000;
+  transition: all var(--duration-fast, 200ms) var(--ease-standard, cubic-bezier(0.4, 0.0, 0.2, 1));
 }
 
 .neo-brutal-input:focus {
   outline: none;
-  box-shadow: 4px 4px 0px 0px #000;
+  transform: translate(-2px, -2px);
+  box-shadow: 6px 6px 0px 0px #000;
+  border-color: #007bff;
+}
+
+/* Form validation states */
+.neo-brutal-input.error {
+  border-color: #dc3545;
+  box-shadow: 4px 4px 0px 0px #dc3545;
+  animation: shake 400ms ease-in-out;
+}
+
+.neo-brutal-input.success {
+  border-color: #28a745;
+  box-shadow: 4px 4px 0px 0px #28a745;
+}
+
+@keyframes shake {
+  0%, 100% { transform: translateX(0); }
+  10%, 30%, 50%, 70%, 90% { transform: translateX(-5px); }
+  20%, 40%, 60%, 80% { transform: translateX(5px); }
 }
 
 /* Level indicator colors */

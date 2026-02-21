@@ -23,13 +23,13 @@ const router = createRouter({
       path: '/',
       name: 'home',
       component: HomeView,
-      meta: { requiresAuth: true }
+      meta: { requiresAuth: true, transition: 'page-fade' }
     },
     {
       path: '/post/:id',
       name: 'post-detail',
       component: PostDetailView,
-      meta: { requiresAuth: true }
+      meta: { requiresAuth: true, transition: 'page-slide' }
     },
     {
       path: '/posts/:id',
@@ -39,97 +39,97 @@ const router = createRouter({
       path: '/profile/:id?',
       name: 'profile',
       component: ProfileView,
-      meta: { requiresAuth: true }
+      meta: { requiresAuth: true, transition: 'page-scale' }
     },
     {
       path: '/tasks',
       name: 'tasks',
       component: TaskView,
-      meta: { requiresAuth: true }
+      meta: { requiresAuth: true, transition: 'page-fade' }
     },
     {
       path: '/tasks/:id',
       name: 'task-detail',
       component: TaskDetailView,
-      meta: { requiresAuth: true }
+      meta: { requiresAuth: true, transition: 'page-slide' }
     },
     {
       path: '/store',
       name: 'store',
       component: StoreView,
-      meta: { requiresAuth: true }
+      meta: { requiresAuth: true, transition: 'page-fade' }
     },
     {
       path: '/inventory',
       name: 'inventory',
       component: InventoryView,
-      meta: { requiresAuth: true }
+      meta: { requiresAuth: true, transition: 'page-fade' }
     },
     {
       path: '/games',
       name: 'games',
       component: GameView,
-      meta: { requiresAuth: true }
+      meta: { requiresAuth: true, transition: 'page-fade' }
     },
     {
       path: '/explore',
       name: 'explore',
       component: ExploreView,
-      meta: { requiresAuth: true }
+      meta: { requiresAuth: true, transition: 'page-fade' }
     },
     {
       path: '/claim/:token',
       name: 'claim',
       component: ClaimView,
-      meta: { requiresAuth: true }
+      meta: { requiresAuth: true, transition: 'page-scale' }
     },
     {
       path: '/login',
       name: 'login',
       component: LoginView,
-      meta: { requiresGuest: true }
+      meta: { requiresGuest: true, transition: 'page-fade' }
     },
     {
       path: '/register',
       name: 'register',
       component: RegisterView,
-      meta: { requiresGuest: true }
+      meta: { requiresGuest: true, transition: 'page-fade' }
     },
     {
       path: '/password-reset',
       name: 'password-reset',
       component: PasswordResetView,
-      meta: { requiresGuest: true }
+      meta: { requiresGuest: true, transition: 'page-fade' }
     },
     {
       path: '/auth/telegram-callback',
       name: 'telegram-callback',
       component: TelegramCallbackView,
-      meta: { requiresGuest: true }
+      meta: { requiresGuest: true, transition: 'page-fade' }
     },
     {
       path: '/about',
       name: 'about',
       component: () => import('../views/AboutView.vue'),
-      meta: { requiresAuth: true }
+      meta: { requiresAuth: true, transition: 'page-fade' }
     },
     {
       path: '/level-detail',
       name: 'level-detail',
       component: () => import('../views/LevelDetailView.vue'),
-      meta: { requiresAuth: true, title: '等级详情' }
+      meta: { requiresAuth: true, title: '等级详情', transition: 'page-slide' }
     },
     {
       path: '/coins-detail',
       name: 'coins-detail',
       component: () => import('../views/CoinsDetailView.vue'),
-      meta: { requiresAuth: true, title: '积分详情' }
+      meta: { requiresAuth: true, title: '积分详情', transition: 'page-slide' }
     },
     {
       path: '/community-stats',
       name: 'community-stats',
       component: CommunityStatsView,
-      meta: { requiresAuth: true, title: '社区排行榜' }
+      meta: { requiresAuth: true, title: '社区排行榜', transition: 'page-fade' }
     }
   ]
 })
