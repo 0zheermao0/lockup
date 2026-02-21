@@ -222,14 +222,12 @@
           </div>
 
           <div v-else class="posts-list">
-            <StaggerList tag="div" :stagger-delay="60">
-              <article
-                v-for="(post, index) in posts"
-                :key="post.id"
-                class="post-card"
-                :style="{ '--stagger-delay': `${index * 60}ms` }"
-                @click="goToPostDetail(post.id)"
-              >
+            <article
+              v-for="post in posts"
+              :key="post.id"
+              class="post-card"
+              @click="goToPostDetail(post.id)"
+            >
               <div class="post-header">
                 <div class="user-info">
                   <UserAvatar
@@ -324,7 +322,6 @@
                 </button>
               </div>
             </article>
-            </StaggerList>
 
             <!-- 加载更多指示器 -->
             <div v-if="isLoadingMore" class="loading-more">
@@ -421,7 +418,6 @@ import LogoutConfirmModal from '../components/LogoutConfirmModal.vue'
 import ChatModal from '../components/ChatModal.vue'
 import CensoredImage from '../components/CensoredImage.vue'
 import SkeletonLoader from '../components/SkeletonLoader.vue'
-import StaggerList from '../components/transitions/StaggerList.vue'
 import type { Post } from '../types/index'
 
 const router = useRouter()
@@ -1151,17 +1147,14 @@ onMounted(async () => {
   background: white;
   padding: 1rem;
   border-radius: 8px;
-  border: 3px solid #000;
+  border: 2px solid #000;
   box-shadow: 4px 4px 0 #000;
-  transition: all 0.3s cubic-bezier(0.4, 0.0, 0.2, 1);
-  transform: translateZ(0);
-  will-change: transform, box-shadow;
 }
 
 .lock-status-card:hover,
 .user-card:hover,
 .actions-card:hover {
-  transform: translate(-2px, -2px);
+  transform: translateY(-2px);
   box-shadow: 6px 6px 0 #000;
 }
 
@@ -1239,19 +1232,17 @@ onMounted(async () => {
 .action-btn {
   width: 100%;
   padding: 0.625rem;
-  border: 3px solid #000;
+  border: 2px solid #000;
   border-radius: 6px;
-  font-weight: 900;
+  font-weight: 700;
   color: white;
   margin-bottom: 0.5rem;
   cursor: pointer;
   text-transform: uppercase;
   letter-spacing: 0.5px;
-  box-shadow: 4px 4px 0 #000;
-  transition: all var(--duration-fast, 200ms) var(--ease-bounce, cubic-bezier(0.175, 0.885, 0.32, 1.275));
+  box-shadow: 3px 3px 0 #000;
+  transition: all 0.2s ease;
   font-size: 0.8rem;
-  position: relative;
-  overflow: hidden;
 }
 
 .action-btn.blue {
@@ -1288,14 +1279,8 @@ onMounted(async () => {
 }
 
 .action-btn:hover {
-  transform: translate(-3px, -3px) scale(1.02);
-  box-shadow: 7px 7px 0 #000;
-}
-
-.action-btn:active {
-  transform: translate(2px, 2px) scale(0.98);
-  box-shadow: 2px 2px 0 #000;
-  transition-duration: var(--duration-micro, 150ms);
+  transform: translate(-2px, -2px);
+  box-shadow: 5px 5px 0 #000;
 }
 
 .posts-feed-header {
@@ -1381,24 +1366,17 @@ onMounted(async () => {
   background: white;
   padding: 1.5rem;
   border-radius: 8px;
-  border: 3px solid #000;
+  border: 2px solid #000;
   box-shadow: 4px 4px 0 #000;
   cursor: pointer;
-  transition: all var(--duration-fast, 200ms) var(--ease-bounce, cubic-bezier(0.175, 0.885, 0.32, 1.275));
+  transition: all 0.2s ease;
   max-width: 100%;
   overflow: hidden;
-  will-change: transform, box-shadow;
 }
 
 .post-card:hover {
-  transform: translate(-4px, -4px);
-  box-shadow: 8px 8px 0 #000;
-}
-
-.post-card:active {
-  transform: translate(2px, 2px);
-  box-shadow: 2px 2px 0 #000;
-  transition-duration: var(--duration-micro, 150ms);
+  transform: translateY(-2px);
+  box-shadow: 6px 6px 0 #000;
 }
 
 .post-header {
