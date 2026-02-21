@@ -1,0 +1,403 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Type-Btn Liquid Glass Effects Test</title>
+    <style>
+        /* 导入液态玻璃主题变量 */
+        .theme-liquid-glass {
+            /* 基础背景 - 极度透明，让环境光穿透 */
+            --theme-primary-bg: rgba(255, 255, 255, 0.02);
+            --theme-secondary-bg: rgba(255, 255, 255, 0.04);
+            --theme-tertiary-bg: rgba(255, 255, 255, 0.06);
+
+            /* 卡片背景 - 高级磨砂玻璃材质 */
+            --theme-card-bg: rgba(255, 255, 255, 0.08);
+            --theme-modal-bg: rgba(255, 255, 255, 0.12);
+
+            /* 文字颜色 */
+            --theme-text-primary: rgba(20, 20, 30, 0.9);
+            --theme-text-secondary: rgba(40, 40, 50, 0.8);
+
+            /* Glass Material */
+            --theme-backdrop-filter: blur(24px) saturate(200%) brightness(1.1);
+            --theme-glass-filter: blur(16px) saturate(180%) brightness(1.05);
+            --theme-glass-light: blur(12px) saturate(150%) brightness(1.02);
+
+            /* 内发光 */
+            --theme-inner-glow: inset 0 1px 0 rgba(255, 255, 255, 0.3), inset 0 -1px 0 rgba(255, 255, 255, 0.1);
+            --theme-inner-glow-strong: inset 0 2px 4px rgba(255, 255, 255, 0.4), inset 0 -2px 4px rgba(255, 255, 255, 0.2);
+
+            /* 阴影系统 */
+            --theme-shadow: 0 8px 32px rgba(0, 0, 0, 0.12), 0 4px 16px rgba(0, 0, 0, 0.08), 0 2px 8px rgba(255, 255, 255, 0.05);
+            --theme-shadow-large: 0 16px 64px rgba(0, 0, 0, 0.15), 0 8px 32px rgba(0, 0, 0, 0.10), 0 4px 16px rgba(255, 255, 255, 0.08);
+            --theme-shadow-small: 0 4px 16px rgba(0, 0, 0, 0.08), 0 2px 8px rgba(0, 0, 0, 0.05), 0 1px 4px rgba(255, 255, 255, 0.03);
+
+            /* 3D浮起效果 */
+            --theme-hover-lift: 0 12px 48px rgba(0, 0, 0, 0.15), 0 6px 24px rgba(0, 0, 0, 0.10), 0 3px 12px rgba(255, 255, 255, 0.08);
+
+            /* 圆角 */
+            --theme-border-radius: 48px;
+            --theme-border-radius-large: 64px;
+            --theme-border-radius-small: 32px;
+
+            /* 字体权重 */
+            --theme-font-weight-medium: 500;
+
+            /* 过渡动画 */
+            --theme-transition-fast: 0.15s cubic-bezier(0.4, 0.0, 0.2, 1);
+        }
+
+        /* 基础样式 */
+        body {
+            margin: 0;
+            padding: 40px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Helvetica Neue', Arial, sans-serif;
+            min-height: 100vh;
+        }
+
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 40px;
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(20px);
+            border-radius: 20px;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+
+        h1 {
+            color: white;
+            text-align: center;
+            margin-bottom: 40px;
+            text-shadow: 0 2px 10px rgba(0, 0, 0, 0.3);
+        }
+
+        .section {
+            margin-bottom: 40px;
+            padding: 20px;
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 15px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .section h2 {
+            color: white;
+            margin-bottom: 20px;
+            font-size: 18px;
+        }
+
+        /* 原始 type-btn 样式 */
+        .type-btn {
+            flex: 1;
+            padding: 0.75rem;
+            border: 2px solid #ddd;
+            background: white;
+            border-radius: 4px;
+            cursor: pointer;
+            font-weight: 500;
+            transition: all 0.2s;
+            margin: 0 5px;
+        }
+
+        .type-btn.active {
+            border-color: #007bff;
+            background-color: #007bff;
+            color: white;
+        }
+
+        .type-btn:hover:not(.active) {
+            border-color: #007bff;
+        }
+
+        /* 液态玻璃效果 */
+        .theme-liquid-glass .type-btn {
+            background: var(--theme-tertiary-bg) !important;
+            backdrop-filter: var(--theme-glass-light) !important;
+            -webkit-backdrop-filter: var(--theme-glass-light) !important;
+            border: 1px solid rgba(255, 255, 255, 0.15) !important;
+            border-radius: var(--theme-border-radius) !important;
+            color: var(--theme-text-primary) !important;
+            box-shadow: var(--theme-inner-glow) !important;
+            transition: all var(--theme-transition-fast) !important;
+            font-weight: var(--theme-font-weight-medium) !important;
+        }
+
+        .theme-liquid-glass .type-btn:hover:not(.active) {
+            transform: translateY(-2px) scale(1.02) !important;
+            background: var(--theme-card-bg) !important;
+            backdrop-filter: blur(20px) saturate(200%) brightness(1.1) !important;
+            -webkit-backdrop-filter: blur(20px) saturate(200%) brightness(1.1) !important;
+            box-shadow: var(--theme-hover-lift), var(--theme-inner-glow) !important;
+            border-color: rgba(255, 255, 255, 0.25) !important;
+        }
+
+        .theme-liquid-glass .type-btn.active {
+            background: rgba(0, 123, 255, 0.15) !important;
+            backdrop-filter: blur(24px) saturate(220%) brightness(1.2) !important;
+            -webkit-backdrop-filter: blur(24px) saturate(220%) brightness(1.2) !important;
+            border-color: rgba(0, 123, 255, 0.4) !important;
+            color: var(--theme-text-primary) !important;
+            box-shadow:
+                0 0 20px rgba(0, 123, 255, 0.25),
+                0 0 40px rgba(0, 123, 255, 0.15),
+                var(--theme-inner-glow-strong) !important;
+            transform: translateY(-1px) scale(1.01) !important;
+        }
+
+        .theme-liquid-glass .type-btn.active:hover {
+            background: rgba(0, 123, 255, 0.25) !important;
+            backdrop-filter: blur(28px) saturate(250%) brightness(1.3) !important;
+            -webkit-backdrop-filter: blur(28px) saturate(250%) brightness(1.3) !important;
+            box-shadow:
+                0 0 30px rgba(0, 123, 255, 0.35),
+                0 0 60px rgba(0, 123, 255, 0.2),
+                var(--theme-hover-lift) !important;
+            transform: translateY(-3px) scale(1.03) !important;
+        }
+
+        .button-group {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+
+        .demo-note {
+            color: rgba(255, 255, 255, 0.8);
+            font-size: 14px;
+            margin-top: 10px;
+            font-style: italic;
+        }
+
+        .toggle-btn {
+            background: rgba(255, 255, 255, 0.2);
+            color: white;
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            padding: 10px 20px;
+            border-radius: 10px;
+            cursor: pointer;
+            margin-bottom: 20px;
+            transition: all 0.3s;
+        }
+
+        .toggle-btn:hover {
+            background: rgba(255, 255, 255, 0.3);
+        }
+
+        /* 支持自定义颜色的液态玻璃效果 */
+        .theme-liquid-glass .type-btn[data-color="green"].active {
+            background: rgba(34, 197, 94, 0.15) !important;
+            backdrop-filter: blur(24px) saturate(220%) brightness(1.2) !important;
+            -webkit-backdrop-filter: blur(24px) saturate(220%) brightness(1.2) !important;
+            border-color: rgba(34, 197, 94, 0.4) !important;
+            box-shadow:
+                0 0 20px rgba(34, 197, 94, 0.25),
+                0 0 40px rgba(34, 197, 94, 0.15),
+                var(--theme-inner-glow-strong) !important;
+        }
+
+        .theme-liquid-glass .type-btn[data-color="green"].active:hover {
+            background: rgba(34, 197, 94, 0.25) !important;
+            backdrop-filter: blur(28px) saturate(250%) brightness(1.3) !important;
+            -webkit-backdrop-filter: blur(28px) saturate(250%) brightness(1.3) !important;
+            box-shadow:
+                0 0 30px rgba(34, 197, 94, 0.35),
+                0 0 60px rgba(34, 197, 94, 0.2),
+                var(--theme-hover-lift) !important;
+        }
+
+        .theme-liquid-glass .type-btn[data-color="purple"].active {
+            background: rgba(168, 85, 247, 0.15) !important;
+            backdrop-filter: blur(24px) saturate(220%) brightness(1.2) !important;
+            -webkit-backdrop-filter: blur(24px) saturate(220%) brightness(1.2) !important;
+            border-color: rgba(168, 85, 247, 0.4) !important;
+            box-shadow:
+                0 0 20px rgba(168, 85, 247, 0.25),
+                0 0 40px rgba(168, 85, 247, 0.15),
+                var(--theme-inner-glow-strong) !important;
+        }
+
+        .theme-liquid-glass .type-btn[data-color="purple"].active:hover {
+            background: rgba(168, 85, 247, 0.25) !important;
+            backdrop-filter: blur(28px) saturate(250%) brightness(1.3) !important;
+            -webkit-backdrop-filter: blur(28px) saturate(250%) brightness(1.3) !important;
+            box-shadow:
+                0 0 30px rgba(168, 85, 247, 0.35),
+                0 0 60px rgba(168, 85, 247, 0.2),
+                var(--theme-hover-lift) !important;
+        }
+
+        .theme-liquid-glass .type-btn[data-color="red"].active {
+            background: rgba(239, 68, 68, 0.15) !important;
+            backdrop-filter: blur(24px) saturate(220%) brightness(1.2) !important;
+            -webkit-backdrop-filter: blur(24px) saturate(220%) brightness(1.2) !important;
+            border-color: rgba(239, 68, 68, 0.4) !important;
+            box-shadow:
+                0 0 20px rgba(239, 68, 68, 0.25),
+                0 0 40px rgba(239, 68, 68, 0.15),
+                var(--theme-inner-glow-strong) !important;
+        }
+
+        .theme-liquid-glass .type-btn[data-color="red"].active:hover {
+            background: rgba(239, 68, 68, 0.25) !important;
+            backdrop-filter: blur(28px) saturate(250%) brightness(1.3) !important;
+            -webkit-backdrop-filter: blur(28px) saturate(250%) brightness(1.3) !important;
+            box-shadow:
+                0 0 30px rgba(239, 68, 68, 0.35),
+                0 0 60px rgba(239, 68, 68, 0.2),
+                var(--theme-hover-lift) !important;
+        }
+
+        .theme-liquid-glass .type-btn[data-color="orange"].active {
+            background: rgba(249, 115, 22, 0.15) !important;
+            backdrop-filter: blur(24px) saturate(220%) brightness(1.2) !important;
+            -webkit-backdrop-filter: blur(24px) saturate(220%) brightness(1.2) !important;
+            border-color: rgba(249, 115, 22, 0.4) !important;
+            box-shadow:
+                0 0 20px rgba(249, 115, 22, 0.25),
+                0 0 40px rgba(249, 115, 22, 0.15),
+                var(--theme-inner-glow-strong) !important;
+        }
+
+        .theme-liquid-glass .type-btn[data-color="orange"].active:hover {
+            background: rgba(249, 115, 22, 0.25) !important;
+            backdrop-filter: blur(28px) saturate(250%) brightness(1.3) !important;
+            -webkit-backdrop-filter: blur(28px) saturate(250%) brightness(1.3) !important;
+            box-shadow:
+                0 0 30px rgba(249, 115, 22, 0.35),
+                0 0 60px rgba(249, 115, 22, 0.2),
+                var(--theme-hover-lift) !important;
+        }
+
+        .theme-liquid-glass .type-btn[data-color="cyan"].active {
+            background: rgba(6, 182, 212, 0.15) !important;
+            backdrop-filter: blur(24px) saturate(220%) brightness(1.2) !important;
+            -webkit-backdrop-filter: blur(24px) saturate(220%) brightness(1.2) !important;
+            border-color: rgba(6, 182, 212, 0.4) !important;
+            box-shadow:
+                0 0 20px rgba(6, 182, 212, 0.25),
+                0 0 40px rgba(6, 182, 212, 0.15),
+                var(--theme-inner-glow-strong) !important;
+        }
+
+        .theme-liquid-glass .type-btn[data-color="cyan"].active:hover {
+            background: rgba(6, 182, 212, 0.25) !important;
+            backdrop-filter: blur(28px) saturate(250%) brightness(1.3) !important;
+            -webkit-backdrop-filter: blur(28px) saturate(250%) brightness(1.3) !important;
+            box-shadow:
+                0 0 30px rgba(6, 182, 212, 0.35),
+                0 0 60px rgba(6, 182, 212, 0.2),
+                var(--theme-hover-lift) !important;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Type-Btn Liquid Glass Effects Test</h1>
+
+        <button class="toggle-btn" onclick="toggleTheme()">
+            Toggle Liquid Glass Theme
+        </button>
+
+        <div class="section">
+            <h2>1. CreatePostModal type-btn (Original vs Liquid Glass)</h2>
+            <div class="button-group">
+                <button class="type-btn">文字贴</button>
+                <button class="type-btn active">图片贴</button>
+                <button class="type-btn">视频贴</button>
+            </div>
+            <div class="demo-note">
+                点击按钮测试交互效果。Active 状态应该有美丽的蓝色光晕和液态玻璃效果。
+            </div>
+        </div>
+
+        <div class="section">
+            <h2>2. 测试不同颜色的液态玻璃效果</h2>
+            <div class="button-group">
+                <button class="type-btn" data-color="green" onclick="setActiveColor(this, 'green')">
+                    🟢 绿色主题
+                </button>
+                <button class="type-btn active" data-color="purple" onclick="setActiveColor(this, 'purple')">
+                    🟣 紫色主题
+                </button>
+                <button class="type-btn" data-color="red" onclick="setActiveColor(this, 'red')">
+                    🔴 红色主题
+                </button>
+            </div>
+            <div class="button-group">
+                <button class="type-btn" data-color="orange" onclick="setActiveColor(this, 'orange')">
+                    🟠 橙色主题
+                </button>
+                <button class="type-btn" data-color="cyan" onclick="setActiveColor(this, 'cyan')">
+                    🔵 青色主题
+                </button>
+                <button class="type-btn" onclick="setActiveColor(this, 'blue')">
+                    🔷 蓝色主题 (默认)
+                </button>
+            </div>
+            <div class="demo-note">
+                点击按钮测试不同颜色的液态玻璃效果。每种颜色都有独特的光晕和透明度效果。
+            </div>
+        </div>
+
+        <div class="section">
+            <h2>3. 交互效果测试</h2>
+            <div class="button-group">
+                <button class="type-btn" onclick="setActive(this)">悬停测试</button>
+                <button class="type-btn" onclick="setActive(this)">点击激活</button>
+                <button class="type-btn active" onclick="setActive(this)">当前激活</button>
+            </div>
+            <div class="demo-note">
+                点击按钮切换激活状态，观察液态玻璃效果的过渡动画。
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let isLiquidGlass = false;
+
+        function toggleTheme() {
+            const body = document.body;
+            if (isLiquidGlass) {
+                body.classList.remove('theme-liquid-glass');
+                isLiquidGlass = false;
+            } else {
+                body.classList.add('theme-liquid-glass');
+                isLiquidGlass = true;
+            }
+        }
+
+        function setActive(button) {
+            // 移除所有按钮的 active 类
+            const buttons = button.parentElement.querySelectorAll('.type-btn');
+            buttons.forEach(btn => btn.classList.remove('active'));
+
+            // 为点击的按钮添加 active 类
+            button.classList.add('active');
+        }
+
+        function setActiveColor(button, color) {
+            // 移除同一组中所有按钮的 active 类
+            const section = button.closest('.section');
+            const buttons = section.querySelectorAll('.type-btn');
+            buttons.forEach(btn => btn.classList.remove('active'));
+
+            // 为点击的按钮添加 active 类
+            button.classList.add('active');
+
+            // 显示颜色信息
+            console.log(`激活了 ${color} 颜色主题`);
+
+            // 可选：显示当前激活的颜色
+            const noteElement = section.querySelector('.demo-note');
+            noteElement.innerHTML = `当前激活: <strong>${button.textContent}</strong> - 观察不同颜色的液态玻璃光晕效果！`;
+        }
+
+        // 默认启用液态玻璃主题
+        document.body.classList.add('theme-liquid-glass');
+        isLiquidGlass = true;
+    </script>
+</body>
+</html>

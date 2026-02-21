@@ -335,8 +335,17 @@ class LockTaskListCreateView(generics.ListCreateAPIView):
                     })
 
                 # 扣除发布者的积分
-                task.user.coins -= task.reward
-                task.user.save()
+                task.user.deduct_coins(
+                    amount=task.reward,
+                    change_type='task_creation',
+                    description=f'发布任务板任务，扣除{task.reward}积分作为奖励',
+                    metadata={
+                        'task_id': str(task.id),
+                        'task_title': task.title,
+                        'task_type': task.task_type,
+                        'reward_amount': task.reward
+                    }
+                )
 
                 # 创建积分扣除事件
                 TaskTimelineEvent.objects.create(

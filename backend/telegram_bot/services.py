@@ -759,12 +759,12 @@ Telegram 通知：{'✅ 已开启' if user.telegram_notifications_enabled else '
                 )
                 return
 
-            # 获取可分享的物品（photo, note, key 且状态为 available）
+            # 获取可分享的物品（支持多种类型且状态为 available）
             shareable_items_query = await sync_to_async(Item.objects.filter)(
                 owner=user,
                 inventory=inventory,
                 status='available',
-                item_type__name__in=['photo', 'note', 'key']
+                item_type__name__in=['photo', 'note', 'key', 'little_treasury', 'detection_radar', 'blizzard_bottle', 'sun_bottle', 'time_hourglass', 'small_campfire']
             )
             shareable_items = await sync_to_async(list)(shareable_items_query.select_related('item_type', 'original_owner'))
 
@@ -1180,56 +1180,66 @@ Telegram 通知：{'✅ 已开启' if user.telegram_notifications_enabled else '
             from store.models import SharedItem
             from django.db import transaction
 
-            # 使用事务保护整个操作
-            async with transaction.atomic():
-                # 查找分享记录（添加行锁防止并发）
-                shared_item_query = await sync_to_async(SharedItem.objects.select_for_update().filter)(
-                    share_token=share_token,
-                    status='active'
-                )
-                shared_item = await sync_to_async(shared_item_query.select_related('sharer', 'item', 'item__item_type').first)()
+            # 使用同步函数包装数据库查询以确保事务和 select_for_update 正常工作
+            def get_shared_item_with_lock(token):
+                with transaction.atomic():
+                    return SharedItem.objects.select_for_update().filter(
+                        share_token=token,
+                        status='active'
+                    ).select_related('sharer', 'item', 'item__item_type').first()
 
-                if not shared_item:
-                    await self._safe_callback_response(query, "❌ 分享链接无效或已过期", show_alert=True)
-                    return
+            # 执行查询
+            shared_item = await sync_to_async(get_shared_item_with_lock)(share_token)
 
-                # 检查是否是分享者自己
-                if shared_item.sharer.id == current_user.id:
-                    await self._safe_callback_response(query, "❌ 不能获取自己分享的物品", show_alert=True)
-                    return
+            if not shared_item:
+                await self._safe_callback_response(query, "❌ 分享链接无效或已过期", show_alert=True)
+                return
 
-                # 检查是否已被其他人获取
-                if shared_item.claimer:
-                    await self._safe_callback_response(query, f"❌ 物品已被 {shared_item.claimer.username} 获取", show_alert=True)
-                    return
+            # 检查是否是分享者自己
+            if shared_item.sharer.id == current_user.id:
+                await self._safe_callback_response(query, "❌ 不能获取自己分享的物品", show_alert=True)
+                return
 
-                # 检查获取者的背包空间
-                claimer_inventory_query = await sync_to_async(UserInventory.objects.filter)(user=current_user)
-                claimer_inventory = await sync_to_async(claimer_inventory_query.first)()
+            # 检查是否已被其他人获取
+            if shared_item.claimer:
+                await self._safe_callback_response(query, f"❌ 物品已被 {shared_item.claimer.username} 获取", show_alert=True)
+                return
 
-                if not claimer_inventory:
-                    await self._safe_callback_response(query, "❌ 您还没有背包，请先前往应用购买背包", show_alert=True)
-                    return
+            # 检查获取者的背包空间
+            claimer_inventory_query = await sync_to_async(UserInventory.objects.filter)(user=current_user)
+            claimer_inventory = await sync_to_async(claimer_inventory_query.first)()
 
-                if claimer_inventory.available_slots <= 0:
-                    await self._safe_callback_response(query, "❌ 您的背包空间不足，请先清理背包", show_alert=True)
-                    return
+            if not claimer_inventory:
+                await self._safe_callback_response(query, "❌ 您还没有背包，请先前往应用购买背包", show_alert=True)
+                return
 
-                # 执行物品转移
-                item = shared_item.item
-                item.owner = current_user
-                item.inventory = claimer_inventory
-                item.status = 'available'  # 确保物品状态正确
-                await sync_to_async(item.save)()
+            if claimer_inventory.available_slots <= 0:
+                await self._safe_callback_response(query, "❌ 您的背包空间不足，请先清理背包", show_alert=True)
+                return
 
-                # 更新分享记录
-                shared_item.claimer = current_user
-                shared_item.status = 'claimed'
-                shared_item.claimed_at = timezone.now()
-                await sync_to_async(shared_item.save)()
+            # 执行物品转移（需要在事务中执行）
+            def transfer_item_and_update_record():
+                with transaction.atomic():
+                    # 重新获取物品并锁定
+                    item = Item.objects.select_for_update().get(id=shared_item.item.id)
+                    item.owner = current_user
+                    item.inventory = claimer_inventory
+                    item.status = 'available'
+                    item.save()
 
-                # ✅ UserInventory 的 available_slots 是 @property，自动计算
-                # 不需要手动调用 update_slots() 方法
+                    # 更新分享记录
+                    shared_item_record = SharedItem.objects.select_for_update().get(id=shared_item.id)
+                    shared_item_record.claimer = current_user
+                    shared_item_record.status = 'claimed'
+                    shared_item_record.claimed_at = timezone.now()
+                    shared_item_record.save()
+
+                    return item, shared_item_record
+
+            item, shared_item_record = await sync_to_async(transfer_item_and_update_record)()
+
+            # ✅ UserInventory 的 available_slots 是 @property，自动计算
+            # 不需要手动调用 update_slots() 方法
 
             # 创建通知给分享者（与web API保持一致）
             from users.models import Notification
@@ -1246,7 +1256,7 @@ Telegram 通知：{'✅ 已开启' if user.telegram_notifications_enabled else '
                     'item_display_name': item.item_type.display_name,
                     'claimer_id': current_user.id,
                     'claimer_username': current_user.username,
-                    'claimed_at': shared_item.claimed_at.isoformat()
+                    'claimed_at': shared_item_record.claimed_at.isoformat()
                 }
             )
 

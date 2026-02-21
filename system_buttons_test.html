@@ -1,0 +1,376 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>系统按钮液态玻璃效果测试</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', sans-serif;
+            min-height: 100vh;
+        }
+
+        .theme-liquid-glass {
+            /* CSS变量定义 */
+            --theme-primary-bg: rgba(255, 255, 255, 0.02);
+            --theme-secondary-bg: rgba(255, 255, 255, 0.04);
+            --theme-tertiary-bg: rgba(255, 255, 255, 0.06);
+            --theme-card-bg: rgba(255, 255, 255, 0.08);
+            --theme-text-primary: rgba(20, 20, 30, 0.9);
+            --theme-text-secondary: rgba(40, 40, 50, 0.8);
+            --theme-glass-light: blur(12px) saturate(150%) brightness(1.02);
+            --theme-inner-glow: inset 0 1px 0 rgba(255, 255, 255, 0.3), inset 0 -1px 0 rgba(255, 255, 255, 0.1);
+            --theme-inner-glow-strong: inset 0 2px 4px rgba(255, 255, 255, 0.4), inset 0 -2px 4px rgba(255, 255, 255, 0.2);
+            --theme-hover-lift: 0 12px 48px rgba(0, 0, 0, 0.15), 0 6px 24px rgba(0, 0, 0, 0.10), 0 3px 12px rgba(255, 255, 255, 0.08);
+            --theme-shadow-small: 0 4px 16px rgba(0, 0, 0, 0.08), 0 2px 8px rgba(0, 0, 0, 0.05), 0 1px 4px rgba(255, 255, 255, 0.03);
+            --theme-border-radius: 48px;
+            --theme-border-radius-large: 64px;
+            --theme-border-radius-small: 32px;
+            --theme-font-weight-medium: 500;
+            --theme-transition-fast: 0.15s cubic-bezier(0.4, 0.0, 0.2, 1);
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 40px;
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(20px);
+            border-radius: 20px;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+
+        h1 {
+            color: white;
+            text-align: center;
+            margin-bottom: 40px;
+            font-size: 32px;
+            text-shadow: 0 2px 10px rgba(0, 0, 0, 0.3);
+        }
+
+        .section {
+            margin-bottom: 40px;
+            padding: 30px;
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 15px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .section h2 {
+            color: white;
+            margin-bottom: 20px;
+            font-size: 20px;
+        }
+
+        .button-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 20px;
+            margin-bottom: 20px;
+        }
+
+        .button-row {
+            display: flex;
+            gap: 15px;
+            margin-bottom: 15px;
+            flex-wrap: wrap;
+        }
+
+        /* 创建任务按钮 (create-btn) */
+        .theme-liquid-glass .create-btn {
+            background: var(--theme-tertiary-bg) !important;
+            backdrop-filter: var(--theme-glass-light) !important;
+            -webkit-backdrop-filter: var(--theme-glass-light) !important;
+            border: 1px solid rgba(255, 255, 255, 0.15) !important;
+            border-radius: var(--theme-border-radius) !important;
+            color: var(--theme-text-primary) !important;
+            box-shadow: var(--theme-inner-glow) !important;
+            transition: all var(--theme-transition-fast) !important;
+            font-weight: var(--theme-font-weight-medium) !important;
+            padding: 12px 24px;
+            cursor: pointer;
+        }
+
+        .theme-liquid-glass .create-btn:hover {
+            transform: translateY(-2px) scale(1.02) !important;
+            background: rgba(34, 197, 94, 0.15) !important;
+            backdrop-filter: blur(24px) saturate(220%) brightness(1.2) !important;
+            -webkit-backdrop-filter: blur(24px) saturate(220%) brightness(1.2) !important;
+            border-color: rgba(34, 197, 94, 0.4) !important;
+            box-shadow:
+                0 0 20px rgba(34, 197, 94, 0.25),
+                0 0 40px rgba(34, 197, 94, 0.15),
+                var(--theme-hover-lift) !important;
+        }
+
+        /* 任务类型标签 (task-type-tab) */
+        .theme-liquid-glass .task-type-tab {
+            background: var(--theme-tertiary-bg) !important;
+            backdrop-filter: var(--theme-glass-light) !important;
+            -webkit-backdrop-filter: var(--theme-glass-light) !important;
+            border: 1px solid rgba(255, 255, 255, 0.15) !important;
+            border-radius: var(--theme-border-radius) !important;
+            color: var(--theme-text-primary) !important;
+            box-shadow: var(--theme-inner-glow) !important;
+            transition: all var(--theme-transition-fast) !important;
+            font-weight: var(--theme-font-weight-medium) !important;
+            padding: 12px 20px;
+            cursor: pointer;
+        }
+
+        .theme-liquid-glass .task-type-tab:hover:not(.active) {
+            transform: translateY(-2px) scale(1.02) !important;
+            background: var(--theme-card-bg) !important;
+            backdrop-filter: blur(20px) saturate(200%) brightness(1.1) !important;
+            -webkit-backdrop-filter: blur(20px) saturate(200%) brightness(1.1) !important;
+            box-shadow: var(--theme-hover-lift), var(--theme-inner-glow) !important;
+            border-color: rgba(255, 255, 255, 0.25) !important;
+        }
+
+        .theme-liquid-glass .task-type-tab.active {
+            background: rgba(0, 123, 255, 0.15) !important;
+            backdrop-filter: blur(24px) saturate(220%) brightness(1.2) !important;
+            -webkit-backdrop-filter: blur(24px) saturate(220%) brightness(1.2) !important;
+            border-color: rgba(0, 123, 255, 0.4) !important;
+            color: var(--theme-text-primary) !important;
+            box-shadow:
+                0 0 20px rgba(0, 123, 255, 0.25),
+                0 0 40px rgba(0, 123, 255, 0.15),
+                var(--theme-inner-glow-strong) !important;
+            transform: translateY(-1px) scale(1.01) !important;
+        }
+
+        /* 快速操作按钮 (quick-action-btn) */
+        .theme-liquid-glass .quick-action-btn {
+            background: var(--theme-tertiary-bg) !important;
+            backdrop-filter: var(--theme-glass-light) !important;
+            -webkit-backdrop-filter: var(--theme-glass-light) !important;
+            border: 1px solid rgba(255, 255, 255, 0.15) !important;
+            border-radius: var(--theme-border-radius) !important;
+            color: var(--theme-text-primary) !important;
+            box-shadow: var(--theme-inner-glow) !important;
+            transition: all var(--theme-transition-fast) !important;
+            font-weight: var(--theme-font-weight-medium) !important;
+            padding: 10px 18px;
+            cursor: pointer;
+        }
+
+        .theme-liquid-glass .quick-action-btn:hover {
+            transform: translateY(-2px) scale(1.02) !important;
+            background: var(--theme-card-bg) !important;
+            backdrop-filter: blur(20px) saturate(200%) brightness(1.1) !important;
+            -webkit-backdrop-filter: blur(20px) saturate(200%) brightness(1.1) !important;
+            box-shadow: var(--theme-hover-lift), var(--theme-inner-glow) !important;
+            border-color: rgba(255, 255, 255, 0.25) !important;
+        }
+
+        /* 危险操作按钮 */
+        .theme-liquid-glass .quick-action-btn.danger {
+            background: rgba(239, 68, 68, 0.1) !important;
+            border-color: rgba(239, 68, 68, 0.3) !important;
+            box-shadow:
+                0 0 16px rgba(239, 68, 68, 0.15),
+                var(--theme-inner-glow) !important;
+        }
+
+        .theme-liquid-glass .quick-action-btn.danger:hover {
+            background: rgba(239, 68, 68, 0.2) !important;
+            border-color: rgba(239, 68, 68, 0.5) !important;
+            box-shadow:
+                0 0 24px rgba(239, 68, 68, 0.3),
+                0 0 48px rgba(239, 68, 68, 0.2),
+                var(--theme-hover-lift) !important;
+        }
+
+        /* 投票操作按钮 */
+        .theme-liquid-glass .quick-action-btn.vote {
+            background: rgba(168, 85, 247, 0.1) !important;
+            border-color: rgba(168, 85, 247, 0.3) !important;
+            box-shadow:
+                0 0 16px rgba(168, 85, 247, 0.15),
+                var(--theme-inner-glow) !important;
+        }
+
+        .theme-liquid-glass .quick-action-btn.vote:hover {
+            background: rgba(168, 85, 247, 0.2) !important;
+            border-color: rgba(168, 85, 247, 0.5) !important;
+            box-shadow:
+                0 0 24px rgba(168, 85, 247, 0.3),
+                0 0 48px rgba(168, 85, 247, 0.2),
+                var(--theme-hover-lift) !important;
+        }
+
+        /* 筛选标签按钮 */
+        .theme-liquid-glass .filter-tab {
+            background: var(--theme-tertiary-bg) !important;
+            backdrop-filter: var(--theme-glass-light) !important;
+            -webkit-backdrop-filter: var(--theme-glass-light) !important;
+            border: 1px solid rgba(255, 255, 255, 0.15) !important;
+            border-radius: var(--theme-border-radius-small) !important;
+            color: var(--theme-text-primary) !important;
+            box-shadow: var(--theme-inner-glow) !important;
+            transition: all var(--theme-transition-fast) !important;
+            padding: 8px 16px;
+            cursor: pointer;
+        }
+
+        .theme-liquid-glass .filter-tab:hover:not(.active) {
+            transform: translateY(-1px) scale(1.01) !important;
+            background: var(--theme-card-bg) !important;
+            backdrop-filter: blur(16px) saturate(180%) brightness(1.05) !important;
+            -webkit-backdrop-filter: blur(16px) saturate(180%) brightness(1.05) !important;
+            box-shadow: var(--theme-shadow-small), var(--theme-inner-glow) !important;
+            border-color: rgba(255, 255, 255, 0.2) !important;
+        }
+
+        .theme-liquid-glass .filter-tab.active {
+            background: rgba(34, 197, 94, 0.15) !important;
+            backdrop-filter: blur(20px) saturate(200%) brightness(1.15) !important;
+            -webkit-backdrop-filter: blur(20px) saturate(200%) brightness(1.15) !important;
+            border-color: rgba(34, 197, 94, 0.4) !important;
+            color: var(--theme-text-primary) !important;
+            box-shadow:
+                0 0 16px rgba(34, 197, 94, 0.2),
+                0 0 32px rgba(34, 197, 94, 0.12),
+                var(--theme-inner-glow-strong) !important;
+            transform: translateY(-1px) scale(1.005) !important;
+        }
+
+        .demo-note {
+            color: rgba(255, 255, 255, 0.8);
+            font-size: 14px;
+            margin-top: 15px;
+            font-style: italic;
+        }
+
+        .status-indicator {
+            display: inline-block;
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            margin-right: 8px;
+        }
+
+        .status-fixed {
+            background: #22c55e;
+        }
+
+        .status-new {
+            background: #3b82f6;
+        }
+    </style>
+</head>
+<body class="theme-liquid-glass">
+    <div class="container">
+        <h1>🔧 系统按钮液态玻璃效果修复测试</h1>
+
+        <div class="section">
+            <h2><span class="status-indicator status-fixed"></span>任务管理按钮</h2>
+            <div class="button-row">
+                <button class="create-btn">🆕 创建任务</button>
+                <button class="task-type-tab">🔒 带锁任务</button>
+                <button class="task-type-tab active">📋 任务板</button>
+            </div>
+            <div class="demo-note">
+                ✅ 修复了任务页面顶部的主要导航按钮液态玻璃效果
+            </div>
+        </div>
+
+        <div class="section">
+            <h2><span class="status-indicator status-fixed"></span>任务操作按钮</h2>
+            <div class="button-row">
+                <button class="quick-action-btn">▶️ 开始任务</button>
+                <button class="quick-action-btn danger">⏹️ 停止任务</button>
+                <button class="quick-action-btn vote">🗳️ 发起投票</button>
+                <button class="quick-action-btn">✅ 完成任务</button>
+            </div>
+            <div class="demo-note">
+                ✅ 修复了任务详情页面的快速操作按钮，包括危险操作（红色）和投票操作（紫色）
+            </div>
+        </div>
+
+        <div class="section">
+            <h2><span class="status-indicator status-fixed"></span>筛选标签按钮</h2>
+            <div class="button-row">
+                <button class="filter-tab active">全部</button>
+                <button class="filter-tab">进行中</button>
+                <button class="filter-tab">投票中</button>
+                <button class="filter-tab">已完成</button>
+            </div>
+            <div class="button-row">
+                <button class="filter-tab">可接取</button>
+                <button class="filter-tab">我发布的</button>
+                <button class="filter-tab">我参与的</button>
+            </div>
+            <div class="demo-note">
+                ✅ 修复了任务筛选标签的液态玻璃效果，活跃状态显示绿色光晕
+            </div>
+        </div>
+
+        <div class="section">
+            <h2><span class="status-indicator status-new"></span>效果特色</h2>
+            <div style="color: white; line-height: 1.6;">
+                <p><strong>🎨 视觉效果：</strong></p>
+                <ul style="margin: 10px 0; padding-left: 20px;">
+                    <li>半透明背景 + backdrop-filter 模糊效果</li>
+                    <li>精细调校的内发光和边缘高光</li>
+                    <li>不同功能的专属颜色主题（绿色创建、蓝色导航、红色危险、紫色投票）</li>
+                    <li>3D悬浮动画和缩放效果</li>
+                </ul>
+
+                <p><strong>⚡ 交互体验：</strong></p>
+                <ul style="margin: 10px 0; padding-left: 20px;">
+                    <li>悬停时按钮向上浮起 + 光晕增强</li>
+                    <li>活跃状态的持续发光效果</li>
+                    <li>流畅的 0.15s 过渡动画</li>
+                    <li>移动端优化的触摸反馈</li>
+                </ul>
+            </div>
+        </div>
+
+        <div class="section">
+            <h2><span class="status-indicator status-fixed"></span>修复总结</h2>
+            <div style="color: white; line-height: 1.6;">
+                <p><strong>🔧 问题原因：</strong></p>
+                <p>系统中的特定按钮类（create-btn、task-type-tab、quick-action-btn等）在liquid-glass.css中没有定义，导致它们无法应用液态玻璃效果。</p>
+
+                <p style="margin-top: 15px;"><strong>✅ 修复方案：</strong></p>
+                <ol style="margin: 10px 0; padding-left: 20px;">
+                    <li>在liquid-glass-components.css中添加了所有缺失按钮类的液态玻璃样式</li>
+                    <li>修复了liquid-glass.css中通用按钮选择器的CSS冲突</li>
+                    <li>为不同功能的按钮设计了专属的颜色主题和光晕效果</li>
+                    <li>确保了CSS选择器优先级的正确性</li>
+                </ol>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // 添加交互功能
+        document.querySelectorAll('.task-type-tab, .filter-tab').forEach(btn => {
+            btn.addEventListener('click', function() {
+                // 移除同组按钮的active类
+                const siblings = this.parentElement.querySelectorAll('.task-type-tab, .filter-tab');
+                siblings.forEach(sibling => sibling.classList.remove('active'));
+
+                // 添加当前按钮的active类
+                this.classList.add('active');
+            });
+        });
+
+        // 为其他按钮添加点击反馈
+        document.querySelectorAll('.create-btn, .quick-action-btn').forEach(btn => {
+            btn.addEventListener('click', function() {
+                // 简单的点击反馈动画
+                this.style.transform = 'translateY(0px) scale(0.95)';
+                setTimeout(() => {
+                    this.style.transform = '';
+                }, 150);
+            });
+        });
+    </script>
+</body>
+</html>

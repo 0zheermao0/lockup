@@ -506,6 +506,48 @@ class User(AbstractUser):
         self.telegram_notifications_enabled = True  # 重置为默认值
         self.save()
 
+    def add_coins(self, amount: int, change_type: str, description: str = '', metadata: dict = None):
+        """增加用户积分并记录日志"""
+        if amount <= 0:
+            raise ValueError("Amount must be positive")
+
+        self.coins += amount
+        self.save(update_fields=['coins'])
+
+        # 创建积分日志
+        CoinsLog.objects.create(
+            user=self,
+            change_type=change_type,
+            amount=amount,
+            balance_after=self.coins,
+            description=description,
+            metadata=metadata or {}
+        )
+
+        return self.coins
+
+    def deduct_coins(self, amount: int, change_type: str, description: str = '', metadata: dict = None):
+        """扣除用户积分并记录日志"""
+        if amount <= 0:
+            raise ValueError("Amount must be positive")
+        if self.coins < amount:
+            raise ValueError("Insufficient coins")
+
+        self.coins -= amount
+        self.save(update_fields=['coins'])
+
+        # 创建积分日志
+        CoinsLog.objects.create(
+            user=self,
+            change_type=change_type,
+            amount=-amount,
+            balance_after=self.coins,
+            description=description,
+            metadata=metadata or {}
+        )
+
+        return self.coins
+
     def is_telegram_bound(self):
         """检查是否已绑定 Telegram"""
         return (self.telegram_user_id is not None and
@@ -634,6 +676,83 @@ class DailyLoginReward(models.Model):
 
     def __str__(self):
         return f"{self.user.username} - {self.date} - Level {self.user_level} - {self.reward_amount}积分"
+
+    @classmethod
+    def claim_daily_reward(cls, user):
+        """
+        领取每日登录奖励
+        返回: (reward_record, is_new, message)
+        - reward_record: DailyLoginReward 对象
+        - is_new: 是否新创建的（True表示成功领取，False表示已领取过）
+        - message: 提示消息
+        """
+        from django.utils import timezone
+
+        # 使用本地时区日期
+        today = timezone.localtime().date()
+        reward_amount = user.get_daily_login_reward()
+
+        # 使用 get_or_create 避免竞争条件
+        reward, created = cls.objects.get_or_create(
+            user=user,
+            date=today,
+            defaults={
+                'user_level': user.level,
+                'reward_amount': reward_amount
+            }
+        )
+
+        if created:
+            # 新创建的记录，发放积分
+            user.add_coins(
+                amount=reward_amount,
+                change_type='daily_login',
+                description='每日登录奖励',
+                metadata={
+                    'user_level': user.level,
+                    'daily_reward_date': today.isoformat()
+                }
+            )
+
+            # 创建通知
+            Notification.create_notification(
+                recipient=user,
+                notification_type='coins_earned_daily_login',
+                actor=None,
+                extra_data={
+                    'user_level': user.level,
+                    'reward_amount': reward_amount,
+                    'daily_reward_date': today.isoformat()
+                },
+                priority='normal'
+            )
+
+            return reward, True, f"获得每日登录奖励{reward_amount}积分"
+        else:
+            # 已领取过
+            return reward, False, "今日已领取过登录奖励"
+
+    @classmethod
+    def check_today_reward(cls, user):
+        """检查用户今天是否已领取奖励"""
+        from django.utils import timezone
+        today = timezone.localtime().date()
+        return cls.objects.filter(user=user, date=today).exists()
+
+    @classmethod
+    def get_today_reward_info(cls, user):
+        """获取今日奖励信息"""
+        from django.utils import timezone
+        today = timezone.localtime().date()
+        reward_amount = user.get_daily_login_reward()
+        has_claimed = cls.objects.filter(user=user, date=today).exists()
+
+        return {
+            'date': today.isoformat(),
+            'reward_amount': reward_amount,
+            'has_claimed': has_claimed,
+            'user_level': user.level
+        }
 
 
 class Notification(models.Model):
@@ -1031,6 +1150,50 @@ class ActivityLog(models.Model):
 
     def __str__(self):
         return f"{self.user.username} - {self.get_action_type_display()}: {self.points_change:+d} (总计: {self.new_total})"
+
+
+class CoinsLog(models.Model):
+    """用户积分变化日志 - 统一记录所有积分变化"""
+
+    CHANGE_TYPE_CHOICES = [
+        # 收入类型
+        ('hourly_reward', '小时奖励'),
+        ('daily_login', '每日登录奖励'),
+        ('task_complete', '任务完成奖励'),
+        ('board_task_reward', '任务板奖励'),
+        ('event_reward', '活动奖励'),
+        ('admin_grant', '管理员发放'),
+        ('other_income', '其他收入'),
+        # 支出类型
+        ('task_creation', '创建任务消耗'),
+        ('store_purchase', '商店购买'),
+        ('event_cost', '活动消耗'),
+        ('admin_deduct', '管理员扣除'),
+        ('other_expense', '其他支出'),
+    ]
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='coins_logs')
+    change_type = models.CharField(max_length=30, choices=CHANGE_TYPE_CHOICES)
+    amount = models.IntegerField()  # 正数为收入，负数为支出
+    balance_after = models.IntegerField()  # 变化后的余额
+    description = models.CharField(max_length=255, blank=True)
+    metadata = models.JSONField(default=dict, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'coins_logs'
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['user', '-created_at']),
+            models.Index(fields=['change_type', '-created_at']),
+        ]
+        verbose_name = '积分日志'
+        verbose_name_plural = '积分日志'
+
+    def __str__(self):
+        change_symbol = '+' if self.amount > 0 else ''
+        return f"{self.user.username} - {self.get_change_type_display()}: {change_symbol}{self.amount} (余额: {self.balance_after})"
 
 
 class EmailVerification(models.Model):

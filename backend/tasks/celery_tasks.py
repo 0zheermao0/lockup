@@ -148,9 +148,19 @@ def _process_task_hourly_rewards(task, now, next_reward_hour, rewards_to_give, p
                     bonus_reward = 1
                     actual_reward += bonus_reward
 
-            # 给用户增加积分（coins）
-            task.user.coins += actual_reward
-            task.user.save()
+            # 给用户增加积分（coins）并记录日志
+            task.user.add_coins(
+                amount=actual_reward,
+                change_type='hourly_reward',
+                description=f'带锁任务第{hour_num}小时奖励',
+                metadata={
+                    'task_id': str(task.id),
+                    'task_title': task.title,
+                    'hour_count': hour_num,
+                    'base_reward': base_reward,
+                    'bonus_reward': bonus_reward
+                }
+            )
 
             # 创建奖励记录
             hourly_reward = HourlyReward.objects.create(

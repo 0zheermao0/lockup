@@ -63,14 +63,26 @@
               </div>
             </div>
 
-            <!-- Empty slots -->
+            <!-- Empty slots (使用 Math.max 确保不会出现负数，防止背包溢出时报错) -->
             <div
-              v-for="n in (inventory?.available_slots || 0)"
+              v-for="n in Math.max(0, inventory?.available_slots || 0)"
               :key="`empty-${n}`"
               class="inventory-slot empty"
             >
               <div class="slot-content">
                 <span class="empty-text">空槽</span>
+              </div>
+            </div>
+
+            <!-- Overflow items (当背包溢出时显示) -->
+            <div
+              v-if="(inventory?.used_slots || 0) > (inventory?.max_slots || 6)"
+              class="inventory-slot overflow-info"
+            >
+              <div class="slot-content">
+                <span class="overflow-icon">⚠️</span>
+                <span class="overflow-text">背包已满</span>
+                <span class="overflow-count">{{ (inventory?.used_slots || 0) - (inventory?.max_slots || 6) }} 个物品溢出</span>
               </div>
             </div>
           </div>
@@ -3189,6 +3201,38 @@ onMounted(() => {
   border-style: dashed;
   border-color: #666;
   box-shadow: inset 2px 2px 0 #ddd;
+}
+
+/* Overflow info slot */
+.inventory-slot.overflow-info {
+  background: linear-gradient(135deg, #fff3cd, #ffeaa7);
+  border: 3px solid #856404;
+  box-shadow: 4px 4px 0 #856404;
+  grid-column: 1 / -1; /* 占满整行 */
+}
+
+.inventory-slot.overflow-info .slot-content {
+  flex-direction: row;
+  justify-content: center;
+  gap: 1rem;
+  padding: 1rem;
+}
+
+.overflow-icon {
+  font-size: 1.5rem;
+}
+
+.overflow-text {
+  font-weight: 900;
+  font-size: 1rem;
+  color: #856404;
+  text-transform: uppercase;
+}
+
+.overflow-count {
+  font-weight: 700;
+  font-size: 0.875rem;
+  color: #dc3545;
 }
 
 .slot-content {

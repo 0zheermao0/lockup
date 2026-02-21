@@ -127,8 +127,18 @@ def purchase_item(request):
 
                 # 扣除积分
                 if hasattr(user, 'coins'):
-                    user.coins -= total_cost
-                    user.save()
+                    user.deduct_coins(
+                        amount=total_cost,
+                        change_type='store_purchase',
+                        description=f'购买 {store_item.name} x{quantity}',
+                        metadata={
+                            'store_item_id': str(store_item.id),
+                            'store_item_name': store_item.name,
+                            'quantity': quantity,
+                            'unit_price': store_item.price,
+                            'total_cost': total_cost
+                        }
+                    )
 
                 # 减少库存
                 if store_item.stock is not None:
