@@ -35,7 +35,7 @@
             <div class="conversation-avatar">
               <UserAvatar
                 :user="conversation.other_participant"
-                size="medium"
+                size="normal"
                 :clickable="false"
               />
             </div>

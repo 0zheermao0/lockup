@@ -94,7 +94,8 @@ export const useMessagingStore = defineStore('messaging', () => {
     try {
       const result = await messagingApi.sendMessage({
         recipient_id: recipientId,
-        content
+        content,
+        message_type: 'text'
       })
 
       // 如果当前在会话中，添加到消息列表
