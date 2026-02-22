@@ -58,8 +58,9 @@ class TelegramGameSharing:
             'buttons': [{'text': '🎮 参与游戏', 'callback_data': f'game_{game.id}_join'}]
         })
 
-        # 使用 sync_to_async 获取创建者信息
+        # 使用 sync_to_async 获取创建者信息和参与者数量
         creator = await sync_to_async(lambda: game.creator)()
+        participant_count = await sync_to_async(game.participants.count)()
         # 使用 Telegram 用户名（如果可用），否则使用应用用户名
         creator_display_name = creator.telegram_username or creator.username
 
@@ -70,7 +71,7 @@ class TelegramGameSharing:
 🎮 **游戏类型**: {game_info['name']}
 👤 **发起者**: {creator_display_name}
 💰 **赌注**: {game.bet_amount} 积分
-👥 **参与人数**: {game.participants.count()}/{game.max_players}
+👥 **参与人数**: {participant_count}/{game.max_players}
 
 💪 来接受挑战吧！
         """.strip()
