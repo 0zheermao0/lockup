@@ -245,7 +245,9 @@ class TelegramGameSharing:
             valid_participants = []
 
             for participant in participants:
-                player_choice = participant.action.get('choice')
+                # 安全地获取 action 数据
+                action_data = participant.action or {}
+                player_choice = action_data.get('choice')
 
                 # 如果玩家没有提供有效选择，随机分配一个
                 if not player_choice or player_choice not in valid_choices:
@@ -263,8 +265,10 @@ class TelegramGameSharing:
             # 确定赢家
             if len(valid_participants) == 2:
                 p1, p2 = valid_participants
-                choice1 = p1.action['choice']
-                choice2 = p2.action['choice']
+                p1_action = p1.action or {}
+                p2_action = p2.action or {}
+                choice1 = p1_action.get('choice', 'rock')
+                choice2 = p2_action.get('choice', 'rock')
 
                 creator = await sync_to_async(lambda: game.creator)()
 
@@ -372,6 +376,8 @@ class TelegramGameSharing:
 
                 # 给获胜者发送胜利通知
                 display_loser = loser.telegram_username or loser.username
+                winner_choice = choice1 if winner == p1.user else choice2
+                loser_choice = choice2 if winner == p1.user else choice1
                 await sync_to_async(Notification.create_notification)(
                     recipient=winner,
                     notification_type='game_result',
@@ -383,8 +389,8 @@ class TelegramGameSharing:
                     extra_data={
                         'game_type': 'rock_paper_scissors',
                         'result': 'win',
-                        'your_choice': game.result['winner_choice'],
-                        'opponent_choice': game.result['loser_choice'],
+                        'your_choice': winner_choice,
+                        'opponent_choice': loser_choice,
                         'opponent_username': loser.username,
                         'opponent_id': loser.id,
                         'bet_amount': game.bet_amount,
@@ -406,8 +412,8 @@ class TelegramGameSharing:
                     extra_data={
                         'game_type': 'rock_paper_scissors',
                         'result': 'lose',
-                        'your_choice': game.result['loser_choice'],
-                        'opponent_choice': game.result['winner_choice'],
+                        'your_choice': loser_choice,
+                        'opponent_choice': winner_choice,
                         'opponent_username': winner.username,
                         'opponent_id': winner.id,
                         'bet_amount': game.bet_amount,
@@ -440,7 +446,9 @@ class TelegramGameSharing:
         try:
             # 获取参与者和其猜测
             participant = await sync_to_async(GameParticipant.objects.get)(game=game, user=user)
-            participant_guess = participant.action.get('guess', 'big')
+            # 安全地获取 action 数据
+            action_data = participant.action or {}
+            participant_guess = action_data.get('guess', 'big')
 
             # 获取预先掷好的骰子结果
             game_data = await sync_to_async(lambda: game.game_data)()
