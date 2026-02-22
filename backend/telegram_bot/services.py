@@ -1206,11 +1206,29 @@ Telegram 通知：{'✅ 已开启' if user.telegram_notifications_enabled else '
             }
 
             # 预先生成游戏列表信息（使用 sync_to_async 获取参与者数量）
-            game_list_text = ""
-            for i, game in enumerate(waiting_games, 1):
-                game_info = game_type_map.get(game.game_type, {'emoji': '🎮', 'name': game.game_type})
-                # 使用 sync_to_async 获取参与者数量
+            # 过滤掉已满员的游戏
+            available_games = []
+            for game in waiting_games:
                 participant_count = await sync_to_async(game.participants.count)()
+                if participant_count < game.max_players:
+                    available_games.append((game, participant_count))
+
+            if not available_games:
+                await self._safe_send_message(
+                    update.message.reply_text,
+                    "🎮 **您没有可分享的游戏**
+\n"
+                    "您目前的游戏都已满员或没有等待参与者的游戏。\n\n"
+                    "💡 前往应用创建新的游戏：\n"
+                    "• 🎲 掷骰子（猜大小）\n"
+                    "• ✂️ 石头剪刀布",
+                    parse_mode='Markdown'
+                )
+                return
+
+            game_list_text = ""
+            for i, (game, participant_count) in enumerate(available_games, 1):
+                game_info = game_type_map.get(game.game_type, {'emoji': '🎮', 'name': game.game_type})
 
                 game_list_text += f"""{i}. {game_info['emoji']} **{game_info['name']}**
    💰 赌注: {game.bet_amount}积分 | 👥 {participant_count}/{game.max_players}人
@@ -1221,9 +1239,9 @@ Telegram 通知：{'✅ 已开启' if user.telegram_notifications_enabled else '
 
             games_text += "💡 选择一个游戏来分享："
 
-            # 创建选择按钮（只有游戏创建者可以点击）
+            # 创建选择按钮（只有游戏创建者可以点击）- 只显示未满员的游戏
             keyboard_buttons = []
-            for game in waiting_games:
+            for game, _ in available_games:
                 game_info = game_type_map.get(game.game_type, {'emoji': '🎮', 'name': game.game_type})
                 button_text = f"{game_info['emoji']} {game_info['name']} - {game.bet_amount}积分"
                 callback_data = f"share_game_select_{game.id}_{user.id}"
