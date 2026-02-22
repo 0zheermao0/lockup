@@ -163,17 +163,15 @@ class TelegramGameSharing:
             # 对于骰子游戏，存储用户的猜测
             if game.game_type == 'dice':
                 action = {'guess': choice}  # choice is 'big' or 'small'
-                participant = await sync_to_async(GameParticipant.objects.create)(
-                    game=game,
-                    user=user,
-                    action=action
-                )
             else:
-                participant = await sync_to_async(GameParticipant.objects.create)(
-                    game=game,
-                    user=user,
-                    choice=choice  # 对于石头剪刀布，记录选择
-                )
+                # 对于石头剪刀布，记录选择到 action
+                action = {'choice': choice}
+
+            participant = await sync_to_async(GameParticipant.objects.create)(
+                game=game,
+                user=user,
+                action=action
+            )
 
             # 扣除积分
             user.coins -= game.bet_amount
