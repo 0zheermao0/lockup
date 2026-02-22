@@ -116,17 +116,18 @@ class TelegramGameSharing:
         if participant_count >= game.max_players:
             return False, "游戏人数已满"
 
-        # 检查用户是否处于带锁状态（关键校验）
-        active_lock_task = await sync_to_async(
-            LockTask.objects.filter(
-                user=user,
-                task_type='lock',
-                status='active'
-            ).first
-        )()
-
-        if active_lock_task:
-            return False, f"用户正在执行带锁任务《{active_lock_task.title}》，无法参与游戏"
+        # 检查用户是否处于带锁状态（只对非掷骰子游戏需要）
+        # 掷骰子游戏不需要带锁任务，石头剪刀布和时间转盘需要
+        if game.game_type != 'dice':
+            active_lock_task = await sync_to_async(
+                LockTask.objects.filter(
+                    user=user,
+                    task_type='lock',
+                    status='active'
+                ).first
+            )()
+            if not active_lock_task:
+                return False, "只有处于带锁任务状态时才能参与此游戏"
 
         # 检查积分是否足够
         if user.coins < game.bet_amount:
