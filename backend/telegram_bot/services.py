@@ -1205,14 +1205,19 @@ Telegram 通知：{'✅ 已开启' if user.telegram_notifications_enabled else '
                 'rock_paper_scissors': {'emoji': '✂️', 'name': '石头剪刀布'}
             }
 
-            # 添加游戏列表
+            # 预先生成游戏列表信息（使用 sync_to_async 获取参与者数量）
+            game_list_text = ""
             for i, game in enumerate(waiting_games, 1):
                 game_info = game_type_map.get(game.game_type, {'emoji': '🎮', 'name': game.game_type})
+                # 使用 sync_to_async 获取参与者数量
+                participant_count = await sync_to_async(game.participants.count)()
 
-                games_text += f"""{i}. {game_info['emoji']} **{game_info['name']}**
-   💰 赌注: {game.bet_amount}积分 | 👥 {game.participants.count()}/{game.max_players}人
+                game_list_text += f"""{i}. {game_info['emoji']} **{game_info['name']}**
+   💰 赌注: {game.bet_amount}积分 | 👥 {participant_count}/{game.max_players}人
 
 """
+
+            games_text += game_list_text
 
             games_text += "💡 选择一个游戏来分享："
 
