@@ -182,7 +182,7 @@ class TelegramGameSharing:
             else:
                 action = {'choice': choice}
 
-            await sync_to_async(GameParticipant.objects.create)(
+            participant_record = await sync_to_async(GameParticipant.objects.create)(
                 game=game,
                 user=user,
                 action=action
@@ -195,17 +195,27 @@ class TelegramGameSharing:
             participant_count = await sync_to_async(game.participants.count)()
 
             if participant_count >= game.max_players:
-                # 游戏开始
-                if game.game_type == 'rock_paper_scissors':
-                    return await TelegramGameSharing._handle_rock_paper_scissors_game(game, user)
-                elif game.game_type == 'dice':
-                    return await TelegramGameSharing._handle_dice_game(game, user)
-                else:
+                # 游戏开始 - 使用try/except确保即使结算失败也不会影响参与
+                try:
+                    if game.game_type == 'rock_paper_scissors':
+                        return await TelegramGameSharing._handle_rock_paper_scissors_game(game, user)
+                    elif game.game_type == 'dice':
+                        return await TelegramGameSharing._handle_dice_game(game, user)
+                    else:
+                        return {
+                            'success': True,
+                            'message': "✅ 成功参与游戏！游戏即将开始...",
+                            'should_edit_message': True,
+                            'new_message': "🎮 游戏已满员，即将开始！"
+                        }
+                except Exception as settlement_error:
+                    # 结算失败，但用户已成功参与
+                    logger.error(f"游戏结算时出错 (游戏ID: {game_id}): {settlement_error}", exc_info=True)
                     return {
-                        'success': True,
-                        'message': "✅ 成功参与游戏！游戏即将开始...",
+                        'success': True,  # 参与成功
+                        'message': "✅ 成功参与游戏！但结算时出现错误，请联系管理员",
                         'should_edit_message': True,
-                        'new_message': "🎮 游戏已满员，即将开始！"
+                        'new_message': f"🎮 游戏已满员！\n\n您已成功参与，但结算时出现技术问题。\n请联系管理员处理。"
                     }
             else:
                 return {
