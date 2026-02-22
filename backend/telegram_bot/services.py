@@ -1216,8 +1216,7 @@ Telegram 通知：{'✅ 已开启' if user.telegram_notifications_enabled else '
             if not available_games:
                 await self._safe_send_message(
                     update.message.reply_text,
-                    "🎮 **您没有可分享的游戏**
-\n"
+                    "🎮 **您没有可分享的游戏**\n\n"
                     "您目前的游戏都已满员或没有等待参与者的游戏。\n\n"
                     "💡 前往应用创建新的游戏：\n"
                     "• 🎲 掷骰子（猜大小）\n"
