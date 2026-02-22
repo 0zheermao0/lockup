@@ -564,7 +564,8 @@ def share_game_to_telegram(request):
 
         # 生成分享消息和按钮
         from .game_sharing import telegram_game_sharing
-        message_text, keyboard = telegram_game_sharing.generate_game_share_message(game)
+        from asgiref.sync import async_to_sync
+        message_text, keyboard = async_to_sync(telegram_game_sharing.generate_game_share_message)(game)
 
         # 生成Telegram分享URL
         import urllib.parse

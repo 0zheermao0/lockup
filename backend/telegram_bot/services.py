@@ -1282,7 +1282,7 @@ Telegram 通知：{'✅ 已开启' if user.telegram_notifications_enabled else '
                 return
 
             # 生成分享消息
-            message_text, keyboard = telegram_game_sharing.generate_game_share_message(game)
+            message_text, keyboard = await telegram_game_sharing.generate_game_share_message(game)
 
             # 更新消息为分享界面
             await self._safe_edit_message(

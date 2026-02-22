@@ -20,8 +20,9 @@ class TelegramGameSharing:
     """Telegram游戏分享管理器"""
 
     @staticmethod
-    def generate_game_share_message(game: Game) -> tuple[str, dict]:
+    async def generate_game_share_message(game: Game) -> tuple[str, dict]:
         """生成游戏分享消息和按钮"""
+        from asgiref.sync import sync_to_async
 
         # 游戏类型映射
         game_type_map = {
@@ -57,8 +58,10 @@ class TelegramGameSharing:
             'buttons': [{'text': '🎮 参与游戏', 'callback_data': f'game_{game.id}_join'}]
         })
 
+        # 使用 sync_to_async 获取创建者信息
+        creator = await sync_to_async(lambda: game.creator)()
         # 使用 Telegram 用户名（如果可用），否则使用应用用户名
-        creator_display_name = game.creator.telegram_username or game.creator.username
+        creator_display_name = creator.telegram_username or creator.username
 
         # 生成分享消息
         message_text = f"""
