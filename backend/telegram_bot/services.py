@@ -1348,15 +1348,14 @@ Telegram 通知：{'✅ 已开启' if user.telegram_notifications_enabled else '
             )
 
             if result['success']:
-                # 获取最新的参与者信息
-                participant_count = await sync_to_async(game.participants.count)()
+                # 检查游戏是否已完成（通过返回结果判断，避免重新查询）
+                is_game_completed = 'new_message' in result and ('游戏结束' in result.get('new_message', '') or '游戏已开始' in result.get('new_message', ''))
 
-                # 构建更新后的消息
-                if game.status == 'completed':
+                if is_game_completed:
                     # 游戏已完成，显示结果
                     await self._safe_edit_message(
                         query,
-                        result.get('new_message', query.message.text),
+                        result.get('new_message', '游戏已结束'),
                         reply_markup=None,
                         parse_mode='Markdown'
                     )
