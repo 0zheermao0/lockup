@@ -510,3 +510,28 @@ HIDDEN_TIME_VIOLATION_SETTINGS = {
     # 最大时间比例惩罚（分钟）
     'MAX_TIME_RATIO_PENALTY': int(os.getenv('HIDDEN_TIME_MAX_TIME_RATIO_PENALTY', '60')),
 }
+
+# =============================================================================
+# CACHE CONFIGURATION
+# =============================================================================
+
+# Use Redis if available, otherwise fallback to local memory cache
+REDIS_URL = os.getenv('REDIS_URL', '')
+
+if REDIS_URL:
+    CACHES = {
+        'default': {
+            'BACKEND': 'django_redis.cache.RedisCache',
+            'LOCATION': REDIS_URL,
+            'OPTIONS': {
+                'CLIENT_CLASS': 'django_redis.client.DefaultClient',
+            }
+        }
+    }
+else:
+    # Fallback to local memory cache for development
+    CACHES = {
+        'default': {
+            'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',
+        }
+    }

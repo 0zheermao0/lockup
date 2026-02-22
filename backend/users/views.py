@@ -8,6 +8,7 @@ from django.contrib.auth import login, logout
 from django.db.models import Q, Count
 from django.utils import timezone
 from django.shortcuts import get_object_or_404
+from django.conf import settings
 from datetime import timedelta
 from tasks.pagination import DynamicPageNumberPagination
 from .models import User, Friendship, UserLevelUpgrade, DailyLoginReward, UserCheckIn, Notification, EmailVerification, PasswordReset, ActivityLog, CoinsLog, Conversation, PrivateMessage
@@ -984,8 +985,27 @@ class TelegramAuthLoginView(APIView):
         try:
             user = User.objects.get(telegram_user_id=telegram_user_id)
         except User.DoesNotExist:
+            # Generate registration token for new users
+            import uuid
+            from django.core.cache import cache
+
+            reg_token = f"reg_{uuid.uuid4().hex[:32]}"
+            # Store in cache with Telegram data, expire in 10 minutes
+            cache.set(f"tg_reg:{reg_token}", {
+                'telegram_user_id': telegram_user_id,
+                'telegram_username': telegram_data.get('username', ''),
+                'first_name': telegram_data.get('first_name', ''),
+                'last_name': telegram_data.get('last_name', ''),
+            }, timeout=600)
+
+            bot_username = getattr(settings, 'TELEGRAM_BOT_USERNAME', 'lock_heart_bot')
+
             return Response(
-                {'error': '该Telegram账号未绑定任何用户，请先注册并绑定Telegram账号'},
+                {
+                    'error': '该Telegram账号未绑定任何用户',
+                    'code': 'USER_NOT_FOUND',
+                    'bot_url': f'https://t.me/{bot_username}?start={reg_token}'
+                },
                 status=status.HTTP_404_NOT_FOUND
             )
 

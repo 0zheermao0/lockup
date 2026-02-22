@@ -57,26 +57,16 @@ class TelegramGameSharing:
             'buttons': [{'text': '🎮 参与游戏', 'callback_data': f'game_{game.id}_join'}]
         })
 
-        # 计算剩余时间
-        if game.expires_at:
-            remaining = game.expires_at - timezone.now()
-            if remaining.total_seconds() > 0:
-                hours = int(remaining.total_seconds() // 3600)
-                minutes = int((remaining.total_seconds() % 3600) // 60)
-                time_left = f"{hours}小时{minutes}分钟" if hours > 0 else f"{minutes}分钟"
-            else:
-                time_left = "已过期"
-        else:
-            time_left = "无限制"
+        # 使用 Telegram 用户名（如果可用），否则使用应用用户名
+        creator_display_name = game.creator.telegram_username or game.creator.username
 
         # 生成分享消息
         message_text = f"""
 {game_info['emoji']} **游戏挑战**
 
 🎮 **游戏类型**: {game_info['name']}
-👤 **发起者**: {game.creator.username}
+👤 **发起者**: {creator_display_name}
 💰 **赌注**: {game.bet_amount} 积分
-⏰ **有效期**: {time_left}
 👥 **参与人数**: {game.participants.count()}/{game.max_players}
 
 💪 来接受挑战吧！
@@ -115,10 +105,6 @@ class TelegramGameSharing:
         # 检查游戏是否已满
         if game.participants.count() >= game.max_players:
             return False, "游戏人数已满"
-
-        # 检查游戏是否过期
-        if game.expires_at and game.expires_at < timezone.now():
-            return False, "游戏挑战已过期"
 
         # 检查用户是否处于带锁状态（关键校验）
         active_lock_task = LockTask.objects.filter(
@@ -235,7 +221,9 @@ class TelegramGameSharing:
         results = []
         for participant in participants:
             choice_display = choices_map.get(participant.choice, participant.choice)
-            results.append(f"{participant.user.username}: {choice_display}")
+            # 使用 Telegram 用户名（如果可用）
+            display_name = participant.user.telegram_username or participant.user.username
+            results.append(f"{display_name}: {choice_display}")
 
         # 简单的胜负判断逻辑
         if len(participants) == 2:
@@ -257,7 +245,9 @@ class TelegramGameSharing:
                 winner_participant.user.coins += total_reward
                 winner_participant.user.save()
 
-                result_text = f"🎉 {winner_participant.user.username} 获胜！\n获得 {total_reward} 积分"
+                # 使用 Telegram 用户名（如果可用）
+                winner_display_name = winner_participant.user.telegram_username or winner_participant.user.username
+                result_text = f"🎉 {winner_display_name} 获胜！\n获得 {total_reward} 积分"
 
         else:
             result_text = "多人游戏结果计算中..."
@@ -297,7 +287,9 @@ class TelegramGameSharing:
         results = []
         for participant in participants:
             selected_time = random.choice(time_options)
-            results.append(f"{participant.user.username}: {selected_time}分钟")
+            # 使用 Telegram 用户名（如果可用）
+            display_name = participant.user.telegram_username or participant.user.username
+            results.append(f"{display_name}: {selected_time}分钟")
 
             # 简单奖励逻辑
             reward = game.bet_amount + (selected_time // 30)  # 时间越长奖励越多
@@ -368,7 +360,9 @@ class TelegramGameSharing:
         for participant in participants:
             guess = participant.action.get('guess') if participant.action else None
             guess_display = '📈 大' if guess == 'big' else '📉 小'
-            result_text += f"\n• {participant.user.username}: {guess_display}"
+            # 使用 Telegram 用户名（如果可用）
+            display_name = participant.user.telegram_username or participant.user.username
+            result_text += f"\n• {display_name}: {guess_display}"
 
         result_text += f"\n\n🏆 **获胜方：**{winning_choice}\n"
 
@@ -379,7 +373,8 @@ class TelegramGameSharing:
                 winner.user.coins += reward_per_winner
                 winner.user.save()
 
-            winner_names = [w.user.username for w in winners]
+            # 使用 Telegram 用户名（如果可用）
+            winner_names = [w.user.telegram_username or w.user.username for w in winners]
             result_text += f"\n🎉 **获胜者：**{', '.join(winner_names)}\n"
             result_text += f"💰 每人获得 **{reward_per_winner}** 积分"
         else:
@@ -392,10 +387,12 @@ class TelegramGameSharing:
         # 更新游戏状态
         game.status = 'completed'
         game.completed_at = timezone.now()
+        # 使用 Telegram 用户名（如果可用）
+        winner_names_data = [w.user.telegram_username or w.user.username for w in winners] if winners else []
         game.result = {
             'dice_result': dice_result,
             'is_big': is_big,
-            'winners': [w.user.username for w in winners] if winners else []
+            'winners': winner_names_data
         }
         game.save()
 

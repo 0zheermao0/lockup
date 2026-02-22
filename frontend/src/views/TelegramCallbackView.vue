@@ -4,6 +4,12 @@
       <div class="spinner"></div>
       <p>正在通过Telegram登录...</p>
     </div>
+    <div v-else-if="needsRegistration" class="registration-needed">
+      <h3>👋 欢迎新用户！</h3>
+      <p>您还没有Lockup账号，请通过Telegram Bot快速注册。</p>
+      <a :href="botUrl" target="_blank" class="register-btn">通过Bot注册账号</a>
+      <router-link to="/login" class="back-link">返回登录页</router-link>
+    </div>
     <div v-else-if="error" class="error">
       <h3>登录失败</h3>
       <p>{{ error }}</p>
@@ -25,6 +31,8 @@ const authStore = useAuthStore()
 
 const loading = ref(true)
 const error = ref('')
+const needsRegistration = ref(false)
+const botUrl = ref('')
 
 onMounted(async () => {
   try {
@@ -67,8 +75,11 @@ onMounted(async () => {
   } catch (err: any) {
     console.error('Telegram login error:', err)
 
-    // 解析错误信息
-    if (err.response?.data?.error) {
+    // Check for registration needed
+    if (err.response?.status === 404 && err.response?.data?.code === 'USER_NOT_FOUND') {
+      needsRegistration.value = true
+      botUrl.value = err.response.data.bot_url
+    } else if (err.response?.data?.error) {
       error.value = err.response.data.error
     } else if (err.message) {
       error.value = err.message
@@ -141,5 +152,39 @@ onMounted(async () => {
 
 .back-link:hover {
   background-color: #0056b3;
+}
+
+.registration-needed {
+  text-align: center;
+  padding: 2rem;
+  background: white;
+  border-radius: 8px;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+  max-width: 400px;
+}
+
+.registration-needed h3 {
+  color: #28a745;
+  margin-bottom: 1rem;
+}
+
+.registration-needed p {
+  color: #666;
+  margin-bottom: 1.5rem;
+}
+
+.register-btn {
+  display: inline-block;
+  padding: 0.75rem 1.5rem;
+  background-color: #28a745;
+  color: white;
+  text-decoration: none;
+  border-radius: 4px;
+  transition: background-color 0.2s;
+  margin-bottom: 1rem;
+}
+
+.register-btn:hover {
+  background-color: #218838;
 }
 </style>

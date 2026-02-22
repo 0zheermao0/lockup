@@ -9,7 +9,10 @@ from django.core.files.storage import default_storage
 from django.core.files.base import ContentFile
 import random
 import json
+import logging
 from datetime import timedelta
+
+logger = logging.getLogger(__name__)
 
 from .models import (
     ItemType, UserInventory, Item, StoreItem, Purchase,
@@ -1109,13 +1112,26 @@ def bury_item(request):
             with transaction.atomic():
                 user = request.user
 
-                # 获取要掩埋的物品
-                item = get_object_or_404(
-                    Item,
-                    id=item_id,
-                    owner=user,
-                    status='available'
-                )
+                # 首先检查物品是否存在
+                try:
+                    item = Item.objects.get(id=item_id)
+                except Item.DoesNotExist:
+                    return Response({
+                        'error': '物品不存在'
+                    }, status=status.HTTP_404_NOT_FOUND)
+
+                # 检查物品是否属于当前用户（只检查当前所属者 owner，不检查原始所属者 original_owner）
+                if item.owner_id != user.id:
+                    return Response({
+                        'error': f'该物品不属于您，无法掩埋。物品当前所属者ID: {item.owner_id}，您的ID: {user.id}'
+                    }, status=status.HTTP_403_FORBIDDEN)
+
+                # 检查物品状态
+                if item.status != 'available':
+                    status_display = dict(Item.STATUS_CHOICES).get(item.status, item.status)
+                    return Response({
+                        'error': f'物品当前状态为"{status_display}"，无法掩埋。只有状态为"可用"的物品才能掩埋。'
+                    }, status=status.HTTP_400_BAD_REQUEST)
 
                 # 创建掩埋宝物记录
                 buried_treasure = BuriedTreasure.objects.create(
@@ -1144,6 +1160,7 @@ def bury_item(request):
                 }, status=status.HTTP_201_CREATED)
 
         except Exception as e:
+            logger.error(f" bury_item error: {e}", exc_info=True)
             return Response({
                 'error': f'掩埋失败: {str(e)}'
             }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)

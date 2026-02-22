@@ -275,7 +275,7 @@ def initiate_telegram_binding(request):
         request.user.save()
 
         # 生成 Bot 链接，包含绑定令牌
-        bot_username = getattr(settings, 'TELEGRAM_BOT_USERNAME', 'lock_up_bot')
+        bot_username = getattr(settings, 'TELEGRAM_BOT_USERNAME', 'lock_heart_bot')
         bot_url = f"https://t.me/{bot_username}?start={binding_token}"
 
         return Response({
@@ -499,7 +499,7 @@ def share_task_to_telegram(request):
         # 生成 deeplink 分享链接
         # 格式: https://t.me/{bot_username}?start=share_{task_id}
         # 用户点击后会跳转到 Bot，Bot 会发送带 inline 按钮的分享消息
-        bot_username = getattr(settings, 'TELEGRAM_BOT_USERNAME', 'lock_up_bot')
+        bot_username = getattr(settings, 'TELEGRAM_BOT_USERNAME', 'lock_heart_bot')
         deeplink_url = f"https://t.me/{bot_username}?start=share_{task.id}"
 
         # 生成分享消息（用于 Bot 发送时的内容预览）

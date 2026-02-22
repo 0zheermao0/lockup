@@ -188,6 +188,20 @@ class TelegramBotService:
         except Exception:
             return False
 
+    def _get_telegram_display_name(self, user, effective_user=None) -> str:
+        """获取用户的Telegram显示名称
+
+        优先级：
+        1. update.effective_user.username（当前Telegram用户的用户名）
+        2. user.telegram_username（存储的Telegram用户名）
+        3. user.username（应用用户名）
+        """
+        if effective_user and effective_user.username:
+            return effective_user.username
+        if user.telegram_username:
+            return user.telegram_username
+        return user.username
+
     def _register_handlers(self):
         """注册命令和消息处理器"""
         if not self.application:
@@ -259,6 +273,10 @@ class TelegramBotService:
                 # 处理任务分享 deeplink
                 await self._handle_share_deeplink(update, context, bind_token, user_id, chat_id)
                 return
+            elif bind_token.startswith('reg_'):
+                # 处理新用户注册
+                await self._handle_registration_start(update, context, bind_token, user_id, chat_id, username)
+                return
 
         # 自动绑定逻辑已移到 _process_binding 方法中
         # 这里不再需要查找等待绑定的用户
@@ -269,8 +287,10 @@ class TelegramBotService:
             existing_user = await sync_to_async(existing_user.first)()
 
             if existing_user:
+                # 使用 Telegram 用户名（如果可用）
+                tg_display_name = update.effective_user.username or update.effective_user.first_name or existing_user.telegram_username or existing_user.username
                 already_bound_text = f"""
-👋 欢迎回来，{existing_user.username}！
+👋 欢迎回来，{tg_display_name}！
 
 您的账户已经绑定成功。
 
@@ -308,6 +328,149 @@ class TelegramBotService:
             logger.error(f"Failed to send welcome message to user {user_id}: {e}")
             # In case of failure, we still continue processing
 
+    async def _handle_registration_start(self, update, context, reg_token, user_id, chat_id, username):
+        """Handle new user registration via bot"""
+        from django.core.cache import cache
+
+        # Get stored Telegram data from cache
+        tg_data = cache.get(f"tg_reg:{reg_token}")
+        if not tg_data:
+            await update.message.reply_text(
+                "❌ 注册链接已过期，请重新尝试登录。"
+            )
+            return
+
+        # Verify the Telegram user ID matches
+        if str(tg_data.get('telegram_user_id')) != str(user_id):
+            await update.message.reply_text(
+                "❌ 注册信息与当前Telegram账号不匹配，请重新尝试登录。"
+            )
+            return
+
+        # Store in user context for conversation
+        context.user_data['registration'] = {
+            'token': reg_token,
+            'telegram_data': tg_data,
+            'step': 'email'  # Waiting for email
+        }
+
+        await update.message.reply_text(
+            "👋 欢迎！我来帮您创建Lockup账号。\n\n"
+            "请发送您的邮箱地址："
+        )
+        logger.info(f"Started registration flow for Telegram user {user_id}")
+
+    async def _handle_registration_message(self, update, context):
+        """Handle messages during registration flow"""
+        from django.core.cache import cache
+        from django.core.validators import validate_email
+        from django.core.exceptions import ValidationError
+
+        reg_data = context.user_data.get('registration')
+        if not reg_data:
+            return False  # Not in registration flow
+
+        step = reg_data['step']
+        text = update.message.text.strip()
+
+        if step == 'email':
+            # Validate email
+            try:
+                validate_email(text)
+            except ValidationError:
+                await update.message.reply_text("❌ 邮箱格式不正确，请重新发送：")
+                return True
+
+            # Check if email exists
+            email_exists = await sync_to_async(User.objects.filter(email=text).exists)()
+            if email_exists:
+                await update.message.reply_text("❌ 该邮箱已被注册，请使用其他邮箱：")
+                return True
+
+            reg_data['email'] = text
+            reg_data['step'] = 'password'
+            await update.message.reply_text("✅ 邮箱已记录。\n\n请设置您的密码（至少6位）：")
+            return True
+
+        elif step == 'password':
+            if len(text) < 6:
+                await update.message.reply_text("❌ 密码太短，请至少输入6位字符：")
+                return True
+
+            # Create user
+            tg_data = reg_data['telegram_data']
+            try:
+                user = await self._create_user_from_telegram(
+                    email=reg_data['email'],
+                    password=text,
+                    telegram_user_id=tg_data['telegram_user_id'],
+                    telegram_username=tg_data['telegram_username'],
+                    first_name=tg_data.get('first_name', ''),
+                    last_name=tg_data.get('last_name', '')
+                )
+
+                # Clear registration data
+                del context.user_data['registration']
+                cache.delete(f"tg_reg:{reg_data['token']}")
+
+                # Send success message with web app link
+                # 使用 Telegram 用户名（如果可用）
+                tg_display_name = user.telegram_username or user.username
+                await update.message.reply_text(
+                    f"✅ 账号创建成功！\n\n"
+                    f"邮箱：{user.email}\n"
+                    f"用户名：{tg_display_name}\n"
+                    f"Telegram已自动绑定。\n\n"
+                    f"现在您可以直接通过Telegram登录，或点击以下链接访问：\n"
+                    f"https://lock-up.zheermao.top"
+                )
+                logger.info(f"Successfully created user {user.username} from Telegram registration")
+                return True
+
+            except Exception as e:
+                logger.error(f"Error creating user from Telegram registration: {e}")
+                await update.message.reply_text(
+                    "❌ 创建账号时发生错误，请稍后重试或联系客服。"
+                )
+                return True
+
+        return False
+
+    async def _create_user_from_telegram(self, email, password, telegram_user_id, telegram_username, first_name, last_name):
+        """Create a new user from Telegram registration data"""
+        from django.contrib.auth.hashers import make_password
+
+        # Generate username from Telegram username or first_name
+        if telegram_username:
+            base_username = telegram_username
+        elif first_name:
+            base_username = first_name
+        else:
+            base_username = "user"
+
+        # Make sure username is unique
+        username = base_username
+        counter = 1
+        while await sync_to_async(User.objects.filter(username=username).exists)():
+            username = f"{base_username}_{counter}"
+            counter += 1
+
+        # Create user
+        user = User(
+            username=username,
+            email=email,
+            password=make_password(password),
+            telegram_user_id=telegram_user_id,
+            telegram_username=telegram_username or '',
+            telegram_chat_id=telegram_user_id,  # Use user_id as chat_id for private chats
+            telegram_bound_at=timezone.now(),
+            telegram_notifications_enabled=True,
+            is_active=True,  # Skip email verification
+        )
+        await sync_to_async(user.save)()
+
+        return user
+
     async def _handle_share_deeplink(self, update, context, share_token, user_id, chat_id):
         """处理任务分享 deeplink - 生成带 inline 按钮的分享消息"""
         try:
@@ -334,7 +497,7 @@ class TelegramBotService:
 
             # 获取任务创建者信息
             task_creator = await sync_to_async(lambda: task.user)()
-            creator_username = await sync_to_async(lambda: task_creator.username)()
+            creator_username = self._get_telegram_display_name(task_creator, None)
 
             # 计算剩余时间
             from django.utils import timezone
@@ -428,8 +591,9 @@ class TelegramBotService:
             user = await sync_to_async(user_query.first)()
 
             if user:
+                display_name = self._get_telegram_display_name(user, update.effective_user)
                 await update.message.reply_text(
-                    f"您已经绑定了账户：{user.username}\n\n"
+                    f"您已经绑定了账户：{display_name}\n\n"
                     "如需重新绑定，请先使用 /unbind 解绑"
                 )
                 return
@@ -469,9 +633,9 @@ class TelegramBotService:
 
             if user:
                 await sync_to_async(user.unbind_telegram)()
-
+                display_name = self._get_telegram_display_name(user, update.effective_user)
                 await update.message.reply_text(
-                    f"✅ 已成功解绑账户：{user.username}\n\n"
+                    f"✅ 已成功解绑账户：{display_name}\n\n"
                     "您可以随时使用 /bind 重新绑定"
                 )
             else:
@@ -530,9 +694,10 @@ class TelegramBotService:
             active_tasks_count = await sync_to_async(active_tasks_query.count)()
 
             # 构建状态消息
+            display_name = self._get_telegram_display_name(user, update.effective_user)
             if chat_type == 'private':
                 status_text = f"""👤 **用户状态**
-用户名：{user.username}
+用户名：{display_name}
 等级：Level {user.level}
 积分：{user.coins}
 活跃任务：{active_tasks_count} 个
@@ -549,7 +714,7 @@ Telegram 通知：{'✅ 已开启' if user.telegram_notifications_enabled else '
                 frontend_url = getattr(settings, 'TELEGRAM_APP_CONFIG', {}).get('FRONTEND_URL', 'https://lock-up.zheermao.top')
                 profile_url = f"{frontend_url}/profile/{user.id}"
                 status_text = f"""👤 **{profile_url} 的状态**
-用户名：{user.username}
+用户名：{display_name}
 等级：Level {user.level}
 积分：{user.coins}
 活跃任务：{active_tasks_count} 个"""
@@ -617,6 +782,7 @@ Telegram 通知：{'✅ 已开启' if user.telegram_notifications_enabled else '
 
             if not active_tasks:
                 # 用户没有活跃的带锁任务
+                display_name = self._get_telegram_display_name(user, update.effective_user)
                 if chat_type == 'private':
                     message_text = f"""🔓 **当前任务状态**
 
@@ -624,9 +790,9 @@ Telegram 通知：{'✅ 已开启' if user.telegram_notifications_enabled else '
 
 💡 前往应用创建新的带锁任务，挑战自己的意志力！"""
                 else:
-                    message_text = f"""🔓 **@{user.username} 的任务状态**
+                    message_text = f"""🔓 **@{display_name} 的任务状态**
 
-{user.username} 目前没有正在进行的带锁任务。
+{display_name} 目前没有正在进行的带锁任务。
 
 💡 可以前往应用创建新的带锁任务！"""
 
@@ -662,6 +828,7 @@ Telegram 通知：{'✅ 已开启' if user.telegram_notifications_enabled else '
             }
 
             # 构建任务信息
+            display_name = self._get_telegram_display_name(user, update.effective_user)
             if chat_type == 'private':
                 task_text = f"""🔒 **您的带锁任务**
 
@@ -674,17 +841,17 @@ Telegram 通知：{'✅ 已开启' if user.telegram_notifications_enabled else '
 
 💪 坚持完成任务，挑战自己的意志力！"""
             else:
-                task_text = f"""🔒 **@{user.username} 的带锁任务**
+                task_text = f"""🔒 **@{display_name} 的带锁任务**
 
 📋 **任务标题**：{task.title}
-👤 **任务者**：{user.username}
+👤 **任务者**：{display_name}
 📊 **难度**：{difficulty_map.get(task.difficulty, task.difficulty)}
 ⏰ **剩余时间**：{time_left}
 📅 **状态**：{'🔄 进行中' if task.status == 'active' else '🗳️ 投票期' if task.status == 'voting' else task.status}
 
 💡 **描述**：{task.description[:100] + '...' if len(task.description) > 100 else task.description}
 
-💪 帮助 {user.username} 坚持完成任务！"""
+💪 帮助 {display_name} 坚持完成任务！"""
 
             # 创建加时按钮
             keyboard = InlineKeyboardMarkup([
@@ -775,6 +942,7 @@ Telegram 通知：{'✅ 已开启' if user.telegram_notifications_enabled else '
 
             if not available_tasks:
                 # 用户没有可接取的任务板任务
+                display_name = self._get_telegram_display_name(user, update.effective_user)
                 if chat_type == 'private':
                     message_text = f"""🏆 **您的任务板**
 
@@ -788,9 +956,9 @@ Telegram 通知：{'✅ 已开启' if user.telegram_notifications_enabled else '
 
 前往应用创建新的任务板任务，邀请朋友参与！"""
                 else:
-                    message_text = f"""🏆 **@{user.username} 的任务板**
+                    message_text = f"""🏆 **@{display_name} 的任务板**
 
-{user.username} 目前没有可接取的任务板任务。
+{display_name} 目前没有可接取的任务板任务。
 
 💡 可以前往应用创建新的任务板任务！"""
 
@@ -872,6 +1040,7 @@ Telegram 通知：{'✅ 已开启' if user.telegram_notifications_enabled else '
 
             if not shareable_items:
                 # 用户没有可分享的物品
+                display_name = self._get_telegram_display_name(user, update.effective_user)
                 if chat_type == 'private':
                     message_text = f"""🎒 **您的背包**
 
@@ -884,9 +1053,9 @@ Telegram 通知：{'✅ 已开启' if user.telegram_notifications_enabled else '
 
 前往应用购买或获得这些物品后，就可以在这里分享给朋友了！"""
                 else:
-                    message_text = f"""🎒 **@{user.username} 的背包**
+                    message_text = f"""🎒 **@{display_name} 的背包**
 
-{user.username} 目前没有可分享的物品。
+{display_name} 目前没有可分享的物品。
 
 💡 可分享的物品类型：📷 照片、📝 笔记、🗝️ 钥匙"""
 
@@ -898,6 +1067,7 @@ Telegram 通知：{'✅ 已开启' if user.telegram_notifications_enabled else '
                 return
 
             # 构建物品选择界面
+            display_name = self._get_telegram_display_name(user, update.effective_user)
             if chat_type == 'private':
                 items_text = f"""🎒 **您的可分享物品**
 
@@ -905,9 +1075,9 @@ Telegram 通知：{'✅ 已开启' if user.telegram_notifications_enabled else '
 
 """
             else:
-                items_text = f"""🎒 **@{user.username} 的可分享物品**
+                items_text = f"""🎒 **@{display_name} 的可分享物品**
 
-@{user.username} 请选择要分享的物品：
+@{display_name} 请选择要分享的物品：
 
 """
 
@@ -916,9 +1086,11 @@ Telegram 通知：{'✅ 已开启' if user.telegram_notifications_enabled else '
                 item_icon = getattr(item.item_type, 'icon', '📦')
                 # 添加原始所有者信息以辅助区分相同物品
                 if item.original_owner:
-                    items_text += f"{i}. {item_icon} {item.item_type.display_name} - {item.original_owner.username}\n"
+                    owner_display = self._get_telegram_display_name(item.original_owner, None)
+                    items_text += f"{i}. {item_icon} {item.item_type.display_name} - {owner_display}\n"
                 else:
-                    items_text += f"{i}. {item_icon} {item.item_type.display_name} - {item.owner.username}\n"
+                    owner_display = self._get_telegram_display_name(item.owner, None)
+                    items_text += f"{i}. {item_icon} {item.item_type.display_name} - {owner_display}\n"
 
             items_text += f"\n💡 选择后将生成分享链接，其他人点击即可获得物品！"
 
@@ -928,9 +1100,11 @@ Telegram 通知：{'✅ 已开启' if user.telegram_notifications_enabled else '
                 item_icon = getattr(item.item_type, 'icon', '📦')
                 # 添加原始所有者信息以辅助区分相同物品
                 if item.original_owner:
-                    button_text = f"{item_icon} {item.item_type.display_name} - {item.original_owner.username}"
+                    owner_display = self._get_telegram_display_name(item.original_owner, None)
+                    button_text = f"{item_icon} {item.item_type.display_name} - {owner_display}"
                 else:
-                    button_text = f"{item_icon} {item.item_type.display_name} - {item.owner.username}"
+                    owner_display = self._get_telegram_display_name(item.owner, None)
+                    button_text = f"{item_icon} {item.item_type.display_name} - {owner_display}"
                 callback_data = f"share_select_{item.id}_{user.id}"  # 包含用户ID用于权限验证
                 keyboard_buttons.append([InlineKeyboardButton(button_text, callback_data=callback_data)])
 
@@ -1011,6 +1185,7 @@ Telegram 通知：{'✅ 已开启' if user.telegram_notifications_enabled else '
                 return
 
             # 构建游戏选择界面
+            display_name = self._get_telegram_display_name(user, update.effective_user)
             if chat_type == 'private':
                 games_text = f"""🎮 **分享游戏**
 
@@ -1018,9 +1193,9 @@ Telegram 通知：{'✅ 已开启' if user.telegram_notifications_enabled else '
 
 """
             else:
-                games_text = f"""🎮 **@{user.username} 的游戏**
+                games_text = f"""🎮 **@{display_name} 的游戏**
 
-@{user.username} 有 {len(waiting_games)} 个等待参与者的游戏：
+@{display_name} 有 {len(waiting_games)} 个等待参与者的游戏：
 
 """
 
@@ -1034,20 +1209,8 @@ Telegram 通知：{'✅ 已开启' if user.telegram_notifications_enabled else '
             for i, game in enumerate(waiting_games, 1):
                 game_info = game_type_map.get(game.game_type, {'emoji': '🎮', 'name': game.game_type})
 
-                # 计算剩余时间
-                if game.expires_at:
-                    remaining = game.expires_at - timezone.now()
-                    if remaining.total_seconds() > 0:
-                        hours = int(remaining.total_seconds() // 3600)
-                        minutes = int((remaining.total_seconds() % 3600) // 60)
-                        time_left = f"{hours}小时{minutes}分钟" if hours > 0 else f"{minutes}分钟"
-                    else:
-                        time_left = "已过期"
-                else:
-                    time_left = "无限制"
-
                 games_text += f"""{i}. {game_info['emoji']} **{game_info['name']}**
-   💰 赌注: {game.bet_amount}积分 | 👥 {game.participants.count()}/{game.max_players}人 | ⏰ {time_left}
+   💰 赌注: {game.bet_amount}积分 | 👥 {game.participants.count()}/{game.max_players}人
 
 """
 
@@ -1178,14 +1341,15 @@ Telegram 通知：{'✅ 已开启' if user.telegram_notifications_enabled else '
                 else:
                     # 游戏仍在等待，更新参与者列表
                     original_text = query.message.text
+                    current_user_display = self._get_telegram_display_name(current_user, None)
 
                     # 检查是否已有参与者记录
                     if "👥 **参与者：**" in original_text:
                         # 已有参与者记录，追加
-                        updated_text = f"{original_text}\n• @{current_user.username}"
+                        updated_text = f"{original_text}\n• @{current_user_display}"
                     else:
                         # 首次有参与者
-                        updated_text = f"{original_text}\n\n👥 **参与者：**\n• @{current_user.username}"
+                        updated_text = f"{original_text}\n\n👥 **参与者：**\n• @{current_user_display}"
 
                     # 保持原有的按钮
                     await self._safe_edit_message(
@@ -1338,12 +1502,13 @@ Telegram 通知：{'✅ 已开启' if user.telegram_notifications_enabled else '
                 original_text = query.message.text
 
                 # 检查是否已有加时记录，如果有则追加
+                clicker_display = self._get_telegram_display_name(clicker_user, None)
                 if "🎯 加时记录：" in original_text:
                     # 已有加时记录，在现有记录后追加
-                    updated_text = f"{original_text}\n• @{clicker_user.username} +{overtime_result['overtime_minutes']}分钟"
+                    updated_text = f"{original_text}\n• @{clicker_display} +{overtime_result['overtime_minutes']}分钟"
                 else:
                     # 首次加时，添加加时记录区域
-                    updated_text = f"{original_text}\n\n🎯 **加时记录：**\n• @{clicker_user.username} +{overtime_result['overtime_minutes']}分钟"
+                    updated_text = f"{original_text}\n\n🎯 **加时记录：**\n• @{clicker_display} +{overtime_result['overtime_minutes']}分钟"
 
                 # 保持原有的加时按钮（持续存在）
                 keyboard = InlineKeyboardMarkup([
@@ -1401,9 +1566,10 @@ Telegram 通知：{'✅ 已开启' if user.telegram_notifications_enabled else '
             if overtime_result['success']:
                 # 加时成功
                 # 更新消息，移除按钮（防止重复点击）
+                current_user_display = self._get_telegram_display_name(current_user, None)
                 await query.edit_message_text(
                     text=f"{query.message.text}\n\n"
-                         f"🎯 @{current_user.username} 给这个任务加了 {random_minutes} 分钟！",
+                         f"🎯 @{current_user_display} 给这个任务加了 {random_minutes} 分钟！",
                     reply_markup=None
                 )
 
@@ -1488,6 +1654,7 @@ Telegram 通知：{'✅ 已开启' if user.telegram_notifications_enabled else '
             chat_type = query.message.chat.type
             item_icon = getattr(item.item_type, 'icon', '📦')
 
+            current_user_display = self._get_telegram_display_name(current_user, None)
             if chat_type == 'private':
                 updated_text = f"""🎁 **您选择分享的物品**
 
@@ -1498,7 +1665,7 @@ Telegram 通知：{'✅ 已开启' if user.telegram_notifications_enabled else '
 
 ⚠️ 注意：只有第一个点击的人能获得物品"""
             else:
-                updated_text = f"""🎁 **@{current_user.username} 分享的物品**
+                updated_text = f"""🎁 **@{current_user_display} 分享的物品**
 
 {item_icon} **{item.item_type.display_name}**
 📝 描述：{item.item_type.description}
@@ -1561,7 +1728,8 @@ Telegram 通知：{'✅ 已开启' if user.telegram_notifications_enabled else '
                 return
 
             if shared_item.claimer:
-                await self._safe_callback_response(query, f"❌ 物品已被 {shared_item.claimer.username} 获取", show_alert=True)
+                claimer_display = self._get_telegram_display_name(shared_item.claimer, None)
+                await self._safe_callback_response(query, f"❌ 物品已被 {claimer_display} 获取", show_alert=True)
                 return
 
             # Check inventory space
@@ -1610,6 +1778,7 @@ Telegram 通知：{'✅ 已开启' if user.telegram_notifications_enabled else '
 
         # Phase 2: Post-transfer operations (notification, message updates)
         # These failures should NOT show error to user since item was already transferred
+        current_user_display = self._get_telegram_display_name(current_user, None)
         try:
             from users.models import Notification
             await sync_to_async(Notification.create_notification)(
@@ -1617,14 +1786,14 @@ Telegram 通知：{'✅ 已开启' if user.telegram_notifications_enabled else '
                 notification_type='item_shared',
                 actor=current_user,
                 title='物品被领取',
-                message=f'{current_user.username} 领取了您分享的 {item.item_type.display_name}',
+                message=f'{current_user_display} 领取了您分享的 {item.item_type.display_name}',
                 related_object_type='shared_item',
                 related_object_id=shared_item.id,
                 extra_data={
                     'item_type': item.item_type.name,
                     'item_display_name': item.item_type.display_name,
                     'claimer_id': current_user.id,
-                    'claimer_username': current_user.username,
+                    'claimer_username': current_user_display,
                     'claimed_at': shared_item_record.claimed_at.isoformat()
                 }
             )
@@ -1635,7 +1804,7 @@ Telegram 通知：{'✅ 已开启' if user.telegram_notifications_enabled else '
         # Update message and send success response
         try:
             original_text = query.message.text
-            updated_text = f"{original_text}\n\n🎉 @{current_user.username} 已成功获取此物品！"
+            updated_text = f"{original_text}\n\n🎉 @{current_user_display} 已成功获取此物品！"
 
             edit_success = await self._safe_edit_message(
                 query,
@@ -1711,18 +1880,20 @@ Telegram 通知：{'✅ 已开启' if user.telegram_notifications_enabled else '
             'hell': '🔥 地狱'
         }
 
+        share_user_display = self._get_telegram_display_name(share_user, None)
+
         message_text = f"""
 🔒 **带锁任务分享**
 
 📋 **任务标题**：{task.title}
-👤 **任务者**：{share_user.username}
+👤 **任务者**：{share_user_display}
 📊 **难度**：{difficulty_map.get(task.difficulty, task.difficulty)}
 ⏰ **剩余时间**：{time_left}
 📅 **状态**：{'🔄 进行中' if task.status == 'active' else '🗳️ 投票期' if task.status == 'voting' else task.status}
 
 💡 **描述**：{task.description[:100] + '...' if len(task.description) > 100 else task.description}
 
-💪 帮助 {share_user.username} 坚持完成任务！
+💪 帮助 {share_user_display} 坚持完成任务！
         """
 
         # 创建加时按钮
@@ -1734,6 +1905,10 @@ Telegram 通知：{'✅ 已开启' if user.telegram_notifications_enabled else '
 
     async def _handle_message(self, update, context):
         """处理普通消息"""
+        # Check if user is in registration flow
+        if await self._handle_registration_message(update, context):
+            return
+
         message_text = update.message.text.lower()
 
         # 猜拳游戏
@@ -1826,8 +2001,9 @@ Telegram 通知：{'✅ 已开启' if user.telegram_notifications_enabled else '
             existing_user = await sync_to_async(existing_user.first)()
 
             if existing_user and existing_user != pending_user:
+                existing_display = self._get_telegram_display_name(existing_user, update.effective_user)
                 await update.message.reply_text(
-                    f"❌ 此 Telegram 账户已被用户 {existing_user.username} 绑定。"
+                    f"❌ 此 Telegram 账户已被用户 {existing_display} 绑定。"
                 )
                 return
 
@@ -1840,10 +2016,11 @@ Telegram 通知：{'✅ 已开启' if user.telegram_notifications_enabled else '
             pending_user.telegram_binding_token = None  # 清除绑定令牌
             await sync_to_async(pending_user.save)()
 
+            pending_display = self._get_telegram_display_name(pending_user, update.effective_user)
             success_text = f"""
 ✅ 绑定成功！
 
-您的 Lockup 账户 **{pending_user.username}** 已成功绑定到 Telegram！
+您的 Lockup 账户 **{pending_display}** 已成功绑定到 Telegram！
 
 现在您可以：
 • 🔔 接收任务通知
@@ -1940,6 +2117,7 @@ Telegram 通知：{'✅ 已开启' if user.telegram_notifications_enabled else '
         """发送任务选择界面"""
 
         # 构建消息文本
+        display_name = self._get_telegram_display_name(user, update.effective_user)
         if chat_type == 'private':
             message_text = f"""🏆 **您的任务板**
 
@@ -1947,9 +2125,9 @@ Telegram 通知：{'✅ 已开启' if user.telegram_notifications_enabled else '
 
 """
         else:
-            message_text = f"""🏆 **@{user.username} 的任务板**
+            message_text = f"""🏆 **@{display_name} 的任务板**
 
-@{user.username} 有 {len(tasks)} 个可接取的任务：
+@{display_name} 有 {len(tasks)} 个可接取的任务：
 
 """
 
@@ -1967,7 +2145,7 @@ Telegram 通知：{'✅ 已开启' if user.telegram_notifications_enabled else '
             participant_preview = ""
             if participants.exists():
                 preview_participants = participants[:3]
-                names = [p.participant.username for p in preview_participants]
+                names = [self._get_telegram_display_name(p.participant, None) for p in preview_participants]
                 participant_preview = f" ({', '.join(names)}{'...' if current_count > 3 else ''})"
 
             participant_info = f"{current_count}/{task.max_participants}人{participant_preview}"
@@ -2241,11 +2419,13 @@ Telegram 通知：{'✅ 已开启' if user.telegram_notifications_enabled else '
         # 获取参与者信息
         participants_info = self._get_participants_info(task)
 
+        creator_display = self._get_telegram_display_name(creator, None)
+
         if chat_type == 'private':
             message_text = f"""🎯 **任务详情**
 
 📋 **任务标题**：{task.title}
-👤 **创建者**：{creator.username}
+👤 **创建者**：{creator_display}
 {difficulty_line}{participants_info}
 ⏰ **截止时间**：{remaining_time}
 💰 **奖励**：{task.reward}积分
@@ -2255,10 +2435,10 @@ Telegram 通知：{'✅ 已开启' if user.telegram_notifications_enabled else '
 
 🎯 点击下方按钮接取任务！"""
         else:
-            message_text = f"""🎯 **@{creator.username} 开放的任务**
+            message_text = f"""🎯 **@{creator_display} 开放的任务**
 
 📋 **任务标题**：{task.title}
-👤 **创建者**：{creator.username}
+👤 **创建者**：{creator_display}
 {difficulty_line}{participants_info}
 ⏰ **截止时间**：{remaining_time}
 💰 **奖励**：{task.reward}积分
@@ -2291,7 +2471,8 @@ Telegram 通知：{'✅ 已开启' if user.telegram_notifications_enabled else '
         participant_lines = []
         for participant in participants[:5]:  # 最多显示5个参与者
             emoji = status_emojis.get(participant.status, '❓')
-            participant_lines.append(f"  {emoji} {participant.participant.username}")
+            participant_display = self._get_telegram_display_name(participant.participant, None)
+            participant_lines.append(f"  {emoji} {participant_display}")
 
         # 如果参与者超过5个，显示省略号
         if current_count > 5:
@@ -2311,14 +2492,15 @@ Telegram 通知：{'✅ 已开启' if user.telegram_notifications_enabled else '
 
         # 在原消息基础上添加参与者信息
         original_text = query.message.text
+        new_participant_display = self._get_telegram_display_name(new_participant, None)
 
         # 检查是否已有参与者记录
         if "🎯 **参与者：**" in original_text:
             # 已有参与者记录，在现有记录后追加
-            updated_text = f"{original_text}\n• @{new_participant.username}"
+            updated_text = f"{original_text}\n• @{new_participant_display}"
         else:
             # 首次有参与者，添加参与者记录区域
-            updated_text = f"{original_text}\n\n🎯 **参与者：**\n• @{new_participant.username}"
+            updated_text = f"{original_text}\n\n🎯 **参与者：**\n• @{new_participant_display}"
 
         # 如果满员，移除按钮
         if current_participants >= task.max_participants:

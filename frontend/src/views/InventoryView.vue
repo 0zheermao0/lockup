@@ -165,7 +165,7 @@
             <!-- Photo view -->
             <button
               v-if="selectedItem.item_type.name === 'photo' && selectedItem.status === 'available'"
-              @click="viewPhoto(selectedItem)"
+              @click="viewPhoto(selectedItem); selectedItem = null"
               class="action-btn primary"
             >
               👁️ 查看照片
@@ -174,7 +174,7 @@
             <!-- Note edit -->
             <button
               v-if="selectedItem.item_type.name === 'note' && selectedItem.status === 'available' && (!selectedItem.properties?.content || selectedItem.properties.content.trim() === '')"
-              @click="openNoteEditModal"
+              @click="selectedItem = null; openNoteEditModal()"
               class="action-btn primary"
             >
               ✏️ 编写纸条
@@ -183,7 +183,7 @@
             <!-- Note edit (existing content) -->
             <button
               v-if="selectedItem.item_type.name === 'note' && selectedItem.status === 'available' && selectedItem.properties?.content && selectedItem.properties.content.trim() !== ''"
-              @click="openNoteEditModal"
+              @click="selectedItem = null; openNoteEditModal()"
               class="action-btn secondary"
             >
               ✏️ 编辑纸条
@@ -192,7 +192,7 @@
             <!-- Note view -->
             <button
               v-if="selectedItem.item_type.name === 'note' && selectedItem.status === 'available' && selectedItem.properties?.content && selectedItem.properties.content.trim() !== ''"
-              @click="openNoteViewModal(); viewNote()"
+              @click="selectedItem = null; openNoteViewModal(); viewNote()"
               class="action-btn primary"
             >
               👁️ 查看纸条
@@ -201,7 +201,7 @@
             <!-- Share item -->
             <button
               v-if="canShareItem(selectedItem)"
-              @click="shareItem"
+              @click="selectedItem = null; shareItem()"
               class="action-btn secondary"
               :disabled="sharingItem"
             >
@@ -212,7 +212,7 @@
             <!-- Bury item -->
             <button
               v-if="canBuryItem(selectedItem)"
-              @click="showBuryModal = true"
+              @click="itemToBury = selectedItem; selectedItem = null; showBuryModal = true"
               class="action-btn secondary"
             >
               ⛏️ 掩埋物品
@@ -221,7 +221,7 @@
             <!-- Universal Key usage -->
             <button
               v-if="canUseUniversalKey(selectedItem)"
-              @click="openUniversalKeyModal"
+              @click="selectedItem = null; openUniversalKeyModal()"
               class="action-btn universal-key"
               :disabled="usingUniversalKey"
             >
@@ -232,7 +232,7 @@
             <!-- Treasury Item usage -->
             <button
               v-if="canUseTreasury(selectedItem)"
-              @click="openTreasuryModal"
+              @click="selectedItem = null; openTreasuryModal()"
               class="action-btn primary"
             >
               💰 管理小金库
@@ -241,7 +241,7 @@
             <!-- Detection Radar usage -->
             <button
               v-if="canUseDetectionRadar(selectedItem)"
-              @click="openDetectionRadarModal"
+              @click="selectedItem = null; openDetectionRadarModal()"
               class="action-btn radar"
               :disabled="usingDetectionRadar"
             >
@@ -252,7 +252,7 @@
             <!-- Blizzard Bottle usage -->
             <button
               v-if="canUseBlizzardBottle(selectedItem)"
-              @click="openBlizzardBottleModal"
+              @click="selectedItem = null; openBlizzardBottleModal()"
               class="action-btn blizzard"
               :disabled="usingBlizzardBottle"
             >
@@ -263,7 +263,7 @@
             <!-- Sun Bottle usage -->
             <button
               v-if="canUseSunBottle(selectedItem)"
-              @click="openSunBottleModal"
+              @click="selectedItem = null; openSunBottleModal()"
               class="action-btn sun"
               :disabled="usingSunBottle"
             >
@@ -274,7 +274,7 @@
             <!-- Time Hourglass usage -->
             <button
               v-if="canUseTimeHourglass(selectedItem)"
-              @click="openTimeHourglassModal"
+              @click="selectedItem = null; openTimeHourglassModal()"
               class="action-btn hourglass"
               :disabled="usingTimeHourglass"
             >
@@ -285,7 +285,7 @@
             <!-- Lucky Charm usage -->
             <button
               v-if="canUseLuckyCharm(selectedItem)"
-              @click="openLuckyCharmModal"
+              @click="selectedItem = null; openLuckyCharmModal()"
               class="action-btn lucky-charm"
               :disabled="usingLuckyCharm"
             >
@@ -296,7 +296,7 @@
             <!-- Energy Potion usage -->
             <button
               v-if="canUseEnergyPotion(selectedItem)"
-              @click="openEnergyPotionModal"
+              @click="selectedItem = null; openEnergyPotionModal()"
               class="action-btn energy-potion"
               :disabled="usingEnergyPotion"
             >
@@ -307,7 +307,7 @@
             <!-- Time Anchor usage -->
             <button
               v-if="canUseTimeAnchor(selectedItem)"
-              @click="openTimeAnchorModal"
+              @click="selectedItem = null; openTimeAnchorModal()"
               class="action-btn time-anchor"
               :disabled="usingTimeAnchor"
             >
@@ -318,7 +318,7 @@
             <!-- Exploration Compass usage -->
             <button
               v-if="canUseExplorationCompass(selectedItem)"
-              @click="openExplorationCompassModal"
+              @click="selectedItem = null; openExplorationCompassModal()"
               class="action-btn exploration-compass"
               :disabled="usingExplorationCompass"
             >
@@ -329,7 +329,7 @@
             <!-- Influence Crown usage -->
             <button
               v-if="canUseInfluenceCrown(selectedItem)"
-              @click="openInfluenceCrownModal"
+              @click="selectedItem = null; openInfluenceCrownModal()"
               class="action-btn influence-crown"
               :disabled="usingInfluenceCrown"
             >
@@ -340,7 +340,7 @@
             <!-- Small Campfire usage -->
             <button
               v-if="canUseSmallCampfire(selectedItem)"
-              @click="openSmallCampfireModal"
+              @click="selectedItem = null; openSmallCampfireModal()"
               class="action-btn small-campfire"
               :disabled="usingSmallCampfire"
             >
@@ -351,7 +351,7 @@
             <!-- Discard item -->
             <button
               v-if="canDiscardItem(selectedItem)"
-              @click="showDiscardModal = true"
+              @click="selectedItem = null; showDiscardModal = true"
               class="action-btn danger"
             >
               🗑️ 丢弃物品
@@ -516,13 +516,13 @@
             </div>
 
 
-            <div v-if="selectedItem" class="item-info-section">
+            <div v-if="itemToBury" class="item-info-section">
               <h4 class="info-title">📦 掩埋物品</h4>
               <div class="item-info-card">
-                <span class="item-icon">{{ selectedItem.item_type.icon }}</span>
+                <span class="item-icon">{{ itemToBury.item_type.icon }}</span>
                 <div class="item-details">
-                  <span class="item-name">{{ selectedItem.item_type.display_name }}</span>
-                  <span class="item-description">{{ selectedItem.item_type.description }}</span>
+                  <span class="item-name">{{ itemToBury.item_type.display_name }}</span>
+                  <span class="item-description">{{ itemToBury.item_type.description }}</span>
                 </div>
               </div>
             </div>
@@ -1515,6 +1515,7 @@ const sharedItem = ref<Item | null>(null)
 // Bury item
 const showBuryModal = ref(false)
 const buryingItem = ref(false)
+const itemToBury = ref<Item | null>(null)
 const buryData = ref({
   location_zone: '',
   location_hint: ''
@@ -1992,12 +1993,12 @@ const copyShareLink = async () => {
 }
 
 const buryItem = async () => {
-  if (!selectedItem.value || !buryData.value.location_zone || !buryData.value.location_hint.trim()) return
+  if (!itemToBury.value || !buryData.value.location_zone || !buryData.value.location_hint.trim()) return
 
   try {
     buryingItem.value = true
     await storeApi.buryItem({
-      item_id: selectedItem.value.id,
+      item_id: itemToBury.value.id,
       location_zone: buryData.value.location_zone,
       location_hint: buryData.value.location_hint
     })
@@ -2016,7 +2017,7 @@ const closeBuryModal = () => {
     location_zone: '',
     location_hint: ''
   }
-  selectedItem.value = null
+  itemToBury.value = null
 }
 
 const discardItem = async () => {

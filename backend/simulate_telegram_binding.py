@@ -34,7 +34,7 @@ def simulate_telegram_start_with_deep_link():
         return
 
     # 2. 生成深度链接（前端逻辑）
-    bot_username = 'lock_up_bot'
+    bot_username = 'lock_heart_bot'
     bind_token = f'bind_{user_id}_{int(time.time())}'
     deep_link = f'https://t.me/{bot_username}?start={bind_token}'
     print(f"🔗 生成深度链接: {deep_link}")
@@ -160,7 +160,7 @@ def show_next_steps():
     print("\n2. 启用Bot的Inline Mode:")
     print("   - 在Telegram中找到@BotFather")
     print("   - 发送 /setinline")
-    print("   - 选择你的Bot: @lock_up_bot")
+    print("   - 选择你的Bot: @lock_heart_bot")
     print("   - 设置提示文本")
 
     print("\n3. 测试完整流程:")
