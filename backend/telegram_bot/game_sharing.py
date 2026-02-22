@@ -87,8 +87,9 @@ class TelegramGameSharing:
         return message_text, keyboard
 
     @staticmethod
-    def can_user_participate(user: User, game: Game) -> tuple[bool, str]:
+    async def can_user_participate(user: User, game: Game) -> tuple[bool, str]:
         """检查用户是否可以参与游戏"""
+        from asgiref.sync import sync_to_async
 
         # 检查用户是否已绑定Telegram
         if not user.is_telegram_bound():
@@ -99,23 +100,30 @@ class TelegramGameSharing:
             return False, "游戏已开始或已结束"
 
         # 检查是否已经参与
-        if GameParticipant.objects.filter(game=game, user=user).exists():
+        already_participating = await sync_to_async(
+            GameParticipant.objects.filter(game=game, user=user).exists
+        )()
+        if already_participating:
             return False, "已经参与了这个游戏"
 
         # 检查是否是创建者
-        if game.creator == user:
+        creator = await sync_to_async(lambda: game.creator)()
+        if creator == user:
             return False, "不能参与自己创建的游戏"
 
         # 检查游戏是否已满
-        if game.participants.count() >= game.max_players:
+        participant_count = await sync_to_async(game.participants.count)()
+        if participant_count >= game.max_players:
             return False, "游戏人数已满"
 
         # 检查用户是否处于带锁状态（关键校验）
-        active_lock_task = LockTask.objects.filter(
-            user=user,
-            task_type='lock',
-            status='active'
-        ).first()
+        active_lock_task = await sync_to_async(
+            LockTask.objects.filter(
+                user=user,
+                task_type='lock',
+                status='active'
+            ).first
+        )()
 
         if active_lock_task:
             return False, f"用户正在执行带锁任务《{active_lock_task.title}》，无法参与游戏"
@@ -129,9 +137,10 @@ class TelegramGameSharing:
     @staticmethod
     async def handle_game_participation(user: User, game_id: str, choice: str = None) -> Dict[str, Any]:
         """处理Telegram中的游戏参与"""
+        from asgiref.sync import sync_to_async
 
         try:
-            game = Game.objects.get(id=game_id)
+            game = await sync_to_async(Game.objects.get)(id=game_id)
         except Game.DoesNotExist:
             return {
                 'success': False,
@@ -140,7 +149,7 @@ class TelegramGameSharing:
             }
 
         # 检查用户是否可以参与
-        can_participate, reason = TelegramGameSharing.can_user_participate(user, game)
+        can_participate, reason = await TelegramGameSharing.can_user_participate(user, game)
         if not can_participate:
             return {
                 'success': False,
@@ -153,13 +162,13 @@ class TelegramGameSharing:
             # 对于骰子游戏，存储用户的猜测
             if game.game_type == 'dice':
                 action = {'guess': choice}  # choice is 'big' or 'small'
-                participant = GameParticipant.objects.create(
+                participant = await sync_to_async(GameParticipant.objects.create)(
                     game=game,
                     user=user,
                     action=action
                 )
             else:
-                participant = GameParticipant.objects.create(
+                participant = await sync_to_async(GameParticipant.objects.create)(
                     game=game,
                     user=user,
                     choice=choice  # 对于石头剪刀布，记录选择
@@ -167,14 +176,14 @@ class TelegramGameSharing:
 
             # 扣除积分
             user.coins -= game.bet_amount
-            user.save()
+            await sync_to_async(user.save)()
 
             # 检查是否达到最大人数，如果是则开始游戏
-            participant_count = game.participants.count()
+            participant_count = await sync_to_async(game.participants.count)()
 
             if participant_count >= game.max_players:
                 # 游戏开始逻辑（调用现有的游戏处理逻辑）
-                game_result = TelegramGameSharing._start_game(game)
+                game_result = await sync_to_async(TelegramGameSharing._start_game)(game)
 
                 return {
                     'success': True,
