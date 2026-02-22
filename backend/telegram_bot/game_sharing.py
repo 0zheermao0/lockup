@@ -255,8 +255,10 @@ class TelegramGameSharing:
                     participant.action = {'choice': player_choice}
                     await sync_to_async(participant.save)()
 
-                valid_participants.append(participant)
-                display_name = participant.user.telegram_username or participant.user.username
+                # 使用 sync_to_async 获取用户对象
+                participant_user = await sync_to_async(lambda: participant.user)()
+                valid_participants.append({'participant': participant, 'user': participant_user, 'choice': player_choice})
+                display_name = participant_user.telegram_username or participant_user.username
                 results.append({
                     'player': display_name,
                     'choice': player_choice
@@ -264,11 +266,14 @@ class TelegramGameSharing:
 
             # 确定赢家
             if len(valid_participants) == 2:
-                p1, p2 = valid_participants
-                p1_action = p1.action or {}
-                p2_action = p2.action or {}
-                choice1 = p1_action.get('choice', 'rock')
-                choice2 = p2_action.get('choice', 'rock')
+                p1_data, p2_data = valid_participants
+                p1 = p1_data['participant']
+                p1_user = p1_data['user']
+                choice1 = p1_data['choice']
+
+                p2 = p2_data['participant']
+                p2_user = p2_data['user']
+                choice2 = p2_data['choice']
 
                 creator = await sync_to_async(lambda: game.creator)()
 
@@ -286,18 +291,18 @@ class TelegramGameSharing:
                     )
 
                     # 给双方发送平局通知
-                    for participant in valid_participants:
-                        opponent = p2 if participant == p1 else p1
-                        is_creator = participant.user == creator
-                        display_opponent = opponent.user.telegram_username or opponent.user.username
+                    for p_data in [p1_data, p2_data]:
+                        opponent_data = p2_data if p_data == p1_data else p1_data
+                        is_creator = p_data['user'] == creator
+                        display_opponent = opponent_data['user'].telegram_username or opponent_data['user'].username
                         message = f'与 {display_opponent} 的石头剪刀布游戏平局，游戏重新开始'
                         if is_creator:
                             message += f'，已返还 {game.bet_amount} 积分'
 
                         await sync_to_async(Notification.create_notification)(
-                            recipient=participant.user,
+                            recipient=p_data['user'],
                             notification_type='game_result',
-                            actor=opponent.user,
+                            actor=opponent_data['user'],
                             title='石头剪刀布平局',
                             message=message,
                             related_object_type='game',
@@ -305,10 +310,10 @@ class TelegramGameSharing:
                             extra_data={
                                 'game_type': 'rock_paper_scissors',
                                 'result': 'tie',
-                                'your_choice': participant.action['choice'],
-                                'opponent_choice': opponent.action['choice'],
-                                'opponent_username': opponent.user.username,
-                                'opponent_id': opponent.user.id,
+                                'your_choice': p_data['choice'],
+                                'opponent_choice': opponent_data['choice'],
+                                'opponent_username': opponent_data['user'].username,
+                                'opponent_id': opponent_data['user'].id,
                                 'bet_amount': game.bet_amount,
                                 'coins_refunded': game.bet_amount if is_creator else 0
                             },
@@ -326,18 +331,18 @@ class TelegramGameSharing:
                 elif (choice1 == 'rock' and choice2 == 'scissors') or \
                      (choice1 == 'paper' and choice2 == 'rock') or \
                      (choice1 == 'scissors' and choice2 == 'paper'):
-                    winner = p1.user
-                    loser = p2.user
+                    winner_user = p1_user
+                    loser_user = p2_user
                 else:
-                    winner = p2.user
-                    loser = p1.user
+                    winner_user = p2_user
+                    loser_user = p1_user
 
                 # 存储结果
                 game.result = {
-                    'winner': winner.username,
-                    'loser': loser.username,
-                    'winner_choice': choice1 if winner == p1.user else choice2,
-                    'loser_choice': choice2 if winner == p1.user else choice1,
+                    'winner': winner_user.username,
+                    'loser': loser_user.username,
+                    'winner_choice': choice1 if winner_user == p1_user else choice2,
+                    'loser_choice': choice2 if winner_user == p1_user else choice1,
                     'game_results': results
                 }
                 game.status = 'completed'
@@ -346,7 +351,7 @@ class TelegramGameSharing:
 
                 # 输家加时30分钟
                 loser_lock_tasks = await sync_to_async(list)(
-                    LockTask.objects.filter(user=loser, status='active')
+                    LockTask.objects.filter(user=loser_user, status='active')
                 )
                 for task in loser_lock_tasks:
                     previous_end_time = task.end_time
@@ -364,24 +369,24 @@ class TelegramGameSharing:
                         time_change_minutes=30,
                         previous_end_time=previous_end_time,
                         new_end_time=task.end_time,
-                        description=f'游戏失败加时: {loser.username} 在石头剪刀布游戏中败给 {winner.username}，增加30分钟锁时间',
+                        description=f'游戏失败加时: {loser_user.username} 在石头剪刀布游戏中败给 {winner_user.username}，增加30分钟锁时间',
                         metadata={
                             'game_id': str(game.id),
                             'game_type': 'rock_paper_scissors',
-                            'winner': winner.username,
-                            'loser': loser.username,
+                            'winner': winner_user.username,
+                            'loser': loser_user.username,
                             'penalty_minutes': 30
                         }
                     )
 
                 # 给获胜者发送胜利通知
-                display_loser = loser.telegram_username or loser.username
-                winner_choice = choice1 if winner == p1.user else choice2
-                loser_choice = choice2 if winner == p1.user else choice1
+                display_loser = loser_user.telegram_username or loser_user.username
+                winner_choice = choice1 if winner_user == p1_user else choice2
+                loser_choice = choice2 if winner_user == p1_user else choice1
                 await sync_to_async(Notification.create_notification)(
-                    recipient=winner,
+                    recipient=winner_user,
                     notification_type='game_result',
-                    actor=loser,
+                    actor=loser_user,
                     title='石头剪刀布获胜',
                     message=f'恭喜！您在与 {display_loser} 的石头剪刀布游戏中获胜',
                     related_object_type='game',
@@ -391,8 +396,8 @@ class TelegramGameSharing:
                         'result': 'win',
                         'your_choice': winner_choice,
                         'opponent_choice': loser_choice,
-                        'opponent_username': loser.username,
-                        'opponent_id': loser.id,
+                        'opponent_username': loser_user.username,
+                        'opponent_id': loser_user.id,
                         'bet_amount': game.bet_amount,
                         'time_penalty_minutes': 30
                     },
@@ -400,11 +405,11 @@ class TelegramGameSharing:
                 )
 
                 # 给失败者发送失败通知
-                display_winner = winner.telegram_username or winner.username
+                display_winner = winner_user.telegram_username or winner_user.username
                 await sync_to_async(Notification.create_notification)(
-                    recipient=loser,
+                    recipient=loser_user,
                     notification_type='game_result',
-                    actor=winner,
+                    actor=winner_user,
                     title='石头剪刀布失败',
                     message=f'很遗憾，您在与 {display_winner} 的石头剪刀布游戏中失败，锁时间增加30分钟',
                     related_object_type='game',
@@ -414,16 +419,13 @@ class TelegramGameSharing:
                         'result': 'lose',
                         'your_choice': loser_choice,
                         'opponent_choice': winner_choice,
-                        'opponent_username': winner.username,
-                        'opponent_id': winner.id,
+                        'opponent_username': winner_user.username,
+                        'opponent_id': winner_user.id,
                         'bet_amount': game.bet_amount,
                         'time_penalty_minutes': 30
                     },
                     priority='normal'
                 )
-
-                display_winner = winner.telegram_username or winner.username
-                display_loser = loser.telegram_username or loser.username
 
                 return {
                     'success': True,
