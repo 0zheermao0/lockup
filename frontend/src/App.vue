@@ -3,7 +3,6 @@
     <RouterView v-slot="{ Component, route }">
       <transition
         :name="getTransitionName(route)"
-        mode="out-in"
       >
         <component :is="Component" :key="route.path" />
       </transition>

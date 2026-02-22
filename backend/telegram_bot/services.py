@@ -210,6 +210,7 @@ class TelegramBotService:
             self.application.add_handler(CommandHandler("status", self._handle_status))
             self.application.add_handler(CommandHandler("task", self._handle_task))
             self.application.add_handler(CommandHandler("share_item", self._handle_share_item))
+            self.application.add_handler(CommandHandler("share_games", self._handle_share_games))
             self.application.add_handler(CommandHandler("board", self._handle_board))
             self.application.add_handler(CommandHandler("help", self._handle_help))
 
@@ -725,6 +726,7 @@ Telegram 通知：{'✅ 已开启' if user.telegram_notifications_enabled else '
 /task - 查看您的带锁任务
 /board - 查看您的任务板
 /share_item - 分享背包中的物品
+/share_games - 分享您的游戏
 /help - 显示此帮助
 通知功能：
 绑定后会自动接收应用内的重要通知"""
@@ -950,6 +952,259 @@ Telegram 通知：{'✅ 已开启' if user.telegram_notifications_enabled else '
                 "❌ 获取物品信息时发生错误，请稍后重试"
             )
 
+    async def _handle_share_games(self, update, context):
+        """处理 /share_games 命令 - 显示用户可分享的游戏"""
+        user_id = update.effective_user.id
+        chat_id = update.effective_chat.id
+        chat_type = update.effective_chat.type
+
+        # 安全检查：验证更新和频率限制
+        if not self._validate_update(update) or not self._check_rate_limit(user_id):
+            logger.warning(f"Security check failed for user {user_id} in _handle_share_games")
+            return
+
+        try:
+            # 根据聊天类型确定如何查找用户
+            if chat_type == 'private':
+                user_query = await sync_to_async(User.objects.filter)(telegram_chat_id=chat_id)
+            else:
+                user_query = await sync_to_async(User.objects.filter)(telegram_user_id=user_id)
+
+            user = await sync_to_async(user_query.first)()
+
+            if not user:
+                if chat_type == 'private':
+                    await self._safe_send_message(
+                        update.message.reply_text,
+                        "❌ 您还没有绑定任何账户\n\n"
+                        "使用 /bind 开始绑定"
+                    )
+                else:
+                    await self._safe_send_message(
+                        update.message.reply_text,
+                        f"❌ @{update.effective_user.username or update.effective_user.first_name} 还没有绑定账户\n\n"
+                        "请私聊机器人使用 /start 进行绑定"
+                    )
+                return
+
+            # 获取用户等待中的游戏（掷骰子和石头剪刀布）
+            from store.models import Game
+            from django.utils import timezone
+
+            waiting_games_query = await sync_to_async(Game.objects.filter)(
+                creator=user,
+                status='waiting',
+                game_type__in=['dice', 'rock_paper_scissors']
+            )
+            waiting_games = await sync_to_async(list)(waiting_games_query.order_by('-created_at')[:10])
+
+            if not waiting_games:
+                await self._safe_send_message(
+                    update.message.reply_text,
+                    "🎮 **您没有可分享的游戏**\n\n"
+                    "您目前没有等待参与者的游戏。\n\n"
+                    "💡 前往应用创建新的游戏：\n"
+                    "• 🎲 掷骰子（猜大小）\n"
+                    "• ✂️ 石头剪刀布",
+                    parse_mode='Markdown'
+                )
+                return
+
+            # 构建游戏选择界面
+            if chat_type == 'private':
+                games_text = f"""🎮 **分享游戏**
+
+您有 {len(waiting_games)} 个等待参与者的游戏：
+
+"""
+            else:
+                games_text = f"""🎮 **@{user.username} 的游戏**
+
+@{user.username} 有 {len(waiting_games)} 个等待参与者的游戏：
+
+"""
+
+            # 游戏类型映射
+            game_type_map = {
+                'dice': {'emoji': '🎲', 'name': '掷骰子'},
+                'rock_paper_scissors': {'emoji': '✂️', 'name': '石头剪刀布'}
+            }
+
+            # 添加游戏列表
+            for i, game in enumerate(waiting_games, 1):
+                game_info = game_type_map.get(game.game_type, {'emoji': '🎮', 'name': game.game_type})
+
+                # 计算剩余时间
+                if game.expires_at:
+                    remaining = game.expires_at - timezone.now()
+                    if remaining.total_seconds() > 0:
+                        hours = int(remaining.total_seconds() // 3600)
+                        minutes = int((remaining.total_seconds() % 3600) // 60)
+                        time_left = f"{hours}小时{minutes}分钟" if hours > 0 else f"{minutes}分钟"
+                    else:
+                        time_left = "已过期"
+                else:
+                    time_left = "无限制"
+
+                games_text += f"""{i}. {game_info['emoji']} **{game_info['name']}**
+   💰 赌注: {game.bet_amount}积分 | 👥 {game.participants.count()}/{game.max_players}人 | ⏰ {time_left}
+
+"""
+
+            games_text += "💡 选择一个游戏来分享："
+
+            # 创建选择按钮（只有游戏创建者可以点击）
+            keyboard_buttons = []
+            for game in waiting_games:
+                game_info = game_type_map.get(game.game_type, {'emoji': '🎮', 'name': game.game_type})
+                button_text = f"{game_info['emoji']} {game_info['name']} - {game.bet_amount}积分"
+                callback_data = f"share_game_select_{game.id}_{user.id}"
+                keyboard_buttons.append([InlineKeyboardButton(button_text, callback_data=callback_data)])
+
+            keyboard = InlineKeyboardMarkup(keyboard_buttons)
+
+            await self._safe_send_message(
+                update.message.reply_text,
+                games_text,
+                parse_mode='Markdown',
+                reply_markup=keyboard
+            )
+
+            logger.info(f"Share games command processed successfully for user {user.username}, {len(waiting_games)} games found")
+
+        except Exception as e:
+            logger.error(f"Error in share_games handler for user {user_id}: {e}")
+            import traceback
+            logger.error(f"Traceback: {traceback.format_exc()}")
+            await self._safe_send_message(
+                update.message.reply_text,
+                "❌ 获取游戏信息时发生错误，请稍后重试"
+            )
+
+    async def _handle_share_game_select_callback(self, query, callback_data, current_user):
+        """处理游戏选择回调 - 只有游戏创建者可以选择"""
+        try:
+            # 解析回调数据：share_game_select_{game_id}_{creator_user_id}
+            parts = callback_data.replace('share_game_select_', '').split('_')
+            if len(parts) != 2:
+                await self._safe_callback_response(query, "❌ 无效的操作", show_alert=True)
+                return
+
+            game_id, creator_user_id = parts
+            creator_user_id = int(creator_user_id)
+
+            # 验证只有游戏创建者可以选择
+            if current_user.id != creator_user_id:
+                await self._safe_callback_response(query, "❌ 只有游戏创建者才能分享游戏", show_alert=True)
+                return
+
+            # 获取游戏信息
+            from store.models import Game
+            from .game_sharing import telegram_game_sharing
+
+            game_query = await sync_to_async(Game.objects.filter)(
+                id=game_id,
+                creator=current_user,
+                status='waiting'
+            )
+            game = await sync_to_async(game_query.first)()
+
+            if not game:
+                await self._safe_callback_response(query, "❌ 游戏不存在或已开始", show_alert=True)
+                return
+
+            # 生成分享消息
+            message_text, keyboard = telegram_game_sharing.generate_game_share_message(game)
+
+            # 更新消息为分享界面
+            await self._safe_edit_message(
+                query,
+                message_text,
+                reply_markup=keyboard,
+                parse_mode='Markdown'
+            )
+
+            await self._safe_callback_response(query, "✅ 游戏分享消息已生成！", show_alert=True)
+            logger.info(f"User {current_user.username} selected game {game_id} for sharing")
+
+        except ValueError:
+            await self._safe_callback_response(query, "❌ 无效的用户ID", show_alert=True)
+        except Exception as e:
+            logger.error(f"Error in share game select callback: {e}")
+            import traceback
+            logger.error(f"Traceback: {traceback.format_exc()}")
+            await self._safe_callback_response(query, "❌ 操作失败，请稍后重试", show_alert=True)
+
+    async def _handle_sharegame_join_callback(self, query, callback_data, current_user):
+        """处理分享游戏参与回调"""
+        from .game_sharing import telegram_game_sharing
+        from store.models import Game
+
+        # 解析回调数据：sharegame_join_{game_id}_{choice}
+        try:
+            parts = callback_data.replace('sharegame_join_', '').split('_', 1)
+            if len(parts) != 2:
+                await self._safe_callback_response(query, "❌ 无效的游戏操作", show_alert=True)
+                return
+
+            game_id, choice = parts
+
+            # 获取游戏
+            game_query = await sync_to_async(Game.objects.filter)(id=game_id)
+            game = await sync_to_async(game_query.first)()
+
+            if not game:
+                await self._safe_callback_response(query, "❌ 游戏不存在", show_alert=True)
+                return
+
+            # 处理游戏参与
+            result = await telegram_game_sharing.handle_game_participation(
+                current_user, game_id, choice
+            )
+
+            if result['success']:
+                # 获取最新的参与者信息
+                participant_count = await sync_to_async(game.participants.count)()
+
+                # 构建更新后的消息
+                if game.status == 'completed':
+                    # 游戏已完成，显示结果
+                    await self._safe_edit_message(
+                        query,
+                        result.get('new_message', query.message.text),
+                        reply_markup=None,
+                        parse_mode='Markdown'
+                    )
+                else:
+                    # 游戏仍在等待，更新参与者列表
+                    original_text = query.message.text
+
+                    # 检查是否已有参与者记录
+                    if "👥 **参与者：**" in original_text:
+                        # 已有参与者记录，追加
+                        updated_text = f"{original_text}\n• @{current_user.username}"
+                    else:
+                        # 首次有参与者
+                        updated_text = f"{original_text}\n\n👥 **参与者：**\n• @{current_user.username}"
+
+                    # 保持原有的按钮
+                    await self._safe_edit_message(
+                        query,
+                        updated_text,
+                        reply_markup=query.message.reply_markup,
+                        parse_mode='Markdown'
+                    )
+
+                await self._safe_callback_response(query, result['message'], show_alert=True)
+            else:
+                await self._safe_callback_response(query, result['message'], show_alert=True)
+
+        except Exception as e:
+            logger.error(f"Error in sharegame join callback: {e}")
+            import traceback
+            logger.error(f"Traceback: {traceback.format_exc()}")
+            await self._safe_callback_response(query, "❌ 参与游戏时出错，请稍后重试", show_alert=True)
+
     async def _handle_callback_query(self, update, context):
         """处理回调查询 - 用于处理分享任务的加时按钮"""
         query = update.callback_query
@@ -998,6 +1253,14 @@ Telegram 通知：{'✅ 已开启' if user.telegram_notifications_enabled else '
             # 处理游戏参与回调
             elif callback_data.startswith('game_'):
                 await self._handle_game_callback(query, callback_data, current_user)
+
+            # 处理分享游戏选择回调
+            elif callback_data.startswith('share_game_select_'):
+                await self._handle_share_game_select_callback(query, callback_data, current_user)
+
+            # 处理分享游戏参与回调
+            elif callback_data.startswith('sharegame_join_'):
+                await self._handle_sharegame_join_callback(query, callback_data, current_user)
 
             else:
                 await self._safe_callback_response(query, "❌ 无效的操作")
@@ -1275,12 +1538,11 @@ Telegram 通知：{'✅ 已开启' if user.telegram_notifications_enabled else '
         share_token = callback_data.replace('share_claim_', '')
         logger.info(f"Processing share claim callback: share_token={share_token}, user_id={current_user.id}")
 
+        # Phase 1: Validate and transfer (wrapped in try-except for actual errors)
         try:
-            # 导入必要的模型和事务
             from store.models import SharedItem
             from django.db import transaction
 
-            # 使用同步函数包装数据库查询以确保事务和 select_for_update 正常工作
             def get_shared_item_with_lock(token):
                 with transaction.atomic():
                     return SharedItem.objects.select_for_update().filter(
@@ -1288,24 +1550,21 @@ Telegram 通知：{'✅ 已开启' if user.telegram_notifications_enabled else '
                         status='active'
                     ).select_related('sharer', 'item', 'item__item_type').first()
 
-            # 执行查询
             shared_item = await sync_to_async(get_shared_item_with_lock)(share_token)
 
             if not shared_item:
                 await self._safe_callback_response(query, "❌ 分享链接无效或已过期", show_alert=True)
                 return
 
-            # 检查是否是分享者自己
             if shared_item.sharer.id == current_user.id:
                 await self._safe_callback_response(query, "❌ 不能获取自己分享的物品", show_alert=True)
                 return
 
-            # 检查是否已被其他人获取
             if shared_item.claimer:
                 await self._safe_callback_response(query, f"❌ 物品已被 {shared_item.claimer.username} 获取", show_alert=True)
                 return
 
-            # 检查获取者的背包空间
+            # Check inventory space
             claimer_inventory_query = await sync_to_async(UserInventory.objects.filter)(user=current_user)
             claimer_inventory = await sync_to_async(claimer_inventory_query.first)()
 
@@ -1318,17 +1577,15 @@ Telegram 通知：{'✅ 已开启' if user.telegram_notifications_enabled else '
                 await self._safe_callback_response(query, "❌ 您的背包空间不足，请先清理背包", show_alert=True)
                 return
 
-            # 执行物品转移（需要在事务中执行）
+            # Transfer item
             def transfer_item_and_update_record():
                 with transaction.atomic():
-                    # 重新获取物品并锁定
                     item = Item.objects.select_for_update().get(id=shared_item.item.id)
                     item.owner = current_user
                     item.inventory = claimer_inventory
                     item.status = 'available'
                     item.save()
 
-                    # 更新分享记录
                     shared_item_record = SharedItem.objects.select_for_update().get(id=shared_item.id)
                     shared_item_record.claimer = current_user
                     shared_item_record.status = 'claimed'
@@ -1339,10 +1596,21 @@ Telegram 通知：{'✅ 已开启' if user.telegram_notifications_enabled else '
 
             item, shared_item_record = await sync_to_async(transfer_item_and_update_record)()
 
-            # ✅ UserInventory 的 available_slots 是 @property，自动计算
-            # 不需要手动调用 update_slots() 方法
+        except Exception as e:
+            logger.error(f"Error in item transfer: {e}", exc_info=True)
+            error_msg = "❌ 获取物品失败，请稍后重试"
+            if "does not exist" in str(e):
+                error_msg = "❌ 物品已被领取或不存在"
+            elif "space" in str(e).lower() or "slot" in str(e).lower():
+                error_msg = "❌ 背包空间不足"
+            elif "inventory" in str(e).lower():
+                error_msg = "❌ 背包系统错误"
+            await self._safe_callback_response(query, error_msg, show_alert=True)
+            return  # Exit early on transfer failure
 
-            # 创建通知给分享者（与web API保持一致）
+        # Phase 2: Post-transfer operations (notification, message updates)
+        # These failures should NOT show error to user since item was already transferred
+        try:
             from users.models import Notification
             await sync_to_async(Notification.create_notification)(
                 recipient=shared_item.sharer,
@@ -1360,12 +1628,15 @@ Telegram 通知：{'✅ 已开启' if user.telegram_notifications_enabled else '
                     'claimed_at': shared_item_record.claimed_at.isoformat()
                 }
             )
+        except Exception as e:
+            logger.error(f"Notification creation failed after successful item transfer: {e}", exc_info=True)
+            # Don't show error to user - item was already transferred
 
-            # 更新消息显示获取成功
+        # Update message and send success response
+        try:
             original_text = query.message.text
             updated_text = f"{original_text}\n\n🎉 @{current_user.username} 已成功获取此物品！"
 
-            # 移除按钮
             edit_success = await self._safe_edit_message(
                 query,
                 updated_text,
@@ -1373,7 +1644,6 @@ Telegram 通知：{'✅ 已开启' if user.telegram_notifications_enabled else '
                 parse_mode='Markdown'
             )
 
-            # 发送成功消息
             success_message = f"🎉 成功获取 {item.item_type.icon} {item.item_type.display_name}！\n\n物品已添加到您的背包中。"
             response_success = await self._safe_callback_response(
                 query,
@@ -1385,21 +1655,14 @@ Telegram 通知：{'✅ 已开启' if user.telegram_notifications_enabled else '
                 logger.info(f"Item {item.item_type.display_name} successfully transferred from {shared_item.sharer.username} to {current_user.username}")
             else:
                 logger.warning(f"Item transfer successful but message update failed: edit={edit_success}, response={response_success}")
-
         except Exception as e:
-            logger.error(f"Error in share claim callback: {e}", exc_info=True)
-
-            # 根据错误类型提供不同的用户消息
-            if "does not exist" in str(e):
-                error_msg = "❌ 物品已被领取或不存在"
-            elif "space" in str(e).lower() or "slot" in str(e).lower():
-                error_msg = "❌ 背包空间不足"
-            elif "inventory" in str(e).lower():
-                error_msg = "❌ 背包系统错误"
-            else:
-                error_msg = "❌ 获取物品失败，请稍后重试"
-
-            await self._safe_callback_response(query, error_msg, show_alert=True)
+            logger.error(f"Message update failed after successful item transfer: {e}", exc_info=True)
+            # Still try to send success callback even if message edit failed
+            try:
+                success_message = f"🎉 成功获取 {item.item_type.icon} {item.item_type.display_name}！\n\n物品已添加到您的背包中。"
+                await self._safe_callback_response(query, success_message, show_alert=True)
+            except Exception as e2:
+                logger.error(f"Failed to send success callback: {e2}", exc_info=True)
 
     def _create_telegram_share_link(self, item, sharer_user):
         """创建Telegram分享链接（同步方法）"""

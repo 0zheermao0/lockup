@@ -23,17 +23,8 @@
       </div>
     </div>
 
-    <button
-      v-if="canCheckIn"
-      @click="checkIn"
-      :disabled="checkingIn"
-      class="checkin-btn"
-      :class="{ 'checking': checkingIn }"
-    >
-      <span v-if="checkingIn">...</span>
-      <span v-else>签到</span>
-    </button>
-    <div v-else class="checked-indicator">✓</div>
+    <!-- 签到按钮已移除，点击日期单元格即可签到 -->
+    <div v-if="!canCheckIn" class="checked-indicator">✓</div>
   </div>
 </template>
 
@@ -43,6 +34,11 @@ import { authApi } from '../lib/api'
 import { useAuthStore } from '../stores/auth'
 
 const authStore = useAuthStore()
+
+const emit = defineEmits<{
+  checkedIn: []
+  loaded: [canCheckIn: boolean]
+}>()
 
 const checkinData = ref<any[]>([])
 const canCheckIn = ref(true)
@@ -88,6 +84,8 @@ const loadCalendarData = async () => {
     checkinData.value = data.checkins
     canCheckIn.value = data.can_checkin
     currentStreak.value = data.current_streak
+    // 通知父组件今天的签到状态：false 表示今日已签到，true 表示今日未签到
+    emit('loaded', data.can_checkin)
   } catch (error) {
     console.error('Failed to load calendar:', error)
   }
@@ -110,6 +108,9 @@ const checkIn = async () => {
 
       // Update user's coins in auth store
       authStore.refreshUser()
+
+      // Notify parent component that check-in was successful
+      emit('checkedIn')
 
       // Show success notification
       alert(result.message)
@@ -220,33 +221,7 @@ onMounted(() => {
   line-height: 1;
 }
 
-.checkin-btn {
-  background: linear-gradient(135deg, #28a745, #20c997);
-  color: white;
-  border: 2px solid #000;
-  padding: 0.125rem 0.5rem;
-  border-radius: 4px;
-  font-weight: 700;
-  font-size: 0.75rem;
-  cursor: pointer;
-  box-shadow: 1px 1px 0 #000;
-  transition: all 0.2s;
-  flex-shrink: 0;
-  height: 24px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.checkin-btn:hover:not(:disabled) {
-  transform: translate(-1px, -1px);
-  box-shadow: 2px 2px 0 #000;
-}
-
-.checkin-btn:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
-}
+/* 签到按钮已移除，点击日期单元格即可签到 */
 
 .checked-indicator {
   color: #28a745;

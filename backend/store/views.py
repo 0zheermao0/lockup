@@ -14,7 +14,7 @@ from datetime import timedelta
 from .models import (
     ItemType, UserInventory, Item, StoreItem, Purchase,
     Game, GameParticipant, DriftBottle, BuriedTreasure, GameSession, SharedItem,
-    UserEffect, SharedTaskAccess, TaskSnapshot
+    UserEffect, SharedTaskAccess, TaskSnapshot, UserZoneExploration
 )
 from users.models import Notification
 from .serializers import (
@@ -37,6 +37,21 @@ def getDifficultyText(difficulty: str) -> str:
         'hard': '困难'
     }
     return difficulties.get(difficulty, difficulty)
+
+
+def get_fibonacci_cost(n):
+    """获取第n次探索的费用（斐波那契数列）"""
+    if n <= 0:
+        return 1
+    if n <= 2:
+        return 1
+    a, b = 1, 1
+    for _ in range(3, n + 1):
+        a, b = b, a + b
+    return b
+
+
+COOLDOWN_SECONDS = 30  # 探索冷却时间（秒）
 
 
 class StoreItemListView(generics.ListAPIView):
@@ -1139,7 +1154,7 @@ def bury_item(request):
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
 def explore_zone(request):
-    """探索区域寻找宝物 - 新版本：一次翻牌机会，立即处理结果"""
+    """探索区域寻找宝物 - 带冷却时间和斐波那契费用递增"""
     serializer = ExploreZoneSerializer(data=request.data)
     if serializer.is_valid():
         zone_name = serializer.validated_data['zone_name']
@@ -1148,21 +1163,59 @@ def explore_zone(request):
         try:
             with transaction.atomic():
                 user = request.user
+                today = timezone.now().date()
+
+                # 获取或创建今日探索记录
+                exploration_record, created = UserZoneExploration.objects.get_or_create(
+                    user=user,
+                    zone_name=zone_name,
+                    exploration_date=today,
+                    defaults={
+                        'daily_count': 0,
+                        'last_exploration_at': timezone.now() - timedelta(seconds=COOLDOWN_SECONDS + 1)
+                    }
+                )
+
+                # 检查冷却时间
+                time_since_last = timezone.now() - exploration_record.last_exploration_at
+                cooldown_remaining = max(0, COOLDOWN_SECONDS - int(time_since_last.total_seconds()))
+
+                if cooldown_remaining > 0:
+                    retry_after = timezone.now() + timedelta(seconds=cooldown_remaining)
+                    return Response({
+                        'error': '探索冷却中',
+                        'cooldown_seconds': cooldown_remaining,
+                        'retry_after': retry_after.isoformat()
+                    }, status=status.HTTP_429_TOO_MANY_REQUESTS)
+
+                # 计算本次探索费用（基于今日探索次数，斐波那契递增）
+                next_exploration_number = exploration_record.daily_count + 1
+                exploration_cost = get_fibonacci_cost(next_exploration_number)
 
                 # 检查用户积分
-                if hasattr(user, 'coins') and user.coins < 1:
+                if hasattr(user, 'coins') and user.coins < exploration_cost:
                     return Response({
-                        'error': '积分不足，需要1积分进行探索'
+                        'error': '积分不足',
+                        'required': exploration_cost,
+                        'current': user.coins
                     }, status=status.HTTP_400_BAD_REQUEST)
 
                 # 扣除探索费用
                 if hasattr(user, 'coins'):
                     user.deduct_coins(
-                        amount=1,
+                        amount=exploration_cost,
                         change_type='exploration',
                         description='探索消耗',
-                        metadata={'zone': zone_name}
+                        metadata={'zone': zone_name, 'exploration_number': next_exploration_number}
                     )
+
+                # 更新探索记录
+                exploration_record.daily_count = next_exploration_number
+                exploration_record.last_exploration_at = timezone.now()
+                exploration_record.save()
+
+                # 计算下次探索费用
+                next_cost = get_fibonacci_cost(next_exploration_number + 1)
 
                 # 探索活跃度奖励
                 request.user.update_activity(points=1)
@@ -1191,6 +1244,8 @@ def explore_zone(request):
                 treasure_positions = set()
                 selected_treasure = None
                 found_item = None
+                selected_treasures = []
+                position_to_treasure = {}
 
                 if available_treasures.exists():
                     # 随机选择一些宝物放入卡牌中
@@ -1199,14 +1254,18 @@ def explore_zone(request):
                     max_treasures = min(len(treasure_list), card_count - 1)
                     selected_treasures = random.sample(treasure_list, max_treasures)
 
-                    # 随机分配位置
+                    # 随机分配位置 - 将宝物分配到随机位置
                     possible_positions = list(range(card_count))
-                    treasure_positions = set(random.sample(possible_positions, len(selected_treasures)))
+                    # 随机选择位置（保持列表顺序用于映射）
+                    selected_positions = random.sample(possible_positions, len(selected_treasures))
+                    treasure_positions = set(selected_positions)
+
+                    # 创建位置到宝物的映射
+                    # selected_positions[i] 位置对应 selected_treasures[i] 宝物
+                    position_to_treasure = {pos: treasure for pos, treasure in zip(selected_positions, selected_treasures)}
 
                     # 检查用户选择的卡牌是否有宝物
                     if card_position in treasure_positions:
-                        # 创建位置到宝物的映射
-                        position_to_treasure = {pos: treasure for pos, treasure in zip(treasure_positions, selected_treasures)}
                         selected_treasure = position_to_treasure[card_position]
 
                         # 检查背包容量
@@ -1273,8 +1332,7 @@ def explore_zone(request):
                         }
 
                 # 创建所有卡牌（展示完整结果）
-                # 创建位置到宝物的映射
-                position_to_treasure = {pos: treasure for pos, treasure in zip(treasure_positions, selected_treasures)} if treasure_positions else {}
+                # position_to_treasure 已在上方创建，直接使用
 
                 for i in range(card_count):
                     if i in treasure_positions:
@@ -1302,15 +1360,19 @@ def explore_zone(request):
                 # 不打乱卡牌顺序，保持位置一致性
 
                 return Response({
-                    'message': f'在 {get_zone_display_name(zone_name)} 区域探索完成！花费1积分',
+                    'message': f'在 {get_zone_display_name(zone_name)} 区域探索完成！花费{exploration_cost}积分',
                     'zone': zone_name,
+                    'exploration_cost': exploration_cost,
+                    'today_count': exploration_record.daily_count,
+                    'cooldown_remaining': COOLDOWN_SECONDS,
+                    'next_cost': next_cost,
                     'difficulty': config['difficulty'],
                     'card_count': card_count,
                     'cards': cards,
                     'selected_position': card_position,
                     'found_item': found_item,
                     'treasure_count': len([c for c in cards if c['has_treasure']]),
-                    'cost': 1,
+                    'cost': exploration_cost,
                     'success': found_item is not None
                 }, status=status.HTTP_200_OK)
 
@@ -1436,7 +1498,7 @@ class BuriedTreasureListView(generics.ListAPIView):
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def get_available_zones(request):
-    """获取可探索的区域列表"""
+    """获取可探索的区域列表（包含冷却状态和费用信息）"""
     zones = [
         {
             'name': 'forest',
@@ -1470,14 +1532,41 @@ def get_available_zones(request):
         }
     ]
 
-    # 统计每个区域的宝物数量
+    user = request.user
+    today = timezone.now().date()
+
+    # 统计每个区域的宝物数量和冷却状态
     for zone in zones:
+        zone_name = zone['name']
+
+        # 宝物数量
         treasure_count = BuriedTreasure.objects.filter(
-            location_zone=zone['name'],
+            location_zone=zone_name,
             status='buried',
             expires_at__gt=timezone.now()
         ).count()
         zone['treasure_count'] = treasure_count
+
+        # 获取或创建今日探索记录
+        exploration_record, _ = UserZoneExploration.objects.get_or_create(
+            user=user,
+            zone_name=zone_name,
+            exploration_date=today,
+            defaults={
+                'daily_count': 0,
+                'last_exploration_at': timezone.now() - timedelta(seconds=COOLDOWN_SECONDS + 1)
+            }
+        )
+
+        # 计算冷却状态
+        time_since_last = timezone.now() - exploration_record.last_exploration_at
+        cooldown_remaining = max(0, COOLDOWN_SECONDS - int(time_since_last.total_seconds()))
+
+        # 添加冷却和费用信息
+        zone['cooldown_seconds'] = cooldown_remaining
+        zone['is_cooldown'] = cooldown_remaining > 0
+        zone['today_count'] = exploration_record.daily_count
+        zone['next_cost'] = get_fibonacci_cost(exploration_record.daily_count + 1)
 
     return Response({
         'zones': zones

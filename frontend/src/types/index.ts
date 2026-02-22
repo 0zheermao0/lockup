@@ -680,6 +680,10 @@ export interface ExplorationZone {
   description: string
   difficulty: 'easy' | 'normal' | 'hard'
   treasure_count: number
+  cooldown_seconds: number
+  is_cooldown: boolean
+  today_count: number
+  next_cost: number
 }
 
 export interface PostStore {

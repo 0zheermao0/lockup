@@ -126,9 +126,6 @@ const canShareToTelegramBot = computed(() => {
          authStore.isAuthenticated
 })
 
-// Bot username for generating deeplinks
-const BOT_USERNAME = 'lock_up_bot'
-
 // Check if user is the task owner
 const isOwnTask = computed(() => {
   // This would need to be passed from parent component or determined from task data
@@ -218,18 +215,18 @@ const shareToTelegramBot = async () => {
     const shareResult = await telegramApi.shareTaskToTelegram(props.taskId)
     const shareData = shareResult.share_data
 
-    // Build deeplink with startgroup parameter
-    // This allows user to select a group/user to share to
-    // Format: https://t.me/{bot_username}?startgroup={task_id}
-    const deeplinkUrl = `https://t.me/${BOT_USERNAME}?startgroup=${props.taskId}`
+    // Use standard Telegram share URL format (works correctly on mobile)
+    // Include the bot deeplink in the message so recipients can interact
+    const text = `⏰ 给TA加时 - ${props.taskTitle}\n\n点击链接为任务加时: ${shareData.deeplink_url}`
+    const telegramUrl = `https://t.me/share/url?url=${encodeURIComponent(shareData.deeplink_url)}&text=${encodeURIComponent(text)}`
 
-    // Open Telegram with the deeplink
-    window.open(deeplinkUrl, '_blank')
+    // Open Telegram share dialog (same as regular share button)
+    window.open(telegramUrl, '_blank')
 
     toastMessage.value = '请选择要分享到的聊天'
     setTimeout(() => {
       showToast.value = false
-      emit('close') // Close the modal after opening Telegram
+      emit('close')
     }, 2000)
 
   } catch (error: any) {

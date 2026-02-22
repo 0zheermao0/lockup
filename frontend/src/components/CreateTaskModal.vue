@@ -321,7 +321,7 @@ interface Props {
 
 interface Emits {
   (e: 'close'): void
-  (e: 'success'): void
+  (e: 'success', autoPublished: boolean): void
 }
 
 const props = defineProps<Props>()
@@ -647,7 +647,8 @@ const handleSubmit = async () => {
       ? `${form.task_type === 'lock' ? '带锁任务' : '任务板'}创建成功，并已自动发布动态！`
       : `${form.task_type === 'lock' ? '带锁任务' : '任务板'}创建成功！`
     successMessage.value = successMsg
-    emit('success')
+    // 传递是否自动发布了动态的信息
+    emit('success', !!form.autoPost)
 
     // 延迟1.5秒后关闭窗口
     setTimeout(() => {

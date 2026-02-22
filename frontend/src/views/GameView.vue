@@ -306,20 +306,43 @@
       <!-- Degrees of Lewdity Game -->
       <div v-if="activeTab === 'dol'" class="space-y-6">
         <div class="game-section">
-          <h2 class="section-title">📖 欲都孤儿</h2>
+          <div class="game-header-with-actions">
+            <h2 class="section-title">📖 欲都孤儿</h2>
+            <button
+              @click="toggleFullscreen"
+              class="fullscreen-btn"
+              :title="isFullscreen ? '退出全屏' : '全屏游戏'"
+            >
+              <span v-if="isFullscreen">⛶ 退出全屏</span>
+              <span v-else>⛶ 全屏游戏</span>
+            </button>
+          </div>
           <p class="section-description">
             Degrees of Lewdity 中文版 - 一款文字冒险游戏，在这个陌生的城市中探索、生存并寻找属于自己的道路。
           </p>
 
           <!-- Game iframe container -->
-          <div class="game-iframe-container">
+          <div
+            ref="gameContainer"
+            class="game-iframe-container"
+            :class="{ 'fullscreen': isFullscreen }"
+          >
             <iframe
               src="https://eltirosto.github.io/Degrees-of-Lewdity-Chinese-Localization/Degrees%20of%20Lewdity%20VERSION.html.mod.html"
               class="game-iframe"
+              :class="{ 'fullscreen': isFullscreen }"
               title="欲都孤儿"
               sandbox="allow-scripts allow-same-origin allow-popups allow-forms"
               loading="lazy"
             ></iframe>
+            <button
+              v-if="isFullscreen"
+              @click="toggleFullscreen"
+              class="fullscreen-exit-overlay"
+              title="退出全屏"
+            >
+              ⛶ 退出全屏
+            </button>
           </div>
         </div>
       </div>
@@ -329,7 +352,7 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { storeApi, tasksApi } from '../lib/api'
 import { useAuthStore } from '../stores/auth'
 import { smartGoBack } from '../utils/navigation'
@@ -339,7 +362,11 @@ import NotificationBell from '../components/NotificationBell.vue'
 import type { Game } from '../types'
 
 const router = useRouter()
+const route = useRoute()
 const authStore = useAuthStore()
+
+// Valid tab IDs
+const validTabs = ['dice', 'rockPaperScissors', 'timeWheel', 'dol']
 
 // Methods
 const goBack = () => {
@@ -352,6 +379,36 @@ const activeLockTask = ref<any>(null) // Active lock task for time wheel
 const games = ref<Game[]>([])
 const loadingGames = ref(false)
 const gamePollingInterval = ref<number | null>(null)
+
+// Fullscreen state for Oliver Twist game
+const isFullscreen = ref(false)
+const gameContainer = ref<HTMLDivElement | null>(null)
+
+// Fullscreen toggle function
+const toggleFullscreen = async () => {
+  if (!gameContainer.value) return
+
+  try {
+    if (!document.fullscreenElement) {
+      // Enter fullscreen
+      await gameContainer.value.requestFullscreen()
+      isFullscreen.value = true
+    } else {
+      // Exit fullscreen
+      await document.exitFullscreen()
+      isFullscreen.value = false
+    }
+  } catch (err) {
+    console.error('Fullscreen error:', err)
+    // Fallback: toggle class-based fullscreen
+    isFullscreen.value = !isFullscreen.value
+  }
+}
+
+// Handle fullscreen change events
+const handleFullscreenChange = () => {
+  isFullscreen.value = !!document.fullscreenElement
+}
 
 // Time wheel (removed - now handled by TimeWheel component)
 
@@ -755,6 +812,12 @@ onMounted(async () => {
   console.log('Auth store user:', authStore.user)
   console.log('Is authenticated:', authStore.isAuthenticated)
 
+  // Check for tab query parameter on mount
+  const tabFromQuery = route.query.tab as string
+  if (tabFromQuery && validTabs.includes(tabFromQuery)) {
+    activeTab.value = tabFromQuery
+  }
+
   // Refresh user data to get current coins
   try {
     console.log('Refreshing user data...')
@@ -771,6 +834,9 @@ onMounted(async () => {
     loadGames()
     // startGamePolling() // Removed auto-polling - users can use refresh button for updates
   }
+
+  // Add fullscreen change event listener
+  document.addEventListener('fullscreenchange', handleFullscreenChange)
 })
 
 // Watch activeTab changes
@@ -801,10 +867,28 @@ const stopAuthWatcher = watch(
   { deep: true }
 )
 
+// Watch for query changes (browser back/forward)
+const stopRouteWatcher = watch(() => route.query.tab, (newTab) => {
+  if (newTab && validTabs.includes(newTab as string)) {
+    activeTab.value = newTab as string
+  }
+})
+
+// Sync tab changes to URL
+const stopTabSyncWatcher = watch(activeTab, (newTab) => {
+  if (route.query.tab !== newTab) {
+    router.replace({ query: { ...route.query, tab: newTab } })
+  }
+})
+
 onUnmounted(() => {
   stopGamePolling()
   stopTabWatcher()
   stopAuthWatcher()
+  stopRouteWatcher()
+  stopTabSyncWatcher()
+  // Remove fullscreen change event listener
+  document.removeEventListener('fullscreenchange', handleFullscreenChange)
 })
 </script>
 
@@ -1999,6 +2083,18 @@ onUnmounted(() => {
   box-shadow: 8px 8px 0 #000;
   background: white;
   overflow: hidden;
+  position: relative;
+}
+
+.game-iframe-container.fullscreen {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  z-index: 9999;
+  border: none;
+  box-shadow: none;
 }
 
 .game-iframe {
@@ -2009,11 +2105,81 @@ onUnmounted(() => {
   display: block;
 }
 
+.game-iframe.fullscreen {
+  height: 100vh;
+  min-height: 100vh;
+}
+
+/* Game header with actions */
+.game-header-with-actions {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 1rem;
+  margin-bottom: 0.5rem;
+}
+
+/* Fullscreen button */
+.fullscreen-btn {
+  background: #6c757d;
+  color: white;
+  border: 3px solid #000;
+  padding: 0.5rem 1rem;
+  font-weight: 900;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  cursor: pointer;
+  box-shadow: 4px 4px 0 #000;
+  transition: all 0.2s ease;
+  font-size: 0.875rem;
+}
+
+.fullscreen-btn:hover {
+  background: #495057;
+  transform: translate(2px, 2px);
+  box-shadow: 2px 2px 0 #000;
+}
+
+/* Fullscreen exit overlay button */
+.fullscreen-exit-overlay {
+  position: absolute;
+  top: 1rem;
+  right: 1rem;
+  background: rgba(220, 53, 69, 0.9);
+  color: white;
+  border: 3px solid #000;
+  padding: 0.75rem 1.25rem;
+  font-weight: 900;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  cursor: pointer;
+  box-shadow: 4px 4px 0 rgba(0, 0, 0, 0.5);
+  transition: all 0.2s ease;
+  font-size: 0.875rem;
+  z-index: 10000;
+}
+
+.fullscreen-exit-overlay:hover {
+  background: #c82333;
+  transform: translate(2px, 2px);
+  box-shadow: 2px 2px 0 rgba(0, 0, 0, 0.5);
+}
+
 /* Mobile responsive */
 @media (max-width: 768px) {
   .game-iframe {
     height: 70vh;
     min-height: 400px;
+  }
+
+  .game-header-with-actions {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .fullscreen-btn {
+    width: 100%;
   }
 }
 </style>

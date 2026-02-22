@@ -1996,7 +1996,13 @@ def process_hourly_rewards(request):
 
 
 def _process_task_hourly_rewards(task):
-    """为单个任务处理所有未发放的小时奖励（任务完成时调用）"""
+    """
+    为单个任务处理所有未发放的小时奖励（任务完成时调用）
+
+    修改后的奖励系统：
+    - 基础奖励：1 coin per 2 hours（每2小时1积分）
+    - 钥匙奖励：持有他人钥匙，每把钥匙每小时1积分
+    """
     if task.task_type != 'lock' or not task.start_time:
         return 0
 
@@ -2037,30 +2043,48 @@ def _process_task_hourly_rewards(task):
     if lucky_charm_effect:
         luck_boost = lucky_charm_effect.properties.get('luck_boost', 0.0)
 
+    # 计算用户持有的他人钥匙数量（用于钥匙奖励）
+    from .models import TaskKey
+    other_keys_count = TaskKey.objects.filter(
+        holder=task.user,
+        status='active'
+    ).exclude(task__user=task.user).count()
+
     # 发放奖励
     next_reward_hour = task.total_hourly_rewards + 1
-    total_bonus_coins = 0
+    total_lucky_bonus = 0
 
     for hour_num in range(next_reward_hour, next_reward_hour + rewards_to_give):
-        # 基础奖励：1积分
-        base_reward = 1
+        # 计算基础奖励：每2小时1积分
+        base_reward = 1 if hour_num % 2 == 1 else 0  # 奇数小时给基础奖励
         actual_reward = base_reward
 
+        # 计算钥匙奖励：每把钥匙每小时1积分
+        key_bonus = other_keys_count
+        actual_reward += key_bonus
+
         # 如果有幸运符效果，有概率获得额外奖励
-        bonus_reward = 0
+        lucky_bonus = 0
         if lucky_charm_effect and luck_boost > 0:
             import random
             if random.random() < luck_boost:  # 20% 概率获得额外奖励
-                bonus_reward = 1
-                actual_reward += bonus_reward
-                total_bonus_coins += bonus_reward
+                lucky_bonus = 1
+                actual_reward += lucky_bonus
+                total_lucky_bonus += lucky_bonus
 
         # 给用户增加积分
         task.user.add_coins(
             amount=actual_reward,
             change_type='hourly_reward',
             description=f'任务第{hour_num}小时奖励',
-            metadata={'task_id': str(task.id), 'hour_count': hour_num, 'bonus_reward': bonus_reward}
+            metadata={
+                'task_id': str(task.id),
+                'hour_count': hour_num,
+                'base_reward': base_reward,
+                'key_bonus': key_bonus,
+                'lucky_bonus': lucky_bonus,
+                'other_keys_count': other_keys_count
+            }
         )
 
         # 创建奖励记录
@@ -2073,8 +2097,15 @@ def _process_task_hourly_rewards(task):
 
         # 构建描述信息
         description = f'任务完成时补发第{hour_num}小时奖励：{task.user.username}获得{actual_reward}积分'
-        if bonus_reward > 0:
-            description += f' (基础{base_reward}+幸运符{bonus_reward})'
+        reward_parts = []
+        if base_reward > 0:
+            reward_parts.append(f'基础{base_reward}')
+        if key_bonus > 0:
+            reward_parts.append(f'钥匙{key_bonus}')
+        if lucky_bonus > 0:
+            reward_parts.append(f'幸运符{lucky_bonus}')
+        if reward_parts:
+            description += f' ({"+".join(reward_parts)})'
 
         # 记录到时间线
         TaskTimelineEvent.objects.create(
@@ -2085,8 +2116,10 @@ def _process_task_hourly_rewards(task):
             metadata={
                 'reward_amount': actual_reward,
                 'base_reward': base_reward,
-                'bonus_reward': bonus_reward,
-                'luck_boost_applied': bool(bonus_reward > 0),
+                'key_bonus': key_bonus,
+                'lucky_bonus': lucky_bonus,
+                'other_keys_count': other_keys_count,
+                'luck_boost_applied': bool(lucky_bonus > 0),
                 'hour_count': hour_num,
                 'total_coins': task.user.coins,
                 'completion_catchup': True
@@ -2102,7 +2135,7 @@ def _process_task_hourly_rewards(task):
     if lucky_charm_effect:
         # 记录使用次数
         uses_count = lucky_charm_effect.properties.get('uses_count', 0)
-        lucky_charm_effect.properties['uses_count'] = uses_count + total_bonus_coins
+        lucky_charm_effect.properties['uses_count'] = uses_count + total_lucky_bonus
         lucky_charm_effect.properties['used_on_task'] = str(task.id)
         lucky_charm_effect.properties['used_at'] = now.isoformat()
 

@@ -20,27 +20,32 @@
 
             <!-- Content -->
             <div class="toast-content">
-              <div class="toast-message">
-                {{ message }}
-              </div>
-              <div v-if="secondaryMessage" class="toast-secondary">
-                {{ secondaryMessage }}
-              </div>
-
-              <!-- Details Section -->
-              <div v-if="details" class="toast-details">
-                <div v-for="(value, key) in details" :key="key" class="detail-item">
-                  <span class="detail-label">{{ key }}:</span>
-                  <span class="detail-value">{{ value }}</span>
+              <slot name="default">
+                <!-- Default content when no slot provided -->
+                <div class="toast-message">
+                  {{ message }}
                 </div>
-              </div>
+                <div v-if="secondaryMessage" class="toast-secondary">
+                  {{ secondaryMessage }}
+                </div>
+
+                <!-- Details Section -->
+                <div v-if="details" class="toast-details">
+                  <div v-for="(value, key) in details" :key="key" class="detail-item">
+                    <span class="detail-label">{{ key }}:</span>
+                    <span class="detail-value">{{ value }}</span>
+                  </div>
+                </div>
+              </slot>
             </div>
 
             <!-- Action Buttons -->
-            <div v-if="showActions" class="toast-actions">
-              <button @click="closeToast" class="toast-action-btn primary">
-                确定
-              </button>
+            <div v-if="showActions || $slots.actions" class="toast-actions">
+              <slot name="actions">
+                <button @click="closeToast" class="toast-action-btn primary">
+                  确定
+                </button>
+              </slot>
             </div>
           </div>
         </div>
@@ -68,27 +73,32 @@
 
           <!-- Content -->
           <div class="toast-content">
-            <div class="toast-message">
-              {{ message }}
-            </div>
-            <div v-if="secondaryMessage" class="toast-secondary">
-              {{ secondaryMessage }}
-            </div>
-
-            <!-- Details Section -->
-            <div v-if="details" class="toast-details">
-              <div v-for="(value, key) in details" :key="key" class="detail-item">
-                <span class="detail-label">{{ key }}:</span>
-                <span class="detail-value">{{ value }}</span>
+            <slot name="default">
+              <!-- Default content when no slot provided -->
+              <div class="toast-message">
+                {{ message }}
               </div>
-            </div>
+              <div v-if="secondaryMessage" class="toast-secondary">
+                {{ secondaryMessage }}
+              </div>
+
+              <!-- Details Section -->
+              <div v-if="details" class="toast-details">
+                <div v-for="(value, key) in details" :key="key" class="detail-item">
+                  <span class="detail-label">{{ key }}:</span>
+                  <span class="detail-value">{{ value }}</span>
+                </div>
+              </div>
+            </slot>
           </div>
 
           <!-- Action Buttons -->
-          <div v-if="showActions" class="toast-actions">
-            <button @click="closeToast" class="toast-action-btn primary">
-              确定
-            </button>
+          <div v-if="showActions || $slots.actions" class="toast-actions">
+            <slot name="actions">
+              <button @click="closeToast" class="toast-action-btn primary">
+                确定
+              </button>
+            </slot>
           </div>
         </div>
       </div>

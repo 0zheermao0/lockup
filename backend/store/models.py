@@ -454,3 +454,22 @@ class SharedTaskAccess(models.Model):
 
     def __str__(self):
         return f"{self.sharer.username} 分享任务给 {self.viewer.username}"
+
+
+class UserZoneExploration(models.Model):
+    """用户区域探索记录（用于冷却时间和每日计数）"""
+
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='zone_explorations')
+    zone_name = models.CharField(max_length=50)
+    exploration_date = models.DateField()  # 探索日期（用于每日计数重置）
+    daily_count = models.IntegerField(default=0)  # 当日探索次数
+    last_exploration_at = models.DateTimeField()  # 最后一次探索时间（用于冷却）
+
+    class Meta:
+        unique_together = ['user', 'zone_name', 'exploration_date']
+        indexes = [
+            models.Index(fields=['user', 'zone_name', 'exploration_date']),
+        ]
+
+    def __str__(self):
+        return f"{self.user.username} - {self.zone_name} - {self.exploration_date} ({self.daily_count}次)"

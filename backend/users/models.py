@@ -842,6 +842,9 @@ class Notification(models.Model):
         # 积分系统类
         ('coins_earned_hourly', '小时奖励积分'),
         ('coins_earned_hourly_batch', '批量小时奖励积分'),
+        ('coins_earned_base_reward', '基础锁时奖励'),
+        ('coins_earned_key_bonus', '钥匙持有奖励'),
+        ('coins_earned_combined', '锁时+钥匙综合奖励'),
         ('coins_earned_daily_login', '每日登录奖励积分'),
         ('coins_earned_daily_checkin', '每日首次打卡奖励积分'),
         ('coins_earned_daily_board_post', '每日首次发布任务板奖励积分'),

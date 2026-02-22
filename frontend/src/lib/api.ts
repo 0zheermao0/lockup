@@ -553,6 +553,9 @@ export const storeApi = {
     treasure_count: number;
     cost: number;
     success: boolean;
+    cooldown_remaining?: number;
+    today_count?: number;
+    next_cost?: number;
   }> {
     return apiRequest('/store/explore-zone/', {
       method: 'POST',

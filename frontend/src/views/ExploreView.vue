@@ -57,18 +57,19 @@
                 🃏 卡牌数量: {{ getZoneCardCount(zone.name) }}张
               </p>
               <p>
-                💰 探索费用: 1积分
+                💰 探索费用: {{ zone.next_cost || 1 }}积分
               </p>
             </div>
 
             <button
               @click="startCardExploration(zone.name)"
-              :disabled="exploring || userCoins < 1"
+              :disabled="exploring || userCoins < (zone.next_cost || 1) || zone.is_cooldown"
               class="explore-btn"
-              :class="{ disabled: exploring || userCoins < 1 }"
+              :class="{ disabled: exploring || userCoins < (zone.next_cost || 1) || zone.is_cooldown }"
             >
               <span v-if="exploring && exploringZone === zone.name">探索中...</span>
-              <span v-else>🃏 开始探索</span>
+              <span v-else-if="zone.is_cooldown">冷却中 ({{ zoneCooldowns[zone.name] || zone.cooldown_seconds }}s)</span>
+              <span v-else>🃏 开始探索 ({{ zone.next_cost || 1 }}积分)</span>
             </button>
           </div>
         </div>
@@ -83,7 +84,7 @@
               <span class="difficulty-badge" :class="cardExploration.difficulty">
                 {{ getDifficultyText(cardExploration.difficulty) }}
               </span>
-              <span class="cost-info">💰 花费1积分</span>
+              <span class="cost-info">💰 花费{{ explorationResult?.cost || explorationResult?.exploration_cost || cardExploration?.next_cost || 1 }}积分</span>
             </div>
             <button @click="closeCardExploration" class="modal-close">×</button>
           </div>
@@ -165,7 +166,7 @@
                 </div>
                 <div class="stat-item">
                   <span class="stat-label">花费:</span>
-                  <span class="stat-value">💰 1积分</span>
+                  <span class="stat-value">💰 {{ explorationResult?.cost || explorationResult?.exploration_cost || 1 }}积分</span>
                 </div>
                 <div class="stat-item">
                   <span class="stat-label">宝物数量:</span>
@@ -350,12 +351,16 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { storeApi } from '../lib/api'
 import { useAuthStore } from '../stores/auth'
 import { smartGoBack } from '../utils/navigation'
+import { useNotificationToast } from '../composables/NotificationToast'
+import { ApiError } from '../lib/api-commons'
 import type { ExplorationZone, BuriedTreasure, UserInventory } from '../types'
+
+const { showNotification } = useNotificationToast()
 
 const router = useRouter()
 
@@ -383,6 +388,10 @@ const pendingTreasureResult = ref<any>(null)
 const digging = ref(false)
 const diggingTreasureId = ref('')
 
+// Cooldown timer states
+const zoneCooldowns = ref<Record<string, number>>({})
+const cooldownIntervals = ref<Record<string, number>>({})
+
 // Methods
 const goBack = () => {
   smartGoBack(router, { defaultRoute: 'home' })
@@ -392,11 +401,49 @@ const loadZones = async () => {
     loadingZones.value = true
     const result = await storeApi.getAvailableZones()
     zones.value = result.zones
+
+    // Initialize cooldown timers for zones in cooldown
+    result.zones.forEach((zone: ExplorationZone) => {
+      if (zone.is_cooldown && zone.cooldown_seconds > 0) {
+        startCooldownTimer(zone.name, zone.cooldown_seconds)
+      }
+    })
   } catch (err) {
     console.error('Load zones error:', err)
   } finally {
     loadingZones.value = false
   }
+}
+
+const startCooldownTimer = (zoneName: string, seconds: number) => {
+  zoneCooldowns.value[zoneName] = seconds
+
+  if (cooldownIntervals.value[zoneName]) {
+    clearInterval(cooldownIntervals.value[zoneName])
+  }
+
+  cooldownIntervals.value[zoneName] = setInterval(() => {
+    if ((zoneCooldowns.value[zoneName] ?? 0) > 0) {
+      zoneCooldowns.value[zoneName]!--
+    } else {
+      clearInterval(cooldownIntervals.value[zoneName])
+      // Update zone state when cooldown ends
+      const zone = zones.value.find(z => z.name === zoneName)
+      if (zone) {
+        zone.is_cooldown = false
+      }
+    }
+  }, 1000)
+}
+
+const getFibonacciCost = (n: number): number => {
+  if (n <= 0) return 1
+  if (n <= 2) return 1
+  let a = 1, b = 1
+  for (let i = 3; i <= n; i++) {
+    [a, b] = [b, a + b]
+  }
+  return b
 }
 
 const loadMyTreasures = async () => {
@@ -481,9 +528,22 @@ const selectCard = async (card: any) => {
 
   try {
     exploring.value = true
-    card.revealed = true
+    // DON'T reveal card here - wait for API response
 
     const result = await storeApi.exploreZone(cardExploration.value.zone, card.position)
+
+    // NOW reveal the card after successful API call
+    card.revealed = true
+
+    // Update zone cooldown after exploration
+    const zone = zones.value.find(z => z.name === cardExploration.value.zone)
+    if (zone) {
+      zone.is_cooldown = true
+      zone.cooldown_seconds = result.cooldown_remaining || 30
+      zone.today_count = result.today_count || zone.today_count
+      zone.next_cost = result.next_cost || getFibonacciCost((result.today_count || 0) + 1)
+      startCooldownTimer(zone.name, zone.cooldown_seconds)
+    }
 
     // Update with actual results
     explorationResult.value = result
@@ -504,7 +564,25 @@ const selectCard = async (card: any) => {
     await loadInventory()
 
   } catch (err) {
-    console.error('Card selection error:', err)
+    // Handle ApiError with cooldown info
+    if (err instanceof ApiError && err.status === 429) {
+      const cooldownSeconds = err.data?.cooldown_seconds || 30
+      showNotification(`探索冷却中，请等待 ${cooldownSeconds} 秒后再试`, 'warning')
+
+      // Update zone cooldown state
+      const zone = zones.value.find(z => z.name === cardExploration.value.zone)
+      if (zone) {
+        zone.is_cooldown = true
+        zone.cooldown_seconds = cooldownSeconds
+        startCooldownTimer(zone.name, cooldownSeconds)
+      }
+    } else {
+      const errorMessage = err instanceof ApiError ? err.message : '探索失败，请重试'
+      showNotification(errorMessage, 'error')
+    }
+
+    // Don't reveal card on error
+    card.revealed = false
   } finally {
     exploring.value = false
   }
@@ -675,6 +753,12 @@ onMounted(() => {
   loadZones()
   loadMyTreasures()
   loadInventory()
+})
+
+onUnmounted(() => {
+  Object.values(cooldownIntervals.value).forEach(interval => {
+    clearInterval(interval)
+  })
 })
 </script>
 

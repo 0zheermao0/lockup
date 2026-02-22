@@ -13,7 +13,7 @@
             <span class="capacity-amount">{{ inventory?.used_slots || 0 }}/{{ inventory?.max_slots || 6 }}</span>
           </div>
           <router-link to="/store" class="store-btn">
-            🛍️ 返回商店
+            🛍️ 商店
           </router-link>
         </div>
       </div>
@@ -52,7 +52,6 @@
               class="inventory-slot occupied"
               @click="selectItem(item)"
               :class="{
-                'selected': selectedItem?.id === item.id,
                 'in-game': item.status === 'in_game'
               }"
             >
@@ -88,15 +87,20 @@
           </div>
         </div>
 
-        <!-- Item details panel -->
-        <div v-if="selectedItem" class="item-details-panel">
-          <div class="panel-header">
-            <div class="item-info">
-              <h3 class="item-title">
-                <span class="item-title-icon">{{ selectedItem.item_type.icon }}</span>
-                <span class="item-title-text">{{ selectedItem.item_type.display_name }}</span>
-              </h3>
-              <p class="item-description">{{ selectedItem.item_type.description }}</p>
+        <!-- Item details toast -->
+        <NotificationToast
+          v-if="selectedItem"
+          :is-visible="!!selectedItem"
+          type="info"
+          :title="`${selectedItem.item_type.icon} ${selectedItem.item_type.display_name}`"
+          :message="selectedItem.item_type.description"
+          @close="selectedItem = null"
+          :show-actions="false"
+        >
+          <!-- Custom content slot -->
+          <template #default>
+            <div class="item-toast-content">
+              <!-- Item meta info -->
               <div class="item-meta">
                 <p class="meta-item">
                   <span class="meta-label">状态:</span>
@@ -131,22 +135,19 @@
                   </button>
                 </p>
               </div>
-            </div>
-            <button @click="selectedItem = null" class="close-btn">
-              ✕
-            </button>
-          </div>
 
-          <!-- Item properties (only show for items other than keys, photos, treasury, notes, and time_anchor) -->
-          <div v-if="Object.keys(selectedItem.properties).length > 0 && !['key', 'photo', 'little_treasury', 'note', 'time_anchor'].includes(selectedItem.item_type.name)" class="properties-section">
-            <h4 class="properties-title">物品属性</h4>
-            <div class="properties-content">
-              <pre class="properties-json">{{ JSON.stringify(selectedItem.properties, null, 2) }}</pre>
+              <!-- Item properties (only show for items other than keys, photos, treasury, notes, and time_anchor) -->
+              <div v-if="Object.keys(selectedItem.properties).length > 0 && !['key', 'photo', 'little_treasury', 'note', 'time_anchor'].includes(selectedItem.item_type.name)" class="properties-section">
+                <h4 class="properties-title">物品属性</h4>
+                <div class="properties-content">
+                  <pre class="properties-json">{{ JSON.stringify(selectedItem.properties, null, 2) }}</pre>
+                </div>
+              </div>
             </div>
-          </div>
+          </template>
 
-          <!-- Item actions -->
-          <div class="action-buttons">
+          <!-- Custom actions slot -->
+          <template #actions>
             <!-- Photo paper upload -->
             <div v-if="selectedItem.item_type.name === 'photo_paper' && selectedItem.status === 'available'">
               <input
@@ -228,8 +229,6 @@
               <span v-else>🗝️ 使用万能钥匙</span>
             </button>
 
-            <!-- Exclusive Task Creation for Regular Keys -->
-
             <!-- Treasury Item usage -->
             <button
               v-if="canUseTreasury(selectedItem)"
@@ -305,7 +304,6 @@
               <span v-else>⚡ 使用活力药水</span>
             </button>
 
-
             <!-- Time Anchor usage -->
             <button
               v-if="canUseTimeAnchor(selectedItem)"
@@ -327,7 +325,6 @@
               <span v-if="usingExplorationCompass">使用中...</span>
               <span v-else>🧭 使用探索指南针</span>
             </button>
-
 
             <!-- Influence Crown usage -->
             <button
@@ -359,8 +356,13 @@
             >
               🗑️ 丢弃物品
             </button>
-          </div>
-        </div>
+
+            <!-- Close button -->
+            <button @click="selectedItem = null" class="action-btn secondary">
+              关闭
+            </button>
+          </template>
+        </NotificationToast>
 
         <!-- Empty inventory message -->
         <div v-if="!inventory?.items || inventory.items.length === 0" class="empty-inventory">
@@ -1473,6 +1475,7 @@ import { useAuthStore } from '../stores/auth'
 import { useNotificationToast } from '../composables/NotificationToast'
 import type { UserInventory, Item } from '../types'
 import TreasuryItemModal from '../components/TreasuryItemModal.vue'
+import NotificationToast from '../components/NotificationToast.vue'
 
 // Router
 const router = useRouter()
@@ -1623,7 +1626,7 @@ const loadInventory = async () => {
 }
 
 const selectItem = (item: Item) => {
-  selectedItem.value = selectedItem.value?.id === item.id ? null : item
+  selectedItem.value = item
 }
 
 const getStatusText = (status: string): string => {
@@ -3557,6 +3560,127 @@ onMounted(() => {
 .action-btn:hover {
   transform: translate(2px, 2px);
   box-shadow: 2px 2px 0 #000;
+}
+
+/* Item Toast Content Styles */
+.item-toast-content {
+  text-align: left;
+}
+
+.item-toast-content .item-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-top: 1rem;
+}
+
+.item-toast-content .meta-item {
+  display: flex;
+  gap: 0.5rem;
+  margin: 0;
+  font-size: 0.875rem;
+}
+
+.item-toast-content .meta-label {
+  font-weight: 900;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: #666;
+}
+
+.item-toast-content .meta-value {
+  font-weight: 700;
+  color: #000;
+}
+
+.item-toast-content .owner-link {
+  background: #17a2b8;
+  color: white;
+  border: 2px solid #000;
+  padding: 0.25rem 0.75rem;
+  font-weight: 900;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  cursor: pointer;
+  box-shadow: 2px 2px 0 #000;
+  transition: all 0.2s ease;
+  font-size: 0.75rem;
+}
+
+.item-toast-content .owner-link:hover {
+  transform: translate(1px, 1px);
+  box-shadow: 1px 1px 0 #000;
+  background: #138496;
+}
+
+.item-toast-content .no-owner {
+  color: #999;
+  font-style: italic;
+  font-weight: 600;
+}
+
+.item-toast-content .in-game-notice {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+  margin: 0.5rem 0;
+  padding: 0.75rem;
+  background: linear-gradient(135deg, #fff3cd, #ffeaa7);
+  border: 3px solid #f39c12;
+  border-radius: 6px;
+  box-shadow: 4px 4px 0 #e67e22;
+}
+
+.item-toast-content .notice-icon {
+  font-size: 1.25rem;
+  flex-shrink: 0;
+}
+
+.item-toast-content .notice-content {
+  flex: 1;
+}
+
+.item-toast-content .notice-title {
+  font-size: 0.8rem;
+  font-weight: 900;
+  color: #d68910;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin: 0 0 0.25rem 0;
+}
+
+.item-toast-content .notice-text {
+  font-size: 0.8rem;
+  color: #856404;
+  margin: 0;
+  line-height: 1.4;
+}
+
+.item-toast-content .properties-section {
+  margin-top: 1rem;
+}
+
+.item-toast-content .properties-title {
+  font-size: 0.9rem;
+  font-weight: 900;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  margin: 0 0 0.5rem 0;
+  color: #000;
+}
+
+.item-toast-content .properties-content {
+  background: #f8f9fa;
+  border: 3px solid #000;
+  padding: 0.75rem;
+}
+
+.item-toast-content .properties-json {
+  font-family: 'Courier New', monospace;
+  font-size: 0.7rem;
+  margin: 0;
+  white-space: pre-wrap;
+  color: #333;
 }
 
 /* Empty Inventory */

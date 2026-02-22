@@ -15,7 +15,7 @@ from datetime import timedelta
 from celery import shared_task
 from django.utils import timezone
 from django.db import transaction
-from .models import LockTask, HourlyReward, TaskTimelineEvent, TaskParticipant, PinnedUser, TaskDeadlineReminder
+from .models import LockTask, HourlyReward, TaskTimelineEvent, TaskParticipant, PinnedUser, TaskDeadlineReminder, TaskKey
 from users.models import Notification
 
 # Configure logger for Celery tasks
@@ -115,6 +115,12 @@ def _process_task_hourly_rewards(task, now, next_reward_hour, rewards_to_give, p
     """
     处理单个任务的小时奖励
 
+    修改后的奖励系统：
+    - 基础奖励：1 coin per 2 hours（每2小时1积分）
+    - 钥匙奖励：持有他人钥匙，每把钥匙每小时1积分
+    - 基础奖励通知：每6小时（每3个2小时周期）
+    - 钥匙奖励通知：每3小时
+
     Args:
         task: LockTask 实例
         now: 当前时间
@@ -134,19 +140,39 @@ def _process_task_hourly_rewards(task, now, next_reward_hour, rewards_to_give, p
     if lucky_charm_effect:
         luck_boost = lucky_charm_effect.properties.get('luck_boost', 0.0)
 
+    # 计算用户持有的他人钥匙数量（用于钥匙奖励）
+    other_keys_count = TaskKey.objects.filter(
+        holder=task.user,
+        status='active'
+    ).exclude(task__user=task.user).count()
+
+    # 跟踪奖励累计（用于通知）
+    base_reward_accumulated = 0
+    key_bonus_accumulated = 0
+    lucky_bonus_accumulated = 0
+    last_notification_hour = 0
+
     for hour_num in range(next_reward_hour, next_reward_hour + rewards_to_give):
         try:
-            # 基础奖励：1积分
-            base_reward = 1
+            # 计算基础奖励：每2小时1积分
+            # hour_num从1开始，所以第1-2小时给1分，第3-4小时给1分，以此类推
+            base_reward = 1 if hour_num % 2 == 1 else 0  # 奇数小时给基础奖励
             actual_reward = base_reward
+            base_reward_accumulated += base_reward
+
+            # 计算钥匙奖励：每把钥匙每小时1积分
+            key_bonus = other_keys_count  # 每小时1积分 per key
+            actual_reward += key_bonus
+            key_bonus_accumulated += key_bonus
 
             # 如果有幸运符效果，有概率获得额外奖励
-            bonus_reward = 0
+            lucky_bonus = 0
             if lucky_charm_effect and luck_boost > 0:
                 import random
                 if random.random() < luck_boost:  # 20% 概率获得额外奖励
-                    bonus_reward = 1
-                    actual_reward += bonus_reward
+                    lucky_bonus = 1
+                    actual_reward += lucky_bonus
+                    lucky_bonus_accumulated += lucky_bonus
 
             # 给用户增加积分（coins）并记录日志
             task.user.add_coins(
@@ -158,7 +184,9 @@ def _process_task_hourly_rewards(task, now, next_reward_hour, rewards_to_give, p
                     'task_title': task.title,
                     'hour_count': hour_num,
                     'base_reward': base_reward,
-                    'bonus_reward': bonus_reward
+                    'key_bonus': key_bonus,
+                    'lucky_bonus': lucky_bonus,
+                    'other_keys_count': other_keys_count
                 }
             )
 
@@ -172,8 +200,15 @@ def _process_task_hourly_rewards(task, now, next_reward_hour, rewards_to_give, p
 
             # 构建描述信息
             description = f'第{hour_num}小时奖励：{task.user.username}获得{actual_reward}积分'
-            if bonus_reward > 0:
-                description += f' (基础{base_reward}+幸运符{bonus_reward})'
+            reward_parts = []
+            if base_reward > 0:
+                reward_parts.append(f'基础{base_reward}')
+            if key_bonus > 0:
+                reward_parts.append(f'钥匙{key_bonus}')
+            if lucky_bonus > 0:
+                reward_parts.append(f'幸运符{lucky_bonus}')
+            if reward_parts:
+                description += f' ({"+".join(reward_parts)})'
 
             # 记录到时间线
             TaskTimelineEvent.objects.create(
@@ -184,8 +219,10 @@ def _process_task_hourly_rewards(task, now, next_reward_hour, rewards_to_give, p
                 metadata={
                     'reward_amount': actual_reward,
                     'base_reward': base_reward,
-                    'bonus_reward': bonus_reward,
-                    'luck_boost_applied': bool(bonus_reward > 0),
+                    'key_bonus': key_bonus,
+                    'lucky_bonus': lucky_bonus,
+                    'other_keys_count': other_keys_count,
+                    'luck_boost_applied': bool(lucky_bonus > 0),
                     'hour_count': hour_num,
                     'total_coins': task.user.coins,
                     'auto_processed': True,
@@ -193,34 +230,73 @@ def _process_task_hourly_rewards(task, now, next_reward_hour, rewards_to_give, p
                 }
             )
 
-            # 减少通知频率：只在特定小时数时发送批量通知，减轻视觉负担
-            should_notify = (
-                hour_num == 1 or  # 第一小时
-                hour_num % 3 == 0  # 每3小时
-            )
+            # 通知逻辑：
+            # - 基础奖励通知：每6小时（即每3个2小时周期，在hour_num为2, 4, 6时触发，即第6小时）
+            # - 钥匙奖励通知：每3小时
+            base_period_num = hour_num // 2  # 2小时周期数
+            should_notify_base = (base_period_num > 0 and base_period_num % 3 == 0 and hour_num % 2 == 0)
+            should_notify_key = (hour_num % 3 == 0 and other_keys_count > 0)
 
-            if should_notify:
-                # 计算当前批次的奖励总数
-                batch_rewards = min(3, hour_num) if hour_num % 3 == 0 else 1
-
+            if should_notify_base or should_notify_key:
                 try:
+                    # 确定通知类型
+                    if should_notify_base and should_notify_key:
+                        # 综合通知
+                        notification_type = 'coins_earned_combined'
+                        extra_data = {
+                            'task_title': task.title,
+                            'current_hour': hour_num,
+                            'base_reward': base_reward_accumulated,
+                            'key_count': other_keys_count,
+                            'key_bonus': key_bonus_accumulated,
+                            'lucky_bonus': lucky_bonus_accumulated,
+                            'total': base_reward_accumulated + key_bonus_accumulated + lucky_bonus_accumulated,
+                            'period_hours': 6 if should_notify_base else 3,
+                            'processed_by': 'celery_task'
+                        }
+                    elif should_notify_key:
+                        # 仅钥匙奖励通知
+                        notification_type = 'coins_earned_key_bonus'
+                        extra_data = {
+                            'task_title': task.title,
+                            'current_hour': hour_num,
+                            'key_count': other_keys_count,
+                            'key_bonus': key_bonus_accumulated,
+                            'lucky_bonus': lucky_bonus_accumulated,
+                            'total': key_bonus_accumulated + lucky_bonus_accumulated,
+                            'hours': 3,
+                            'processed_by': 'celery_task'
+                        }
+                    else:
+                        # 仅基础奖励通知
+                        notification_type = 'coins_earned_base_reward'
+                        extra_data = {
+                            'task_title': task.title,
+                            'current_hour': hour_num,
+                            'base_reward': base_reward_accumulated,
+                            'lucky_bonus': lucky_bonus_accumulated,
+                            'total': base_reward_accumulated + lucky_bonus_accumulated,
+                            'period': base_period_num,
+                            'processed_by': 'celery_task'
+                        }
+
                     Notification.create_notification(
                         recipient=task.user,
-                        notification_type='coins_earned_hourly_batch',
+                        notification_type=notification_type,
                         actor=None,  # 系统通知
                         related_object_type='task',
                         related_object_id=task.id,
-                        extra_data={
-                            'task_title': task.title,
-                            'current_hour': hour_num,
-                            'batch_rewards': batch_rewards,
-                            'total_hourly_rewards': task.total_hourly_rewards + 1,
-                            'notification_type': 'batched',  # 标记为批量通知
-                            'processed_by': 'celery_task'
-                        },
+                        extra_data=extra_data,
                         priority='low'  # 低优先级，减少视觉干扰
                     )
-                    logger.info(f"Sent hourly reward notification for task {task.id}, hour {hour_num}")
+                    logger.info(f"Sent {notification_type} notification for task {task.id}, hour {hour_num}")
+
+                    # 重置累计值
+                    base_reward_accumulated = 0
+                    key_bonus_accumulated = 0
+                    lucky_bonus_accumulated = 0
+                    last_notification_hour = hour_num
+
                 except Exception as e:
                     logger.warning(f"Failed to send notification for task {task.id}, hour {hour_num}: {e}")
 
@@ -231,12 +307,14 @@ def _process_task_hourly_rewards(task, now, next_reward_hour, rewards_to_give, p
                 'hour_count': hour_num,
                 'reward_amount': actual_reward,
                 'base_reward': base_reward,
-                'bonus_reward': bonus_reward,
-                'luck_boost_applied': bool(bonus_reward > 0)
+                'key_bonus': key_bonus,
+                'lucky_bonus': lucky_bonus,
+                'luck_boost_applied': bool(lucky_bonus > 0),
+                'other_keys_count': other_keys_count
             })
 
             # 如果使用了幸运符效果，记录使用次数
-            if lucky_charm_effect and bonus_reward > 0:
+            if lucky_charm_effect and lucky_bonus > 0:
                 uses_count = lucky_charm_effect.properties.get('uses_count', 0)
                 lucky_charm_effect.properties['uses_count'] = uses_count + 1
                 lucky_charm_effect.save()

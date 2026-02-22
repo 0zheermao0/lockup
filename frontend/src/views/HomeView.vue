@@ -111,43 +111,53 @@
         <div class="mobile-quick-access">
           <!-- Single Row Layout -->
           <div class="mobile-main-row">
-            <!-- Lock Status (if exists) -->
-            <div
-              v-if="authStore.user?.active_lock_task"
-              class="mobile-lock-status-inline"
-              :class="{
-                'ready': authStore.user.active_lock_task.is_expired && !authStore.user.active_lock_task.time_display_hidden && !authStore.user.active_lock_task.is_frozen,
-                'time-hidden': authStore.user.active_lock_task.time_display_hidden,
-                'frozen': authStore.user.active_lock_task.is_frozen
-              }"
-              @click="goToTaskDetail(authStore.user.active_lock_task.id)"
-              :title="`${authStore.user.active_lock_task.title} - ${authStore.user.active_lock_task.is_frozen ? '点击查看冻结任务详情' : (authStore.user.active_lock_task.is_expired ? '点击完成任务' : '点击查看任务详情')}`"
-            >
-              <div class="lock-inline-icon">🔒</div>
-              <div class="lock-inline-info">
-                <div class="lock-inline-title">{{ truncateTitle(authStore.user.active_lock_task.title) }}</div>
-                <div class="lock-inline-time">
-                  <span v-if="authStore.user.active_lock_task.is_frozen">
-                    ❄️ 已冻结
-                  </span>
-                  <span v-else-if="authStore.user.active_lock_task.time_display_hidden">
-                    🔒 时间已隐藏
-                  </span>
-                  <span v-else>
-                    {{ authStore.user.active_lock_task.is_expired ? '可完成' : formatTimeRemaining(authStore.user.active_lock_task.time_remaining_ms || 0) }}
-                  </span>
+            <!-- Transition wrapper for smooth switching between Lock Status and Calendar -->
+            <Transition name="card-switch" mode="out-in">
+              <!-- Lock Status Card (when user has checked in today) -->
+              <div
+                v-if="showLockStatusCard"
+                key="lock-status"
+                class="mobile-lock-status-inline"
+                :class="{
+                  'ready': authStore.user!.active_lock_task!.is_expired && !authStore.user!.active_lock_task!.time_display_hidden && !authStore.user!.active_lock_task!.is_frozen,
+                  'time-hidden': authStore.user!.active_lock_task!.time_display_hidden,
+                  'frozen': authStore.user!.active_lock_task!.is_frozen,
+                  'fresh': isFreshLockCard
+                }"
+                @click="goToTaskDetail(authStore.user!.active_lock_task!.id)"
+                :title="`${authStore.user!.active_lock_task!.title} - ${authStore.user!.active_lock_task!.is_frozen ? '点击查看冻结任务详情' : (authStore.user!.active_lock_task!.is_expired ? '点击完成任务' : '点击查看任务详情')}`"
+              >
+                <div class="lock-inline-icon">🔒</div>
+                <div class="lock-inline-info">
+                  <div class="lock-inline-title">{{ truncateTitle(authStore.user!.active_lock_task!.title) }}</div>
+                  <div class="lock-inline-time">
+                    <span v-if="authStore.user!.active_lock_task!.is_frozen">
+                      ❄️ 已冻结
+                    </span>
+                    <span v-else-if="authStore.user!.active_lock_task!.time_display_hidden">
+                      🔒 时间已隐藏
+                    </span>
+                    <span v-else>
+                      {{ authStore.user!.active_lock_task!.is_expired ? '可完成' : formatTimeRemaining(authStore.user!.active_lock_task!.time_remaining_ms || 0) }}
+                    </span>
+                  </div>
+                </div>
+                <div class="lock-inline-btn" :class="{ 'ready': authStore.user!.active_lock_task!.is_expired && !authStore.user!.active_lock_task!.is_frozen }">
+                  {{ authStore.user!.active_lock_task!.is_frozen ? '❄️' : (authStore.user!.active_lock_task!.is_expired ? '✅' : '👁️') }}
                 </div>
               </div>
-              <div class="lock-inline-btn" :class="{ 'ready': authStore.user.active_lock_task.is_expired && !authStore.user.active_lock_task.is_frozen }">
-                {{ authStore.user.active_lock_task.is_frozen ? '❄️' : (authStore.user.active_lock_task.is_expired ? '✅' : '👁️') }}
-              </div>
-            </div>
 
-            <!-- Mini Calendar Check-in (only when no lock) -->
-            <CalendarCheckInMini v-if="!authStore.user?.active_lock_task" />
+              <!-- Mini Calendar Check-in (when no lock, or when lock exists but user hasn't checked in today) -->
+              <CalendarCheckInMini
+                v-else-if="showCalendarMini"
+                key="calendar-mini"
+                @checked-in="onCalendarCheckedIn"
+                @loaded="onCalendarLoaded"
+              />
+            </Transition>
 
             <!-- Action Buttons -->
-            <div class="mobile-actions-inline" :class="{ 'with-lock': authStore.user?.active_lock_task, 'without-lock': !authStore.user?.active_lock_task }">
+            <div class="mobile-actions-inline" :class="{ 'with-lock': showLockStatusCard, 'without-lock': !showLockStatusCard }">
               <button @click="openCreateModal(false)" class="mobile-btn primary" title="发布动态">📝</button>
               <button @click="openCreateTaskModal('lock')" class="mobile-btn success" title="创建任务">➕</button>
               <button @click="goToTasks" class="mobile-btn info" title="任务广场">📋</button>
@@ -200,6 +210,7 @@
           </div>
 
           <div v-else class="posts-list">
+            <TransitionGroup name="post-card">
             <article
               v-for="post in posts"
               :key="post.id"
@@ -300,6 +311,7 @@
                 </button>
               </div>
             </article>
+            </TransitionGroup>
 
             <!-- 加载更多指示器 -->
             <div v-if="isLoadingMore" class="loading-more">
@@ -433,6 +445,48 @@ const selectedImage = ref('')
 // 移动端更多操作展开状态
 const showMoreActions = ref(false)
 
+// 签到状态跟踪
+const todayCheckedIn = ref(false)
+
+// 新创建带锁任务卡片高亮状态
+const isFreshLockCard = ref(false)
+let freshLockCardTimer: ReturnType<typeof setTimeout> | null = null
+
+// 计算属性：决定是否显示带锁状态卡片
+const showLockStatusCard = computed(() => {
+  // 如果有带锁任务且今日已签到，显示带锁卡片
+  if (authStore.user?.active_lock_task && todayCheckedIn.value) {
+    return true
+  }
+  return false
+})
+
+// 计算属性：决定是否显示calendar mini
+const showCalendarMini = computed(() => {
+  // 如果没有带锁任务，显示calendar
+  if (!authStore.user?.active_lock_task) {
+    return true
+  }
+  // 如果有带锁任务但今日未签到，显示calendar
+  if (authStore.user?.active_lock_task && !todayCheckedIn.value) {
+    return true
+  }
+  return false
+})
+
+// 处理签到成功事件
+const onCalendarCheckedIn = () => {
+  todayCheckedIn.value = true
+  // 可选：刷新用户数据以获取最新状态
+  authStore.refreshUser()
+}
+
+// 处理日历组件加载完成事件
+const onCalendarLoaded = (canCheckIn: boolean) => {
+  // canCheckIn: true = 今日未签到，false = 今日已签到
+  todayCheckedIn.value = !canCheckIn
+}
+
 // 置顶轮播组件引用和状态
 const pinnedCarouselRef = ref(null)
 const hasPinnedUsers = ref(false)
@@ -540,9 +594,25 @@ const closeCreateTaskModal = () => {
   showCreateTaskModal.value = false
 }
 
-const handleTaskCreated = () => {
+const handleTaskCreated = (autoPublished: boolean) => {
   // 任务创建成功后的处理
   closeCreateTaskModal()
+  // 刷新用户数据以获取最新的带锁任务状态
+  authStore.refreshUser()
+  // 触发新带锁任务卡片高亮动画
+  isFreshLockCard.value = true
+  if (freshLockCardTimer) {
+    clearTimeout(freshLockCardTimer)
+  }
+  freshLockCardTimer = setTimeout(() => {
+    isFreshLockCard.value = false
+  }, 2000)
+  // 如果自动发布了动态，刷新动态列表
+  if (autoPublished) {
+    postsStore.invalidatePostsCache()
+    navigationStore.clearPostsViewState()
+    refresh()
+  }
 }
 
 const handlePostCreated = () => {
@@ -1340,6 +1410,7 @@ onMounted(async () => {
   display: flex;
   flex-direction: column;
   gap: 1.5rem;
+  position: relative;
 }
 
 .post-card {
@@ -1352,6 +1423,7 @@ onMounted(async () => {
   transition: all 0.2s ease;
   max-width: 100%;
   overflow: hidden;
+  position: relative;
 }
 
 .post-card:hover {
@@ -1614,6 +1686,7 @@ onMounted(async () => {
   gap: 0.5rem;
   width: 100%;
   min-height: 40px;
+  perspective: 1000px;
 }
 
 /* Inline Lock Status */
@@ -1631,19 +1704,38 @@ onMounted(async () => {
   min-width: 0;
   max-width: 50%;
   cursor: pointer;
-  transition: all 0.2s ease;
+  transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.3s ease;
   user-select: none;
+  transform-style: preserve-3d;
+  will-change: transform;
 }
 
+/* 3D Tilt hover effect - floating and tilting */
 .mobile-lock-status-inline:hover {
   background: linear-gradient(135deg, #ff5252, #e64a19);
-  transform: translate(-1px, -1px);
-  box-shadow: 3px 3px 0 #000;
+  transform: translateY(-4px) rotateX(5deg) rotateY(-3deg) scale(1.02);
+  box-shadow:
+    0 10px 20px rgba(0, 0, 0, 0.2),
+    0 6px 6px rgba(0, 0, 0, 0.15),
+    inset 0 1px 0 rgba(255, 255, 255, 0.3);
+}
+
+/* Inner elements move slightly for parallax effect */
+.mobile-lock-status-inline:hover .lock-inline-icon {
+  transform: translateZ(20px) scale(1.1);
+}
+
+.mobile-lock-status-inline:hover .lock-inline-btn {
+  transform: translateZ(15px);
+  background: rgba(255, 255, 255, 0.4);
 }
 
 .mobile-lock-status-inline:active {
-  transform: translate(0, 0);
-  box-shadow: 1px 1px 0 #000;
+  transform: translateY(-2px) rotateX(2deg) rotateY(-1deg) scale(1.01);
+  box-shadow:
+    0 5px 10px rgba(0, 0, 0, 0.15),
+    0 3px 3px rgba(0, 0, 0, 0.1);
+  transition: transform 0.1s ease, box-shadow 0.1s ease;
 }
 
 .mobile-lock-status-inline.ready {
@@ -1651,8 +1743,36 @@ onMounted(async () => {
   animation: pulse-ready 2s infinite;
 }
 
+/* Fresh lock status card - initial appearance glow */
+.mobile-lock-status-inline.fresh {
+  animation: lock-fresh-glow 1.5s ease-out;
+}
+
+@keyframes lock-fresh-glow {
+  0% {
+    box-shadow: 0 0 0 0 rgba(255, 107, 107, 0.8), 0 0 0 0 rgba(255, 107, 107, 0.4);
+    transform: scale(1);
+  }
+  25% {
+    box-shadow: 0 0 20px 5px rgba(255, 107, 107, 0.6), 0 0 40px 10px rgba(255, 107, 107, 0.3);
+    transform: scale(1.02);
+  }
+  50% {
+    box-shadow: 0 0 30px 8px rgba(255, 107, 107, 0.5), 0 0 60px 15px rgba(255, 107, 107, 0.2);
+    transform: scale(1.01);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(255, 107, 107, 0), 0 0 0 0 rgba(255, 107, 107, 0);
+    transform: scale(1);
+  }
+}
+
 .mobile-lock-status-inline.ready:hover {
   background: linear-gradient(135deg, #25a244, #1dc5a0);
+  box-shadow:
+    0 10px 20px rgba(40, 167, 69, 0.3),
+    0 6px 6px rgba(0, 0, 0, 0.15),
+    inset 0 1px 0 rgba(255, 255, 255, 0.3);
 }
 
 /* 移动端时间隐藏状态样式 */
@@ -1663,11 +1783,17 @@ onMounted(async () => {
 
 .mobile-lock-status-inline.time-hidden:hover {
   background: linear-gradient(135deg, #495057, #6c757d);
+  box-shadow:
+    0 10px 20px rgba(52, 58, 64, 0.3),
+    0 6px 6px rgba(0, 0, 0, 0.15),
+    inset 0 1px 0 rgba(255, 255, 255, 0.2);
 }
 
 .lock-inline-icon {
   font-size: 1rem;
   flex-shrink: 0;
+  transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+  will-change: transform;
 }
 
 .lock-inline-info {
@@ -1698,11 +1824,12 @@ onMounted(async () => {
   background: rgba(255, 255, 255, 0.2);
   color: white;
   font-size: 0.9rem;
-  transition: all 0.2s ease;
+  transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
   display: flex;
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
+  will-change: transform;
   pointer-events: none;
 }
 
@@ -2223,6 +2350,140 @@ onMounted(async () => {
 .close-modal-btn:active {
   transform: translate(2px, 2px);
   box-shadow: 2px 2px 0 #000;
+}
+
+/* Card switch animation for mobile quick access bar */
+.card-switch-enter-active,
+.card-switch-leave-active {
+  transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.card-switch-enter-from {
+  opacity: 0;
+  transform: translateX(-20px) scale(0.95);
+}
+
+.card-switch-leave-to {
+  opacity: 0;
+  transform: translateX(20px) scale(0.95);
+}
+
+/* Add a subtle bounce effect */
+.card-switch-enter-active {
+  animation: card-bounce 0.4s ease-out;
+}
+
+@keyframes card-bounce {
+  0% {
+    transform: translateX(-20px) scale(0.95);
+    opacity: 0;
+  }
+  60% {
+    transform: translateX(5px) scale(1.02);
+    opacity: 1;
+  }
+  100% {
+    transform: translateX(0) scale(1);
+    opacity: 1;
+  }
+}
+
+/* Enhanced lock status card entry animation with glow effect */
+.card-switch-enter-active.mobile-lock-status-inline {
+  animation: lock-status-glow-entry 0.6s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+@keyframes lock-status-glow-entry {
+  0% {
+    opacity: 0;
+    transform: translateX(-30px) scale(0.9);
+    box-shadow: 0 0 0 rgba(255, 107, 107, 0);
+  }
+  40% {
+    opacity: 0.8;
+    transform: translateX(8px) scale(1.03);
+    box-shadow: 0 0 20px rgba(255, 107, 107, 0.4);
+  }
+  70% {
+    transform: translateX(-3px) scale(0.98);
+    box-shadow: 0 0 30px rgba(255, 107, 107, 0.6);
+  }
+  100% {
+    opacity: 1;
+    transform: translateX(0) scale(1);
+    box-shadow: 0 0 0 rgba(255, 107, 107, 0);
+  }
+}
+
+/* Post card list animation - elegant slide in from top */
+.post-card-enter-active {
+  transition: all 0.5s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.post-card-leave-active {
+  transition: all 0.3s ease;
+  position: absolute;
+}
+
+.post-card-enter-from {
+  opacity: 0;
+  transform: translateY(-30px) scale(0.95);
+}
+
+.post-card-leave-to {
+  opacity: 0;
+  transform: translateY(20px) scale(0.95);
+}
+
+.post-card-move {
+  transition: transform 0.4s ease;
+}
+
+/* New post card special highlight animation */
+.post-card-enter-active .post-card {
+  animation: new-post-highlight 1.2s ease-out;
+}
+
+@keyframes new-post-highlight {
+  0% {
+    border-color: #28a745;
+    box-shadow: 0 0 0 0 rgba(40, 167, 69, 0.7), 4px 4px 0 #000;
+  }
+  30% {
+    border-color: #28a745;
+    box-shadow: 0 0 0 8px rgba(40, 167, 69, 0), 4px 4px 0 #000;
+  }
+  100% {
+    border-color: #000;
+    box-shadow: 4px 4px 0 #000;
+  }
+}
+
+/* Fresh content shimmer effect for new posts */
+.post-card-enter-from::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -100%;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(255, 255, 255, 0.4) 50%,
+    transparent 100%
+  );
+  animation: shimmer-slide 0.8s ease-out;
+  pointer-events: none;
+}
+
+@keyframes shimmer-slide {
+  0% {
+    left: -100%;
+  }
+  100% {
+    left: 100%;
+  }
 }
 
 /* Image Modal Transition */
