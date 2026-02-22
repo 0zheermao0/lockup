@@ -431,6 +431,14 @@ class TelegramGameSharing:
                     'should_edit_message': True,
                     'new_message': f"🎮 游戏结束！\n\n{display_winner} 获胜！\n{display_loser} 锁时间增加30分钟"
                 }
+            else:
+                # 不是2个参与者，无法开始游戏
+                return {
+                    'success': True,
+                    'message': f"✅ 成功参与游戏！等待其他玩家加入...",
+                    'should_edit_message': True,
+                    'new_message': f"🎮 等待更多玩家...\n当前人数：{len(valid_participants)}/{game.max_players}"
+                }
 
         except Exception as e:
             logger.error(f"石头剪刀布游戏处理出错: {e}", exc_info=True)
