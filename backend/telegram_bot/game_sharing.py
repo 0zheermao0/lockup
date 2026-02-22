@@ -634,7 +634,7 @@ class TelegramGameSharing:
                 'success': True,
                 'message': message,
                 'should_edit_message': True,
-                'new_message': f"🎲 掷骰子结果：{dice_result}\n\n{message}\n\n{display_creator} 获得了 {game.bet_amount} 积分"
+                'new_message': f"🎲 游戏结束！\n\n骰子结果：{dice_result}\n\n{message}\n\n{display_creator} 获得了 {game.bet_amount} 积分"
             }
 
         except Exception as e:
