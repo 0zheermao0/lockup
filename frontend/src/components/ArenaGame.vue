@@ -172,9 +172,22 @@
         >
           <div class="game-header">
             <div class="creator-info">
-              <UserAvatar :user="game.creator" size="small" />
+              <UserAvatar
+                :user="game.creator"
+                size="small"
+                :clickable="true"
+                :show-lock-indicator="true"
+                :title="`查看 ${game.creator.username} 的资料`"
+                @click.stop="openProfileModal(game.creator)"
+              />
               <div class="creator-details">
-                <span class="creator-name">{{ game.creator.username }}</span>
+                <span
+                  class="creator-name clickable"
+                  @click.stop="openProfileModal(game.creator)"
+                  :title="`查看 ${game.creator.username} 的资料`"
+                >
+                  {{ game.creator.username }}
+                </span>
                 <span class="game-time">{{ formatDistanceToNow(game.created_at) }}</span>
               </div>
             </div>
@@ -186,9 +199,22 @@
           <div class="battle-preview">
             <div class="fighter creator-side">
               <div class="fighter-avatar">
-                <UserAvatar :user="game.creator" size="large" />
+                <UserAvatar
+                  :user="game.creator"
+                  size="large"
+                  :clickable="true"
+                  :show-lock-indicator="true"
+                  :title="`查看 ${game.creator.username} 的资料`"
+                  @click.stop="openProfileModal(game.creator)"
+                />
               </div>
-              <span class="fighter-name">发起者</span>
+              <span
+                class="fighter-name clickable"
+                @click.stop="openProfileModal(game.creator)"
+                :title="`查看 ${game.creator.username} 的资料`"
+              >
+                {{ game.creator.username }}
+              </span>
               <div v-if="game.votes" class="vote-count">
                 🗳️ {{ game.votes.creator || 0 }}
               </div>
@@ -201,13 +227,28 @@
 
             <div class="fighter challenger-side">
               <div v-if="game.challenger" class="fighter-avatar">
-                <UserAvatar :user="game.challenger" size="large" />
+                <UserAvatar
+                  :user="game.challenger"
+                  size="large"
+                  :clickable="true"
+                  :show-lock-indicator="true"
+                  :title="`查看 ${game.challenger.username} 的资料`"
+                  @click.stop="openProfileModal(game.challenger)"
+                />
               </div>
               <div v-else class="fighter-avatar empty">
                 <span class="empty-icon">?</span>
               </div>
-              <span class="fighter-name">
-                {{ game.challenger ? game.challenger.username : '等待挑战者' }}
+              <span
+                v-if="game.challenger"
+                class="fighter-name clickable"
+                @click.stop="openProfileModal(game.challenger)"
+                :title="`查看 ${game.challenger.username} 的资料`"
+              >
+                {{ game.challenger.username }}
+              </span>
+              <span v-else class="fighter-name">
+                等待挑战者
               </span>
               <div v-if="game.votes && game.challenger" class="vote-count">
                 🗳️ {{ game.votes.challenger || 0 }}
@@ -528,6 +569,13 @@
       :message="toastState.message"
       @close="closeToast"
     />
+
+    <!-- Profile Modal -->
+    <ProfileModal
+      :is-visible="showProfileModal"
+      :user="selectedUser"
+      @close="closeProfileModal"
+    />
   </div>
 </template>
 
@@ -537,6 +585,7 @@ import { storeApi } from '../lib/api'
 import { useAuthStore } from '../stores/auth'
 import UserAvatar from './UserAvatar.vue'
 import NotificationToast from './NotificationToast.vue'
+import ProfileModal from './ProfileModal.vue'
 import { toastState, closeToast } from '../composables/useGameToast'
 import type { User } from '../types'
 
@@ -590,9 +639,11 @@ const showJoinModal = ref(false)
 const showEnterModal = ref(false)
 const showVoteModal = ref(false)
 const showResultModal = ref(false)
+const showProfileModal = ref(false)
 const selectedGame = ref<ArenaGame | null>(null)
 const selectedGameDetails = ref<any>(null)
 const selectedGameResult = ref<any>(null)
+const selectedUser = ref<User | undefined>(undefined)
 
 // Forms
 const createForm = ref({
@@ -1033,6 +1084,17 @@ const cancelGame = async (gameId: string) => {
   }
 }
 
+// Profile Modal
+const openProfileModal = (user: User) => {
+  selectedUser.value = user
+  showProfileModal.value = true
+}
+
+const closeProfileModal = () => {
+  showProfileModal.value = false
+  selectedUser.value = undefined
+}
+
 onMounted(() => {
   refreshGames()
 })
@@ -1356,6 +1418,16 @@ onMounted(() => {
   font-weight: 700;
 }
 
+.creator-name.clickable {
+  cursor: pointer;
+  transition: opacity 0.2s ease;
+}
+
+.creator-name.clickable:hover {
+  opacity: 0.8;
+  text-decoration: underline;
+}
+
 .game-time {
   font-size: 0.75rem;
   color: #666;
@@ -1402,11 +1474,19 @@ onMounted(() => {
 }
 
 .fighter-avatar {
-  width: 60px;
-  height: 60px;
+  width: 64px;
+  height: 64px;
   border-radius: 50%;
   border: 3px solid #000;
   overflow: hidden;
+  background: white;
+  box-shadow: 2px 2px 0 #000;
+  transition: all 0.2s ease;
+}
+
+.fighter-avatar:has(.user-avatar[clickable="true"]):hover {
+  transform: translate(-1px, -1px);
+  box-shadow: 3px 3px 0 #000;
 }
 
 .fighter-avatar.empty {
@@ -1414,6 +1494,18 @@ onMounted(() => {
   display: flex;
   align-items: center;
   justify-content: center;
+}
+
+.fighter-avatar :deep(.user-avatar) {
+  width: 100%;
+  height: 100%;
+}
+
+.fighter-avatar :deep(.user-avatar img),
+.fighter-avatar :deep(.avatar-image) {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
 }
 
 .empty-icon {
@@ -1426,6 +1518,21 @@ onMounted(() => {
   font-size: 0.75rem;
   font-weight: 700;
   text-align: center;
+  max-width: 80px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fighter-name.clickable {
+  cursor: pointer;
+  color: #007bff;
+  transition: all 0.2s ease;
+}
+
+.fighter-name.clickable:hover {
+  text-decoration: underline;
+  color: #0056b3;
 }
 
 .vote-count {
