@@ -1,9 +1,10 @@
 from django.db import models
 from django.conf import settings
 from django.core.validators import MinValueValidator, MaxValueValidator
+from django.utils import timezone
 from datetime import timedelta
 import uuid
-from utils.file_upload import secure_task_file_upload_to
+from utils.file_upload import secure_task_file_upload_to, secure_temporary_unlock_photo_upload_to
 
 # Create your models here.
 
@@ -139,6 +140,39 @@ class LockTask(models.Model):
         help_text='开启防护罩的钥匙持有者'
     )
 
+    # 临时开锁配置字段
+    allow_temporary_unlock = models.BooleanField(
+        default=False,
+        help_text='是否允许临时开锁'
+    )
+    temporary_unlock_limit_type = models.CharField(
+        max_length=20,
+        choices=[
+            ('daily_count', '每日次数'),
+            ('cooldown', '冷却间隔'),
+        ],
+        null=True,
+        blank=True,
+        help_text='临时开锁限制类型'
+    )
+    temporary_unlock_limit_value = models.IntegerField(
+        null=True,
+        blank=True,
+        help_text='限制值（每日次数：x次，或冷却间隔：x小时）'
+    )
+    temporary_unlock_max_duration = models.IntegerField(
+        default=30,
+        help_text='单次临时开锁最大时长（分钟）'
+    )
+    temporary_unlock_require_approval = models.BooleanField(
+        default=False,
+        help_text='是否需要钥匙所有者同意'
+    )
+    temporary_unlock_require_photo = models.BooleanField(
+        default=False,
+        help_text='是否需要拍照证明'
+    )
+
     class Meta:
         ordering = ['-created_at']
 
@@ -154,6 +188,81 @@ class LockTask(models.Model):
 
     def __str__(self):
         return f"{self.get_task_type_display()}: {self.title}"
+
+    def can_user_request_temporary_unlock(self, user):
+        """检查用户是否可以请求临时开锁"""
+        if not self.allow_temporary_unlock:
+            return False
+
+        today = timezone.now().date()
+
+        if self.temporary_unlock_limit_type == 'daily_count':
+            # 检查今日次数
+            count = self.temporary_unlocks.filter(
+                user=user,
+                created_at__date=today,
+                status__in=['completed', 'timeout', 'approved', 'active']
+            ).count()
+            return count < self.temporary_unlock_limit_value
+
+        elif self.temporary_unlock_limit_type == 'cooldown':
+            # 检查冷却时间
+            last_unlock = self.temporary_unlocks.filter(
+                user=user,
+                status__in=['completed', 'timeout', 'approved', 'active']
+            ).order_by('-created_at').first()
+
+            if not last_unlock:
+                return True
+
+            cooldown_hours = self.temporary_unlock_limit_value
+            cooldown_end = last_unlock.created_at + timedelta(hours=cooldown_hours)
+            return timezone.now() >= cooldown_end
+
+        return True
+
+    def get_temporary_unlock_cooldown_remaining(self, user):
+        """获取临时开锁冷却剩余分钟数"""
+        if self.temporary_unlock_limit_type != 'cooldown':
+            return 0
+
+        last_unlock = self.temporary_unlocks.filter(
+            user=user,
+            status__in=['completed', 'timeout', 'approved', 'active']
+        ).order_by('-created_at').first()
+
+        if not last_unlock:
+            return 0
+
+        cooldown_hours = self.temporary_unlock_limit_value
+        cooldown_end = last_unlock.created_at + timedelta(hours=cooldown_hours)
+        remaining = cooldown_end - timezone.now()
+
+        return max(0, int(remaining.total_seconds() / 60))
+
+    def freeze_task(self):
+        """冻结任务（暂停计时）"""
+        if not self.is_frozen:
+            self.is_frozen = True
+            self.frozen_at = timezone.now()
+            self.frozen_end_time = self.end_time
+            self.save(update_fields=['is_frozen', 'frozen_at', 'frozen_end_time'])
+
+    def unfreeze_task(self):
+        """解冻任务（恢复计时）"""
+        if self.is_frozen:
+            # 计算冻结时长并调整结束时间
+            frozen_duration = timezone.now() - self.frozen_at
+            if self.frozen_end_time:
+                self.end_time = self.frozen_end_time + frozen_duration
+            self.is_frozen = False
+            self.total_frozen_duration += frozen_duration
+            self.frozen_at = None
+            self.frozen_end_time = None
+            self.save(update_fields=[
+                'is_frozen', 'end_time', 'total_frozen_duration',
+                'frozen_at', 'frozen_end_time'
+            ])
 
 
 class TaskKey(models.Model):
@@ -242,6 +351,13 @@ class TaskTimelineEvent(models.Model):
         ('board_task_taken', '任务板接取'),
         ('shield_activated', '防护罩开启'),
         ('shield_deactivated', '防护罩关闭'),
+        ('temporary_unlock_requested', '临时开锁请求'),
+        ('temporary_unlock_approved', '临时开锁批准'),
+        ('temporary_unlock_rejected', '临时开锁拒绝'),
+        ('temporary_unlock_started', '临时开锁开始'),
+        ('temporary_unlock_ended', '临时开锁结束'),
+        ('temporary_unlock_cancelled', '临时开锁取消'),
+        ('temporary_unlock_timeout', '临时开锁超时'),
     ]
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
@@ -640,3 +756,141 @@ class TaskViolationAttempt(models.Model):
             return 'low'  # 低严重程度：剩余10-30分钟
         else:
             return 'minimal'  # 轻微：剩余10分钟以内
+
+
+class TemporaryUnlockRecord(models.Model):
+    """临时开锁记录"""
+
+    STATUS_CHOICES = [
+        ('pending', '等待批准'),      # 需要批准时的初始状态
+        ('approved', '已批准'),        # 钥匙所有者已批准
+        ('rejected', '已拒绝'),        # 钥匙所有者拒绝
+        ('active', '进行中'),          # 临时开锁中
+        ('completed', '已完成'),       # 正常结束
+        ('timeout', '超时结束'),       # 超时自动结束
+        ('cancelled', '已取消'),       # 用户取消
+    ]
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+
+    # 关联任务和用户
+    task = models.ForeignKey(
+        LockTask,
+        on_delete=models.CASCADE,
+        related_name='temporary_unlocks',
+        help_text='关联的锁任务'
+    )
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name='temporary_unlocks',
+        help_text='请求临时开锁的用户'
+    )
+
+    # 状态管理
+    status = models.CharField(
+        max_length=20,
+        choices=STATUS_CHOICES,
+        default='active',
+        help_text='临时开锁状态'
+    )
+
+    # 时间记录
+    requested_at = models.DateTimeField(
+        auto_now_add=True,
+        help_text='请求时间'
+    )
+    started_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text='实际开始时间（批准后开始）'
+    )
+    ended_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text='结束时间'
+    )
+    max_end_time = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text='最大结束时间（用于超时检测）'
+    )
+
+    # 钥匙所有者批准
+    key_holder = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='approved_unlocks',
+        help_text='批准请求的钥匙持有者'
+    )
+    approved_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text='批准时间'
+    )
+    rejection_reason = models.TextField(
+        max_length=500,
+        blank=True,
+        help_text='拒绝原因'
+    )
+
+    # 拍照证明
+    verification_photo = models.ImageField(
+        upload_to=secure_temporary_unlock_photo_upload_to,
+        null=True,
+        blank=True,
+        help_text='验证照片'
+    )
+    photo_taken_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text='拍照时间'
+    )
+
+    # 任务状态快照（用于恢复）
+    task_frozen_end_time = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text='任务冻结时的原始结束时间'
+    )
+
+    # 惩罚记录
+    penalty_applied = models.BooleanField(
+        default=False,
+        help_text='是否已应用惩罚'
+    )
+    penalty_minutes = models.IntegerField(
+        default=30,
+        help_text='惩罚时长（分钟）'
+    )
+
+    # 时间戳
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'temporary_unlock_records'
+        ordering = ['-created_at']
+        verbose_name = '临时开锁记录'
+        verbose_name_plural = '临时开锁记录'
+
+    def __str__(self):
+        return f"{self.user.username} - {self.task.title} - {self.get_status_display()}"
+
+    @property
+    def duration_minutes(self):
+        """获取本次临时开锁实际时长（分钟）"""
+        if self.started_at and self.ended_at:
+            return int((self.ended_at - self.started_at).total_seconds() / 60)
+        return 0
+
+    @property
+    def remaining_minutes(self):
+        """获取剩余时长（分钟）"""
+        if self.status == 'active' and self.max_end_time:
+            now = timezone.now()
+            if self.max_end_time > now:
+                return int((self.max_end_time - now).total_seconds() / 60)
+        return 0

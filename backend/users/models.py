@@ -94,16 +94,9 @@ class User(AbstractUser):
         validators=[MinValueValidator(5), MaxValueValidator(120)],
         help_text="任务截止前提醒时间（分钟），范围 5-120"
     )
-    telegram_min_priority = models.CharField(
-        max_length=10,
-        choices=[
-            ('low', '低'),
-            ('normal', '普通'),
-            ('high', '高'),
-            ('urgent', '紧急'),
-        ],
-        default='urgent',
-        help_text="Telegram 通知最低优先级"
+    telegram_priority_settings = models.JSONField(
+        default=dict,
+        help_text="哪些优先级的通知会触发Telegram推送，格式: {'low': false, 'normal': false, 'high': true, 'urgent': true}"
     )
 
     # 统计信息
@@ -577,10 +570,27 @@ class User(AbstractUser):
                 self.telegram_notifications_enabled and
                 self.telegram_chat_id is not None)
 
+    def get_telegram_priority_settings(self):
+        """获取 Telegram 优先级设置，返回完整的设置字典"""
+        defaults = {'low': False, 'normal': False, 'high': True, 'urgent': True}
+        if not self.telegram_priority_settings:
+            return defaults
+        # 合并用户设置与默认值，确保所有优先级都有值
+        return {**defaults, **self.telegram_priority_settings}
+
+    def should_send_telegram_for_priority(self, priority):
+        """检查指定优先级的通知是否应该发送 Telegram"""
+        settings = self.get_telegram_priority_settings()
+        return settings.get(priority, False)
+
     def save(self, *args, **kwargs):
-        """保存时验证头像文件"""
+        """保存时验证头像文件并设置默认值"""
         # 如果是路径修复，跳过验证
         skip_validation = kwargs.pop('skip_file_validation', False)
+
+        # 设置默认 Telegram 优先级设置（仅对新用户）
+        if not self.pk and not self.telegram_priority_settings:
+            self.telegram_priority_settings = {'low': False, 'normal': False, 'high': True, 'urgent': True}
 
         if self.avatar and not skip_validation:
             from utils.file_upload import validate_file_security
@@ -869,6 +879,13 @@ class Notification(models.Model):
         ('level_upgraded', '等级提升'),
         ('system_announcement', '系统公告'),
         ('system_event_occurred', '系统事件发生'),
+
+        # 临时开锁
+        ('temporary_unlock_requested', '临时开锁请求'),
+        ('temporary_unlock_approved', '临时开锁已批准'),
+        ('temporary_unlock_rejected', '临时开锁被拒绝'),
+        ('temporary_unlock_completed', '临时开锁已完成'),
+        ('temporary_unlock_timeout', '临时开锁超时'),
     ]
 
     PRIORITY_CHOICES = [
@@ -1035,49 +1052,41 @@ class Notification(models.Model):
             # 导入放在方法内部避免循环导入
             from telegram_bot.services import telegram_service
 
-            # 优先级顺序映射
-            priority_order = {'low': 0, 'normal': 1, 'high': 2, 'urgent': 3}
-
             # 检查用户是否可以接收 Telegram 通知
             if not notification.recipient.can_receive_telegram_notifications():
                 return
 
-            # 获取用户设置的最低优先级
-            user_min_priority = notification.recipient.telegram_min_priority
-            notification_priority = notification.priority
-
-            # 检查通知优先级是否满足用户设置的最低要求
-            if priority_order.get(notification_priority, 0) < priority_order.get(user_min_priority, 3):
-                # 优先级不够，不发送通知
+            # 检查通知优先级是否应该发送 Telegram
+            if not notification.recipient.should_send_telegram_for_priority(notification.priority):
                 return
 
             # 异步发送通知（这里简化处理，实际生产环境可能需要使用 Celery 等任务队列）
-                import asyncio
-                import threading
+            import asyncio
+            import threading
 
-                def send_notification():
-                    try:
-                        # 使用 asyncio.run() 来安全地运行异步代码
-                        asyncio.run(
-                            telegram_service.send_notification(
-                                user_id=notification.recipient.id,
-                                title=notification.title,
-                                message=notification.message,
-                                extra_data=notification.extra_data
-                            )
+            def send_notification():
+                try:
+                    # 使用 asyncio.run() 来安全地运行异步代码
+                    asyncio.run(
+                        telegram_service.send_notification(
+                            user_id=notification.recipient.id,
+                            title=notification.title,
+                            message=notification.message,
+                            extra_data=notification.extra_data
                         )
-                    except Exception as e:
-                        # 记录错误但不影响主流程
-                        import logging
-                        logger = logging.getLogger(__name__)
-                        logger.error(f"Failed to send Telegram notification: {e}")
-                        import traceback
-                        logger.error(f"Traceback: {traceback.format_exc()}")
+                    )
+                except Exception as e:
+                    # 记录错误但不影响主流程
+                    import logging
+                    logger = logging.getLogger(__name__)
+                    logger.error(f"Failed to send Telegram notification: {e}")
+                    import traceback
+                    logger.error(f"Traceback: {traceback.format_exc()}")
 
-                # 在后台线程中发送通知
-                thread = threading.Thread(target=send_notification)
-                thread.daemon = True
-                thread.start()
+            # 在后台线程中发送通知
+            thread = threading.Thread(target=send_notification)
+            thread.daemon = True
+            thread.start()
 
         except Exception as e:
             # 记录错误但不影响主流程

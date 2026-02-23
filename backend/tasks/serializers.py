@@ -1,7 +1,8 @@
 from rest_framework import serializers
-from .models import LockTask, TaskKey, TaskVote, TaskTimelineEvent, TaskSubmissionFile, TaskParticipant
+from .models import LockTask, TaskKey, TaskVote, TaskTimelineEvent, TaskSubmissionFile, TaskParticipant, TemporaryUnlockRecord
 from users.serializers import UserSerializer, UserMinimalSerializer, UserPublicSerializer
 from .utils import calculate_weighted_vote_counts
+from django.conf import settings
 
 
 class TaskSubmissionFileSerializer(serializers.ModelSerializer):
@@ -19,6 +20,30 @@ class TaskSubmissionFileSerializer(serializers.ModelSerializer):
             'is_image', 'is_video', 'created_at', 'updated_at'
         ]
         read_only_fields = ['id', 'uploader', 'created_at', 'updated_at']
+
+
+class TemporaryUnlockRecordSerializer(serializers.ModelSerializer):
+    """临时开锁记录序列化器"""
+    user = UserPublicSerializer(read_only=True)
+    key_holder = UserPublicSerializer(read_only=True)
+    duration_minutes = serializers.ReadOnlyField()
+    remaining_minutes = serializers.ReadOnlyField()
+    verification_photo_url = serializers.SerializerMethodField()
+
+    class Meta:
+        model = TemporaryUnlockRecord
+        fields = [
+            'id', 'status', 'requested_at', 'started_at', 'ended_at',
+            'duration_minutes', 'remaining_minutes',
+            'user', 'key_holder', 'approved_at', 'rejection_reason',
+            'verification_photo_url', 'photo_taken_at',
+            'penalty_applied', 'penalty_minutes'
+        ]
+
+    def get_verification_photo_url(self, obj):
+        if obj.verification_photo:
+            return f"{settings.MEDIA_URL}{obj.verification_photo}"
+        return None
 
 
 class TaskParticipantSerializer(serializers.ModelSerializer):
@@ -203,6 +228,13 @@ class LockTaskSerializer(serializers.ModelSerializer):
     approved_count = serializers.SerializerMethodField()
     can_take = serializers.SerializerMethodField()
 
+    # 临时开锁相关信息
+    temporary_unlock_config = serializers.SerializerMethodField()
+    temporary_unlock_status = serializers.SerializerMethodField()
+    temporary_unlock_records = TemporaryUnlockRecordSerializer(many=True, read_only=True)
+    can_request_temporary_unlock = serializers.SerializerMethodField()
+    temporary_unlock_cooldown_remaining = serializers.SerializerMethodField()
+
     class Meta:
         model = LockTask
         fields = [
@@ -228,6 +260,9 @@ class LockTaskSerializer(serializers.ModelSerializer):
             'is_frozen', 'frozen_at', 'frozen_end_time', 'total_frozen_duration',
             # 防护罩字段
             'shield_active', 'shield_activated_at', 'shield_activated_by',
+            # 临时开锁字段
+            'temporary_unlock_config', 'temporary_unlock_status', 'temporary_unlock_records',
+            'can_request_temporary_unlock', 'temporary_unlock_cooldown_remaining',
             # 计算字段
             'key_holder', 'vote_count', 'vote_agreement_count', 'submission_files',
             'participants', 'participant_count', 'submitted_count', 'approved_count', 'can_take'
@@ -299,6 +334,52 @@ class LockTaskSerializer(serializers.ModelSerializer):
             # 单人任务：只能是开放状态
             return obj.status == 'open'
 
+    def get_temporary_unlock_config(self, obj):
+        """获取临时开锁配置"""
+        if not obj.allow_temporary_unlock:
+            return None
+        return {
+            'enabled': True,
+            'limit_type': obj.temporary_unlock_limit_type,
+            'limit_value': obj.temporary_unlock_limit_value,
+            'max_duration': obj.temporary_unlock_max_duration,
+            'require_approval': obj.temporary_unlock_require_approval,
+            'require_photo': obj.temporary_unlock_require_photo,
+        }
+
+    def get_temporary_unlock_status(self, obj):
+        """获取当前临时开锁状态"""
+        active_unlock = obj.temporary_unlocks.filter(status='active').first()
+        if active_unlock:
+            return {
+                'is_active': True,
+                'record_id': str(active_unlock.id),
+                'started_at': active_unlock.started_at,
+                'remaining_minutes': active_unlock.remaining_minutes,
+                'require_photo': obj.temporary_unlock_require_photo and not active_unlock.verification_photo,
+            }
+        return {'is_active': False}
+
+    def get_can_request_temporary_unlock(self, obj):
+        """检查当前用户是否可以请求临时开锁"""
+        user = self.context.get('request').user if self.context.get('request') else None
+        if not user or not obj.allow_temporary_unlock:
+            return False
+
+        # 检查是否有进行中的临时开锁
+        if obj.temporary_unlocks.filter(status__in=['pending', 'approved', 'active']).exists():
+            return False
+
+        # 检查限制
+        return obj.can_user_request_temporary_unlock(user)
+
+    def get_temporary_unlock_cooldown_remaining(self, obj):
+        """获取冷却剩余时间（分钟）"""
+        user = self.context.get('request').user if self.context.get('request') else None
+        if not user:
+            return 0
+        return obj.get_temporary_unlock_cooldown_remaining(user)
+
     def to_representation(self, instance):
         """自定义序列化输出，根据权限控制敏感字段"""
         data = super().to_representation(instance)
@@ -342,6 +423,27 @@ class LockTaskCreateSerializer(serializers.ModelSerializer):
         write_only=True
     )
 
+    # 临时开锁配置字段
+    allow_temporary_unlock = serializers.BooleanField(required=False, default=False)
+    temporary_unlock_limit_type = serializers.ChoiceField(
+        choices=['daily_count', 'cooldown'],
+        required=False,
+        allow_null=True
+    )
+    temporary_unlock_limit_value = serializers.IntegerField(
+        required=False,
+        allow_null=True,
+        min_value=1
+    )
+    temporary_unlock_max_duration = serializers.IntegerField(
+        required=False,
+        default=30,
+        min_value=5,
+        max_value=240
+    )
+    temporary_unlock_require_approval = serializers.BooleanField(required=False, default=False)
+    temporary_unlock_require_photo = serializers.BooleanField(required=False, default=False)
+
     class Meta:
         model = LockTask
         fields = [
@@ -357,7 +459,14 @@ class LockTaskCreateSerializer(serializers.ModelSerializer):
             # 多人任务字段
             'max_participants',
             # 自动发布动态字段
-            'auto_publish', 'images'
+            'auto_publish', 'images',
+            # 临时开锁配置字段
+            'allow_temporary_unlock',
+            'temporary_unlock_limit_type',
+            'temporary_unlock_limit_value',
+            'temporary_unlock_max_duration',
+            'temporary_unlock_require_approval',
+            'temporary_unlock_require_photo',
         ]
         read_only_fields = ['id', 'status', 'strict_code']
 
@@ -469,6 +578,23 @@ class LockTaskCreateSerializer(serializers.ModelSerializer):
             # 不允许带锁任务设置完成率门槛
             raise serializers.ValidationError("完成率门槛仅适用于任务板")
 
+        # 验证临时开锁配置
+        if data.get('allow_temporary_unlock'):
+            # 只有带锁任务可以启用临时开锁
+            if task_type != 'lock':
+                raise serializers.ValidationError({
+                    'allow_temporary_unlock': '只有带锁任务可以启用临时开锁功能'
+                })
+
+            if not data.get('temporary_unlock_limit_type'):
+                raise serializers.ValidationError({
+                    'temporary_unlock_limit_type': '启用临时开锁时必须指定限制类型'
+                })
+            if not data.get('temporary_unlock_limit_value'):
+                raise serializers.ValidationError({
+                    'temporary_unlock_limit_value': '启用临时开锁时必须指定限制值'
+                })
+
         return data
 
 
@@ -509,12 +635,31 @@ class TaskTimelineEventSerializer(serializers.ModelSerializer):
     """任务时间线事件序列化器"""
     user = UserMinimalSerializer(read_only=True)
     event_type_display = serializers.CharField(source='get_event_type_display', read_only=True)
+    verification_photo_url = serializers.SerializerMethodField()
 
     class Meta:
         model = TaskTimelineEvent
         fields = [
             'id', 'event_type', 'event_type_display', 'user',
             'time_change_minutes', 'previous_end_time', 'new_end_time',
-            'description', 'metadata', 'created_at'
+            'description', 'metadata', 'verification_photo_url', 'created_at'
         ]
         read_only_fields = ['id', 'created_at']
+
+    def get_verification_photo_url(self, obj):
+        """获取验证照片URL（仅用于临时开锁事件）"""
+        if obj.event_type not in ['temporary_unlock_ended', 'temporary_unlock_timeout']:
+            return None
+
+        record_id = obj.metadata.get('record_id') if obj.metadata else None
+        if not record_id:
+            return None
+
+        try:
+            record = TemporaryUnlockRecord.objects.get(id=record_id)
+            if record.verification_photo:
+                return f"{settings.MEDIA_URL}{record.verification_photo}"
+        except Exception:
+            pass
+
+        return None

@@ -310,26 +310,46 @@
                 </span>
               </div>
 
-              <!-- Telegram Min Priority -->
-              <div class="setting-item">
+              <!-- Telegram Priority Settings -->
+              <div class="setting-item telegram-priority-settings">
                 <div class="setting-info">
                   <span class="setting-label">Telegram 通知优先级</span>
                   <span class="setting-description">
-                    只接收指定优先级及以上的 Telegram 通知
+                    选择哪些优先级的通知会发送到 Telegram
                   </span>
                 </div>
-                <select
-                  v-if="editMode"
-                  v-model="notificationSettings.telegram_min_priority"
-                  class="setting-select"
-                >
-                  <option value="urgent">紧急 - 仅紧急通知</option>
-                  <option value="high">高 - 高优先级及以上</option>
-                  <option value="normal">普通 - 普通优先级及以上</option>
-                  <option value="low">低 - 所有通知</option>
-                </select>
+                <div v-if="editMode" class="priority-toggles">
+                  <label class="priority-toggle">
+                    <input
+                      type="checkbox"
+                      v-model="notificationSettings.telegram_priority_settings.urgent"
+                    />
+                    <span class="toggle-label">紧急</span>
+                  </label>
+                  <label class="priority-toggle">
+                    <input
+                      type="checkbox"
+                      v-model="notificationSettings.telegram_priority_settings.high"
+                    />
+                    <span class="toggle-label">高</span>
+                  </label>
+                  <label class="priority-toggle">
+                    <input
+                      type="checkbox"
+                      v-model="notificationSettings.telegram_priority_settings.normal"
+                    />
+                    <span class="toggle-label">普通</span>
+                  </label>
+                  <label class="priority-toggle">
+                    <input
+                      type="checkbox"
+                      v-model="notificationSettings.telegram_priority_settings.low"
+                    />
+                    <span class="toggle-label">低</span>
+                  </label>
+                </div>
                 <span v-else class="setting-value">
-                  {{ getTelegramPriorityText(notificationSettings.telegram_min_priority) }}
+                  {{ getTelegramPriorityText() }}
                 </span>
               </div>
             </div>
@@ -403,7 +423,12 @@ const telegramActionLoading = ref(false)
 // 通知设置相关状态
 const notificationSettings = ref({
   task_deadline_reminder_minutes: 30,
-  telegram_min_priority: 'urgent'
+  telegram_priority_settings: {
+    low: false,
+    normal: false,
+    high: true,
+    urgent: true
+  }
 })
 const notificationSettingsLoading = ref(false)
 
@@ -645,14 +670,17 @@ const getLocationPrecisionText = (precision: number) => {
   return texts[precision as keyof typeof texts] || '未知'
 }
 
-const getTelegramPriorityText = (priority: string) => {
-  const texts: Record<string, string> = {
-    'urgent': '紧急 - 仅紧急通知',
-    'high': '高 - 高优先级及以上',
-    'normal': '普通 - 普通优先级及以上',
-    'low': '低 - 所有通知'
-  }
-  return texts[priority] || '未知'
+const getTelegramPriorityText = () => {
+  const settings = notificationSettings.value.telegram_priority_settings
+  const enabled: string[] = []
+  if (settings.urgent) enabled.push('紧急')
+  if (settings.high) enabled.push('高')
+  if (settings.normal) enabled.push('普通')
+  if (settings.low) enabled.push('低')
+
+  if (enabled.length === 0) return '已禁用'
+  if (enabled.length === 4) return '所有通知'
+  return enabled.join('、')
 }
 
 const fetchNotificationSettings = async () => {
@@ -663,7 +691,12 @@ const fetchNotificationSettings = async () => {
     const response = await authApi.getNotificationSettings()
     notificationSettings.value = {
       task_deadline_reminder_minutes: response.task_deadline_reminder_minutes,
-      telegram_min_priority: response.telegram_min_priority
+      telegram_priority_settings: response.telegram_priority_settings || {
+        low: false,
+        normal: false,
+        high: true,
+        urgent: true
+      }
     }
   } catch (error: any) {
     console.error('Error fetching notification settings:', error)
@@ -678,7 +711,7 @@ const saveNotificationSettings = async () => {
   try {
     await authApi.updateNotificationSettings({
       task_deadline_reminder_minutes: notificationSettings.value.task_deadline_reminder_minutes,
-      telegram_min_priority: notificationSettings.value.telegram_min_priority
+      telegram_priority_settings: notificationSettings.value.telegram_priority_settings
     })
     console.log('通知设置已保存')
   } catch (error: any) {
@@ -1279,6 +1312,44 @@ onMounted(async () => {
   font-size: 0.875rem;
   font-weight: 600;
   color: #007bff;
+}
+
+/* Telegram Priority Settings */
+.telegram-priority-settings {
+  align-items: flex-start;
+}
+
+.priority-toggles {
+  display: flex;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.priority-toggle {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  cursor: pointer;
+  padding: 0.5rem;
+  border-radius: 4px;
+  transition: background-color 0.2s;
+}
+
+.priority-toggle:hover {
+  background-color: #f8f9fa;
+}
+
+.priority-toggle input[type="checkbox"] {
+  width: 1.25rem;
+  height: 1.25rem;
+  cursor: pointer;
+  accent-color: #007bff;
+}
+
+.priority-toggle .toggle-label {
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: #333;
 }
 
 /* Mobile responsive */

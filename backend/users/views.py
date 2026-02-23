@@ -1290,8 +1290,7 @@ class NotificationSettingsView(APIView):
         user = request.user
         return Response({
             'task_deadline_reminder_minutes': user.task_deadline_reminder_minutes,
-            'telegram_min_priority': user.telegram_min_priority,
-            'telegram_min_priority_display': user.get_telegram_min_priority_display(),
+            'telegram_priority_settings': user.get_telegram_priority_settings(),
         })
 
     def patch(self, request):
@@ -1316,24 +1315,40 @@ class NotificationSettingsView(APIView):
                     status=status.HTTP_400_BAD_REQUEST
                 )
 
-        # 验证并更新 Telegram 最低优先级
-        if 'telegram_min_priority' in data:
-            priority = data['telegram_min_priority']
+        # 验证并更新 Telegram 优先级设置
+        if 'telegram_priority_settings' in data:
+            priority_settings = data['telegram_priority_settings']
             valid_priorities = ['low', 'normal', 'high', 'urgent']
-            if priority not in valid_priorities:
+
+            # 验证输入格式
+            if not isinstance(priority_settings, dict):
                 return Response(
-                    {'error': f'Telegram 最低优先级必须是以下之一: {", ".join(valid_priorities)}'},
+                    {'error': 'telegram_priority_settings 必须是对象格式'},
                     status=status.HTTP_400_BAD_REQUEST
                 )
-            user.telegram_min_priority = priority
 
-        user.save(update_fields=['task_deadline_reminder_minutes', 'telegram_min_priority'])
+            # 验证每个优先级设置
+            validated_settings = {}
+            for priority in valid_priorities:
+                if priority in priority_settings:
+                    if not isinstance(priority_settings[priority], bool):
+                        return Response(
+                            {'error': f'优先级 {priority} 的设置必须是布尔值'},
+                            status=status.HTTP_400_BAD_REQUEST
+                        )
+                    validated_settings[priority] = priority_settings[priority]
+
+            # 合并现有设置与新设置
+            current_settings = user.get_telegram_priority_settings()
+            current_settings.update(validated_settings)
+            user.telegram_priority_settings = current_settings
+
+        user.save(update_fields=['task_deadline_reminder_minutes', 'telegram_priority_settings'])
 
         return Response({
             'message': '通知设置已更新',
             'task_deadline_reminder_minutes': user.task_deadline_reminder_minutes,
-            'telegram_min_priority': user.telegram_min_priority,
-            'telegram_min_priority_display': user.get_telegram_min_priority_display(),
+            'telegram_priority_settings': user.get_telegram_priority_settings(),
         })
 
 

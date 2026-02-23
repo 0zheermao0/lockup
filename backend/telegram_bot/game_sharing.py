@@ -347,8 +347,9 @@ class TelegramGameSharing:
                 }
                 game.status = 'completed'
                 game.completed_at = timezone.now()
+                logger.info(f"准备保存石头剪刀布游戏: game_id={game.id}, status={game.status}, result={game.result}")
                 await sync_to_async(game.save)()
-                logger.info(f"石头剪刀布游戏已结算并保存: game_id={game.id}, status={game.status}")
+                logger.info(f"石头剪刀布游戏已结算并保存: game_id={game.id}")
 
                 # 输家加时30分钟
                 loser_lock_tasks = await sync_to_async(list)(
@@ -558,8 +559,9 @@ class TelegramGameSharing:
                 'item_transferred': item_transferred,
                 'item_details': item_reward_details
             }
+            logger.info(f"准备保存掷骰子游戏: game_id={game.id}, status={game.status}")
             await sync_to_async(game.save)()
-            logger.info(f"掷骰子游戏已结算并保存: game_id={game.id}, status={game.status}")
+            logger.info(f"掷骰子游戏已结算并保存: game_id={game.id}")
 
             # 发送通知给参与者
             display_creator = creator.telegram_username or creator.username

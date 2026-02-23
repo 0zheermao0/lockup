@@ -209,6 +209,119 @@
             </small>
           </div>
 
+          <!-- 临时开锁配置 -->
+          <div class="temporary-unlock-section">
+            <div class="section-header" @click="form.allow_temporary_unlock = !form.allow_temporary_unlock">
+              <label class="checkbox-label-enhanced">
+                <input
+                  type="checkbox"
+                  v-model="form.allow_temporary_unlock"
+                  class="checkbox-input-enhanced"
+                />
+                <span class="checkbox-text-enhanced">
+                  <span class="icon">🔓</span>
+                  启用临时开锁
+                  <small class="checkbox-desc-enhanced">允许任务执行过程中临时解除锁定</small>
+                </span>
+              </label>
+            </div>
+
+            <transition name="slide-fade">
+              <div v-if="form.allow_temporary_unlock" class="unlock-config">
+                <!-- 限制类型选择 -->
+                <div class="form-row">
+                  <div class="form-group">
+                    <label>限制类型</label>
+                    <div class="radio-group-compact">
+                      <label class="radio-option-compact">
+                        <input
+                          type="radio"
+                          v-model="form.temporary_unlock_limit_type"
+                          value="daily_count"
+                        />
+                        <span>每日次数</span>
+                      </label>
+                      <label class="radio-option-compact">
+                        <input
+                          type="radio"
+                          v-model="form.temporary_unlock_limit_type"
+                          value="cooldown"
+                        />
+                        <span>冷却间隔</span>
+                      </label>
+                    </div>
+                  </div>
+
+                  <!-- 限制值 -->
+                  <div class="form-group">
+                    <label>
+                      {{ form.temporary_unlock_limit_type === 'daily_count' ? '每日次数' : '冷却间隔（小时）' }}
+                    </label>
+                    <input
+                      type="number"
+                      v-model.number="form.temporary_unlock_limit_value"
+                      :min="1"
+                      :max="form.temporary_unlock_limit_type === 'daily_count' ? 10 : 168"
+                      class="form-input"
+                      required
+                    />
+                    <small class="form-hint">
+                      {{ form.temporary_unlock_limit_type === 'daily_count' ? '每天最多开锁次数' : '两次开锁之间的最小间隔' }}
+                    </small>
+                  </div>
+                </div>
+
+                <!-- 最大时长 -->
+                <div class="form-group">
+                  <label>单次最大时长</label>
+                  <div class="duration-slider">
+                    <input
+                      type="range"
+                      v-model.number="form.temporary_unlock_max_duration"
+                      min="5"
+                      max="240"
+                      step="5"
+                      class="slider"
+                    />
+                    <span class="slider-value">{{ form.temporary_unlock_max_duration }} 分钟</span>
+                  </div>
+                  <small class="form-hint">超时将自动结束并惩罚（自动置顶30分钟）</small>
+                </div>
+
+                <!-- 额外选项 -->
+                <div class="form-row">
+                  <div class="form-group">
+                    <label class="checkbox-label-compact">
+                      <input
+                        type="checkbox"
+                        v-model="form.temporary_unlock_require_approval"
+                        class="checkbox-input-compact"
+                      />
+                      <span class="checkbox-text-compact">
+                        需要钥匙持有者同意
+                        <small class="checkbox-desc-compact">（仅当钥匙持有者不是本人时）</small>
+                      </span>
+                    </label>
+                  </div>
+
+                  <div class="form-group">
+                    <label class="checkbox-label-compact">
+                      <input
+                        type="checkbox"
+                        v-model="form.temporary_unlock_require_photo"
+                        class="checkbox-input-compact"
+                      />
+                      <span class="checkbox-text-compact">
+                        需要拍照证明
+                        <small class="checkbox-desc-compact">（结束临时开锁时需要拍摄验证照片）</small>
+                      </span>
+                    </label>
+                  </div>
+                </div>
+              </div>
+            </transition>
+          </div>
+
         </template>
 
         <!-- Task Board Fields -->
@@ -355,6 +468,13 @@ const form = reactive<TaskCreateRequest>({
   difficulty: 'normal',
   unlock_type: 'time',
   strict_mode: false, // 默认不启用严格模式
+  // 临时开锁配置
+  allow_temporary_unlock: false,
+  temporary_unlock_limit_type: 'daily_count',
+  temporary_unlock_limit_value: 3,
+  temporary_unlock_max_duration: 30,
+  temporary_unlock_require_approval: false,
+  temporary_unlock_require_photo: false,
   // Board task fields
   reward: undefined,
   max_duration: 24, // 默认24小时
@@ -393,6 +513,13 @@ const resetForm = () => {
   form.max_duration = 24
   form.max_participants = 1
   form.completion_rate_threshold = 0
+  // 临时开锁配置
+  form.allow_temporary_unlock = false
+  form.temporary_unlock_limit_type = 'daily_count'
+  form.temporary_unlock_limit_value = 3
+  form.temporary_unlock_max_duration = 30
+  form.temporary_unlock_require_approval = false
+  form.temporary_unlock_require_photo = false
   // Reset image
   imagePreview.value = ''
   imageFile.value = null
@@ -595,6 +722,15 @@ const handleSubmit = async () => {
       delete cleanedForm.reward
       delete cleanedForm.max_duration
       delete cleanedForm.completion_rate_threshold
+
+      // If temporary unlock is not enabled, remove related fields
+      if (!cleanedForm.allow_temporary_unlock) {
+        delete cleanedForm.temporary_unlock_limit_type
+        delete cleanedForm.temporary_unlock_limit_value
+        delete cleanedForm.temporary_unlock_max_duration
+        delete cleanedForm.temporary_unlock_require_approval
+        delete cleanedForm.temporary_unlock_require_photo
+      }
     } else if (form.task_type === 'board') {
       // Remove lock-specific fields for board tasks
       delete cleanedForm.duration_type
@@ -604,6 +740,14 @@ const handleSubmit = async () => {
       delete cleanedForm.unlock_type
       delete cleanedForm.vote_agreement_ratio
       delete cleanedForm.strict_mode
+
+      // Remove temporary unlock fields for board tasks
+      delete cleanedForm.allow_temporary_unlock
+      delete cleanedForm.temporary_unlock_limit_type
+      delete cleanedForm.temporary_unlock_limit_value
+      delete cleanedForm.temporary_unlock_max_duration
+      delete cleanedForm.temporary_unlock_require_approval
+      delete cleanedForm.temporary_unlock_require_photo
 
       // Clean up completion_rate_threshold - remove if 0 or null/undefined
       if (cleanedForm.completion_rate_threshold === 0 ||
@@ -693,6 +837,13 @@ watch(() => form.task_type, (newValue) => {
     form.duration_value = 60
     form.duration_max = 120
     form.strict_mode = false
+    // Reset temporary unlock fields
+    form.allow_temporary_unlock = false
+    form.temporary_unlock_limit_type = 'daily_count'
+    form.temporary_unlock_limit_value = 3
+    form.temporary_unlock_max_duration = 30
+    form.temporary_unlock_require_approval = false
+    form.temporary_unlock_require_photo = false
   } else if (newValue === 'board') {
     // Reset lock fields
     form.duration_type = 'fixed'
@@ -702,6 +853,13 @@ watch(() => form.task_type, (newValue) => {
     form.unlock_type = 'time'
     form.vote_agreement_ratio = undefined
     form.strict_mode = false
+    // Reset temporary unlock fields
+    form.allow_temporary_unlock = false
+    form.temporary_unlock_limit_type = 'daily_count'
+    form.temporary_unlock_limit_value = 3
+    form.temporary_unlock_max_duration = 30
+    form.temporary_unlock_require_approval = false
+    form.temporary_unlock_require_photo = false
   }
 })
 
@@ -1513,6 +1671,80 @@ onUnmounted(() => {
   color: #6c757d;
   font-style: italic;
   line-height: 1.3;
+}
+
+/* 临时开锁配置样式 */
+.temporary-unlock-section {
+  margin-top: 1.5rem;
+  padding: 1rem;
+  background: #f8f9fa;
+  border-radius: 8px;
+  border: 1px solid #e9ecef;
+}
+
+.section-header {
+  cursor: pointer;
+}
+
+.unlock-config {
+  margin-top: 1rem;
+  padding-top: 1rem;
+  border-top: 1px solid #dee2e6;
+}
+
+.duration-slider {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.slider {
+  flex: 1;
+  height: 6px;
+  border-radius: 3px;
+  background: #dee2e6;
+  outline: none;
+  -webkit-appearance: none;
+}
+
+.slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #4CAF50;
+  cursor: pointer;
+}
+
+.slider::-moz-range-thumb {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #4CAF50;
+  cursor: pointer;
+  border: none;
+}
+
+.slider-value {
+  min-width: 80px;
+  font-weight: 600;
+  color: #333;
+}
+
+/* Slide fade transition */
+.slide-fade-enter-active {
+  transition: all 0.3s ease-out;
+}
+
+.slide-fade-leave-active {
+  transition: all 0.2s ease-in;
+}
+
+.slide-fade-enter-from,
+.slide-fade-leave-to {
+  transform: translateY(-10px);
+  opacity: 0;
 }
 
 /* Mobile responsive */

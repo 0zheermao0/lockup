@@ -270,6 +270,11 @@ def secure_avatar_upload_to(instance, filename):
     return secure_file_upload_to(instance, filename, 'avatars')
 
 
+def secure_temporary_unlock_photo_upload_to(instance, filename):
+    """临时开锁验证照片的安全上传路径"""
+    return secure_file_upload_to(instance, filename, 'temporary_unlocks/photos')
+
+
 def clean_filename_for_display(filename):
     """
     清理文件名用于显示（移除时间戳等安全信息）

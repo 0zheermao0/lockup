@@ -1,8 +1,63 @@
 <template>
-  <!-- 液态玻璃主题下使用Teleport渲染到body，避免stacking context问题 -->
-  <Teleport v-if="isLiquidGlassTheme" to="body">
-    <transition name="toast" @after-leave="$emit('closed')">
-      <div v-if="isVisible" class="toast-overlay liquid-glass-toast" @click="closeToast">
+  <!-- Single root element wrapper to fix Transition warning -->
+  <div class="notification-toast-wrapper">
+    <!-- 液态玻璃主题下使用Teleport渲染到body，避免stacking context问题 -->
+    <Teleport v-if="isLiquidGlassTheme" to="body">
+      <transition name="toast" @after-leave="$emit('closed')">
+        <div v-if="isVisible" class="toast-overlay liquid-glass-toast" @click="closeToast">
+          <div class="toast-container" @click.stop>
+            <div class="toast-card" :class="toastTypeClass">
+              <!-- Header -->
+              <div class="toast-header">
+                <div class="toast-icon">
+                  {{ toastIcon }}
+                </div>
+                <div class="toast-title">
+                  {{ title }}
+                </div>
+                <button @click="closeToast" class="toast-close-btn" title="关闭">
+                  ✕
+                </button>
+              </div>
+
+              <!-- Content -->
+              <div class="toast-content">
+                <slot name="default">
+                  <!-- Default content when no slot provided -->
+                  <div class="toast-message">
+                    {{ message }}
+                  </div>
+                  <div v-if="secondaryMessage" class="toast-secondary">
+                    {{ secondaryMessage }}
+                  </div>
+
+                  <!-- Details Section -->
+                  <div v-if="details" class="toast-details">
+                    <div v-for="(value, key) in details" :key="key" class="detail-item">
+                      <span class="detail-label">{{ key }}:</span>
+                      <span class="detail-value">{{ value }}</span>
+                    </div>
+                  </div>
+                </slot>
+              </div>
+
+              <!-- Action Buttons -->
+              <div v-if="showActions || $slots.actions" class="toast-actions">
+                <slot name="actions">
+                  <button @click="closeToast" class="toast-action-btn primary">
+                    确定
+                  </button>
+                </slot>
+              </div>
+            </div>
+          </div>
+        </div>
+      </transition>
+    </Teleport>
+
+    <!-- 非液态玻璃主题使用正常渲染 -->
+    <transition v-else name="toast" @after-leave="$emit('closed')">
+      <div v-if="isVisible" class="toast-overlay" @click="closeToast">
         <div class="toast-container" @click.stop>
           <div class="toast-card" :class="toastTypeClass">
             <!-- Header -->
@@ -51,59 +106,7 @@
         </div>
       </div>
     </transition>
-  </Teleport>
-
-  <!-- 非液态玻璃主题使用正常渲染 -->
-  <transition v-else name="toast" @after-leave="$emit('closed')">
-    <div v-if="isVisible" class="toast-overlay" @click="closeToast">
-      <div class="toast-container" @click.stop>
-        <div class="toast-card" :class="toastTypeClass">
-          <!-- Header -->
-          <div class="toast-header">
-            <div class="toast-icon">
-              {{ toastIcon }}
-            </div>
-            <div class="toast-title">
-              {{ title }}
-            </div>
-            <button @click="closeToast" class="toast-close-btn" title="关闭">
-              ✕
-            </button>
-          </div>
-
-          <!-- Content -->
-          <div class="toast-content">
-            <slot name="default">
-              <!-- Default content when no slot provided -->
-              <div class="toast-message">
-                {{ message }}
-              </div>
-              <div v-if="secondaryMessage" class="toast-secondary">
-                {{ secondaryMessage }}
-              </div>
-
-              <!-- Details Section -->
-              <div v-if="details" class="toast-details">
-                <div v-for="(value, key) in details" :key="key" class="detail-item">
-                  <span class="detail-label">{{ key }}:</span>
-                  <span class="detail-value">{{ value }}</span>
-                </div>
-              </div>
-            </slot>
-          </div>
-
-          <!-- Action Buttons -->
-          <div v-if="showActions || $slots.actions" class="toast-actions">
-            <slot name="actions">
-              <button @click="closeToast" class="toast-action-btn primary">
-                确定
-              </button>
-            </slot>
-          </div>
-        </div>
-      </div>
-    </div>
-  </transition>
+  </div>
 </template>
 
 <script setup lang="ts">

@@ -482,5 +482,97 @@ export const tasksApi = {
     return apiRequest(`/tasks/${id}/use-time-hourglass/`, {
       method: 'POST'
     })
+  },
+
+  // ============================================================================
+  // 临时开锁 API
+  // ============================================================================
+
+  // 请求临时开锁
+  requestTemporaryUnlock: async (id: string): Promise<{
+    message: string
+    record: any
+  }> => {
+    return apiRequest(`/tasks/${id}/temporary-unlock/request/`, {
+      method: 'POST'
+    })
+  },
+
+  // 批准临时开锁请求（钥匙持有者）
+  approveTemporaryUnlock: async (id: string, recordId: string): Promise<{
+    message: string
+    record: any
+  }> => {
+    return apiRequest(`/tasks/${id}/temporary-unlock/approve/`, {
+      method: 'POST',
+      body: JSON.stringify({ record_id: recordId })
+    })
+  },
+
+  // 拒绝临时开锁请求（钥匙持有者）
+  rejectTemporaryUnlock: async (id: string, recordId: string, reason?: string): Promise<{
+    message: string
+    record: any
+  }> => {
+    return apiRequest(`/tasks/${id}/temporary-unlock/reject/`, {
+      method: 'POST',
+      body: JSON.stringify({ record_id: recordId, rejection_reason: reason })
+    })
+  },
+
+  // 结束临时开锁
+  endTemporaryUnlock: async (id: string): Promise<{
+    message: string
+    record: any
+    task_new_end_time: string
+  }> => {
+    return apiRequest(`/tasks/${id}/temporary-unlock/end/`, {
+      method: 'POST'
+    })
+  },
+
+  // 结束临时开锁并上传照片
+  endTemporaryUnlockWithPhoto: async (id: string, photo: File): Promise<{
+    message: string
+    record: any
+    task_new_end_time: string
+  }> => {
+    const formData = new FormData()
+    formData.append('verification_photo', photo)
+
+    const token = localStorage.getItem('token');
+    const headers: Record<string, string> = {};
+    if (token) {
+      headers.Authorization = `Token ${token}`;
+    }
+
+    const response = await fetch(`${API_BASE_URL}/tasks/${id}/temporary-unlock/end/`, {
+      method: 'POST',
+      headers,
+      body: formData
+    });
+
+    return handleResponse(response);
+  },
+
+  // 取消临时开锁请求
+  cancelTemporaryUnlock: async (id: string): Promise<{
+    message: string
+    record: any
+  }> => {
+    return apiRequest(`/tasks/${id}/temporary-unlock/cancel/`, {
+      method: 'POST'
+    })
+  },
+
+  // 获取临时开锁记录列表
+  getTemporaryUnlockRecords: async (id: string, page?: number): Promise<{
+    results: any[]
+    count: number
+    next: string | null
+    previous: string | null
+  }> => {
+    const url = page ? `/tasks/${id}/temporary-unlock/records/?page=${page}` : `/tasks/${id}/temporary-unlock/records/`
+    return apiRequest(url)
   }
 }

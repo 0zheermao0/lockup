@@ -4164,3 +4164,634 @@ def toggle_shield(request, pk):
         'remaining_coins': request.user.coins,
         'activated_at': task.shield_activated_at.isoformat() if task.shield_activated_at else None
     })
+
+
+# ============================================================================
+# 临时开锁功能视图
+# ============================================================================
+
+from rest_framework.views import APIView
+from .models import TemporaryUnlockRecord
+from .serializers import TemporaryUnlockRecordSerializer
+from users.models import Notification, Conversation, PrivateMessage
+from django.core.exceptions import ValidationError
+
+
+class TemporaryUnlockRequestView(APIView):
+    """请求临时开锁"""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request, pk):
+        task = get_object_or_404(LockTask, pk=pk)
+        user = request.user
+
+        # 验证权限
+        if task.user != user:
+            return Response(
+                {'error': '只能为自己的任务请求临时开锁'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+        # 验证任务状态
+        if task.status != 'active':
+            return Response(
+                {'error': '只能为进行中的任务请求临时开锁'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # 验证是否启用临时开锁
+        if not task.allow_temporary_unlock:
+            return Response(
+                {'error': '该任务未启用临时开锁功能'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # 检查是否已有进行中的请求
+        if TemporaryUnlockRecord.objects.filter(
+            task=task,
+            status__in=['pending', 'approved', 'active']
+        ).exists():
+            return Response(
+                {'error': '已有进行中的临时开锁请求'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # 检查限制
+        if not task.can_user_request_temporary_unlock(user):
+            remaining = task.get_temporary_unlock_cooldown_remaining(user)
+            if remaining > 0:
+                return Response(
+                    {'error': f'临时开锁冷却中，还需等待 {remaining} 分钟'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            return Response(
+                {'error': '已达到今日临时开锁次数上限'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # 创建临时开锁记录
+        record = TemporaryUnlockRecord.objects.create(
+            task=task,
+            user=user,
+            status='pending' if task.temporary_unlock_require_approval else 'active',
+            max_end_time=timezone.now() + timedelta(minutes=task.temporary_unlock_max_duration)
+        )
+
+        # 保存任务冻结状态
+        record.task_frozen_end_time = task.end_time
+        record.save()
+
+        # 冻结任务计时
+        task.freeze_task()
+
+        # 创建时间线事件 - 任务冻结
+        TaskTimelineEvent.objects.create(
+            task=task,
+            event_type='task_frozen',
+            user=user,
+            description=f'用户请求临时开锁，任务计时暂停',
+            metadata={
+                'frozen_at': timezone.now().isoformat(),
+                'reason': 'temporary_unlock_request'
+            }
+        )
+
+        # 如果需要批准，发送通知给钥匙持有者
+        if task.temporary_unlock_require_approval:
+            # 创建时间线事件 - 临时开锁请求
+            TaskTimelineEvent.objects.create(
+                task=task,
+                event_type='temporary_unlock_requested',
+                user=user,
+                description=f'请求临时开锁，等待钥匙持有者批准，最大时长 {task.temporary_unlock_max_duration} 分钟',
+                metadata={
+                    'record_id': str(record.id),
+                    'max_duration': task.temporary_unlock_max_duration,
+                    'require_approval': True,
+                    'require_photo': task.temporary_unlock_require_photo
+                }
+            )
+            self._notify_key_holder(task, record, user)
+            return Response({
+                'message': '临时开锁请求已发送，等待钥匙持有者批准',
+                'record': TemporaryUnlockRecordSerializer(record).data
+            })
+
+        # 不需要批准，直接开始
+        record.started_at = timezone.now()
+        record.save()
+
+        # 创建时间线事件 - 临时开锁开始
+        TaskTimelineEvent.objects.create(
+            task=task,
+            event_type='temporary_unlock_started',
+            user=user,
+            description=f'临时开锁开始，最大时长 {task.temporary_unlock_max_duration} 分钟',
+            metadata={
+                'record_id': str(record.id),
+                'started_at': record.started_at.isoformat(),
+                'max_end_time': record.max_end_time.isoformat(),
+                'max_duration': task.temporary_unlock_max_duration,
+                'require_photo': task.temporary_unlock_require_photo
+            }
+        )
+
+        return Response({
+            'message': '临时开锁已开始',
+            'record': TemporaryUnlockRecordSerializer(record).data
+        })
+
+    def _notify_key_holder(self, task, record, requester):
+        """通知钥匙持有者有待批准的请求"""
+        try:
+            task_key = TaskKey.objects.get(task=task)
+            key_holder = task_key.holder
+
+            if key_holder and key_holder != requester:
+                # 创建通知
+                Notification.create_notification(
+                    recipient=key_holder,
+                    notification_type='temporary_unlock_requested',
+                    title=f"{requester.username} 请求临时开锁",
+                    message=f"任务《{task.title}》的请求者请求临时开锁，请尽快处理",
+                    actor=requester,
+                    related_object_type='temporary_unlock',
+                    related_object_id=str(record.id),
+                    extra_data={
+                        'task_id': str(task.id),
+                        'task_title': task.title,
+                        'requester_id': requester.id,
+                        'requester_username': requester.username,
+                        'record_id': str(record.id),
+                        'max_duration': task.temporary_unlock_max_duration,
+                    },
+                    priority='normal'
+                )
+
+                # 发送私信
+                conversation = self._get_or_create_conversation(key_holder, requester)
+                PrivateMessage.objects.create(
+                    conversation=conversation,
+                    sender=requester,
+                    message_type='text',
+                    content=f"我请求对任务《{task.title}》进行临时开锁，最大时长 {task.temporary_unlock_max_duration} 分钟。请在任务详情中处理此请求。"
+                )
+        except TaskKey.DoesNotExist:
+            pass
+
+    def _get_or_create_conversation(self, user1, user2):
+        """获取或创建会话"""
+        conversation = Conversation.objects.filter(
+            participants=user1
+        ).filter(
+            participants=user2
+        ).first()
+
+        if not conversation:
+            conversation = Conversation.objects.create()
+            conversation.participants.add(user1, user2)
+
+        return conversation
+
+
+class TemporaryUnlockApproveView(APIView):
+    """批准临时开锁请求（钥匙持有者）"""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request, pk):
+        task = get_object_or_404(LockTask, pk=pk)
+        record_id = request.data.get('record_id')
+
+        if not record_id:
+            return Response(
+                {'error': '请提供 record_id'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        record = get_object_or_404(TemporaryUnlockRecord, id=record_id, task=task)
+
+        # 验证是否为钥匙持有者
+        try:
+            task_key = TaskKey.objects.get(task=task)
+            if task_key.holder != request.user:
+                return Response(
+                    {'error': '只有钥匙持有者可以批准临时开锁'},
+                    status=status.HTTP_403_FORBIDDEN
+                )
+        except TaskKey.DoesNotExist:
+            return Response(
+                {'error': '该任务没有钥匙持有者'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # 验证状态
+        if record.status != 'pending':
+            return Response(
+                {'error': '该请求不在待批准状态'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # 批准
+        record.status = 'active'
+        record.key_holder = request.user
+        record.approved_at = timezone.now()
+        record.started_at = timezone.now()
+        record.max_end_time = timezone.now() + timedelta(minutes=task.temporary_unlock_max_duration)
+        record.save()
+
+        # 创建时间线事件 - 临时开锁批准
+        TaskTimelineEvent.objects.create(
+            task=task,
+            event_type='temporary_unlock_approved',
+            user=request.user,
+            description=f'钥匙持有者 {request.user.username} 批准了临时开锁请求',
+            metadata={
+                'record_id': str(record.id),
+                'key_holder_id': request.user.id,
+                'key_holder_username': request.user.username,
+                'requester_id': record.user.id,
+                'requester_username': record.user.username,
+                'started_at': record.started_at.isoformat(),
+                'max_end_time': record.max_end_time.isoformat()
+            }
+        )
+
+        # 创建时间线事件 - 临时开锁开始
+        TaskTimelineEvent.objects.create(
+            task=task,
+            event_type='temporary_unlock_started',
+            user=record.user,
+            description=f'临时开锁开始，最大时长 {task.temporary_unlock_max_duration} 分钟',
+            metadata={
+                'record_id': str(record.id),
+                'started_at': record.started_at.isoformat(),
+                'max_end_time': record.max_end_time.isoformat(),
+                'max_duration': task.temporary_unlock_max_duration,
+                'require_photo': task.temporary_unlock_require_photo
+            }
+        )
+
+        # 通知请求者
+        Notification.create_notification(
+            recipient=record.user,
+            notification_type='temporary_unlock_approved',
+            title='临时开锁请求已批准',
+            message=f"钥匙持有者 {request.user.username} 已批准你的临时开锁请求",
+            actor=request.user,
+            related_object_type='temporary_unlock',
+            related_object_id=str(record.id),
+            extra_data={
+                'task_id': str(task.id),
+                'task_title': task.title,
+                'key_holder_id': request.user.id,
+                'key_holder_username': request.user.username,
+                'max_duration': task.temporary_unlock_max_duration,
+            },
+            priority='normal'
+        )
+
+        return Response({
+            'message': '已批准临时开锁请求',
+            'record': TemporaryUnlockRecordSerializer(record).data
+        })
+
+
+class TemporaryUnlockRejectView(APIView):
+    """拒绝临时开锁请求（钥匙持有者）"""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request, pk):
+        task = get_object_or_404(LockTask, pk=pk)
+        record_id = request.data.get('record_id')
+        rejection_reason = request.data.get('rejection_reason', '').strip()
+
+        if not record_id:
+            return Response(
+                {'error': '请提供 record_id'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        record = get_object_or_404(TemporaryUnlockRecord, id=record_id, task=task)
+
+        # 验证是否为钥匙持有者
+        try:
+            task_key = TaskKey.objects.get(task=task)
+            if task_key.holder != request.user:
+                return Response(
+                    {'error': '只有钥匙持有者可以拒绝临时开锁'},
+                    status=status.HTTP_403_FORBIDDEN
+                )
+        except TaskKey.DoesNotExist:
+            return Response(
+                {'error': '该任务没有钥匙持有者'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # 验证状态
+        if record.status != 'pending':
+            return Response(
+                {'error': '该请求不在待批准状态'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # 拒绝
+        record.status = 'rejected'
+        record.key_holder = request.user
+        record.rejection_reason = rejection_reason
+        record.save()
+
+        # 创建时间线事件 - 临时开锁拒绝
+        TaskTimelineEvent.objects.create(
+            task=task,
+            event_type='temporary_unlock_rejected',
+            user=request.user,
+            description=f'钥匙持有者 {request.user.username} 拒绝了临时开锁请求' + (f'，原因：{rejection_reason}' if rejection_reason else ''),
+            metadata={
+                'record_id': str(record.id),
+                'key_holder_id': request.user.id,
+                'key_holder_username': request.user.username,
+                'requester_id': record.user.id,
+                'requester_username': record.user.username,
+                'rejection_reason': rejection_reason
+            }
+        )
+
+        # 解冻任务（因为冻结是在创建记录时进行的）
+        task.unfreeze_task()
+
+        # 创建时间线事件 - 任务解冻
+        TaskTimelineEvent.objects.create(
+            task=task,
+            event_type='task_unfrozen',
+            user=request.user,
+            description='临时开锁请求被拒绝，任务恢复计时',
+            metadata={
+                'reason': 'temporary_unlock_rejected',
+                'unfrozen_at': timezone.now().isoformat()
+            }
+        )
+
+        # 通知请求者
+        Notification.create_notification(
+            recipient=record.user,
+            notification_type='temporary_unlock_rejected',
+            title='临时开锁请求被拒绝',
+            message=f"钥匙持有者 {request.user.username} 拒绝了你的临时开锁请求",
+            actor=request.user,
+            related_object_type='temporary_unlock',
+            related_object_id=str(record.id),
+            extra_data={
+                'task_id': str(task.id),
+                'task_title': task.title,
+                'key_holder_id': request.user.id,
+                'key_holder_username': request.user.username,
+                'rejection_reason': rejection_reason,
+            },
+            priority='normal'
+        )
+
+        return Response({
+            'message': '已拒绝临时开锁请求',
+            'record': TemporaryUnlockRecordSerializer(record).data
+        })
+
+
+class TemporaryUnlockEndView(APIView):
+    """结束临时开锁（上传照片）"""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request, pk):
+        task = get_object_or_404(LockTask, pk=pk)
+        user = request.user
+
+        # 获取进行中的记录
+        record = TemporaryUnlockRecord.objects.filter(
+            task=task,
+            user=user,
+            status='active'
+        ).first()
+
+        if not record:
+            return Response(
+                {'error': '没有进行中的临时开锁'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # 如果需要照片验证
+        if task.temporary_unlock_require_photo:
+            photo = request.FILES.get('verification_photo')
+            if not photo:
+                return Response(
+                    {'error': '需要上传验证照片'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+            # 验证照片
+            try:
+                from utils.file_upload import validate_uploaded_file
+                validate_uploaded_file(photo, 'image')
+            except ValidationError as e:
+                return Response(
+                    {'error': str(e)},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+            # 保存照片
+            record.verification_photo = photo
+            record.photo_taken_at = timezone.now()
+
+        # 结束临时开锁
+        record.status = 'completed'
+        record.ended_at = timezone.now()
+        record.save()
+
+        # 解冻任务并调整结束时间
+        # 注意：先解冻再手动设置新的结束时间，避免 unfreeze_task 中的时间调整逻辑
+        original_end_time = record.task_frozen_end_time or task.frozen_end_time or task.end_time
+        frozen_duration = timezone.now() - record.started_at
+        new_end_time = original_end_time + frozen_duration
+
+        # 先解冻（不保存end_time），然后手动设置新的结束时间
+        if task.is_frozen:
+            task.is_frozen = False
+            task.total_frozen_duration += frozen_duration
+            task.frozen_at = None
+            task.frozen_end_time = None
+
+        task.end_time = new_end_time
+        task.save(update_fields=[
+            'is_frozen', 'end_time', 'total_frozen_duration',
+            'frozen_at', 'frozen_end_time'
+        ])
+
+        # 创建时间线事件 - 临时开锁结束
+        TaskTimelineEvent.objects.create(
+            task=task,
+            event_type='temporary_unlock_ended',
+            user=user,
+            description=f'临时开锁结束，持续 {record.duration_minutes} 分钟，任务恢复计时' + ('（已上传验证照片）' if task.temporary_unlock_require_photo else ''),
+            metadata={
+                'record_id': str(record.id),
+                'duration_minutes': record.duration_minutes,
+                'started_at': record.started_at.isoformat() if record.started_at else None,
+                'ended_at': record.ended_at.isoformat() if record.ended_at else None,
+                'has_photo': bool(record.verification_photo),
+                'previous_end_time': original_end_time.isoformat() if original_end_time else None,
+                'new_end_time': new_end_time.isoformat()
+            }
+        )
+
+        # 创建时间线事件 - 任务解冻
+        TaskTimelineEvent.objects.create(
+            task=task,
+            event_type='task_unfrozen',
+            user=user,
+            description='临时开锁结束，任务恢复计时',
+            metadata={
+                'reason': 'temporary_unlock_ended',
+                'unfrozen_at': timezone.now().isoformat(),
+                'frozen_duration_minutes': int(frozen_duration.total_seconds() / 60)
+            }
+        )
+
+        # 通知
+        Notification.create_notification(
+            recipient=user,
+            notification_type='temporary_unlock_completed',
+            title='临时开锁已结束',
+            message=f'任务《{task.title}》的临时开锁已结束，任务将继续计时',
+            related_object_type='temporary_unlock',
+            related_object_id=str(record.id),
+            extra_data={
+                'task_id': str(task.id),
+                'task_title': task.title,
+                'duration_minutes': record.duration_minutes,
+            },
+            priority='low'
+        )
+
+        return Response({
+            'message': '临时开锁已结束',
+            'record': TemporaryUnlockRecordSerializer(record).data,
+            'task_new_end_time': new_end_time
+        })
+
+
+class TemporaryUnlockCancelView(APIView):
+    """取消临时开锁请求"""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request, pk):
+        task = get_object_or_404(LockTask, pk=pk)
+        user = request.user
+
+        # 获取待批准或进行中的记录
+        record = TemporaryUnlockRecord.objects.filter(
+            task=task,
+            user=user,
+            status__in=['pending', 'approved', 'active']
+        ).first()
+
+        if not record:
+            return Response(
+                {'error': '没有可取消的临时开锁请求'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        was_active = record.status == 'active'
+        previous_status = record.status
+        record.status = 'cancelled'
+        record.ended_at = timezone.now() if was_active else None
+        record.save()
+
+        # 创建时间线事件 - 临时开锁取消
+        TaskTimelineEvent.objects.create(
+            task=task,
+            event_type='temporary_unlock_cancelled',
+            user=user,
+            description=f'用户取消了临时开锁请求（原状态：{previous_status}）',
+            metadata={
+                'record_id': str(record.id),
+                'previous_status': previous_status,
+                'was_active': was_active,
+                'cancelled_at': timezone.now().isoformat()
+            }
+        )
+
+        # 如果正在进行中，需要解冻任务并调整时间
+        if was_active:
+            # 计算冻结时长并调整结束时间
+            original_end_time = record.task_frozen_end_time or task.frozen_end_time or task.end_time
+            frozen_duration = timezone.now() - record.started_at
+            new_end_time = original_end_time + frozen_duration
+
+            # 先解冻（不保存end_time），然后手动设置新的结束时间
+            if task.is_frozen:
+                task.is_frozen = False
+                task.total_frozen_duration += frozen_duration
+                task.frozen_at = None
+                task.frozen_end_time = None
+
+            task.end_time = new_end_time
+            task.save(update_fields=[
+                'is_frozen', 'end_time', 'total_frozen_duration',
+                'frozen_at', 'frozen_end_time'
+            ])
+
+            # 创建时间线事件 - 任务解冻
+            TaskTimelineEvent.objects.create(
+                task=task,
+                event_type='task_unfrozen',
+                user=user,
+                description='临时开锁取消，任务恢复计时',
+                metadata={
+                    'reason': 'temporary_unlock_cancelled',
+                    'unfrozen_at': timezone.now().isoformat(),
+                    'frozen_duration_minutes': int(frozen_duration.total_seconds() / 60)
+                }
+            )
+        else:
+            # 只是待批准状态，直接解冻
+            task.unfreeze_task()
+
+            # 创建时间线事件 - 任务解冻
+            TaskTimelineEvent.objects.create(
+                task=task,
+                event_type='task_unfrozen',
+                user=user,
+                description='临时开锁请求取消，任务恢复计时',
+                metadata={
+                    'reason': 'temporary_unlock_cancelled',
+                    'unfrozen_at': timezone.now().isoformat()
+                }
+            )
+
+        return Response({
+            'message': '临时开锁请求已取消',
+            'record': TemporaryUnlockRecordSerializer(record).data
+        })
+
+
+class TemporaryUnlockRecordsView(generics.ListAPIView):
+    """获取任务的临时开锁记录列表"""
+    permission_classes = [permissions.IsAuthenticated]
+    serializer_class = TemporaryUnlockRecordSerializer
+    pagination_class = DynamicPageNumberPagination
+
+    def get_queryset(self):
+        pk = self.kwargs.get('pk')
+        task = get_object_or_404(LockTask, pk=pk)
+
+        # 只有任务所有者或钥匙持有者可以查看记录
+        user = self.request.user
+        is_key_holder = False
+        try:
+            task_key = TaskKey.objects.get(task=task)
+            is_key_holder = task_key.holder == user
+        except TaskKey.DoesNotExist:
+            pass
+
+        if task.user != user and not is_key_holder:
+            return TemporaryUnlockRecord.objects.none()
+
+        return TemporaryUnlockRecord.objects.filter(task=task).order_by('-created_at')

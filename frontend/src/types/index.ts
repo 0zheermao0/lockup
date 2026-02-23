@@ -180,6 +180,26 @@ export interface LockTask extends BaseLockTask {
   shield_active?: boolean // 是否开启防护罩
   shield_activated_at?: string | null // 防护罩开启时间
   shield_activated_by?: User | null // 开启防护罩的钥匙持有者
+  // 临时开锁字段
+  allow_temporary_unlock?: boolean
+  temporary_unlock_config?: {
+    enabled: boolean
+    limit_type: 'daily_count' | 'cooldown'
+    limit_value: number
+    max_duration: number
+    require_approval: boolean
+    require_photo: boolean
+  }
+  temporary_unlock_status?: {
+    is_active: boolean
+    record_id?: string
+    started_at?: string
+    remaining_minutes?: number
+    require_photo?: boolean
+  }
+  temporary_unlock_records?: any[]
+  can_request_temporary_unlock?: boolean
+  temporary_unlock_cooldown_remaining?: number
   // 任务完成相关字段
   taker?: User
   completion_proof?: string
@@ -497,6 +517,13 @@ export interface TaskCreateRequest {
   overtime_multiplier?: number
   overtime_duration?: number
   strict_mode?: boolean // 严格模式
+  // 临时开锁配置
+  allow_temporary_unlock?: boolean
+  temporary_unlock_limit_type?: 'daily_count' | 'cooldown'
+  temporary_unlock_limit_value?: number
+  temporary_unlock_max_duration?: number
+  temporary_unlock_require_approval?: boolean
+  temporary_unlock_require_photo?: boolean
   // 任务板字段
   reward?: number
   deadline?: string

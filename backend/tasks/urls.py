@@ -63,4 +63,12 @@ urlpatterns = [
     path('<uuid:pk>/unpin/', views.unpin_task_owner, name='unpin-task-owner'),
     path('pinning-status/', views.get_pinning_status, name='get-pinning-status'),
     path('pinned-carousel/', views.get_pinned_tasks_for_carousel, name='get-pinned-tasks-carousel'),
+
+    # 临时开锁相关 URL
+    path('<uuid:pk>/temporary-unlock/request/', views.TemporaryUnlockRequestView.as_view(), name='temporary-unlock-request'),
+    path('<uuid:pk>/temporary-unlock/approve/', views.TemporaryUnlockApproveView.as_view(), name='temporary-unlock-approve'),
+    path('<uuid:pk>/temporary-unlock/reject/', views.TemporaryUnlockRejectView.as_view(), name='temporary-unlock-reject'),
+    path('<uuid:pk>/temporary-unlock/end/', views.TemporaryUnlockEndView.as_view(), name='temporary-unlock-end'),
+    path('<uuid:pk>/temporary-unlock/cancel/', views.TemporaryUnlockCancelView.as_view(), name='temporary-unlock-cancel'),
+    path('<uuid:pk>/temporary-unlock/records/', views.TemporaryUnlockRecordsView.as_view(), name='temporary-unlock-records'),
 ]

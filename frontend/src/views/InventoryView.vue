@@ -157,7 +157,11 @@
                 @change="handlePhotoUpload"
                 class="hidden"
               >
-              <button @click="triggerPhotoInput" class="action-btn primary">
+              <button
+                @click.stop.prevent="triggerPhotoInput"
+                @touchstart.prevent
+                class="action-btn primary"
+              >
                 📸 上传照片
               </button>
             </div>
@@ -165,7 +169,8 @@
             <!-- Photo view -->
             <button
               v-if="selectedItem.item_type.name === 'photo' && selectedItem.status === 'available'"
-              @click="viewPhoto(selectedItem); selectedItem = null"
+              @click.stop.prevent="handleItemAction('photo_view', selectedItem)"
+              @touchstart.prevent
               class="action-btn primary"
             >
               👁️ 查看照片
@@ -174,7 +179,8 @@
             <!-- Note edit -->
             <button
               v-if="selectedItem.item_type.name === 'note' && selectedItem.status === 'available' && (!selectedItem.properties?.content || selectedItem.properties.content.trim() === '')"
-              @click="selectedItem = null; openNoteEditModal()"
+              @click.stop.prevent="handleItemAction('note_edit', selectedItem)"
+              @touchstart.prevent
               class="action-btn primary"
             >
               ✏️ 编写纸条
@@ -183,7 +189,8 @@
             <!-- Note edit (existing content) -->
             <button
               v-if="selectedItem.item_type.name === 'note' && selectedItem.status === 'available' && selectedItem.properties?.content && selectedItem.properties.content.trim() !== ''"
-              @click="selectedItem = null; openNoteEditModal()"
+              @click.stop.prevent="handleItemAction('note_edit', selectedItem)"
+              @touchstart.prevent
               class="action-btn secondary"
             >
               ✏️ 编辑纸条
@@ -192,7 +199,8 @@
             <!-- Note view -->
             <button
               v-if="selectedItem.item_type.name === 'note' && selectedItem.status === 'available' && selectedItem.properties?.content && selectedItem.properties.content.trim() !== ''"
-              @click="selectedItem = null; openNoteViewModal(); viewNote()"
+              @click.stop.prevent="handleItemAction('note_view', selectedItem)"
+              @touchstart.prevent
               class="action-btn primary"
             >
               👁️ 查看纸条
@@ -201,7 +209,8 @@
             <!-- Share item -->
             <button
               v-if="canShareItem(selectedItem)"
-              @click="selectedItem = null; shareItem()"
+              @click.stop.prevent="handleItemAction('share', selectedItem)"
+              @touchstart.prevent
               class="action-btn secondary"
               :disabled="sharingItem"
             >
@@ -212,7 +221,8 @@
             <!-- Bury item -->
             <button
               v-if="canBuryItem(selectedItem)"
-              @click="itemToBury = selectedItem; selectedItem = null; showBuryModal = true"
+              @click.stop.prevent="handleItemAction('bury', selectedItem)"
+              @touchstart.prevent
               class="action-btn secondary"
             >
               ⛏️ 掩埋物品
@@ -221,7 +231,8 @@
             <!-- Universal Key usage -->
             <button
               v-if="canUseUniversalKey(selectedItem)"
-              @click="selectedItem = null; openUniversalKeyModal()"
+              @click.stop.prevent="handleItemAction('universal_key', selectedItem)"
+              @touchstart.prevent
               class="action-btn universal-key"
               :disabled="usingUniversalKey"
             >
@@ -232,7 +243,8 @@
             <!-- Treasury Item usage -->
             <button
               v-if="canUseTreasury(selectedItem)"
-              @click="selectedItem = null; openTreasuryModal()"
+              @click.stop.prevent="handleItemAction('treasury', selectedItem)"
+              @touchstart.prevent
               class="action-btn primary"
             >
               💰 管理小金库
@@ -241,7 +253,8 @@
             <!-- Detection Radar usage -->
             <button
               v-if="canUseDetectionRadar(selectedItem)"
-              @click="selectedItem = null; openDetectionRadarModal()"
+              @click.stop.prevent="handleItemAction('detection_radar', selectedItem)"
+              @touchstart.prevent
               class="action-btn radar"
               :disabled="usingDetectionRadar"
             >
@@ -252,7 +265,8 @@
             <!-- Blizzard Bottle usage -->
             <button
               v-if="canUseBlizzardBottle(selectedItem)"
-              @click="selectedItem = null; openBlizzardBottleModal()"
+              @click.stop.prevent="handleItemAction('blizzard_bottle', selectedItem)"
+              @touchstart.prevent
               class="action-btn blizzard"
               :disabled="usingBlizzardBottle"
             >
@@ -263,7 +277,8 @@
             <!-- Sun Bottle usage -->
             <button
               v-if="canUseSunBottle(selectedItem)"
-              @click="selectedItem = null; openSunBottleModal()"
+              @click.stop.prevent="handleItemAction('sun_bottle', selectedItem)"
+              @touchstart.prevent
               class="action-btn sun"
               :disabled="usingSunBottle"
             >
@@ -274,7 +289,8 @@
             <!-- Time Hourglass usage -->
             <button
               v-if="canUseTimeHourglass(selectedItem)"
-              @click="selectedItem = null; openTimeHourglassModal()"
+              @click.stop.prevent="handleItemAction('time_hourglass', selectedItem)"
+              @touchstart.prevent
               class="action-btn hourglass"
               :disabled="usingTimeHourglass"
             >
@@ -285,7 +301,8 @@
             <!-- Lucky Charm usage -->
             <button
               v-if="canUseLuckyCharm(selectedItem)"
-              @click="selectedItem = null; openLuckyCharmModal()"
+              @click.stop.prevent="handleItemAction('lucky_charm', selectedItem)"
+              @touchstart.prevent
               class="action-btn lucky-charm"
               :disabled="usingLuckyCharm"
             >
@@ -296,7 +313,8 @@
             <!-- Energy Potion usage -->
             <button
               v-if="canUseEnergyPotion(selectedItem)"
-              @click="selectedItem = null; openEnergyPotionModal()"
+              @click.stop.prevent="handleItemAction('energy_potion', selectedItem)"
+              @touchstart.prevent
               class="action-btn energy-potion"
               :disabled="usingEnergyPotion"
             >
@@ -307,7 +325,8 @@
             <!-- Time Anchor usage -->
             <button
               v-if="canUseTimeAnchor(selectedItem)"
-              @click="selectedItem = null; openTimeAnchorModal()"
+              @click.stop.prevent="handleItemAction('time_anchor', selectedItem)"
+              @touchstart.prevent
               class="action-btn time-anchor"
               :disabled="usingTimeAnchor"
             >
@@ -318,7 +337,8 @@
             <!-- Exploration Compass usage -->
             <button
               v-if="canUseExplorationCompass(selectedItem)"
-              @click="selectedItem = null; openExplorationCompassModal()"
+              @click.stop.prevent="handleItemAction('exploration_compass', selectedItem)"
+              @touchstart.prevent
               class="action-btn exploration-compass"
               :disabled="usingExplorationCompass"
             >
@@ -329,7 +349,8 @@
             <!-- Influence Crown usage -->
             <button
               v-if="canUseInfluenceCrown(selectedItem)"
-              @click="selectedItem = null; openInfluenceCrownModal()"
+              @click.stop.prevent="handleItemAction('influence_crown', selectedItem)"
+              @touchstart.prevent
               class="action-btn influence-crown"
               :disabled="usingInfluenceCrown"
             >
@@ -340,7 +361,8 @@
             <!-- Small Campfire usage -->
             <button
               v-if="canUseSmallCampfire(selectedItem)"
-              @click="selectedItem = null; openSmallCampfireModal()"
+              @click.stop.prevent="handleItemAction('small_campfire', selectedItem)"
+              @touchstart.prevent
               class="action-btn small-campfire"
               :disabled="usingSmallCampfire"
             >
@@ -351,14 +373,19 @@
             <!-- Discard item -->
             <button
               v-if="canDiscardItem(selectedItem)"
-              @click="selectedItem = null; showDiscardModal = true"
+              @click.stop.prevent="handleItemAction('discard', selectedItem)"
+              @touchstart.prevent
               class="action-btn danger"
             >
               🗑️ 丢弃物品
             </button>
 
             <!-- Close button -->
-            <button @click="selectedItem = null" class="action-btn secondary">
+            <button
+              @click.stop.prevent="selectedItem = null"
+              @touchstart.prevent
+              class="action-btn secondary"
+            >
               关闭
             </button>
           </template>
@@ -1465,7 +1492,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, watch } from 'vue'
+import { ref, computed, onMounted, watch, nextTick } from 'vue'
 import { useRouter } from 'vue-router'
 import { ApiError } from '../lib/api-commons'
 import { storeApi, tasksApi } from '../lib/api'
@@ -2113,6 +2140,91 @@ const closeUniversalKeyModal = () => {
   selectedItem.value = null
 }
 
+// Unified item action handler to fix modal closing and opening issues
+const handleItemAction = async (action: string, item: Item | null) => {
+  if (!item) return
+
+  // 1. Immediately close toast by clearing selectedItem
+  selectedItem.value = null
+
+  // 2. Wait for DOM update to ensure toast is fully closed
+  await nextTick()
+
+  // 3. Small delay to ensure Transition animations complete
+  await new Promise(resolve => setTimeout(resolve, 50))
+
+  // 4. Open the corresponding modal based on action type
+  switch (action) {
+    case 'treasury':
+      selectedTreasuryItem.value = item
+      showTreasuryModal.value = true
+      break
+    case 'universal_key':
+      showUniversalKeyModal.value = true
+      await loadAvailableTasks()
+      break
+    case 'detection_radar':
+      showDetectionRadarModal.value = true
+      break
+    case 'blizzard_bottle':
+      showBlizzardBottleModal.value = true
+      break
+    case 'sun_bottle':
+      showSunBottleModal.value = true
+      break
+    case 'time_hourglass':
+      showTimeHourglassModal.value = true
+      break
+    case 'lucky_charm':
+      showLuckyCharmModal.value = true
+      break
+    case 'energy_potion':
+      showEnergyPotionModal.value = true
+      break
+    case 'time_anchor':
+      showTimeAnchorModal.value = true
+      break
+    case 'exploration_compass':
+      showExplorationCompassModal.value = true
+      break
+    case 'influence_crown':
+      showInfluenceCrownModal.value = true
+      break
+    case 'small_campfire':
+      showSmallCampfireModal.value = true
+      break
+    case 'note_edit':
+      // Load existing content if available
+      noteContent.value = item.properties?.content || ''
+      showNoteEditModal.value = true
+      break
+    case 'note_view':
+      showNoteViewModal.value = true
+      // viewNote needs selectedItem to be set, so temporarily set it
+      selectedItem.value = item
+      viewNote()
+      // Clear selectedItem after viewNote is called
+      selectedItem.value = null
+      break
+    case 'photo_view':
+      viewPhoto(item)
+      break
+    case 'share':
+      // shareItem needs selectedItem to be set, so temporarily set it
+      selectedItem.value = item
+      await shareItem()
+      break
+    case 'bury':
+      itemToBury.value = item
+      showBuryModal.value = true
+      break
+    case 'discard':
+      showDiscardModal.value = true
+      break
+    default:
+      console.warn('Unknown action:', action)
+  }
+}
 
 const viewOwnerProfile = (owner: any) => {
   // Navigate to user profile page
@@ -3497,6 +3609,13 @@ onMounted(() => {
   cursor: pointer;
   box-shadow: 4px 4px 0 #000;
   transition: all 0.2s ease;
+  /* Mobile optimizations */
+  touch-action: manipulation;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-tap-highlight-color: transparent;
+  position: relative;
+  z-index: 1;
 }
 
 .action-btn.primary {
@@ -3561,6 +3680,11 @@ onMounted(() => {
 .action-btn:hover {
   transform: translate(2px, 2px);
   box-shadow: 2px 2px 0 #000;
+}
+
+.action-btn:active {
+  transform: translate(3px, 3px);
+  box-shadow: 1px 1px 0 #000;
 }
 
 /* Item Toast Content Styles */

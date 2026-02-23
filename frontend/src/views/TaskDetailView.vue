@@ -459,6 +459,184 @@
               </div>
             </div>
 
+            <!-- Temporary Unlock Section -->
+            <div v-if="task && task.temporary_unlock_config && task.temporary_unlock_config.enabled" class="temporary-unlock-section">
+              <div class="unlock-section-header">
+                <h3>
+                  <span class="icon">🔓</span>
+                  临时开锁
+                </h3>
+                <span
+                  class="status-badge"
+                  :class="task.temporary_unlock_status?.is_active ? 'active' : 'inactive'"
+                >
+                  {{ task.temporary_unlock_status?.is_active ? '进行中' : '未开始' }}
+                </span>
+              </div>
+
+              <!-- 配置信息 -->
+              <div class="unlock-config-info">
+                <div class="config-item">
+                  <span class="label">限制：</span>
+                  <span class="value">
+                    {{ formatUnlockLimitText(task.temporary_unlock_config) }}
+                  </span>
+                </div>
+                <div class="config-item">
+                  <span class="label">最大时长：</span>
+                  <span class="value">{{ task.temporary_unlock_config.max_duration }} 分钟</span>
+                </div>
+                <div class="config-item" v-if="task.temporary_unlock_config.require_approval">
+                  <span class="icon">🔐</span>
+                  <span>需要钥匙持有者同意</span>
+                </div>
+                <div class="config-item" v-if="task.temporary_unlock_config.require_photo">
+                  <span class="icon">📷</span>
+                  <span>需要拍照证明</span>
+                </div>
+              </div>
+
+              <!-- 进行中状态 -->
+              <div v-if="task.temporary_unlock_status?.is_active" class="active-unlock">
+                <div class="countdown">
+                  <span class="time">{{ formatRemainingTime(task.temporary_unlock_status.remaining_minutes) }}</span>
+                  <span class="label">剩余时间</span>
+                </div>
+
+                <div class="progress-bar">
+                  <div
+                    class="progress-fill"
+                    :style="{ width: calculateUnlockProgress() + '%' }"
+                  ></div>
+                </div>
+
+                <!-- 拍照验证按钮（如果需要且未拍照） -->
+                <button
+                  v-if="task.temporary_unlock_status.require_photo && !capturedPhoto"
+                  @click="openCameraModal"
+                  class="btn-photo"
+                >
+                  <span class="icon">📷</span>
+                  拍照验证
+                </button>
+
+                <!-- 已拍照提示 -->
+                <div v-if="task.temporary_unlock_status.require_photo && capturedPhoto" class="photo-captured-notice">
+                  <span class="icon">✅</span>
+                  <span>照片已拍摄，可以结束开锁了</span>
+                </div>
+
+                <!-- 结束按钮 -->
+                <button
+                  v-if="!task.temporary_unlock_status.require_photo || capturedPhoto"
+                  @click="endTemporaryUnlock"
+                  class="btn-end"
+                  :disabled="endingUnlock"
+                >
+                  {{ endingUnlock ? '处理中...' : '结束临时开锁' }}
+                </button>
+
+                <!-- 需要照片提示 -->
+                <div v-if="task.temporary_unlock_status.require_photo && !capturedPhoto" class="photo-required-hint">
+                  <small>请先拍照验证后才能结束临时开锁</small>
+                </div>
+              </div>
+
+              <!-- 请求按钮（可以请求时） -->
+              <button
+                v-else-if="task.can_request_temporary_unlock && isOwnTask && task.status === 'active'"
+                @click="requestTemporaryUnlock"
+                class="btn-request"
+                :disabled="requestingUnlock"
+              >
+                {{ requestingUnlock ? '请求中...' : '请求临时开锁' }}
+              </button>
+
+              <!-- 冷却中提示 -->
+              <div v-else-if="task.temporary_unlock_cooldown_remaining > 0" class="cooldown-notice">
+                <span class="icon">⏳</span>
+                <span>冷却中，还需等待 {{ formatDurationMinutes(task.temporary_unlock_cooldown_remaining) }}</span>
+              </div>
+
+              <!-- 钥匙持有者批准区域 -->
+              <div v-if="isKeyHolder && hasPendingUnlockRequest" class="key-holder-actions">
+                <p class="pending-notice">有等待批准的临时开锁请求</p>
+                <div class="action-buttons">
+                  <button @click="approveTemporaryUnlock" class="btn-approve" :disabled="processingApproval">
+                    {{ processingApproval ? '处理中...' : '批准' }}
+                  </button>
+                  <button @click="rejectTemporaryUnlock" class="btn-reject" :disabled="processingApproval">
+                    拒绝
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <!-- Temporary Unlock Records Timeline -->
+            <div v-if="task && task.temporary_unlock_records && task.temporary_unlock_records.length > 0" class="unlock-timeline">
+              <h4>开锁记录</h4>
+              <div class="timeline">
+                <div
+                  v-for="record in task.temporary_unlock_records"
+                  :key="record.id"
+                  class="timeline-item"
+                  :class="record.status"
+                >
+                  <div class="timeline-marker"></div>
+                  <div class="timeline-content">
+                    <div class="record-header">
+                      <span class="status">{{ formatUnlockStatus(record.status) }}</span>
+                      <span class="time">{{ formatDateTime(record.requested_at) }}</span>
+                    </div>
+                    <div class="record-details">
+                      <p v-if="record.duration_minutes > 0">
+                        时长：{{ record.duration_minutes }} 分钟
+                      </p>
+                      <p v-if="record.key_holder">
+                        批准者：{{ record.key_holder.username }}
+                      </p>
+                      <p v-if="record.rejection_reason" class="rejection-reason">
+                        拒绝原因：{{ record.rejection_reason }}
+                      </p>
+                    </div>
+                    <!-- 验证照片 -->
+                    <div v-if="record.verification_photo_url" class="verification-photo">
+                      <div class="photo-container">
+                        <img
+                          :src="record.verification_photo_url"
+                          :class="{ 'blurred': !canViewVerificationPhoto }"
+                          alt="验证照片"
+                        />
+                        <!-- 打码遮罩 - 无权限用户显示 -->
+                        <div v-if="!canViewVerificationPhoto" class="photo-censor-overlay" @click="showPermissionDeniedToast">
+                          <div class="censor-content">
+                            <div class="censor-icon">🔒</div>
+                            <div class="censor-text">验证照片</div>
+                            <div class="censor-hint">仅任务本人和钥匙持有者可见</div>
+                          </div>
+                        </div>
+                        <!-- 点击查看按钮 - 有权限用户显示 -->
+                        <div v-else class="photo-view-overlay" @click="viewPhoto(record.verification_photo_url)">
+                          <div class="view-hint">
+                            <span class="view-icon">🔍</span>
+                            <span>点击查看原图</span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Camera Modal for Photo Verification -->
+            <CameraModal
+              v-if="showCameraModal"
+              @close="showCameraModal = false"
+              @capture="handlePhotoCapture"
+              :maxSize="2.5 * 1024 * 1024"
+            />
+
             <!-- Task Timeline -->
             <div v-if="timeline.length > 0 || taskStartTime || taskEndTime" class="task-timeline">
               <div class="timeline-header">
@@ -514,6 +692,32 @@
                       </div>
                       <div v-else-if="event.previous_end_time && event.new_end_time && taskTimeDisplayHidden" class="timeline-times-hidden">
                         <span class="hidden-time-placeholder">🔒 时间信息已隐藏</span>
+                      </div>
+                      <!-- 临时开锁验证照片 -->
+                      <div v-if="isTemporaryUnlockEvent(event.event_type) && (event.metadata?.has_photo || event.verification_photo_url)" class="timeline-verification-photo">
+                        <div class="photo-label">📷 验证照片</div>
+                        <div class="timeline-photo-container">
+                          <img
+                            :src="getVerificationPhotoUrl(event.metadata?.record_id, event.verification_photo_url)"
+                            :class="{ 'blurred': !canViewVerificationPhoto }"
+                            alt="验证照片"
+                            @load="onTimelinePhotoLoad($event, event.metadata?.record_id)"
+                          />
+                          <!-- 打码遮罩 - 无权限用户 -->
+                          <div v-if="!canViewVerificationPhoto" class="timeline-photo-censor" @click.stop="showPermissionDeniedToast">
+                            <div class="censor-content">
+                              <div class="censor-icon">🔒</div>
+                              <div class="censor-text">验证照片</div>
+                            </div>
+                          </div>
+                          <!-- 查看按钮 - 有权限用户 -->
+                          <div v-else class="timeline-photo-view" @click.stop="viewPhoto(getVerificationPhotoUrl(event.metadata?.record_id, event.verification_photo_url))">
+                            <div class="view-content">
+                              <span class="view-icon">🔍</span>
+                              <span>查看</span>
+                            </div>
+                          </div>
+                        </div>
                       </div>
                     </div>
                   </div>
@@ -593,6 +797,27 @@
                         </div>
                         <div v-else-if="event.previous_end_time && event.new_end_time && taskTimeDisplayHidden" class="timeline-times-hidden">
                           <span class="hidden-time-placeholder">🔒 时间信息已隐藏</span>
+                        </div>
+                        <!-- 移动端临时开锁验证照片 -->
+                        <div v-if="isTemporaryUnlockEvent(event.event_type) && (event.metadata?.has_photo || event.verification_photo_url)" class="timeline-verification-photo mobile">
+                          <div class="photo-label">📷 验证照片</div>
+                          <div class="timeline-photo-container">
+                            <img
+                              :src="getVerificationPhotoUrl(event.metadata?.record_id, event.verification_photo_url)"
+                              :class="{ 'blurred': !canViewVerificationPhoto }"
+                              alt="验证照片"
+                            />
+                            <div v-if="!canViewVerificationPhoto" class="timeline-photo-censor" @click.stop="showPermissionDeniedToast">
+                              <div class="censor-content">
+                                <div class="censor-icon">🔒</div>
+                              </div>
+                            </div>
+                            <div v-else class="timeline-photo-view" @click.stop="viewPhoto(getVerificationPhotoUrl(event.metadata?.record_id, event.verification_photo_url))">
+                              <div class="view-content">
+                                <span class="view-icon">🔍</span>
+                              </div>
+                            </div>
+                          </div>
                         </div>
                       </div>
                     </div>
@@ -1256,21 +1481,39 @@
       </div>
     </div>
 
-    <!-- Image Modal -->
-    <div v-if="showImageModal && selectedImage" class="image-modal-overlay" @click="closeImageModal">
-      <div class="image-modal-content" @click.stop>
-        <div class="image-modal-header">
-          <button @click="closeImageModal" class="image-modal-close">×</button>
+    <!-- Image Modal - 精美大图查看器 -->
+    <Teleport to="body">
+      <Transition name="image-modal">
+        <div v-if="showImageModal && selectedImage" class="image-modal-overlay" @click="closeImageModal">
+          <div class="image-modal-backdrop"></div>
+          <div class="image-modal-container" @click.stop>
+            <!-- 关闭按钮 -->
+            <button class="image-modal-close" @click="closeImageModal">
+              <span class="close-icon">×</span>
+            </button>
+            <!-- 图片容器 -->
+            <div class="image-modal-body">
+              <!-- Loading Spinner -->
+              <div v-if="!imageModalLoaded" class="image-modal-loading">
+                <div class="loading-spinner"></div>
+                <span class="loading-text">加载中...</span>
+              </div>
+              <img
+                :src="selectedImage.file_url || selectedImage"
+                :alt="`查看大图`"
+                class="image-modal-img"
+                :class="{ 'loaded': imageModalLoaded }"
+                @load="onImageModalLoad"
+              />
+            </div>
+            <!-- 底部信息栏 -->
+            <div class="image-modal-footer">
+              <span class="image-hint">点击图片任意位置关闭</span>
+            </div>
+          </div>
         </div>
-        <div class="image-modal-body">
-          <img
-            :src="selectedImage.file_url"
-            :alt="`提交图片`"
-            class="image-modal-img"
-          />
-        </div>
-      </div>
-    </div>
+      </Transition>
+    </Teleport>
 
 
     <!-- Notification Toast -->
@@ -1302,6 +1545,7 @@ import VoteConfirmationModal from '../components/VoteConfirmationModal.vue'
 import ShareModal from '../components/ShareModal.vue'
 import NotificationToast from '../components/NotificationToast.vue'
 import UserAvatar from '../components/UserAvatar.vue'
+import CameraModal from '../components/CameraModal.vue'
 import type { Task } from '../types/index'
 
 const route = useRoute()
@@ -1361,8 +1605,17 @@ const exclusiveTaskForm = ref({
   max_duration: 0
 })
 
+// Temporary unlock state
+const requestingUnlock = ref(false)
+const endingUnlock = ref(false)
+const processingApproval = ref(false)
+const showCameraModal = ref(false)
+const pendingUnlockRecordId = ref<string | null>(null)
+const capturedPhoto = ref<File | null>(null)
+
 // Image modal state
 const showImageModal = ref(false)
+const imageModalLoaded = ref(false)
 const selectedImage = ref<any>(null)
 
 // Multi-person task participants navigation state (removed review mode)
@@ -1887,6 +2140,19 @@ const canManageKeyActions = computed(() => {
   })
 
   return isKeyHolder
+})
+
+const hasPendingUnlockRequest = computed(() => {
+  if (!task.value?.temporary_unlock_records) return false
+  return task.value.temporary_unlock_records.some((r: any) => r.status === 'pending')
+})
+
+// 是否可以查看验证照片（任务本人或钥匙持有者）
+const canViewVerificationPhoto = computed(() => {
+  if (!authStore.user || !task.value) return false
+  if (isOwnTask.value) return true
+  if (isKeyHolder.value) return true
+  return false
 })
 
 const canAffordTimeAdjustment = computed(() => {
@@ -3960,7 +4226,16 @@ const getEventTypeClass = (eventType: string) => {
     'task_voted': 'vote',
     'task_failed': 'failed',
     'board_task_taken': 'board-taken',
-    'exclusive_task_created': 'exclusive-created'
+    'exclusive_task_created': 'exclusive-created',
+    'temporary_unlock_requested': 'unlock-pending',
+    'temporary_unlock_approved': 'unlock-success',
+    'temporary_unlock_rejected': 'unlock-rejected',
+    'temporary_unlock_started': 'unlock-active',
+    'temporary_unlock_ended': 'unlock-ended',
+    'temporary_unlock_cancelled': 'unlock-cancelled',
+    'temporary_unlock_timeout': 'unlock-timeout',
+    'task_frozen': 'frozen',
+    'task_unfrozen': 'unfrozen'
   }
   return classMap[eventType] || 'default'
 }
@@ -3968,12 +4243,14 @@ const getEventTypeClass = (eventType: string) => {
 // Media file helper functions
 const openImageModal = (file: any) => {
   selectedImage.value = file
+  imageModalLoaded.value = false
   showImageModal.value = true
 }
 
 const closeImageModal = () => {
   showImageModal.value = false
   selectedImage.value = null
+  imageModalLoaded.value = false
 }
 
 const formatFileSize = (bytes: number): string => {
@@ -4122,6 +4399,291 @@ onUnmounted(() => {
 
   // Cleanup (review mode navigation removed)
 })
+
+// ============================================================================
+// 临时开锁方法
+// ============================================================================
+
+const formatUnlockLimitText = (config: any) => {
+  if (!config) return ''
+  if (config.limit_type === 'daily_count') {
+    return `每日 ${config.limit_value} 次`
+  } else if (config.limit_type === 'cooldown') {
+    return `${config.limit_value} 小时冷却`
+  }
+  return ''
+}
+
+const formatUnlockStatus = (status: string) => {
+  const statusMap: Record<string, string> = {
+    'pending': '等待批准',
+    'approved': '已批准',
+    'rejected': '已拒绝',
+    'active': '进行中',
+    'completed': '已完成',
+    'timeout': '超时结束',
+    'cancelled': '已取消'
+  }
+  return statusMap[status] || status
+}
+
+// 判断是否为临时开锁事件
+const isTemporaryUnlockEvent = (eventType: string): boolean => {
+  const unlockEvents = [
+    'temporary_unlock_requested',
+    'temporary_unlock_approved',
+    'temporary_unlock_rejected',
+    'temporary_unlock_started',
+    'temporary_unlock_ended',
+    'temporary_unlock_cancelled',
+    'temporary_unlock_timeout'
+  ]
+  return unlockEvents.includes(eventType)
+}
+
+// 获取验证照片URL
+const verificationPhotoCache = ref<Record<string, string>>({})
+
+const getVerificationPhotoUrl = (recordId: string | undefined, eventPhotoUrl?: string): string => {
+  if (!recordId) return ''
+
+  // 如果事件对象直接提供了照片URL，优先使用
+  if (eventPhotoUrl) {
+    verificationPhotoCache.value[recordId] = eventPhotoUrl
+    return eventPhotoUrl
+  }
+
+  // 如果已缓存，直接返回
+  if (verificationPhotoCache.value[recordId]) {
+    return verificationPhotoCache.value[recordId]
+  }
+
+  // 从临时开锁记录中查找照片URL
+  const record = task.value?.temporary_unlock_records?.find((r: any) => r.id === recordId)
+  if (record?.verification_photo_url) {
+    verificationPhotoCache.value[recordId] = record.verification_photo_url
+    return record.verification_photo_url
+  }
+
+  return ''
+}
+
+// 时间线照片加载完成
+const onTimelinePhotoLoad = (event: Event, recordId: string | undefined) => {
+  // 照片加载完成后的处理（如需要）
+  console.log('Timeline photo loaded for record:', recordId)
+}
+
+const calculateUnlockProgress = () => {
+  if (!task.value?.temporary_unlock_status?.is_active) return 0
+  const remaining = task.value.temporary_unlock_status.remaining_minutes || 0
+  const maxDuration = task.value.temporary_unlock_config?.max_duration || 30
+  const progress = ((maxDuration - remaining) / maxDuration) * 100
+  return Math.min(100, Math.max(0, progress))
+}
+
+const requestTemporaryUnlock = async () => {
+  if (!task.value || !task.value.can_request_temporary_unlock) return
+
+  requestingUnlock.value = true
+  try {
+    const result = await tasksApi.requestTemporaryUnlock(task.value.id)
+
+    // 刷新任务数据
+    await fetchTask()
+
+    showToast.value = true
+    toastData.value = {
+      type: 'success',
+      title: '请求已发送',
+      message: result.message,
+      secondaryMessage: task.value.temporary_unlock_config?.require_approval
+        ? '等待钥匙持有者批准'
+        : '临时开锁已开始，任务计时已暂停'
+    }
+  } catch (error: any) {
+    console.error('Error requesting temporary unlock:', error)
+    showToast.value = true
+    toastData.value = {
+      type: 'error',
+      title: '请求失败',
+      message: error.data?.error || '请求临时开锁失败，请重试',
+      secondaryMessage: '请检查任务状态和限制条件'
+    }
+  } finally {
+    requestingUnlock.value = false
+  }
+}
+
+const endTemporaryUnlock = async () => {
+  if (!task.value || !task.value.temporary_unlock_status?.is_active) return
+
+  endingUnlock.value = true
+  try {
+    let result
+
+    // 如果有已拍摄的照片，使用带照片的API
+    if (capturedPhoto.value) {
+      result = await tasksApi.endTemporaryUnlockWithPhoto(task.value.id, capturedPhoto.value)
+      capturedPhoto.value = null // 清除已保存的照片
+    } else {
+      result = await tasksApi.endTemporaryUnlock(task.value.id)
+    }
+
+    // 刷新任务数据
+    await fetchTask()
+
+    showToast.value = true
+    toastData.value = {
+      type: 'success',
+      title: '临时开锁已结束',
+      message: '任务将继续计时',
+      secondaryMessage: `本次开锁时长：${result.record?.duration_minutes || 0} 分钟`,
+      details: result.task_new_end_time ? {
+        '新的结束时间': formatDateTime(result.task_new_end_time)
+      } : undefined
+    }
+  } catch (error: any) {
+    console.error('Error ending temporary unlock:', error)
+    showToast.value = true
+    toastData.value = {
+      type: 'error',
+      title: '结束失败',
+      message: error.data?.error || '结束临时开锁失败，请重试',
+      secondaryMessage: '请确保已上传验证照片（如需要）'
+    }
+  } finally {
+    endingUnlock.value = false
+  }
+}
+
+const approveTemporaryUnlock = async () => {
+  if (!task.value || !hasPendingUnlockRequest.value) return
+
+  const pendingRecord = task.value.temporary_unlock_records?.find((r: any) => r.status === 'pending')
+  if (!pendingRecord) return
+
+  processingApproval.value = true
+  try {
+    const result = await tasksApi.approveTemporaryUnlock(task.value.id, pendingRecord.id)
+
+    // 刷新任务数据
+    await fetchTask()
+
+    showToast.value = true
+    toastData.value = {
+      type: 'success',
+      title: '已批准',
+      message: '临时开锁请求已批准',
+      secondaryMessage: '任务执行者可以开始临时开锁了'
+    }
+  } catch (error: any) {
+    console.error('Error approving temporary unlock:', error)
+    showToast.value = true
+    toastData.value = {
+      type: 'error',
+      title: '批准失败',
+      message: error.data?.error || '批准请求失败，请重试'
+    }
+  } finally {
+    processingApproval.value = false
+  }
+}
+
+const rejectTemporaryUnlock = async () => {
+  if (!task.value || !hasPendingUnlockRequest.value) return
+
+  const pendingRecord = task.value.temporary_unlock_records?.find((r: any) => r.status === 'pending')
+  if (!pendingRecord) return
+
+  processingApproval.value = true
+  try {
+    const result = await tasksApi.rejectTemporaryUnlock(task.value.id, pendingRecord.id)
+
+    // 刷新任务数据
+    await fetchTask()
+
+    showToast.value = true
+    toastData.value = {
+      type: 'info',
+      title: '已拒绝',
+      message: '临时开锁请求已拒绝',
+      secondaryMessage: '任务将继续正常计时'
+    }
+  } catch (error: any) {
+    console.error('Error rejecting temporary unlock:', error)
+    showToast.value = true
+    toastData.value = {
+      type: 'error',
+      title: '拒绝失败',
+      message: error.data?.error || '拒绝请求失败，请重试'
+    }
+  } finally {
+    processingApproval.value = false
+  }
+}
+
+const openCameraModal = () => {
+  showCameraModal.value = true
+}
+
+const handlePhotoCapture = (file: File) => {
+  // 保存照片，不上传，等待用户点击结束按钮时一起上传
+  capturedPhoto.value = file
+  showCameraModal.value = false
+
+  showToast.value = true
+  toastData.value = {
+    type: 'success',
+    title: '照片已拍摄',
+    message: '照片已保存，请点击结束按钮完成临时开锁',
+    secondaryMessage: '照片将在结束时自动上传'
+  }
+}
+
+// 查看照片 - 使用精美模态框
+const viewPhoto = (url: string) => {
+  selectedImage.value = url
+  imageModalLoaded.value = false
+  showImageModal.value = true
+}
+
+// 图片模态框加载完成
+const onImageModalLoad = () => {
+  imageModalLoaded.value = true
+}
+
+const showPermissionDeniedToast = () => {
+  showToast.value = true
+  toastData.value = {
+    type: 'warning',
+    title: '无权查看',
+    message: '只有任务本人和钥匙持有者可以查看验证照片',
+    secondaryMessage: '请联系任务执行者或钥匙持有者'
+  }
+}
+
+const formatDurationMinutes = (minutes: number) => {
+  if (minutes < 60) {
+    return `${minutes} 分钟`
+  }
+  const hours = Math.floor(minutes / 60)
+  const mins = minutes % 60
+  if (mins === 0) {
+    return `${hours} 小时`
+  }
+  return `${hours} 小时 ${mins} 分钟`
+}
+
+const formatRemainingTime = (minutes: number) => {
+  if (minutes <= 0) return '已超时'
+  const hours = Math.floor(minutes / 60)
+  const mins = minutes % 60
+  if (hours > 0) {
+    return `${hours}:${mins.toString().padStart(2, '0')}`
+  }
+  return `${mins} 分钟`
+}
 </script>
 
 <style scoped>
@@ -7230,88 +7792,317 @@ onUnmounted(() => {
   box-shadow: 3px 3px 0 #000;
 }
 
-/* Image Modal Styles */
+/* ============================================================================
+   精美图片查看模态框样式
+   ============================================================================ */
+
+/* 图片模态框容器 */
 .image-modal-overlay {
   position: fixed;
   top: 0;
   left: 0;
   width: 100%;
   height: 100%;
-  background-color: rgba(0, 0, 0, 0.9);
+  z-index: 9999;
   display: flex;
   align-items: center;
   justify-content: center;
-  z-index: 2000;
-  animation: fadeIn 0.2s ease-out;
 }
 
-.image-modal-content {
-  background: white;
-  border: 4px solid #000;
-  max-width: 90vw;
-  max-height: 90vh;
+/* 背景遮罩 */
+.image-modal-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.85);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+}
+
+/* 模态框内容容器 */
+.image-modal-container {
+  position: relative;
+  z-index: 1;
   display: flex;
   flex-direction: column;
-  box-shadow: 12px 12px 0 #000;
-  animation: slideInModal 0.3s ease-out;
-}
-
-.image-modal-header {
-  background: #17a2b8;
-  color: white;
-  padding: 0.75rem 1rem;
-  border-bottom: 4px solid #000;
-  display: flex;
-  justify-content: flex-end;
   align-items: center;
+  justify-content: center;
+  max-width: 95vw;
+  max-height: 95vh;
 }
 
+/* 关闭按钮 */
 .image-modal-close {
-  background: #dc3545;
-  color: white;
-  border: 3px solid #000;
+  position: fixed;
+  top: 2rem;
+  right: 2rem;
+  width: 50px;
+  height: 50px;
   border-radius: 50%;
-  width: 40px;
-  height: 40px;
+  background: white;
+  border: 3px solid #000;
+  box-shadow: 4px 4px 0 #000;
   cursor: pointer;
-  font-size: 1.5rem;
-  font-weight: 900;
   display: flex;
   align-items: center;
   justify-content: center;
-  box-shadow: 3px 3px 0 #000;
-  transition: all 0.2s ease;
-  flex-shrink: 0;
+  z-index: 10000;
+  transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.image-modal-close .close-icon {
+  font-size: 1.75rem;
+  font-weight: 700;
+  color: #000;
+  line-height: 1;
 }
 
 .image-modal-close:hover {
-  background: #c82333;
-  transform: translate(-1px, -1px);
-  box-shadow: 4px 4px 0 #000;
+  transform: scale(1.1) rotate(90deg);
+  box-shadow: 6px 6px 0 #000;
+  background: #ff4444;
 }
 
+.image-modal-close:hover .close-icon {
+  color: white;
+}
+
+.image-modal-close:active {
+  transform: scale(0.95) rotate(90deg);
+  box-shadow: 2px 2px 0 #000;
+}
+
+/* 图片主体区域 */
 .image-modal-body {
+  position: relative;
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 2rem;
-  background: #000;
+  padding: 1rem;
+  min-height: 200px;
+  min-width: 300px;
 }
 
-.image-modal-img {
-  max-width: 100%;
-  max-height: 80vh;
-  object-fit: contain;
-  box-shadow: 0 0 20px rgba(255, 255, 255, 0.1);
+/* Loading 样式 */
+.image-modal-loading {
+  position: absolute;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1rem;
 }
 
-/* Modal Animations */
-@keyframes fadeIn {
-  from {
-    opacity: 0;
-  }
+.loading-spinner {
+  width: 50px;
+  height: 50px;
+  border: 4px solid rgba(255, 255, 255, 0.2);
+  border-top-color: white;
+  border-radius: 50%;
+  animation: spin-loader 1s linear infinite;
+}
+
+.loading-text {
+  color: rgba(255, 255, 255, 0.8);
+  font-size: 0.875rem;
+  font-weight: 500;
+}
+
+@keyframes spin-loader {
   to {
-    opacity: 1;
+    transform: rotate(360deg);
+  }
+}
+
+/* 图片样式 */
+.image-modal-img {
+  max-width: 90vw;
+  max-height: 85vh;
+  object-fit: contain;
+  border-radius: 12px;
+  border: 4px solid white;
+  box-shadow:
+    0 25px 50px -12px rgba(0, 0, 0, 0.5),
+    0 0 0 1px rgba(255, 255, 255, 0.1);
+  transition: all 0.4s ease;
+  opacity: 0;
+  transform: scale(0.95);
+}
+
+.image-modal-img.loaded {
+  opacity: 1;
+  transform: scale(1);
+}
+
+/* 底部提示栏 */
+.image-modal-footer {
+  margin-top: 1.5rem;
+  padding: 0.75rem 1.5rem;
+  background: rgba(255, 255, 255, 0.1);
+  backdrop-filter: blur(10px);
+  border-radius: 100px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.image-hint {
+  color: rgba(255, 255, 255, 0.8);
+  font-size: 0.875rem;
+  font-weight: 500;
+  letter-spacing: 0.5px;
+}
+
+/* ============================================================================
+   Vue Transition 动画
+   ============================================================================ */
+
+/* 进入动画 */
+.image-modal-enter-active {
+  transition: all 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.image-modal-enter-active .image-modal-backdrop {
+  transition: opacity 0.4s ease;
+}
+
+.image-modal-enter-active .image-modal-container {
+  transition: all 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.image-modal-enter-active .image-modal-img {
+  transition: all 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+/* 离开动画 */
+.image-modal-leave-active {
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.image-modal-leave-active .image-modal-backdrop {
+  transition: opacity 0.3s ease;
+}
+
+.image-modal-leave-active .image-modal-container {
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.image-modal-leave-active .image-modal-img {
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* 进入开始状态 */
+.image-modal-enter-from .image-modal-backdrop {
+  opacity: 0;
+}
+
+.image-modal-enter-from .image-modal-container {
+  opacity: 0;
+  transform: scale(0.8) translateY(50px);
+}
+
+.image-modal-enter-from .image-modal-img {
+  transform: scale(0.9);
+  filter: blur(10px);
+}
+
+/* 离开结束状态 */
+.image-modal-leave-to .image-modal-backdrop {
+  opacity: 0;
+}
+
+.image-modal-leave-to .image-modal-container {
+  opacity: 0;
+  transform: scale(0.9) translateY(-30px);
+}
+
+.image-modal-leave-to .image-modal-img {
+  transform: scale(0.95);
+  filter: blur(5px);
+}
+
+/* 关闭按钮动画 */
+.image-modal-enter-from .image-modal-close {
+  opacity: 0;
+  transform: scale(0) rotate(-180deg);
+}
+
+.image-modal-enter-active .image-modal-close {
+  transition: all 0.4s cubic-bezier(0.34, 1.56, 0.64, 1) 0.1s;
+}
+
+.image-modal-leave-to .image-modal-close {
+  opacity: 0;
+  transform: scale(0) rotate(180deg);
+}
+
+/* 底部提示栏动画 */
+.image-modal-enter-from .image-modal-footer {
+  opacity: 0;
+  transform: translateY(20px);
+}
+
+.image-modal-enter-active .image-modal-footer {
+  transition: all 0.4s cubic-bezier(0.34, 1.56, 0.64, 1) 0.15s;
+}
+
+.image-modal-leave-to .image-modal-footer {
+  opacity: 0;
+  transform: translateY(10px);
+}
+
+/* ============================================================================
+   移动端适配
+   ============================================================================ */
+
+@media (max-width: 768px) {
+  .image-modal-close {
+    top: 1rem;
+    right: 1rem;
+    width: 44px;
+    height: 44px;
+  }
+
+  .image-modal-close .close-icon {
+    font-size: 1.5rem;
+  }
+
+  .image-modal-img {
+    max-width: 95vw;
+    max-height: 80vh;
+    border-width: 3px;
+    border-radius: 8px;
+  }
+
+  .image-modal-footer {
+    margin-top: 1rem;
+    padding: 0.5rem 1rem;
+  }
+
+  .image-hint {
+    font-size: 0.75rem;
+  }
+}
+
+/* 小屏幕手机适配 */
+@media (max-width: 480px) {
+  .image-modal-close {
+    width: 40px;
+    height: 40px;
+    border-width: 2px;
+    box-shadow: 2px 2px 0 #000;
+  }
+
+  .image-modal-close .close-icon {
+    font-size: 1.25rem;
+  }
+
+  .image-modal-img {
+    max-width: 100vw;
+    max-height: 75vh;
+    border-radius: 0;
+    border-width: 0;
+  }
+
+  .image-modal-body {
+    padding: 0;
   }
 }
 
@@ -8246,6 +9037,663 @@ onUnmounted(() => {
 
   .warning-text p:not(:first-child) {
     font-size: 0.75rem;
+  }
+}
+
+/* 临时开锁样式 */
+.temporary-unlock-section {
+  margin: 1.5rem 0;
+  padding: 1.25rem;
+  background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+  border-radius: 12px;
+  border: 2px solid #dee2e6;
+}
+
+.unlock-section-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1rem;
+}
+
+.unlock-section-header h3 {
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 1.1rem;
+}
+
+.status-badge {
+  padding: 0.25rem 0.75rem;
+  border-radius: 20px;
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+
+.status-badge.active {
+  background: #28a745;
+  color: white;
+}
+
+.status-badge.inactive {
+  background: #6c757d;
+  color: white;
+}
+
+.unlock-config-info {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  margin-bottom: 1rem;
+  padding: 0.75rem;
+  background: white;
+  border-radius: 8px;
+}
+
+.config-item {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.9rem;
+}
+
+.config-item .label {
+  color: #6c757d;
+}
+
+.config-item .value {
+  font-weight: 600;
+  color: #333;
+}
+
+.active-unlock {
+  text-align: center;
+  padding: 1rem;
+  background: white;
+  border-radius: 8px;
+}
+
+.countdown {
+  margin-bottom: 1rem;
+}
+
+.countdown .time {
+  display: block;
+  font-size: 2.5rem;
+  font-weight: 700;
+  color: #28a745;
+  font-family: monospace;
+}
+
+.countdown .label {
+  color: #6c757d;
+  font-size: 0.9rem;
+}
+
+.progress-bar {
+  height: 8px;
+  background: #e9ecef;
+  border-radius: 4px;
+  overflow: hidden;
+  margin-bottom: 1rem;
+}
+
+.progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #28a745, #20c997);
+  border-radius: 4px;
+  transition: width 1s linear;
+}
+
+.btn-photo,
+.btn-end,
+.btn-request {
+  padding: 0.75rem 1.5rem;
+  border-radius: 8px;
+  border: none;
+  font-size: 1rem;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 0.5rem;
+  transition: all 0.2s;
+}
+
+.btn-photo {
+  background: #17a2b8;
+  color: white;
+}
+
+.btn-photo:hover {
+  background: #138496;
+}
+
+.btn-end {
+  background: #dc3545;
+  color: white;
+}
+
+.btn-end:hover:not(:disabled) {
+  background: #c82333;
+}
+
+.btn-request {
+  background: #28a745;
+  color: white;
+  width: 100%;
+  justify-content: center;
+}
+
+.btn-request:hover:not(:disabled) {
+  background: #218838;
+}
+
+.cooldown-notice {
+  text-align: center;
+  padding: 1rem;
+  background: #fff3cd;
+  border-radius: 8px;
+  color: #856404;
+}
+
+.key-holder-actions {
+  margin-top: 1rem;
+  padding: 1rem;
+  background: #fff3cd;
+  border-radius: 8px;
+  text-align: center;
+}
+
+.pending-notice {
+  margin: 0 0 1rem;
+  color: #856404;
+}
+
+.action-buttons {
+  display: flex;
+  gap: 1rem;
+  justify-content: center;
+}
+
+.btn-approve,
+.btn-reject {
+  padding: 0.5rem 1.5rem;
+  border-radius: 6px;
+  border: none;
+  cursor: pointer;
+  font-size: 0.95rem;
+  transition: all 0.2s;
+}
+
+.btn-approve {
+  background: #28a745;
+  color: white;
+}
+
+.btn-approve:hover:not(:disabled) {
+  background: #218838;
+}
+
+.btn-reject {
+  background: #dc3545;
+  color: white;
+}
+
+.btn-reject:hover:not(:disabled) {
+  background: #c82333;
+}
+
+/* 开锁记录时间线 */
+.unlock-timeline {
+  margin: 1.5rem 0;
+}
+
+.unlock-timeline h4 {
+  margin: 0 0 1rem;
+  font-size: 1rem;
+  color: #495057;
+}
+
+.unlock-timeline .timeline {
+  position: relative;
+  padding-left: 1.5rem;
+}
+
+.unlock-timeline .timeline::before {
+  content: '';
+  position: absolute;
+  left: 0.5rem;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: #dee2e6;
+}
+
+.unlock-timeline .timeline-item {
+  position: relative;
+  margin-bottom: 1rem;
+  padding: 0.75rem;
+  background: white;
+  border-radius: 8px;
+  border-left: 3px solid #dee2e6;
+}
+
+.unlock-timeline .timeline-item.pending {
+  border-left-color: #ffc107;
+}
+
+.unlock-timeline .timeline-item.active {
+  border-left-color: #17a2b8;
+}
+
+.unlock-timeline .timeline-item.completed {
+  border-left-color: #28a745;
+}
+
+.unlock-timeline .timeline-item.timeout {
+  border-left-color: #dc3545;
+}
+
+.unlock-timeline .timeline-item.rejected {
+  border-left-color: #6c757d;
+}
+
+.unlock-timeline .timeline-marker {
+  position: absolute;
+  left: -1.25rem;
+  top: 1rem;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #dee2e6;
+  border: 2px solid white;
+}
+
+.unlock-timeline .timeline-item.pending .timeline-marker {
+  background: #ffc107;
+}
+
+.unlock-timeline .timeline-item.active .timeline-marker {
+  background: #17a2b8;
+}
+
+.unlock-timeline .timeline-item.completed .timeline-marker {
+  background: #28a745;
+}
+
+.unlock-timeline .timeline-item.timeout .timeline-marker {
+  background: #dc3545;
+}
+
+.unlock-timeline .timeline-item.rejected .timeline-marker {
+  background: #6c757d;
+}
+
+.record-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.5rem;
+}
+
+.record-header .status {
+  font-weight: 600;
+  font-size: 0.9rem;
+}
+
+.record-header .time {
+  font-size: 0.8rem;
+  color: #6c757d;
+}
+
+.record-details {
+  font-size: 0.85rem;
+  color: #495057;
+}
+
+.record-details p {
+  margin: 0.25rem 0;
+}
+
+.rejection-reason {
+  color: #dc3545;
+  font-style: italic;
+}
+
+.verification-photo {
+  margin-top: 0.75rem;
+}
+
+.photo-container {
+  position: relative;
+  display: inline-block;
+  overflow: hidden;
+  border-radius: 8px;
+}
+
+.verification-photo img {
+  max-width: 150px;
+  max-height: 150px;
+  border-radius: 8px;
+  display: block;
+  transition: transform 0.2s;
+}
+
+.verification-photo img.blurred {
+  filter: blur(8px);
+}
+
+/* 打码遮罩样式 - 参考首页动态图片打码风格 */
+.photo-censor-overlay {
+  position: absolute;
+  inset: 0;
+  backdrop-filter: blur(24px);
+  background:
+    url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)'/%3E%3C/svg%3E") repeat,
+    rgba(0, 0, 0, 0.4);
+  background-size: 8px 8px, auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: not-allowed;
+  transition: opacity 0.3s ease;
+}
+
+.photo-censor-overlay .censor-content {
+  background: rgba(255, 255, 255, 0.95);
+  padding: 0.5rem 0.75rem;
+  border: 2px solid #000;
+  box-shadow: 3px 3px 0 #000;
+  text-align: center;
+  transition: transform 0.2s ease;
+}
+
+.photo-censor-overlay .censor-icon {
+  font-size: 1.25rem;
+  margin-bottom: 0.25rem;
+}
+
+.photo-censor-overlay .censor-text {
+  font-weight: 700;
+  font-size: 0.75rem;
+  color: #000;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.photo-censor-overlay .censor-hint {
+  font-size: 0.65rem;
+  color: #666;
+  margin-top: 0.25rem;
+}
+
+/* 查看按钮遮罩 - 有权限用户显示 */
+.photo-view-overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.3);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.3s ease;
+}
+
+.photo-container:hover .photo-view-overlay {
+  opacity: 1;
+}
+
+.photo-view-overlay .view-hint {
+  background: rgba(255, 255, 255, 0.95);
+  padding: 0.5rem 0.75rem;
+  border-radius: 6px;
+  border: 2px solid #000;
+  box-shadow: 2px 2px 0 #000;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: #000;
+}
+
+.photo-view-overlay .view-icon {
+  font-size: 1rem;
+}
+
+.photo-required-hint {
+  text-align: center;
+  color: #856404;
+  margin-top: 0.5rem;
+}
+
+.photo-captured-notice {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 0.75rem;
+  background: #d4edda;
+  border-radius: 8px;
+  color: #155724;
+  margin-bottom: 1rem;
+}
+
+/* ============================================================================
+   时间线临时开锁事件样式
+   ============================================================================ */
+
+/* 临时开锁事件时间线圆点颜色 */
+.timeline-dot.unlock-pending {
+  background: #ffc107;
+  box-shadow: 0 0 0 4px rgba(255, 193, 7, 0.3);
+}
+
+.timeline-dot.unlock-success {
+  background: #28a745;
+  box-shadow: 0 0 0 4px rgba(40, 167, 69, 0.3);
+}
+
+.timeline-dot.unlock-rejected {
+  background: #dc3545;
+  box-shadow: 0 0 0 4px rgba(220, 53, 69, 0.3);
+}
+
+.timeline-dot.unlock-active {
+  background: #17a2b8;
+  box-shadow: 0 0 0 4px rgba(23, 162, 184, 0.3);
+  animation: pulse-unlock 2s infinite;
+}
+
+.timeline-dot.unlock-ended {
+  background: #6c757d;
+  box-shadow: 0 0 0 4px rgba(108, 117, 125, 0.3);
+}
+
+.timeline-dot.unlock-cancelled {
+  background: #6c757d;
+  box-shadow: 0 0 0 4px rgba(108, 117, 125, 0.3);
+}
+
+.timeline-dot.unlock-timeout {
+  background: #dc3545;
+  box-shadow: 0 0 0 4px rgba(220, 53, 69, 0.3);
+}
+
+.timeline-dot.frozen {
+  background: #00bcd4;
+  box-shadow: 0 0 0 4px rgba(0, 188, 212, 0.3);
+}
+
+.timeline-dot.unfrozen {
+  background: #4caf50;
+  box-shadow: 0 0 0 4px rgba(76, 175, 80, 0.3);
+}
+
+@keyframes pulse-unlock {
+  0%, 100% {
+    box-shadow: 0 0 0 4px rgba(23, 162, 184, 0.3);
+  }
+  50% {
+    box-shadow: 0 0 0 8px rgba(23, 162, 184, 0.1);
+  }
+}
+
+/* 时间线验证照片样式 */
+.timeline-verification-photo {
+  margin-top: 0.75rem;
+  padding: 0.75rem;
+  background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+  border-radius: 8px;
+  border: 1px solid #dee2e6;
+  animation: slide-in-photo 0.3s ease-out;
+}
+
+.timeline-verification-photo.mobile {
+  padding: 0.5rem;
+}
+
+@keyframes slide-in-photo {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.timeline-verification-photo .photo-label {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: #495057;
+  margin-bottom: 0.5rem;
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.timeline-photo-container {
+  position: relative;
+  display: inline-block;
+  overflow: hidden;
+  border-radius: 6px;
+  max-width: 120px;
+}
+
+.timeline-photo-container img {
+  width: 100%;
+  height: auto;
+  display: block;
+  transition: filter 0.3s ease, transform 0.3s ease;
+}
+
+.timeline-photo-container img.blurred {
+  filter: blur(8px);
+}
+
+/* 时间线照片打码遮罩 */
+.timeline-photo-censor {
+  position: absolute;
+  inset: 0;
+  backdrop-filter: blur(12px);
+  background:
+    url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)'/%3E%3C/svg%3E") repeat,
+    rgba(0, 0, 0, 0.4);
+  background-size: 6px 6px, auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: not-allowed;
+}
+
+.timeline-photo-censor .censor-content {
+  background: rgba(255, 255, 255, 0.95);
+  padding: 0.4rem 0.6rem;
+  border: 2px solid #000;
+  box-shadow: 2px 2px 0 #000;
+  text-align: center;
+}
+
+.timeline-photo-censor .censor-icon {
+  font-size: 1rem;
+}
+
+/* 时间线照片查看按钮 */
+.timeline-photo-view {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.4);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.3s ease;
+}
+
+.timeline-photo-container:hover .timeline-photo-view {
+  opacity: 1;
+}
+
+.timeline-photo-view .view-content {
+  background: rgba(255, 255, 255, 0.95);
+  padding: 0.4rem 0.6rem;
+  border-radius: 4px;
+  border: 2px solid #000;
+  box-shadow: 2px 2px 0 #000;
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: #000;
+}
+
+.timeline-photo-view .view-icon {
+  font-size: 0.8rem;
+}
+
+/* 移动端适配 */
+@media (max-width: 768px) {
+  .timeline-verification-photo {
+    margin-top: 0.5rem;
+    padding: 0.5rem;
+  }
+
+  .timeline-photo-container {
+    max-width: 100px;
+  }
+
+  .timeline-photo-censor .censor-content {
+    padding: 0.3rem 0.5rem;
+  }
+
+  .timeline-photo-censor .censor-icon {
+    font-size: 0.9rem;
+  }
+
+  .timeline-photo-view .view-content {
+    padding: 0.3rem 0.5rem;
+    font-size: 0.65rem;
+  }
+}
+
+/* 临时开锁事件特殊动画 */
+.timeline-item:has(.timeline-dot.unlock-active) {
+  animation: highlight-unlock 0.5s ease-out;
+}
+
+@keyframes highlight-unlock {
+  0% {
+    background: rgba(23, 162, 184, 0.2);
+  }
+  100% {
+    background: transparent;
   }
 }
 
