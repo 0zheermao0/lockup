@@ -28,7 +28,6 @@ class Post(models.Model):
         help_text="动态类型"
     )
     content = models.TextField(
-        max_length=5000,
         help_text="动态内容（HTML格式，实际显示文本限制1500字符）"
     )
 
@@ -178,7 +177,6 @@ class Comment(models.Model):
         help_text="所属动态"
     )
     content = models.TextField(
-        max_length=2000,
         help_text="评论内容（HTML格式，实际显示文本限制500字符）"
     )
     parent = models.ForeignKey(
