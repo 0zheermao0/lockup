@@ -4619,7 +4619,8 @@ class TemporaryUnlockEndView(APIView):
 
         # 解冻任务并调整结束时间
         # 注意：先解冻再手动设置新的结束时间，避免 unfreeze_task 中的时间调整逻辑
-        original_end_time = record.task_frozen_end_time or task.frozen_end_time or task.end_time
+        # 优先使用 task.frozen_end_time 以获取最新的时间（包含加时）
+        original_end_time = task.frozen_end_time or record.task_frozen_end_time or task.end_time
         frozen_duration = timezone.now() - record.started_at
         new_end_time = original_end_time + frozen_duration
 

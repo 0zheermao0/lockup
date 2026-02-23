@@ -42,7 +42,8 @@ class TemporaryUnlockRecordSerializer(serializers.ModelSerializer):
 
     def get_verification_photo_url(self, obj):
         if obj.verification_photo:
-            return f"{settings.MEDIA_URL}{obj.verification_photo}"
+            from utils.media import get_full_media_url
+            return get_full_media_url(obj.verification_photo.url)
         return None
 
 
@@ -658,7 +659,8 @@ class TaskTimelineEventSerializer(serializers.ModelSerializer):
         try:
             record = TemporaryUnlockRecord.objects.get(id=record_id)
             if record.verification_photo:
-                return f"{settings.MEDIA_URL}{record.verification_photo}"
+                from utils.media import get_full_media_url
+                return get_full_media_url(record.verification_photo.url)
         except Exception:
             pass
 

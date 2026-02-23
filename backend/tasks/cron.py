@@ -25,7 +25,8 @@ def check_temporary_unlock_timeouts():
         record.save()
 
         # 解冻任务并调整时间
-        original_end_time = record.task_frozen_end_time or task.frozen_end_time or task.end_time
+        # 优先使用 task.frozen_end_time 以获取最新的时间（包含加时）
+        original_end_time = task.frozen_end_time or record.task_frozen_end_time or task.end_time
         frozen_duration = record.ended_at - record.started_at
         new_end_time = original_end_time + frozen_duration
 
