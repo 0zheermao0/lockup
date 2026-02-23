@@ -4229,11 +4229,23 @@ class TemporaryUnlockRequestView(APIView):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
+        # 检查请求者是否为钥匙持有者
+        # 对于有钥匙记录的任务（投票解锁），检查 key.holder
+        # 对于没有钥匙记录的任务（时间解锁），默认任务发起人就是钥匙持有者
+        if hasattr(task, 'key'):
+            is_key_holder = task.key.holder == user
+        else:
+            # 时间解锁任务，任务发起人即钥匙持有者
+            is_key_holder = task.user == user
+
+        # 如果是钥匙持有者本人请求，不需要批准
+        require_approval = task.temporary_unlock_require_approval and not is_key_holder
+
         # 创建临时开锁记录
         record = TemporaryUnlockRecord.objects.create(
             task=task,
             user=user,
-            status='pending' if task.temporary_unlock_require_approval else 'active',
+            status='pending' if require_approval else 'active',
             max_end_time=timezone.now() + timedelta(minutes=task.temporary_unlock_max_duration)
         )
 
@@ -4257,7 +4269,7 @@ class TemporaryUnlockRequestView(APIView):
         )
 
         # 如果需要批准，发送通知给钥匙持有者
-        if task.temporary_unlock_require_approval:
+        if require_approval:
             # 创建时间线事件 - 临时开锁请求
             TaskTimelineEvent.objects.create(
                 task=task,

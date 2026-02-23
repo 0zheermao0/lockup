@@ -13,14 +13,25 @@
           >
             🔗 分享
           </button>
-          <button
-            v-if="canDeleteTask"
-            @click="deleteTask"
-            class="delete-btn"
-            title="删除任务"
-          >
-            🗑️ 删除
-          </button>
+          <div class="more-menu-wrapper">
+            <button
+              @click="showMoreMenu = !showMoreMenu"
+              class="more-btn"
+              title="更多操作"
+            >
+              ⋮
+            </button>
+            <div v-if="showMoreMenu" class="more-menu-dropdown" v-click-outside="() => showMoreMenu = false">
+              <button
+                v-if="canDeleteTask"
+                @click="deleteTask(); showMoreMenu = false"
+                class="dropdown-item danger"
+              >
+                <span class="item-icon">🗑️</span>
+                <span>删除任务</span>
+              </button>
+            </div>
+          </div>
         </div>
       </div>
     </header>
@@ -40,162 +51,60 @@
 
         <!-- Task Detail -->
         <div v-else-if="task" class="task-detail-content">
-          <!-- Quick Actions Bar - 高频操作区域 -->
-          <section v-if="canManageTask || canClaimTask || canSubmitProof || canReviewTask || canEndTask || canAddOvertime || canStartVoting || canVote" class="quick-actions-bar">
-            <div class="quick-actions-content">
-              <!-- 单行布局，按功能分组 -->
-              <div class="actions-single-row">
-                <!-- 第一组：随机加时 (最高优先级) -->
-                <div class="action-group action-group-timing">
-                  <button
-                    v-if="canAddOvertime"
-                    @click="addOvertime"
-                    class="quick-action-btn secondary"
-                    :title="'随机加时'"
-                  >
-                    <span class="btn-icon">⏰</span>
-                    <span class="btn-text">随机加时</span>
-                  </button>
-                </div>
+          <!-- Action Center (Sticky) -->
+          <div class="action-center-wrapper" :class="{ 'is-sticky': isActionCenterSticky }">
+            <ActionCenter
+            :task-type="task.task_type"
+            :task-status="task.status"
+            :is-own-task="isOwnTask"
+            :is-key-holder="hasTaskKey && !keyCheckLoading"
+            :user-coins="authStore.user?.coins || 0"
+            :can-start-task="task.status === 'pending' && canManageTask"
+            :can-complete-task="canCompleteTask"
+            :can-stop-task="(task.status === 'active' || task.status === 'voting' || task.status === 'voting_passed') && isOwnTask"
+            :can-start-voting="canStartVoting"
+            :can-vote="canVote"
+            :can-add-overtime="canAddOvertime"
+            :can-manual-time-adjust="canManageKeyActions"
+            :can-claim-task="canClaimTask"
+            :can-submit-proof="canSubmitProof"
+            :can-review-task="canReviewTask"
+            :can-end-task="canEndTask"
+            :time-display-hidden="taskTimeDisplayHidden"
+            :task-frozen="taskFrozen"
+            :shield-active="task.task_type === 'lock' ? (task as any).shield_active : false"
+            :can-return-key="taskKey && taskKey.original_owner && taskKey.original_owner.id !== authStore.user?.id"
+            :original-owner-name="taskKey?.original_owner?.username"
+            :can-afford-time-adjustment="canAffordTimeAdjustment"
+            :can-afford-time-toggle="canAffordTimeToggle"
+            :can-afford-freeze="canAffordFreeze"
+            :can-afford-pinning="canAffordPinning"
+            :can-afford-exclusive-task="canAffordExclusiveTask"
+            :can-afford-shield="canAffordShield"
+            @start-task="startTask"
+            @complete-task="completeTask"
+            @stop-task="stopTask"
+            @start-voting="startVoting"
+            @open-vote-modal="openVoteModal"
+            @add-overtime="addOvertime"
+            @manual-time-adjustment="manualTimeAdjustment"
+            @claim-task="claimTask"
+            @open-submission-modal="openSubmissionModal"
+            @approve-task="approveTask"
+            @reject-task="rejectTask"
+            @end-task="endTask"
+            @toggle-time-display="toggleTimeDisplay"
+            @freeze-task="freezeTask"
+            @unfreeze-task="unfreezeTask"
+            @pin-task-owner="pinTaskOwner"
+            @open-exclusive-task-modal="openExclusiveTaskModal"
+            @toggle-shield="toggleShield"
+            @return-key="returnKeyToOriginalOwner"
+            @scroll-passed="isActionCenterSticky = true"
+            @scroll-top="isActionCenterSticky = false"
+          />
+          </div>
 
-                <!-- 第二组：任务管理 (开始、完成、停止、结束) -->
-                <div class="action-group action-group-management">
-                  <button
-                    v-if="task.status === 'pending' && canManageTask"
-                    @click="startTask"
-                    class="quick-action-btn primary large"
-                    :title="'开始任务'"
-                  >
-                    <span class="btn-icon">🚀</span>
-                    <span class="btn-text">开始任务</span>
-                  </button>
-                  <!-- 时间隐藏状态警告 -->
-                  <div
-                    v-if="(task.status === 'active' || task.status === 'voting_passed') && canCompleteTask && taskTimeDisplayHidden && !isTaskExpired"
-                    class="hidden-time-warning"
-                  >
-                    <div class="warning-content">
-                      <span class="warning-icon">⚠️</span>
-                      <div class="warning-text">
-                        <p><strong>时间隐藏模式警告</strong></p>
-                        <p>在此模式下提前完成任务将触发惩罚性加时（30-180分钟）</p>
-                        <p>建议：使用探测雷达确认剩余时间，或等待确定时间结束</p>
-                      </div>
-                    </div>
-                  </div>
-
-                  <button
-                    v-if="(task.status === 'active' || task.status === 'voting_passed') && canCompleteTask"
-                    @click="completeTask"
-                    class="quick-action-btn success large"
-                    :title="'完成任务'"
-                  >
-                    <span class="btn-icon">✅</span>
-                    <span class="btn-text">完成任务</span>
-                  </button>
-                  <button
-                    v-if="(task.status === 'active' || task.status === 'voting' || task.status === 'voting_passed') && isOwnTask"
-                    @click="stopTask"
-                    class="quick-action-btn danger large"
-                    :title="'停止任务'"
-                  >
-                    <span class="btn-icon">⏹️</span>
-                    <span class="btn-text">停止任务</span>
-                  </button>
-                  <button
-                    v-if="canEndTask"
-                    @click="endTask"
-                    class="quick-action-btn danger large"
-                    :title="'结束任务'"
-                  >
-                    <span class="btn-icon">🏁</span>
-                    <span class="btn-text">结束任务</span>
-                  </button>
-                </div>
-
-                <!-- 第三组：悬赏任务相关 -->
-                <div class="action-group action-group-board">
-                  <button
-                    v-if="canClaimTask"
-                    @click="claimTask"
-                    class="quick-action-btn warning large"
-                    :title="'揭榜任务'"
-                  >
-                    <span class="btn-icon">📋</span>
-                    <span class="btn-text">揭榜任务</span>
-                  </button>
-                  <button
-                    v-if="canSubmitProof"
-                    @click="openSubmissionModal"
-                    class="quick-action-btn info large"
-                    :title="'提交完成证明'"
-                  >
-                    <span class="btn-icon">📤</span>
-                    <span class="btn-text">提交完成证明</span>
-                  </button>
-                </div>
-
-                <!-- 第四组：审核相关 -->
-                <div class="action-group action-group-review">
-                  <button
-                    v-if="canReviewTask"
-                    @click="approveTask"
-                    class="quick-action-btn success large"
-                    :title="'审核通过'"
-                  >
-                    <span class="btn-icon">✅</span>
-                    <span class="btn-text">审核通过</span>
-                  </button>
-                  <button
-                    v-if="canReviewTask"
-                    @click="rejectTask"
-                    class="quick-action-btn danger large"
-                    :title="'审核拒绝'"
-                  >
-                    <span class="btn-icon">❌</span>
-                    <span class="btn-text">审核拒绝</span>
-                  </button>
-                </div>
-
-                <!-- 第五组：投票相关 -->
-                <div class="action-group action-group-voting">
-                  <button
-                    v-if="canStartVoting"
-                    @click="startVoting"
-                    class="quick-action-btn vote large pulse"
-                    :title="'发起投票'"
-                  >
-                    <span class="btn-icon">🗳️</span>
-                    <span class="btn-text">发起投票</span>
-                  </button>
-                  <button
-                    v-else-if="canVote"
-                    @click="openVoteModal"
-                    class="quick-action-btn vote large"
-                    :title="'参与投票'"
-                  >
-                    <span class="btn-icon">🗳️</span>
-                    <span class="btn-text">参与投票</span>
-                  </button>
-                </div>
-
-                <!-- 完成率警告 -->
-                <div
-                  v-if="showCompletionRateWarning"
-                  class="completion-rate-warning"
-                >
-                  <div class="warning-icon">⚠️</div>
-                  <div class="warning-content">
-                    <div class="warning-title">完成率不足</div>
-                    <div class="warning-text">
-                      您的任务完成率为 {{ authStore.user?.task_completion_rate || 0 }}%，
-                      需要达到 {{ (task as any)?.completion_rate_threshold }}% 才能接取此任务
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </section>
           <!-- Task Info Card -->
           <section class="task-card">
             <div class="task-header">
@@ -739,115 +648,126 @@
                   </div>
                 </div>
 
-                <!-- Mobile Timeline (Horizontal) -->
+                <!-- Mobile Timeline (Horizontal) - Neo-Brutalism Design -->
                 <div class="horizontal-timeline-wrapper mobile-timeline">
-                <div
-                  class="horizontal-timeline-container"
-                  :style="{
-                    '--timeline-items': timeline.length || 1,
-                    'width': `${Math.max(timeline.length * 280 + 40, 320)}px`,
-                    'min-height': `${Math.max(280, 240)}px`
-                  }"
-                >
-                  <!-- Timeline track -->
-                  <div class="timeline-track"></div>
-
-                  <!-- Timeline events from API (oldest to newest, left to right) -->
                   <div
-                    v-for="(event, index) in timelineReversed"
-                    :key="event.id"
-                    class="horizontal-timeline-item"
-                    :style="{ left: `${index * 280 + 20}px` }"
+                    class="horizontal-timeline-container"
+                    :style="{
+                      '--timeline-items': timeline.length || 1
+                    }"
                   >
-                    <div class="timeline-dot-wrapper">
-                      <div class="timeline-dot" :class="getEventTypeClass(event.event_type)"></div>
-                      <div class="timeline-connector" v-if="index < timelineReversed.length - 1"></div>
+                    <!-- Timeline track with progress -->
+                    <div class="timeline-track">
+                      <div class="timeline-track-progress" :style="{ width: `${Math.min(100, (timelineReversed.length > 1 ? 100 : 0))}%` }"></div>
                     </div>
-                    <div class="timeline-card">
-                      <div class="timeline-card-header">
-                        <div class="timeline-title">{{ event.event_type_display }}</div>
-                        <div v-if="!taskTimeDisplayHidden" class="timeline-time">
-                          {{ formatDateTime(event.created_at) }}
-                        </div>
-                        <div v-else class="timeline-time-hidden">
-                          <span class="hidden-time-placeholder">🔒 时间已隐藏</span>
-                        </div>
+
+                    <!-- Timeline events from API (oldest to newest, left to right) -->
+                    <div
+                      v-for="(event, index) in timelineReversed"
+                      :key="event.id"
+                      class="horizontal-timeline-item"
+                      :style="{ '--item-index': index }"
+                    >
+                      <div class="timeline-dot-wrapper">
+                        <div class="timeline-dot" :class="getEventTypeClass(event.event_type)"></div>
                       </div>
-                      <div class="timeline-card-body">
-                        <div class="timeline-description">{{ event.description }}</div>
-                        <div v-if="event.user" class="timeline-user">
-                          操作者:
-                          <button
-                            @click="openUserProfile(event.user.id)"
-                            class="timeline-user-btn"
-                            :title="`查看 ${event.user.username} 的资料`"
+                      <div class="timeline-card" :class="[getEventTypeClass(event.event_type), { 'is-new': index === timelineReversed.length - 1 }]">
+                        <div class="timeline-card-header">
+                          <div class="timeline-title">{{ event.event_type_display }}</div>
+                          <div v-if="!taskTimeDisplayHidden" class="timeline-time">
+                            {{ formatDateTime(event.created_at) }}
+                          </div>
+                          <div v-else class="timeline-time">
+                            🔒 时间已隐藏
+                          </div>
+                        </div>
+                        <div class="timeline-card-body">
+                          <div class="timeline-description">{{ event.description }}</div>
+                          <div v-if="event.user" class="timeline-user">
+                            操作者:
+                            <button
+                              @click="openUserProfile(event.user.id)"
+                              class="timeline-user-btn"
+                              :title="`查看 ${event.user.username} 的资料`"
+                            >
+                              {{ event.user.username }}
+                            </button>
+                          </div>
+                          <div
+                            v-if="event.time_change_minutes && !taskTimeDisplayHidden"
+                            class="timeline-time-change"
+                            :class="event.time_change_minutes > 0 ? 'positive' : 'negative'"
                           >
-                            {{ event.user.username }}
-                          </button>
-                        </div>
-                        <div v-if="event.time_change_minutes && !taskTimeDisplayHidden" class="timeline-time-change">
-                          时间变化: {{ event.time_change_minutes > 0 ? '+' : '' }}{{ event.time_change_minutes }} 分钟
-                        </div>
-                        <div v-else-if="event.time_change_minutes && taskTimeDisplayHidden" class="timeline-time-change-hidden">
-                          <span class="hidden-time-placeholder">🔒 时间变化已隐藏</span>
-                        </div>
-                        <div v-if="event.previous_end_time && event.new_end_time && !taskTimeDisplayHidden" class="timeline-times">
-                          <div class="previous-time">原定结束: {{ formatDateTime(event.previous_end_time) }}</div>
-                          <div class="new-time">新的结束: {{ formatDateTime(event.new_end_time) }}</div>
-                        </div>
-                        <div v-else-if="event.previous_end_time && event.new_end_time && taskTimeDisplayHidden" class="timeline-times-hidden">
-                          <span class="hidden-time-placeholder">🔒 时间信息已隐藏</span>
-                        </div>
-                        <!-- 移动端临时开锁验证照片 -->
-                        <div v-if="isTemporaryUnlockEvent(event.event_type) && (event.metadata?.has_photo || event.verification_photo_url)" class="timeline-verification-photo mobile">
-                          <div class="photo-label">📷 验证照片</div>
-                          <div class="timeline-photo-container">
-                            <img
-                              :src="getVerificationPhotoUrl(event.metadata?.record_id, event.verification_photo_url)"
-                              :class="{ 'blurred': !canViewVerificationPhoto }"
-                              alt="验证照片"
-                            />
-                            <div v-if="!canViewVerificationPhoto" class="timeline-photo-censor" @click.stop="showPermissionDeniedToast">
-                              <div class="censor-content">
-                                <div class="censor-icon">🔒</div>
+                            <span>{{ event.time_change_minutes > 0 ? '📈' : '📉' }}</span>
+                            <span>{{ event.time_change_minutes > 0 ? '+' : '' }}{{ event.time_change_minutes }} 分钟</span>
+                          </div>
+                          <div v-else-if="event.time_change_minutes && taskTimeDisplayHidden" class="timeline-time-change">
+                            🔒 时间变化已隐藏
+                          </div>
+                          <div v-if="event.previous_end_time && event.new_end_time && !taskTimeDisplayHidden" class="timeline-times">
+                            <div class="previous-time">原定: {{ formatDateTime(event.previous_end_time) }}</div>
+                            <div class="new-time">新的: {{ formatDateTime(event.new_end_time) }}</div>
+                          </div>
+                          <div v-else-if="event.previous_end_time && event.new_end_time && taskTimeDisplayHidden" class="timeline-times-hidden">
+                            🔒 时间信息已隐藏
+                          </div>
+                          <!-- 移动端临时开锁验证照片 -->
+                          <div v-if="isTemporaryUnlockEvent(event.event_type) && (event.metadata?.has_photo || event.verification_photo_url)" class="timeline-verification-photo mobile">
+                            <div class="photo-label">📷 验证照片</div>
+                            <div class="timeline-photo-container">
+                              <img
+                                :src="getVerificationPhotoUrl(event.metadata?.record_id, event.verification_photo_url)"
+                                :class="{ 'blurred': !canViewVerificationPhoto }"
+                                alt="验证照片"
+                              />
+                              <div v-if="!canViewVerificationPhoto" class="timeline-photo-censor" @click.stop="showPermissionDeniedToast">
+                                <div class="censor-content">
+                                  <div class="censor-icon">🔒</div>
+                                </div>
                               </div>
-                            </div>
-                            <div v-else class="timeline-photo-view" @click.stop="viewPhoto(getVerificationPhotoUrl(event.metadata?.record_id, event.verification_photo_url))">
-                              <div class="view-content">
-                                <span class="view-icon">🔍</span>
+                              <div v-else class="timeline-photo-view" @click.stop="viewPhoto(getVerificationPhotoUrl(event.metadata?.record_id, event.verification_photo_url))">
+                                <div class="view-content">
+                                  <span class="view-icon">🔍</span>
+                                  <span>查看</span>
+                                </div>
                               </div>
                             </div>
                           </div>
                         </div>
                       </div>
                     </div>
+
+                    <!-- Fallback: Basic timeline if no API events -->
+                    <div v-if="timeline.length === 0 && taskStartTime" class="horizontal-timeline-item" style="--item-index: 0">
+                      <div class="timeline-dot-wrapper">
+                        <div class="timeline-dot start"></div>
+                      </div>
+                      <div class="timeline-card start">
+                        <div class="timeline-card-header">
+                          <div class="timeline-title">任务开始</div>
+                          <div class="timeline-time">{{ formatDateTime(taskStartTime) }}</div>
+                        </div>
+                      </div>
+                    </div>
+                    <div v-if="timeline.length === 0 && taskEndTime" class="horizontal-timeline-item" style="--item-index: 1">
+                      <div class="timeline-dot-wrapper">
+                        <div class="timeline-dot end"></div>
+                      </div>
+                      <div class="timeline-card completed">
+                        <div class="timeline-card-header">
+                          <div class="timeline-title">任务结束</div>
+                          <div class="timeline-time">{{ formatDateTime(taskEndTime) }}</div>
+                        </div>
+                      </div>
+                    </div>
                   </div>
 
-                  <!-- Fallback: Basic timeline if no API events -->
-                  <div v-if="timeline.length === 0 && taskStartTime" class="horizontal-timeline-item" style="left: 20px">
-                    <div class="timeline-dot-wrapper">
-                      <div class="timeline-dot start"></div>
-                      <div class="timeline-connector" v-if="taskEndTime"></div>
-                    </div>
-                    <div class="timeline-card">
-                      <div class="timeline-card-header">
-                        <div class="timeline-title">任务开始</div>
-                        <div class="timeline-time">{{ formatDateTime(taskStartTime) }}</div>
-                      </div>
-                    </div>
+                  <!-- Scroll hint -->
+                  <div v-if="timeline.length > 1 || (timeline.length === 0 && taskStartTime && taskEndTime)" class="timeline-scroll-hint">
+                    <span class="hint-icon">👈</span>
+                    <span>左右滑动查看更多</span>
+                    <span class="hint-icon">👉</span>
                   </div>
-                  <div v-if="timeline.length === 0 && taskEndTime" class="horizontal-timeline-item" style="left: 300px">
-                    <div class="timeline-dot-wrapper">
-                      <div class="timeline-dot end"></div>
-                    </div>
-                    <div class="timeline-card">
-                      <div class="timeline-card-header">
-                        <div class="timeline-title">任务结束</div>
-                        <div class="timeline-time">{{ formatDateTime(taskEndTime) }}</div>
-                      </div>
-                    </div>
-                  </div>
-                </div>
                 </div>
               </div>
             </div>
@@ -1187,187 +1107,6 @@
             </div>
           </section>
 
-          <!-- Key Holder Actions Section -->
-          <section v-if="canManageKeyActions" class="key-holder-section">
-            <div class="key-holder-header">
-              <h3>🔑 钥匙持有者专属操作</h3>
-              <div class="key-holder-info">
-                <span class="coins-display">💰 当前积分: {{ authStore.user?.coins || 0 }}</span>
-              </div>
-            </div>
-
-            <div class="key-actions-grid">
-              <!-- Manual Time Adjustment -->
-              <div class="key-action-card">
-                <div class="action-header">
-                  <h4>⏰ 手动时间调整</h4>
-                  <span class="action-cost">消耗 10 积分</span>
-                </div>
-                <p class="action-description">固定调整任务时间 ±20 分钟</p>
-                <div class="action-buttons">
-                  <button
-                    @click="manualTimeAdjustment('increase')"
-                    :disabled="!canAffordTimeAdjustment"
-                    class="key-action-btn increase"
-                    :class="{ 'disabled': !canAffordTimeAdjustment }"
-                  >
-                    ⏰ 加时
-                  </button>
-                  <button
-                    @click="manualTimeAdjustment('decrease')"
-                    :disabled="!canAffordTimeAdjustment"
-                    class="key-action-btn decrease"
-                    :class="{ 'disabled': !canAffordTimeAdjustment }"
-                  >
-                    ⏰ 减时
-                  </button>
-                </div>
-              </div>
-
-              <!-- Time Display Toggle -->
-              <div class="key-action-card">
-                <div class="action-header">
-                  <h4>👁️ 时间显示控制</h4>
-                  <span class="action-cost">消耗 50 积分</span>
-                </div>
-                <p class="action-description">
-                  当前状态: {{ taskTimeDisplayHidden ? '🌫️ 时间已隐藏' : '👁️ 时间可见' }}
-                </p>
-                <div class="action-buttons">
-                  <button
-                    @click="toggleTimeDisplay"
-                    :disabled="!canAffordTimeToggle"
-                    class="key-action-btn time-toggle"
-                    :class="{
-                      'disabled': !canAffordTimeToggle,
-                      'hidden-mode': taskTimeDisplayHidden
-                    }"
-                  >
-                    {{ taskTimeDisplayHidden ? '👁️ 显示时间' : '🙈 隐藏时间' }}
-                  </button>
-                </div>
-              </div>
-
-              <!-- Freeze/Unfreeze Task -->
-              <div class="key-action-card">
-                <div class="action-header">
-                  <h4>❄️ 冻结/解冻控制</h4>
-                  <span class="action-cost">消耗 25 积分</span>
-                </div>
-                <p class="action-description">
-                  当前状态: {{ taskFrozen ? '❄️ 任务已冻结' : '🔥 任务进行中' }}
-                </p>
-                <div class="action-buttons">
-                  <button
-                    v-if="!taskFrozen"
-                    @click="freezeTask"
-                    :disabled="!canAffordFreeze || freezingInProgress"
-                    class="key-action-btn freeze"
-                    :class="{ 'disabled': !canAffordFreeze || freezingInProgress }"
-                  >
-                    {{ freezingInProgress ? '冻结中...' : '❄️ 冻结任务' }}
-                  </button>
-                  <button
-                    v-else
-                    @click="unfreezeTask"
-                    :disabled="!canAffordFreeze || freezingInProgress"
-                    class="key-action-btn unfreeze"
-                    :class="{ 'disabled': !canAffordFreeze || freezingInProgress }"
-                  >
-                    {{ freezingInProgress ? '解冻中...' : '🔥 解冻任务' }}
-                  </button>
-                </div>
-              </div>
-
-              <!-- Pin Task Owner -->
-              <div class="key-action-card">
-                <div class="action-header">
-                  <h4>📌 置顶惩罚</h4>
-                  <span class="action-cost">消耗 60 积分</span>
-                </div>
-                <p class="action-description">
-                  置顶任务创建者 <strong>{{ task?.user?.username }}</strong> 30分钟，置顶期间他人加时效果×10
-                </p>
-                <div class="action-buttons">
-                  <button
-                    @click="pinTaskOwner"
-                    :disabled="!canAffordPinning || pinningInProgress"
-                    class="key-action-btn pin"
-                    :class="{ 'disabled': !canAffordPinning || pinningInProgress }"
-                  >
-                    {{ pinningInProgress ? '置顶中...' : '📌 置顶惩罚' }}
-                  </button>
-                </div>
-              </div>
-
-              <!-- Exclusive Task Creation -->
-              <div class="key-action-card">
-                <div class="action-header">
-                  <h4>🎯 专属任务</h4>
-                  <span class="action-cost">消耗 15 积分</span>
-                </div>
-                <p class="action-description">
-                  为任务创建者 <strong>{{ task?.user?.username }}</strong> 创建专属任务，自动指派无需揭榜
-                </p>
-                <div class="action-buttons">
-                  <button
-                    @click="openExclusiveTaskModal"
-                    :disabled="!canAffordExclusiveTask || creatingExclusiveTask"
-                    class="key-action-btn exclusive-task"
-                    :class="{ 'disabled': !canAffordExclusiveTask || creatingExclusiveTask }"
-                  >
-                    {{ creatingExclusiveTask ? '创建中...' : '🎯 创建专属任务' }}
-                  </button>
-                </div>
-              </div>
-
-              <!-- Shield Control -->
-              <div class="key-action-card">
-                <div class="action-header">
-                  <h4>🛡️ 防护罩控制</h4>
-                  <span class="action-cost">消耗 15 积分</span>
-                </div>
-                <p class="action-description">
-                  当前状态: {{ (task?.task_type === 'lock' && task?.shield_active) ? '🛡️ 防护罩已开启' : '🔓 防护罩已关闭' }}
-                  <br>
-                  <small>开启后任务将从"可加时的绒布球"列表中隐藏</small>
-                </p>
-                <div class="action-buttons">
-                  <button
-                    @click="toggleShield"
-                    :disabled="!canAffordShield || shieldToggling"
-                    class="key-action-btn shield-toggle"
-                    :class="{
-                      'disabled': !canAffordShield || shieldToggling,
-                      'shield-active': task?.task_type === 'lock' && task?.shield_active
-                    }"
-                  >
-                    {{ shieldToggling ? '切换中...' : ((task?.task_type === 'lock' && task?.shield_active) ? '🔓 关闭防护罩' : '🛡️ 开启防护罩') }}
-                  </button>
-                </div>
-              </div>
-
-              <!-- Key Return Option -->
-              <div v-if="taskKey && taskKey.original_owner && taskKey.original_owner.id !== authStore.user?.id" class="key-action-card">
-                <div class="action-header">
-                  <h4>🔄 钥匙归还</h4>
-                  <span class="action-cost">免费</span>
-                </div>
-                <p class="action-description">
-                  将钥匙归还给原持有者: <strong>{{ taskKey.original_owner.username }}</strong>
-                </p>
-                <div class="action-buttons">
-                  <button
-                    @click="returnKeyToOriginalOwner"
-                    :disabled="returningKey"
-                    class="key-action-btn return"
-                  >
-                    {{ returningKey ? '归还中...' : '🔄 归还钥匙' }}
-                  </button>
-                </div>
-              </div>
-            </div>
-          </section>
         </div>
       </div>
     </main>
@@ -1546,7 +1285,27 @@ import ShareModal from '../components/ShareModal.vue'
 import NotificationToast from '../components/NotificationToast.vue'
 import UserAvatar from '../components/UserAvatar.vue'
 import CameraModal from '../components/CameraModal.vue'
+import ActionCenter from '../components/ActionCenter.vue'
 import type { Task } from '../types/index'
+
+// Click outside directive
+const vClickOutside = {
+  mounted(el: HTMLElement, binding: any) {
+    const clickOutsideHandler = (event: Event) => {
+      if (!(el === event.target || el.contains(event.target as Node))) {
+        binding.value()
+      }
+    }
+    ;(el as any)._clickOutside = clickOutsideHandler
+    document.addEventListener('click', clickOutsideHandler, true)
+  },
+  unmounted(el: HTMLElement) {
+    const handler = (el as any)._clickOutside
+    if (handler) {
+      document.removeEventListener('click', handler, true)
+    }
+  }
+}
 
 const route = useRoute()
 const router = useRouter()
@@ -1554,7 +1313,7 @@ const authStore = useAuthStore()
 const tasksStore = useTasksStore()
 
 // State
-const task = ref<Task | null>(null)
+const task = ref<any>(null)
 const loading = ref(true)
 const error = ref('')
 const currentVotes = ref(0)
@@ -1620,6 +1379,11 @@ const selectedImage = ref<any>(null)
 
 // Multi-person task participants navigation state (removed review mode)
 
+// Header more menu state
+const showMoreMenu = ref(false)
+
+// Action Center sticky state
+const isActionCenterSticky = ref(false)
 
 // Toast notification state
 const showToast = ref(false)
@@ -1794,7 +1558,7 @@ const canSubmitProof = computed(() => {
 
   if (isMultiPerson) {
     // 多人任务：检查是否已参与且任务状态允许提交
-    const isParticipant = task.value.participants?.some(p => p.participant.id === authStore.user?.id)
+    const isParticipant = task.value.participants?.some((p: any) => p.participant.id === authStore.user?.id)
     const allowedStatuses = ['taken', 'submitted']  // 多人任务在这些状态下都可以提交
 
     if (!isParticipant || !allowedStatuses.includes(task.value.status)) {
@@ -1802,7 +1566,7 @@ const canSubmitProof = computed(() => {
     }
 
     // 检查当前用户是否已经提交过
-    const currentParticipant = task.value.participants?.find(p => p.participant.id === authStore.user?.id)
+    const currentParticipant = task.value.participants?.find((p: any) => p.participant.id === authStore.user?.id)
     return currentParticipant?.status !== 'submitted' && currentParticipant?.status !== 'approved'
   } else {
     // 单人任务：检查是否是接取者且状态为taken
@@ -1876,16 +1640,15 @@ const canManageLockTask = computed(() => {
   // For lock tasks, either the task owner OR the key holder can manage certain actions
   if (task.value.task_type === 'lock') {
     const isTaskOwner = authStore.user?.id === task.value.user.id
-    const isKeyHolder = hasTaskKey.value && !keyCheckLoading.value
 
     console.log('🔐 canManageLockTask check:', {
       isTaskOwner,
-      isKeyHolder,
+      isKeyHolder: isKeyHolder.value,
       hasTaskKey: hasTaskKey.value,
       keyCheckLoading: keyCheckLoading.value
     })
 
-    return isTaskOwner || isKeyHolder
+    return isTaskOwner || isKeyHolder.value
   }
 
   // For non-lock tasks, use original logic
@@ -2129,17 +1892,19 @@ const isTaskExpired = computed(() => {
 const canManageKeyActions = computed(() => {
   if (!task.value || task.value.task_type !== 'lock') return false
 
-  // Only key holders can manage key actions
-  const isKeyHolder = hasTaskKey.value && !keyCheckLoading.value
-
   console.log('🔑 canManageKeyActions check:', {
     hasTaskKey: hasTaskKey.value,
     keyCheckLoading: keyCheckLoading.value,
-    isKeyHolder,
+    isKeyHolder: isKeyHolder.value,
     taskId: task.value.id
   })
 
-  return isKeyHolder
+  return isKeyHolder.value
+})
+
+// 是否是钥匙持有者
+const isKeyHolder = computed(() => {
+  return hasTaskKey.value && !keyCheckLoading.value
 })
 
 const hasPendingUnlockRequest = computed(() => {
@@ -2987,7 +2752,7 @@ const approveTask = async () => {
   // For multi-person tasks, need to approve individual participants
   if (task.value.task_type === 'board' && task.value.max_participants && task.value.max_participants > 1) {
     // Check if there are submitted participants to review
-    const submittedParticipants = task.value.participants?.filter(p => p.status === 'submitted') || []
+    const submittedParticipants = task.value.participants?.filter((p: any) => p.status === 'submitted') || []
     if (submittedParticipants.length === 0) {
       alert('没有待审核的参与者提交')
       return
@@ -3040,7 +2805,7 @@ const rejectTask = async () => {
   // For multi-person tasks, need to reject individual participants
   if (task.value.task_type === 'board' && task.value.max_participants && task.value.max_participants > 1) {
     // Check if there are submitted participants to review
-    const submittedParticipants = task.value.participants?.filter(p => p.status === 'submitted') || []
+    const submittedParticipants = task.value.participants?.filter((p: any) => p.status === 'submitted') || []
     if (submittedParticipants.length === 0) {
       alert('没有待审核的参与者提交')
       return
@@ -4492,14 +4257,17 @@ const requestTemporaryUnlock = async () => {
     // 刷新任务数据
     await fetchTask()
 
+    // 根据后端返回的记录状态判断是否需要批准
+    const isPending = result.record?.status === 'pending'
+
     showToast.value = true
     toastData.value = {
       type: 'success',
-      title: '请求已发送',
+      title: isPending ? '请求已发送' : '临时开锁已开始',
       message: result.message,
-      secondaryMessage: task.value.temporary_unlock_config?.require_approval
+      secondaryMessage: isPending
         ? '等待钥匙持有者批准'
-        : '临时开锁已开始，任务计时已暂停'
+        : '任务计时已暂停，请尽快完成任务'
     }
   } catch (error: any) {
     console.error('Error requesting temporary unlock:', error)
@@ -4709,36 +4477,60 @@ const formatRemainingTime = (minutes: number) => {
 
 .back-btn, .delete-btn, .share-btn {
   background: none;
-  border: 1px solid #666;
-  border-radius: 4px;
+  border: 2px solid #000;
+  border-radius: 8px;
   padding: 0.5rem 1rem;
   cursor: pointer;
   font-size: 0.875rem;
+  font-weight: 600;
+  transition: all 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
+  box-shadow: 3px 3px 0 #000;
 }
 
 .back-btn:hover {
   background-color: #f8f9fa;
+  transform: translate(-2px, -2px);
+  box-shadow: 5px 5px 0 #000;
+}
+
+.back-btn:active {
+  transform: translate(0, 0);
+  box-shadow: 2px 2px 0 #000;
 }
 
 .share-btn {
-  background-color: #007bff;
+  background: linear-gradient(135deg, #6366f1, #8b5cf6);
   color: white;
-  border-color: #007bff;
+  border-color: #000;
   margin-right: 0.5rem;
 }
 
 .share-btn:hover {
-  background-color: #0056b3;
+  background: linear-gradient(135deg, #4f46e5, #7c3aed);
+  transform: translate(-2px, -2px);
+  box-shadow: 5px 5px 0 #000;
+}
+
+.share-btn:active {
+  transform: translate(0, 0);
+  box-shadow: 2px 2px 0 #000;
 }
 
 .delete-btn {
-  background-color: #dc3545;
+  background: linear-gradient(135deg, #ef4444, #dc2626);
   color: white;
-  border-color: #dc3545;
+  border-color: #000;
 }
 
 .delete-btn:hover {
-  background-color: #c82333;
+  background: linear-gradient(135deg, #dc2626, #b91c1c);
+  transform: translate(-2px, -2px);
+  box-shadow: 5px 5px 0 #000;
+}
+
+.delete-btn:active {
+  transform: translate(0, 0);
+  box-shadow: 2px 2px 0 #000;
 }
 
 .header h1 {
@@ -4753,6 +4545,94 @@ const formatRemainingTime = (minutes: number) => {
   display: flex;
   align-items: center;
   gap: 0.75rem;
+}
+
+/* More Menu Styles */
+.more-menu-wrapper {
+  position: relative;
+}
+
+.more-btn {
+  background: linear-gradient(135deg, #6366f1, #8b5cf6);
+  color: white;
+  border: 2px solid #000;
+  border-radius: 8px;
+  width: 40px;
+  height: 40px;
+  font-size: 1.25rem;
+  font-weight: 900;
+  cursor: pointer;
+  box-shadow: 3px 3px 0 #000;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.more-btn:hover {
+  transform: translate(-2px, -2px);
+  box-shadow: 5px 5px 0 #000;
+}
+
+.more-btn:active {
+  transform: translate(0, 0);
+  box-shadow: 2px 2px 0 #000;
+}
+
+.more-menu-dropdown {
+  position: absolute;
+  top: calc(100% + 0.5rem);
+  right: 0;
+  background: white;
+  border: 3px solid #000;
+  border-radius: 10px;
+  box-shadow: 6px 6px 0 #000;
+  min-width: 180px;
+  z-index: 1000;
+  overflow: hidden;
+  animation: dropdown-enter 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+@keyframes dropdown-enter {
+  0% {
+    opacity: 0;
+    transform: translateY(-10px) scale(0.95);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.dropdown-item {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  width: 100%;
+  padding: 0.875rem 1rem;
+  background: white;
+  border: none;
+  font-size: 0.9rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  text-align: left;
+}
+
+.dropdown-item:hover {
+  background: #f8f9fa;
+}
+
+.dropdown-item.danger {
+  color: #dc3545;
+}
+
+.dropdown-item.danger:hover {
+  background: #fff5f5;
+}
+
+.item-icon {
+  font-size: 1.1rem;
 }
 
 .main-content {
@@ -4779,24 +4659,76 @@ const formatRemainingTime = (minutes: number) => {
 .task-detail-content {
   display: flex;
   flex-direction: column;
-  gap: 2rem;
+  gap: 1rem;
+}
+
+/* Action Center Sticky Wrapper */
+.action-center-wrapper {
+  position: sticky;
+  top: 0.5rem;
+  z-index: 100;
+  transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.action-center-wrapper.is-sticky {
+  padding: 0 0.25rem;
+}
+
+.action-center-wrapper.is-sticky :deep(.action-center) {
+  box-shadow: 0 12px 40px rgba(0,0,0,0.2), 0 4px 12px rgba(0,0,0,0.1);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  background: rgba(255,255,255,0.92);
+  border-radius: 10px;
+  transform: scale(0.97);
+  border-color: rgba(0,0,0,0.8);
+}
+
+/* Page Section Entrance Animations */
+.task-detail-content > * {
+  animation: section-enter 0.5s cubic-bezier(0.34, 1.56, 0.64, 1) backwards;
+}
+
+.task-detail-content > *:nth-child(1) { animation-delay: 0.05s; }
+.task-detail-content > *:nth-child(2) { animation-delay: 0.1s; }
+.task-detail-content > *:nth-child(3) { animation-delay: 0.15s; }
+.task-detail-content > *:nth-child(4) { animation-delay: 0.2s; }
+.task-detail-content > *:nth-child(5) { animation-delay: 0.25s; }
+.task-detail-content > *:nth-child(6) { animation-delay: 0.3s; }
+
+@keyframes section-enter {
+  0% {
+    opacity: 0;
+    transform: translateY(30px) scale(0.95);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
 }
 
 .task-card, .actions-section, .voting-section {
   background: white;
-  padding: 2rem;
-  border-radius: 8px;
-  border: 2px solid #000;
-  box-shadow: 4px 4px 0 #000;
+  padding: 1.5rem;
+  border-radius: 12px;
+  border: 3px solid #000;
+  box-shadow: 6px 6px 0 #000;
+  transition: all 0.25s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.task-card:hover {
+  transform: translate(-2px, -2px);
+  box-shadow: 8px 8px 0 #000;
 }
 
 .task-header {
   display: flex;
   justify-content: space-between;
   align-items: flex-start;
-  margin-bottom: 2rem;
+  margin-bottom: 1.5rem;
   padding-bottom: 1rem;
   border-bottom: 2px solid #e9ecef;
+  gap: 1rem;
 }
 
 .task-title {
@@ -4813,86 +4745,89 @@ const formatRemainingTime = (minutes: number) => {
 }
 
 .task-type, .task-difficulty, .task-status, .task-strict-mode {
-  padding: 0.25rem 0.75rem;
-  border-radius: 4px;
-  font-size: 0.875rem;
-  font-weight: bold;
+  padding: 0.375rem 0.75rem;
+  border-radius: 6px;
+  font-size: 0.8rem;
+  font-weight: 800;
   text-transform: uppercase;
+  letter-spacing: 0.5px;
+  border: 2px solid #000;
+  box-shadow: 2px 2px 0 #000;
 }
 
 .task-type {
-  background-color: #17a2b8;
+  background: linear-gradient(135deg, #06b6d4, #0891b2);
   color: white;
 }
 
 .task-difficulty.easy {
-  background-color: #28a745;
+  background: linear-gradient(135deg, #10b981, #059669);
   color: white;
 }
 
 .task-difficulty.normal {
-  background-color: #ffc107;
-  color: #212529;
+  background: linear-gradient(135deg, #f59e0b, #d97706);
+  color: #000;
 }
 
 .task-difficulty.hard {
-  background-color: #fd7e14;
+  background: linear-gradient(135deg, #f97316, #ea580c);
   color: white;
 }
 
 .task-difficulty.hell {
-  background-color: #dc3545;
+  background: linear-gradient(135deg, #ef4444, #dc2626);
   color: white;
 }
 
 .task-strict-mode {
-  background-color: #6f42c1;
+  background: linear-gradient(135deg, #8b5cf6, #7c3aed);
   color: white;
 }
 
 .task-status.pending {
-  background-color: #6c757d;
+  background: linear-gradient(135deg, #6b7280, #4b5563);
   color: white;
 }
 
 .task-status.active {
-  background-color: #007bff;
+  background: linear-gradient(135deg, #10b981, #059669);
   color: white;
 }
 
 .task-status.completed {
-  background-color: #28a745;
+  background: linear-gradient(135deg, #64748b, #475569);
   color: white;
 }
 
 .task-status.failed {
-  background-color: #dc3545;
+  background: linear-gradient(135deg, #ef4444, #dc2626);
   color: white;
 }
 
 .task-status.open {
-  background-color: #28a745;
+  background: linear-gradient(135deg, #10b981, #059669);
   color: white;
 }
 
 .task-status.taken {
-  background-color: #fd7e14;
+  background: linear-gradient(135deg, #f97316, #ea580c);
   color: white;
 }
 
 .task-status.submitted {
-  background-color: #6f42c1;
+  background: linear-gradient(135deg, #8b5cf6, #7c3aed);
   color: white;
 }
 
 .task-status.voting {
-  background-color: #ffc107;
-  color: #212529;
+  background: linear-gradient(135deg, #f59e0b, #d97706);
+  color: #000;
   animation: pulse 2s infinite;
 }
 
 .task-status.voting_passed {
-  background-color: #28a745;
+  background: linear-gradient(135deg, #10b981, #059669);
   color: white;
   animation: pulse-ready 2s infinite;
 }
@@ -4957,25 +4892,34 @@ const formatRemainingTime = (minutes: number) => {
 }
 
 .task-description {
-  margin-bottom: 2rem;
+  margin-bottom: 1.5rem;
+  padding: 1rem;
+  background: linear-gradient(135deg, #f8fafc, #f1f5f9);
+  border: 2px solid #000;
+  border-radius: 10px;
+  box-shadow: 3px 3px 0 #000;
 }
 
 .task-description h3 {
-  margin: 0 0 1rem 0;
-  font-size: 1.2rem;
-  font-weight: bold;
+  margin: 0 0 0.75rem 0;
+  font-size: 1rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: #000;
 }
 
 .task-description p {
   line-height: 1.6;
-  color: #555;
+  color: #374151;
 }
 
 .task-description-content {
-  line-height: 1.6;
-  color: #555;
+  line-height: 1.7;
+  color: #374151;
   white-space: pre-wrap;
   word-wrap: break-word;
+  font-size: 0.95rem;
 }
 
 .task-description-content h1,
@@ -5035,29 +4979,44 @@ const formatRemainingTime = (minutes: number) => {
 
 .task-details-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-  gap: 1rem;
-  margin-bottom: 2rem;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 0.75rem;
+  margin-bottom: 1.5rem;
   padding: 1rem;
-  background-color: #f8f9fa;
-  border-radius: 4px;
+  background: linear-gradient(135deg, #f8fafc, #f1f5f9);
+  border: 2px solid #000;
+  border-radius: 10px;
+  box-shadow: 3px 3px 0 #000;
 }
 
 .detail-item {
   display: flex;
   flex-direction: column;
   gap: 0.25rem;
+  padding: 0.5rem;
+  background: white;
+  border: 2px solid #e5e7eb;
+  border-radius: 6px;
+  transition: all 0.2s ease;
+}
+
+.detail-item:hover {
+  border-color: #000;
+  box-shadow: 2px 2px 0 #000;
 }
 
 .label {
-  font-weight: 500;
-  color: #666;
-  font-size: 0.875rem;
+  font-weight: 600;
+  color: #6b7280;
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
 }
 
 .value {
-  font-weight: bold;
-  color: #333;
+  font-weight: 700;
+  color: #111827;
+  font-size: 0.95rem;
 }
 
 .countdown-display {
@@ -6058,7 +6017,7 @@ const formatRemainingTime = (minutes: number) => {
     margin-top: 0.5rem;
   }
 
-  .share-btn, .delete-btn {
+  .share-btn, .delete-btn, .more-btn {
     padding: 0.5rem 0.75rem;
     font-size: 0.8rem;
     border-radius: 6px;
@@ -6066,6 +6025,40 @@ const formatRemainingTime = (minutes: number) => {
     max-width: 120px;
     text-align: center;
     white-space: nowrap;
+  }
+
+  .more-btn {
+    width: 36px;
+    height: 36px;
+    min-width: 36px;
+    padding: 0;
+    flex: none;
+  }
+
+  .more-menu-dropdown {
+    position: fixed;
+    top: auto;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    border-radius: 16px 16px 0 0;
+    border-width: 3px 3px 0 3px;
+    box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.3);
+    animation: drawer-up 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+  }
+
+  @keyframes drawer-up {
+    0% {
+      transform: translateY(100%);
+    }
+    100% {
+      transform: translateY(0);
+    }
+  }
+
+  .dropdown-item {
+    padding: 1rem 1.25rem;
+    font-size: 1rem;
   }
 
   .share-btn {
@@ -6096,6 +6089,13 @@ const formatRemainingTime = (minutes: number) => {
 
   .task-card, .actions-section, .voting-section {
     padding: 1rem;
+    border-width: 2px;
+    box-shadow: 4px 4px 0 #000;
+  }
+
+  .task-card:hover {
+    transform: none;
+    box-shadow: 4px 4px 0 #000;
   }
 
   .task-header {
@@ -6105,7 +6105,8 @@ const formatRemainingTime = (minutes: number) => {
   }
 
   .task-details-grid {
-    grid-template-columns: 1fr;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 0.75rem;
   }
 
   .action-buttons {
@@ -6114,6 +6115,15 @@ const formatRemainingTime = (minutes: number) => {
 
   .action-btn {
     width: 100%;
+  }
+
+  /* Mobile section animations */
+  .task-detail-content {
+    gap: 1rem;
+  }
+
+  .task-detail-content > * {
+    animation-duration: 0.4s;
   }
 }
 
@@ -6139,10 +6149,17 @@ const formatRemainingTime = (minutes: number) => {
     margin-top: 0.4rem;
   }
 
-  .share-btn, .delete-btn {
+  .share-btn, .delete-btn, .more-btn {
     padding: 0.4rem 0.6rem;
     font-size: 0.75rem;
     max-width: 100px;
+  }
+
+  .more-btn {
+    width: 32px;
+    height: 32px;
+    min-width: 32px;
+    padding: 0;
   }
 
   .main-content {
@@ -6151,6 +6168,11 @@ const formatRemainingTime = (minutes: number) => {
 
   .task-card, .actions-section, .voting-section {
     padding: 0.75rem;
+    border-radius: 10px;
+  }
+
+  .task-details-grid {
+    grid-template-columns: 1fr;
   }
 
   /* Enhanced quick actions for extra small screens */
@@ -6269,7 +6291,55 @@ const formatRemainingTime = (minutes: number) => {
   display: none;
 }
 
-/* Mobile Timeline Styles - Only show on mobile */
+/* ============================================
+   MOBILE TIMELINE - NEO-BRUTALISM DESIGN
+   ============================================ */
+
+/* Card entrance animation */
+@keyframes card-slide-in {
+  0% {
+    opacity: 0;
+    transform: translateX(30px) scale(0.9);
+  }
+  100% {
+    opacity: 1;
+    transform: translateX(0) scale(1);
+  }
+}
+
+/* Dot pulse animation */
+@keyframes pulse-dot {
+  0%, 100% { transform: scale(1); box-shadow: 2px 2px 0 #000; }
+  50% { transform: scale(1.15); box-shadow: 3px 3px 0 rgba(0,0,0,0.5); }
+}
+
+/* Time increase bounce animation */
+@keyframes bounce-dot {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-4px); }
+}
+
+/* Time decrease shake animation */
+@keyframes shake-dot {
+  0%, 100% { transform: translateX(0); }
+  25% { transform: translateX(-3px); }
+  75% { transform: translateX(3px); }
+}
+
+/* Scroll hint animation */
+@keyframes scroll-hint {
+  0%, 100% { transform: translateX(0); opacity: 0.6; }
+  50% { transform: translateX(6px); opacity: 1; }
+}
+
+/* New event flash animation */
+@keyframes flash-new {
+  0% { background: #fff; }
+  50% { background: #fef3c7; }
+  100% { background: #fff; }
+}
+
+/* Mobile Timeline Styles - Neo-Brutalism */
 @media (max-width: 768px) {
   /* Hide desktop timeline on mobile */
   .desktop-timeline {
@@ -6279,198 +6349,408 @@ const formatRemainingTime = (minutes: number) => {
   /* Show mobile timeline */
   .mobile-timeline {
     display: block;
+    margin: 1rem 0;
   }
 
+  /* Timeline wrapper with hidden scrollbar */
   .horizontal-timeline-wrapper {
     position: relative;
-    margin-bottom: 1rem;
     overflow-x: auto;
-    overflow-y: hidden; /* Prevent vertical scrollbar */
-    padding: 0;
-    /* Custom scrollbar for webkit browsers */
-    scrollbar-width: thin;
-    scrollbar-color: #6c757d #e9ecef;
-    /* Touch scrolling for iOS */
+    overflow-y: hidden;
+    padding: 0.5rem;
     -webkit-overflow-scrolling: touch;
-    /* Ensure wrapper adapts to content height */
-    height: auto;
+    scrollbar-width: none;
+    -ms-overflow-style: none;
   }
 
   .horizontal-timeline-wrapper::-webkit-scrollbar {
-    height: 8px;
+    display: none;
   }
 
-  .horizontal-timeline-wrapper::-webkit-scrollbar-track {
-    background: #e9ecef;
-    border-radius: 4px;
-  }
-
-  .horizontal-timeline-wrapper::-webkit-scrollbar-thumb {
-    background: #6c757d;
-    border-radius: 4px;
-    transition: background-color 0.2s;
-  }
-
-  .horizontal-timeline-wrapper::-webkit-scrollbar-thumb:hover {
-    background: #495057;
-  }
-
+  /* Neo-brutalism container */
   .horizontal-timeline-container {
     position: relative;
-    padding: 2rem 1rem 2rem 1rem; /* Remove extra bottom padding */
-    scroll-behavior: smooth;
-    background: linear-gradient(135deg, #f8f9fa, #e9ecef);
-    border: 2px solid #dee2e6;
+    padding: 2rem 1.5rem;
+    background: #fff;
+    border: 3px solid #000;
     border-radius: 12px;
-    /* Allow height to grow with content */
-    min-height: 200px;
-    height: auto;
-    /* Width will be set dynamically via inline style */
-    display: inline-block;
-    /* Ensure container expands to contain absolutely positioned children */
+    box-shadow: 4px 4px 0 #000;
+    min-height: 220px;
+    display: inline-flex;
+    gap: 1.5rem;
+    align-items: flex-start;
     overflow: visible;
   }
 
+  /* Timeline track - bold black line */
   .timeline-track {
     position: absolute;
-    top: 3rem;
-    left: 1rem;
-    /* Dynamic width based on content, subtract padding */
-    width: calc(100% - 2rem);
-    max-width: calc(var(--timeline-items, 1) * 280px);
-    height: 3px;
-    background: linear-gradient(90deg, #007bff, #6f42c1, #e83e8c, #fd7e14, #ffc107);
-    border-radius: 2px;
-    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    top: 2.5rem;
+    left: 2rem;
+    right: 2rem;
+    height: 4px;
+    background: #000;
+    border-radius: 0;
+    z-index: 1;
   }
 
+  /* Timeline items with entrance animation */
   .horizontal-timeline-item {
-    position: absolute;
-    top: 0;
+    position: relative;
     display: flex;
     flex-direction: column;
     align-items: center;
-    width: 260px;
-    margin: 0 10px;
+    width: 200px;
+    flex-shrink: 0;
+    animation: card-slide-in 0.4s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+    opacity: 0;
   }
 
+  .horizontal-timeline-item:nth-child(1) { animation-delay: 0.05s; }
+  .horizontal-timeline-item:nth-child(2) { animation-delay: 0.12s; }
+  .horizontal-timeline-item:nth-child(3) { animation-delay: 0.19s; }
+  .horizontal-timeline-item:nth-child(4) { animation-delay: 0.26s; }
+  .horizontal-timeline-item:nth-child(5) { animation-delay: 0.33s; }
+  .horizontal-timeline-item:nth-child(6) { animation-delay: 0.40s; }
+
+  /* Dot wrapper */
   .timeline-dot-wrapper {
     position: relative;
     z-index: 2;
-    margin-bottom: 1rem;
-  }
-
-  .timeline-connector {
-    position: absolute;
-    top: 50%;
-    left: 100%;
-    width: 280px;
-    height: 3px;
-    background: linear-gradient(90deg, rgba(0,123,255,0.8), rgba(111,66,193,0.8));
-    transform: translateY(-50%);
-    border-radius: 2px;
-  }
-
-  .timeline-card {
-    background: white;
-    border: 2px solid #dee2e6;
-    border-radius: 12px;
-    padding: 1rem;
-    box-shadow: 0 4px 12px rgba(0,0,0,0.1);
-    transition: all 0.3s ease;
-    width: 100%;
-    max-width: 260px;
-    /* Allow content to wrap and expand height */
-    min-height: 180px;
-    height: auto;
-    white-space: normal;
-    word-wrap: break-word;
-    display: flex;
-    flex-direction: column;
-  }
-
-  .timeline-card-header {
-    border-bottom: 1px solid #e9ecef;
-    padding-bottom: 0.75rem;
     margin-bottom: 0.75rem;
   }
 
-  .timeline-card-body {
-    display: flex;
-    flex-direction: column;
-    gap: 0.75rem;
-    flex: 1;
+  /* Neo-brutalism dots */
+  .timeline-dot {
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    border: 3px solid #000;
+    background: #fff;
+    box-shadow: 2px 2px 0 #000;
+    transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+    position: relative;
   }
 
-}
+  .timeline-dot::after {
+    content: '';
+    position: absolute;
+    inset: 2px;
+    border-radius: 50%;
+    background: var(--dot-color, #000);
+  }
 
-/* Additional mobile optimizations */
-@media (max-width: 768px) {
+  .timeline-dot:hover {
+    transform: scale(1.2);
+    box-shadow: 3px 3px 0 #000;
+  }
+
+  /* Dot colors by event type */
+  .timeline-dot.created { --dot-color: #6c757d; }
+  .timeline-dot.start { --dot-color: #6366f1; }
+  .timeline-dot.completed { --dot-color: #10b981; }
+  .timeline-dot.failed { --dot-color: #ef4444; }
+  .timeline-dot.overtime { --dot-color: #f59e0b; animation: pulse-dot 1.5s ease-in-out infinite; }
+  .timeline-dot.time-increase { --dot-color: #10b981; animation: bounce-dot 1s ease infinite; }
+  .timeline-dot.time-decrease { --dot-color: #ef4444; animation: shake-dot 0.5s ease infinite; }
+  .timeline-dot.unlock-pending,
+  .timeline-dot.unlock-success,
+  .timeline-dot.unlock-active { --dot-color: #06b6d4; }
+  .timeline-dot.frozen { --dot-color: #00bcd4; box-shadow: 0 0 0 4px rgba(0, 188, 212, 0.3); }
+  .timeline-dot.vote { --dot-color: #8b5cf6; }
+  .timeline-dot.board-taken { --dot-color: #f59e0b; }
+  .timeline-dot.exclusive-created { --dot-color: #8b5cf6; }
+
+  /* Neo-brutalism cards */
+  .timeline-card {
+    background: #fff;
+    border: 3px solid #000;
+    border-radius: 10px;
+    padding: 0.875rem;
+    box-shadow: 3px 3px 0 #000;
+    transition: all 0.25s cubic-bezier(0.34, 1.56, 0.64, 1);
+    width: 100%;
+    min-height: 160px;
+    display: flex;
+    flex-direction: column;
+    position: relative;
+  }
+
+  .timeline-card:hover {
+    transform: translate(-2px, -2px);
+    box-shadow: 5px 5px 0 #000;
+  }
+
+  .timeline-card:active {
+    transform: translate(1px, 1px);
+    box-shadow: 2px 2px 0 #000;
+    transition-duration: 0.1s;
+  }
+
+  /* Card border colors by event type */
+  .timeline-card.created { border-color: #6c757d; }
+  .timeline-card.start { border-color: #6366f1; }
+  .timeline-card.completed { border-color: #10b981; }
+  .timeline-card.failed { border-color: #ef4444; }
+  .timeline-card.overtime { border-color: #f59e0b; }
+  .timeline-card.time-increase { border-color: #10b981; background: #f0fdf4; }
+  .timeline-card.time-decrease { border-color: #ef4444; background: #fef2f2; }
+  .timeline-card.unlock-pending,
+  .timeline-card.unlock-success,
+  .timeline-card.unlock-active { border-color: #06b6d4; }
+  .timeline-card.frozen { border-color: #00bcd4; background: #e0f7fa; }
+  .timeline-card.vote { border-color: #8b5cf6; }
+  .timeline-card.board-taken { border-color: #f59e0b; }
+  .timeline-card.exclusive-created { border-color: #8b5cf6; }
+
+  /* New event flash */
+  .timeline-card.is-new {
+    animation: flash-new 2s ease-in-out;
+  }
+
+  /* Card header */
+  .timeline-card-header {
+    border-bottom: 2px solid #000;
+    padding-bottom: 0.5rem;
+    margin-bottom: 0.5rem;
+  }
+
   .timeline-title {
-    font-size: 0.9rem;
-    font-weight: 600;
+    font-size: 0.85rem;
+    font-weight: 800;
+    color: #000;
     line-height: 1.2;
-    word-break: break-word;
+    margin-bottom: 0.25rem;
   }
 
   .timeline-time {
-    font-size: 0.75rem;
+    font-size: 0.7rem;
+    color: #666;
+    font-weight: 600;
+    font-family: monospace;
+  }
+
+  /* Card body */
+  .timeline-card-body {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    flex: 1;
   }
 
   .timeline-description {
-    font-size: 0.85rem;
+    font-size: 0.8rem;
+    color: #333;
     line-height: 1.4;
     word-break: break-word;
-    hyphens: auto;
-    overflow-wrap: break-word;
-    white-space: normal;
   }
 
-  .timeline-dot {
-    width: 16px;
-    height: 16px;
-    border-width: 2px;
-  }
-
-  .timeline-connector {
-    width: 236px;
-    height: 2px;
-  }
-
-  .scroll-hint-text {
-    font-size: 0.8rem;
-  }
-
-  /* Ensure timeline container doesn't overflow parent */
-  .horizontal-timeline-container {
-    box-sizing: border-box;
-  }
-
-  /* Improve text wrapping and card layout */
-  .timeline-card .timeline-description,
-  .timeline-card .timeline-user,
-  .timeline-card .timeline-time-change,
-  .timeline-card .timeline-times {
-    word-wrap: break-word;
-    overflow-wrap: break-word;
-    white-space: normal;
+  .timeline-user {
+    font-size: 0.75rem;
+    color: #666;
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
   }
 
   .timeline-user-btn {
-    word-break: break-all;
+    background: #000;
+    color: #fff;
+    border: none;
+    padding: 0.125rem 0.375rem;
+    border-radius: 4px;
+    font-size: 0.7rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s ease;
+  }
+
+  .timeline-user-btn:hover {
+    transform: translate(-1px, -1px);
+    box-shadow: 2px 2px 0 rgba(0,0,0,0.3);
+  }
+
+  /* Time change labels */
+  .timeline-time-change {
+    font-size: 0.75rem;
+    font-weight: 700;
+    padding: 0.25rem 0.5rem;
+    border: 2px solid #000;
+    border-radius: 6px;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    width: fit-content;
+  }
+
+  .timeline-time-change.positive {
+    background: #10b981;
+    color: #fff;
+  }
+
+  .timeline-time-change.negative {
+    background: #ef4444;
+    color: #fff;
+  }
+
+  /* Scroll hint */
+  .timeline-scroll-hint {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    padding: 0.5rem 1rem;
+    background: #000;
+    color: #fff;
+    border-radius: 20px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    margin-top: 0.75rem;
+    width: fit-content;
+    margin-left: auto;
+    margin-right: auto;
+  }
+
+  .timeline-scroll-hint .hint-icon {
+    animation: scroll-hint 1.5s ease-in-out infinite;
+  }
+
+  /* Verification photo styles */
+  .timeline-verification-photo {
+    margin-top: 0.5rem;
+    padding: 0.5rem;
+    background: #f8f9fa;
+    border: 2px dashed #000;
+    border-radius: 8px;
+  }
+
+  .timeline-verification-photo .photo-label {
+    font-size: 0.7rem;
+    font-weight: 700;
+    color: #000;
+    margin-bottom: 0.375rem;
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+  }
+
+  .timeline-photo-container {
+    position: relative;
+    display: inline-block;
+    overflow: hidden;
+    border-radius: 6px;
+    border: 2px solid #000;
     max-width: 100%;
   }
 
-  /* Adjust card height for content */
-  .timeline-card {
-    min-height: 120px;
+  .timeline-photo-container img {
+    width: 100%;
     height: auto;
-    display: flex;
-    flex-direction: column;
+    display: block;
+    transition: all 0.3s ease;
   }
 
-  .timeline-card-body {
-    flex: 1;
+  .timeline-photo-container img.blurred {
+    filter: blur(8px);
+  }
+
+  .timeline-photo-censor {
+    position: absolute;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.7);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: not-allowed;
+  }
+
+  .timeline-photo-censor .censor-content {
+    text-align: center;
+    color: #fff;
+  }
+
+  .timeline-photo-censor .censor-icon {
+    font-size: 1.5rem;
+    margin-bottom: 0.25rem;
+  }
+
+  .timeline-photo-view {
+    position: absolute;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.5);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    opacity: 0;
+    transition: opacity 0.2s ease;
+  }
+
+  .timeline-photo-container:hover .timeline-photo-view {
+    opacity: 1;
+  }
+
+  .timeline-photo-view .view-content {
+    background: #fff;
+    color: #000;
+    padding: 0.375rem 0.75rem;
+    border-radius: 6px;
+    font-size: 0.75rem;
+    font-weight: 700;
+    border: 2px solid #000;
+    box-shadow: 2px 2px 0 #000;
+  }
+}
+
+/* Small mobile optimizations */
+@media (max-width: 480px) {
+  .horizontal-timeline-container {
+    padding: 1.5rem 1rem;
+    min-height: 200px;
+  }
+
+  .horizontal-timeline-item {
+    width: 170px;
+  }
+
+  .timeline-card {
+    padding: 0.75rem;
+    min-height: 140px;
+  }
+
+  .timeline-title {
+    font-size: 0.8rem;
+  }
+
+  .timeline-description {
+    font-size: 0.75rem;
+  }
+
+  .timeline-dot {
+    width: 18px;
+    height: 18px;
+  }
+}
+
+/* Touch device optimizations */
+@media (pointer: coarse) {
+  .horizontal-timeline-wrapper {
+    scroll-snap-type: x proximity;
+  }
+
+  .horizontal-timeline-item {
+    scroll-snap-align: center;
+  }
+
+  .timeline-card:hover {
+    transform: none;
+    box-shadow: 3px 3px 0 #000;
+  }
+
+  .timeline-card:active {
+    transform: scale(0.98);
+    box-shadow: 2px 2px 0 #000;
+    transition: all 0.1s ease;
   }
 }
 

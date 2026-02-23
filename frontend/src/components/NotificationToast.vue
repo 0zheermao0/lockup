@@ -3,10 +3,10 @@
   <div class="notification-toast-wrapper">
     <!-- 液态玻璃主题下使用Teleport渲染到body，避免stacking context问题 -->
     <Teleport v-if="isLiquidGlassTheme" to="body">
-      <transition name="toast" @after-leave="$emit('closed')">
-        <div v-if="isVisible" class="toast-overlay liquid-glass-toast" @click="closeToast">
-          <div class="toast-container" @click.stop>
-            <div class="toast-card" :class="toastTypeClass">
+      <transition :name="transitionName" @after-leave="$emit('closed')">
+        <div v-if="isVisible" class="toast-overlay" :class="overlayClasses" @click="closeToast">
+          <div class="toast-container" :class="containerClasses" @click.stop>
+            <div class="toast-card" :class="cardClasses">
               <!-- Header -->
               <div class="toast-header">
                 <div class="toast-icon">
@@ -21,10 +21,10 @@
               </div>
 
               <!-- Content -->
-              <div class="toast-content">
+              <div class="toast-content" :class="contentClasses">
                 <slot name="default">
                   <!-- Default content when no slot provided -->
-                  <div class="toast-message">
+                  <div v-if="message" class="toast-message">
                     {{ message }}
                   </div>
                   <div v-if="secondaryMessage" class="toast-secondary">
@@ -42,7 +42,7 @@
               </div>
 
               <!-- Action Buttons -->
-              <div v-if="showActions || $slots.actions" class="toast-actions">
+              <div v-if="showActions || $slots.actions" class="toast-actions" :class="actionsClasses">
                 <slot name="actions">
                   <button @click="closeToast" class="toast-action-btn primary">
                     确定
@@ -56,10 +56,10 @@
     </Teleport>
 
     <!-- 非液态玻璃主题使用正常渲染 -->
-    <transition v-else name="toast" @after-leave="$emit('closed')">
-      <div v-if="isVisible" class="toast-overlay" @click="closeToast">
-        <div class="toast-container" @click.stop>
-          <div class="toast-card" :class="toastTypeClass">
+    <transition v-else :name="transitionName" @after-leave="$emit('closed')">
+      <div v-if="isVisible" class="toast-overlay" :class="overlayClasses" @click="closeToast">
+        <div class="toast-container" :class="containerClasses" @click.stop>
+          <div class="toast-card" :class="cardClasses">
             <!-- Header -->
             <div class="toast-header">
               <div class="toast-icon">
@@ -74,10 +74,10 @@
             </div>
 
             <!-- Content -->
-            <div class="toast-content">
+            <div class="toast-content" :class="contentClasses">
               <slot name="default">
                 <!-- Default content when no slot provided -->
-                <div class="toast-message">
+                <div v-if="message" class="toast-message">
                   {{ message }}
                 </div>
                 <div v-if="secondaryMessage" class="toast-secondary">
@@ -95,7 +95,7 @@
             </div>
 
             <!-- Action Buttons -->
-            <div v-if="showActions || $slots.actions" class="toast-actions">
+            <div v-if="showActions || $slots.actions" class="toast-actions" :class="actionsClasses">
               <slot name="actions">
                 <button @click="closeToast" class="toast-action-btn primary">
                   确定
@@ -122,14 +122,15 @@ const isLiquidGlassTheme = computed(() => {
 
 interface Props {
   isVisible: boolean
-  type?: 'success' | 'error' | 'warning' | 'info'
+  type?: 'success' | 'error' | 'warning' | 'info' | 'menu'
   title: string
-  message: string
+  message?: string
   secondaryMessage?: string
   details?: Record<string, any>
   showActions?: boolean
   autoClose?: boolean
   autoCloseDelay?: number
+  variant?: 'default' | 'menu' | 'drawer'
 }
 
 interface Emits {
@@ -141,7 +142,8 @@ const props = withDefaults(defineProps<Props>(), {
   type: 'info',
   showActions: true,
   autoClose: false,
-  autoCloseDelay: 5000
+  autoCloseDelay: 5000,
+  variant: 'default'
 })
 
 const emit = defineEmits<Emits>()
@@ -159,10 +161,47 @@ const toastIcon = computed(() => {
     success: '✅',
     error: '❌',
     warning: '⚠️',
-    info: 'ℹ️'
+    info: 'ℹ️',
+    menu: '☰'
   }
   return icons[props.type] || icons.info
 })
+
+// Check if this is a menu variant
+const isMenuVariant = computed(() => props.variant === 'menu' || props.variant === 'drawer')
+const isDrawerVariant = computed(() => props.variant === 'drawer')
+
+// Variant-based classes
+const transitionName = computed(() => isDrawerVariant.value ? 'drawer' : 'toast')
+
+const overlayClasses = computed(() => ({
+  'liquid-glass-toast': isLiquidGlassTheme.value,
+  'menu-overlay': isMenuVariant.value,
+  'drawer-overlay': isDrawerVariant.value
+}))
+
+const containerClasses = computed(() => ({
+  'menu-container': isMenuVariant.value,
+  'drawer-container': isDrawerVariant.value
+}))
+
+const cardClasses = computed(() => [
+  toastTypeClass.value,
+  {
+    'menu-card': isMenuVariant.value,
+    'drawer-card': isDrawerVariant.value
+  }
+])
+
+const contentClasses = computed(() => ({
+  'menu-content': isMenuVariant.value,
+  'drawer-content': isDrawerVariant.value
+}))
+
+const actionsClasses = computed(() => ({
+  'menu-actions': isMenuVariant.value,
+  'drawer-actions': isDrawerVariant.value
+}))
 
 // Methods
 const closeToast = () => {
@@ -221,6 +260,31 @@ onUnmounted(() => {
 .toast-leave-to {
   opacity: 0;
   transform: scale(0.9) translateY(-20px);
+}
+
+/* Drawer Transitions */
+.drawer-enter-active {
+  transition: all 0.35s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.drawer-leave-active {
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.drawer-enter-from {
+  opacity: 0;
+}
+
+.drawer-enter-from .toast-card {
+  transform: translateY(100%);
+}
+
+.drawer-leave-to {
+  opacity: 0;
+}
+
+.drawer-leave-to .toast-card {
+  transform: translateY(100%);
 }
 
 /* Toast Overlay */
@@ -315,6 +379,16 @@ onUnmounted(() => {
 
 .toast-info .toast-header {
   background: linear-gradient(135deg, #007bff, #17a2b8);
+  color: white;
+}
+
+/* Menu type */
+.toast-menu {
+  border-color: #6366f1;
+}
+
+.toast-menu .toast-header {
+  background: linear-gradient(135deg, #6366f1, #8b5cf6);
   color: white;
 }
 
@@ -463,6 +537,257 @@ onUnmounted(() => {
   background: linear-gradient(135deg, #218838, #1e7e34);
 }
 
+/* Menu Variant Styles */
+.menu-overlay {
+  align-items: flex-start;
+  padding-top: 5rem;
+}
+
+.menu-container {
+  max-width: 420px;
+}
+
+.menu-card {
+  border-width: 3px;
+  box-shadow: 6px 6px 0 #000;
+}
+
+.menu-card .toast-header {
+  padding: 1rem 1.25rem;
+  border-bottom-width: 2px;
+}
+
+.menu-card .toast-title {
+  font-size: 1.1rem;
+}
+
+.menu-content {
+  padding: 1rem 1.25rem;
+}
+
+.menu-actions {
+  padding: 1rem 1.25rem;
+  border-top-width: 2px;
+}
+
+/* Drawer Variant Styles (Mobile Bottom Sheet) */
+.drawer-overlay {
+  align-items: flex-end;
+  padding: 0;
+  padding-bottom: env(safe-area-inset-bottom, 0);
+}
+
+.drawer-container {
+  max-width: 100%;
+  width: 100%;
+  max-height: 85vh;
+}
+
+.drawer-card {
+  border-width: 3px 3px 0 3px;
+  border-radius: 20px 20px 0 0;
+  box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.3);
+  animation: drawer-slide-up 0.35s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+@keyframes drawer-slide-up {
+  0% {
+    transform: translateY(100%);
+    opacity: 0;
+  }
+  100% {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+.drawer-card .toast-header {
+  padding: 1.25rem;
+  border-bottom-width: 2px;
+  position: relative;
+}
+
+/* Drawer drag handle */
+.drawer-card .toast-header::before {
+  content: '';
+  position: absolute;
+  top: 0.5rem;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 40px;
+  height: 4px;
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: 2px;
+}
+
+.drawer-card .toast-title {
+  font-size: 1.1rem;
+  margin-top: 0.5rem;
+}
+
+.drawer-content {
+  padding: 1rem 1.25rem;
+  max-height: 60vh;
+  overflow-y: auto;
+}
+
+.drawer-actions {
+  padding: 1rem 1.25rem;
+  border-top-width: 2px;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.drawer-actions .toast-action-btn {
+  width: 100%;
+  padding: 1rem;
+  font-size: 1rem;
+}
+
+/* Menu item styles for Action Center */
+.menu-item-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.menu-item {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 1rem;
+  background: white;
+  border: 3px solid #000;
+  border-radius: 10px;
+  box-shadow: 3px 3px 0 #000;
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
+  text-align: left;
+  width: 100%;
+}
+
+.menu-item:hover {
+  transform: translate(-2px, -2px);
+  box-shadow: 5px 5px 0 #000;
+}
+
+.menu-item:active {
+  transform: translate(0, 0);
+  box-shadow: 2px 2px 0 #000;
+}
+
+.menu-item-icon {
+  font-size: 1.5rem;
+  flex-shrink: 0;
+}
+
+.menu-item-content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.menu-item-title {
+  font-weight: 700;
+  font-size: 1rem;
+  color: #000;
+}
+
+.menu-item-desc {
+  font-size: 0.85rem;
+  color: #666;
+}
+
+.menu-item-cost {
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: #dc3545;
+  background: rgba(220, 53, 69, 0.1);
+  padding: 0.25rem 0.5rem;
+  border-radius: 4px;
+  white-space: nowrap;
+}
+
+/* Menu item variants */
+.menu-item.primary {
+  background: linear-gradient(135deg, #007bff, #0056b3);
+  color: white;
+}
+
+.menu-item.primary .menu-item-title,
+.menu-item.primary .menu-item-desc {
+  color: white;
+}
+
+.menu-item.success {
+  background: linear-gradient(135deg, #28a745, #218838);
+  color: white;
+}
+
+.menu-item.success .menu-item-title,
+.menu-item.success .menu-item-desc {
+  color: white;
+}
+
+.menu-item.danger {
+  background: linear-gradient(135deg, #dc3545, #c82333);
+  color: white;
+}
+
+.menu-item.danger .menu-item-title,
+.menu-item.danger .menu-item-desc {
+  color: white;
+}
+
+.menu-item.warning {
+  background: linear-gradient(135deg, #ffc107, #fd7e14);
+  color: #000;
+}
+
+.menu-item.gold {
+  background: linear-gradient(135deg, #fbbf24, #d97706);
+  color: #000;
+  border-color: #000;
+}
+
+.menu-item.gold .menu-item-title,
+.menu-item.gold .menu-item-desc {
+  color: #000;
+}
+
+.menu-item:disabled,
+.menu-item.disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: 3px 3px 0 #000;
+}
+
+/* Menu item animation */
+.menu-item {
+  animation: menu-item-pop 0.3s cubic-bezier(0.34, 1.56, 0.64, 1) backwards;
+}
+
+.menu-item:nth-child(1) { animation-delay: 0.05s; }
+.menu-item:nth-child(2) { animation-delay: 0.1s; }
+.menu-item:nth-child(3) { animation-delay: 0.15s; }
+.menu-item:nth-child(4) { animation-delay: 0.2s; }
+.menu-item:nth-child(5) { animation-delay: 0.25s; }
+.menu-item:nth-child(6) { animation-delay: 0.3s; }
+.menu-item:nth-child(7) { animation-delay: 0.35s; }
+.menu-item:nth-child(8) { animation-delay: 0.4s; }
+
+@keyframes menu-item-pop {
+  0% {
+    opacity: 0;
+    transform: scale(0.8) translateX(-20px);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1) translateX(0);
+  }
+}
 
 /* Mobile responsive */
 @media (max-width: 768px) {
@@ -519,6 +844,60 @@ onUnmounted(() => {
     flex-direction: column;
     align-items: flex-start;
     gap: 0.25rem;
+  }
+
+  /* Menu variant mobile adjustments */
+  .menu-overlay {
+    padding-top: 3rem;
+  }
+
+  .menu-container {
+    width: 95%;
+  }
+
+  .menu-card {
+    border-width: 3px;
+    box-shadow: 5px 5px 0 #000;
+  }
+
+  .menu-item {
+    padding: 0.875rem;
+    border-width: 2px;
+    box-shadow: 2px 2px 0 #000;
+  }
+
+  .menu-item:hover {
+    box-shadow: 3px 3px 0 #000;
+  }
+
+  .menu-item-icon {
+    font-size: 1.25rem;
+  }
+
+  .menu-item-title {
+    font-size: 0.95rem;
+  }
+
+  .menu-item-desc {
+    font-size: 0.8rem;
+  }
+
+  /* Drawer variant is default on mobile */
+  .drawer-card {
+    border-radius: 16px 16px 0 0;
+  }
+
+  .drawer-card .toast-header {
+    padding: 1.25rem 1rem 1rem;
+  }
+
+  .drawer-content {
+    padding: 1rem;
+  }
+
+  .drawer-actions {
+    padding: 1rem;
+    padding-bottom: calc(1rem + env(safe-area-inset-bottom, 0));
   }
 }
 
