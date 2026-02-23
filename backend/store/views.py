@@ -4300,6 +4300,13 @@ def get_arena_game_status(request, game_id):
                 }
             })
 
+        # 获取挑战者信息
+        challenger = None
+        for p in GameParticipant.objects.filter(game=game):
+            if p.action.get('role') == 'challenger':
+                challenger = p.user
+                break
+
         # 构建响应数据
         response_data = {
             'id': str(game.id),
@@ -4307,8 +4314,18 @@ def get_arena_game_status(request, game_id):
             'bet_amount': game.bet_amount,
             'creator': {
                 'id': game.creator.id,
-                'username': game.creator.username
+                'username': game.creator.username,
+                'avatar': game.creator.avatar.url if game.creator.avatar else None,
+                'level': game.creator.level,
+                'active_lock_task': None
             },
+            'challenger': {
+                'id': challenger.id,
+                'username': challenger.username,
+                'avatar': challenger.avatar.url if challenger.avatar else None,
+                'level': challenger.level,
+                'active_lock_task': None
+            } if challenger else None,
             'config': game.game_data.get('config', {}),
             'votes': game.game_data.get('votes', {'creator': 0, 'challenger': 0}),
             'audience_count': len(game.game_data.get('audience', [])),
@@ -4362,11 +4379,17 @@ def list_arena_games(request):
                 'id': str(game.id),
                 'creator': {
                     'id': game.creator.id,
-                    'username': game.creator.username
+                    'username': game.creator.username,
+                    'avatar': game.creator.avatar.url if game.creator.avatar else None,
+                    'level': game.creator.level,
+                    'active_lock_task': None
                 },
                 'challenger': {
                     'id': challenger.id,
-                    'username': challenger.username
+                    'username': challenger.username,
+                    'avatar': challenger.avatar.url if challenger.avatar else None,
+                    'level': challenger.level,
+                    'active_lock_task': None
                 } if challenger else None,
                 'bet_amount': game.bet_amount,
                 'status': game.status,
