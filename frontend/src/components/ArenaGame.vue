@@ -112,7 +112,7 @@
           <div
             class="photo-upload-area"
             :class="{ 'has-photo': createForm.photoPreview }"
-            @click="$refs.photoInput.click()"
+            @click="photoInput?.click()"
             @drop.prevent="handlePhotoDrop"
             @dragover.prevent
           >
@@ -186,7 +186,7 @@
           <div class="battle-preview">
             <div class="fighter creator-side">
               <div class="fighter-avatar">
-                <UserAvatar :user="game.creator" size="medium" />
+                <UserAvatar :user="game.creator" size="large" />
               </div>
               <span class="fighter-name">发起者</span>
               <div v-if="game.votes" class="vote-count">
@@ -201,7 +201,7 @@
 
             <div class="fighter challenger-side">
               <div v-if="game.challenger" class="fighter-avatar">
-                <UserAvatar :user="game.challenger" size="medium" />
+                <UserAvatar :user="game.challenger" size="large" />
               </div>
               <div v-else class="fighter-avatar empty">
                 <span class="empty-icon">?</span>
@@ -321,7 +321,7 @@
             <div
               class="photo-upload-area large"
               :class="{ 'has-photo': joinForm.photoPreview }"
-              @click="$refs.joinPhotoInput.click()"
+              @click="joinPhotoInput?.click()"
             >
               <input
                 ref="joinPhotoInput"
@@ -572,6 +572,10 @@ interface ArenaGame {
 
 const authStore = useAuthStore()
 
+// Template refs
+const photoInput = ref<HTMLInputElement | null>(null)
+const joinPhotoInput = ref<HTMLInputElement | null>(null)
+
 // State
 const showRules = ref(false)
 const loading = ref(false)
@@ -812,7 +816,7 @@ const refreshGames = async () => {
   try {
     loading.value = true
     const result = await storeApi.listArenaGames()
-    games.value = result.games
+    games.value = result.games as ArenaGame[]
   } catch (err) {
     console.error('Failed to load games:', err)
   } finally {
