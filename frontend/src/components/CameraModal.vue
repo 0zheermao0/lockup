@@ -166,8 +166,18 @@ const confirm = async () => {
       blob = await compressImage(canvas, props.maxSize)
     }
 
-    // 创建文件对象
-    const file = new File([blob], `unlock_verification_${Date.now()}.jpg`, {
+    // 创建文件对象 - 使用与动态图片一致的时间戳命名格式: YYYYMMDD_HHMMSS_milliseconds.jpg
+    const now = new Date()
+    const year = now.getFullYear()
+    const month = String(now.getMonth() + 1).padStart(2, '0')
+    const day = String(now.getDate()).padStart(2, '0')
+    const hours = String(now.getHours()).padStart(2, '0')
+    const minutes = String(now.getMinutes()).padStart(2, '0')
+    const seconds = String(now.getSeconds()).padStart(2, '0')
+    const milliseconds = String(now.getMilliseconds()).padStart(3, '0')
+
+    const timestamp = `${year}${month}${day}_${hours}${minutes}${seconds}_${milliseconds}`
+    const file = new File([blob], `${timestamp}.jpg`, {
       type: 'image/jpeg'
     })
 

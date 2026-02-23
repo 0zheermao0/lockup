@@ -271,8 +271,25 @@ def secure_avatar_upload_to(instance, filename):
 
 
 def secure_temporary_unlock_photo_upload_to(instance, filename):
-    """临时开锁验证照片的安全上传路径"""
-    return secure_file_upload_to(instance, filename, 'temporary_unlocks/photos')
+    """临时开锁验证照片的安全上传路径 - 使用简洁的时间戳命名"""
+    # 验证文件扩展名
+    _, ext = os.path.splitext(filename.lower())
+    if ext not in ALL_ALLOWED_EXTENSIONS:
+        raise ValidationError(f"不支持的文件扩展名: {ext}")
+
+    # 使用简洁的时间戳命名格式: YYYYMMDD_HHMMSS_milliseconds.jpg
+    now = datetime.now()
+    timestamp = now.strftime('%Y%m%d_%H%M%S')
+    milliseconds = f"{now.microsecond // 1000:03d}"
+
+    # 构建简洁文件名
+    secure_filename = f"{timestamp}_{milliseconds}{ext}"
+
+    # 生成日期路径
+    date_path = now.strftime('%Y/%m/%d')
+
+    # 构建完整路径
+    return f"temporary_unlocks/photos/{date_path}/{secure_filename}"
 
 
 def clean_filename_for_display(filename):
