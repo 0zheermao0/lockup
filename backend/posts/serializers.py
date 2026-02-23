@@ -1,7 +1,27 @@
 import logging
+import re
 from rest_framework import serializers
 from .models import Post, PostImage, PostLike, Comment, CommentImage, CommentLike, CheckinVotingSession, CheckinVote
 from users.serializers import UserPublicSerializer
+
+
+def strip_html_tags(html):
+    """去除HTML标签，返回纯文本"""
+    if not html:
+        return ""
+    # 先替换<br>, <p>等标签为换行
+    text = re.sub(r'<br\s*/?>', '\n', html, flags=re.IGNORECASE)
+    text = re.sub(r'</p>', '\n', text, flags=re.IGNORECASE)
+    text = re.sub(r'<p[^>]*>', '', text, flags=re.IGNORECASE)
+    # 去除所有HTML标签
+    text = re.sub(r'<[^>]+>', '', text)
+    # 解码HTML实体
+    text = text.replace('&nbsp;', ' ')
+    text = text.replace('&lt;', '<')
+    text = text.replace('&gt;', '>')
+    text = text.replace('&amp;', '&')
+    text = text.replace('&quot;', '"')
+    return text.strip()
 
 logger = logging.getLogger(__name__)
 
@@ -145,10 +165,12 @@ class PostCreateSerializer(serializers.ModelSerializer):
         ]
 
     def validate_content(self, value):
-        if len(value.strip()) < 1:
+        # 去除HTML标签后统计纯文本长度
+        text_content = strip_html_tags(value)
+        if len(text_content) < 1:
             raise serializers.ValidationError("动态内容不能为空")
-        if len(value) > 2000:
-            raise serializers.ValidationError("动态内容不能超过2000字符")
+        if len(text_content) > 1500:
+            raise serializers.ValidationError("动态内容不能超过1500字符")
         return value
 
     def validate(self, attrs):
@@ -334,9 +356,11 @@ class CommentCreateSerializer(serializers.ModelSerializer):
         fields = ['content', 'parent', 'images', 'reply_to_user_id']
 
     def validate_content(self, value):
-        if len(value.strip()) < 1:
+        # 去除HTML标签后统计纯文本长度
+        text_content = strip_html_tags(value)
+        if len(text_content) < 1:
             raise serializers.ValidationError("评论内容不能为空")
-        if len(value) > 500:
+        if len(text_content) > 500:
             raise serializers.ValidationError("评论内容不能超过500字符")
         return value
 

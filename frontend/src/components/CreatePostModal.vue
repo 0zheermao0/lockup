@@ -35,7 +35,7 @@
               v-model="form.content"
               :placeholder="isCheckinMode ? '分享你的打卡体验...' : '分享你的想法...'"
               :disabled="isLoading"
-              :max-length="1000"
+              :max-length="1500"
               min-height="120px"
             />
 
@@ -594,12 +594,15 @@ const handleSubmit = async () => {
     return
   }
 
-  // 内容长度验证
-  if (form.content.trim().length > 1000) {
+  // 内容长度验证（去除HTML标签后统计纯文本长度）
+  const tempDiv = document.createElement('div')
+  tempDiv.innerHTML = form.content
+  const textContent = tempDiv.textContent || ''
+  if (textContent.trim().length > 1500) {
     showToast.value = true
     const errorData = formatErrorForNotification({
       title: '内容过长',
-      message: '动态内容超过了1000字符的限制',
+      message: '动态内容超过了1500字符的限制',
       actionSuggestion: '请缩短动态内容',
       severity: 'error'
     })

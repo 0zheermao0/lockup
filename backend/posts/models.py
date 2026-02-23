@@ -28,7 +28,7 @@ class Post(models.Model):
         help_text="动态类型"
     )
     content = models.TextField(
-        max_length=2000,
+        max_length=1500,
         help_text="动态内容"
     )
 

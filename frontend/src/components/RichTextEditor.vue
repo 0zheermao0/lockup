@@ -68,7 +68,7 @@ interface Emits {
 
 const props = withDefaults(defineProps<Props>(), {
   placeholder: '请输入内容...',
-  maxLength: 2000,
+  maxLength: 1500,
   showCharCount: true,
   minHeight: '120px',
   disabled: false
