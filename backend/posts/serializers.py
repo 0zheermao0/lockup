@@ -167,13 +167,21 @@ class PostCreateSerializer(serializers.ModelSerializer):
     def validate_content(self, value):
         # 去除HTML标签后统计纯文本长度
         text_content = strip_html_tags(value)
-        if len(text_content) < 1:
-            raise serializers.ValidationError("动态内容不能为空")
         if len(text_content) > 1500:
             raise serializers.ValidationError("动态内容不能超过1500字符")
         return value
 
     def validate(self, attrs):
+        # 检查内容是否为空（如果没有图片）
+        content = attrs.get('content', '')
+        images = attrs.get('images', [])
+        text_content = strip_html_tags(content)
+
+        if len(text_content.strip()) < 1 and not images:
+            raise serializers.ValidationError({
+                'content': '动态内容不能为空，请输入内容或添加图片'
+            })
+
         post_type = attrs.get('post_type')
 
         # 如果是打卡任务，生成验证字符串

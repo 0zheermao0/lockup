@@ -598,7 +598,25 @@ const handleSubmit = async () => {
   const tempDiv = document.createElement('div')
   tempDiv.innerHTML = form.content
   const textContent = tempDiv.textContent || ''
-  if (textContent.trim().length > 1500) {
+  const trimmedLength = textContent.trim().length
+
+  // 检查内容是否为空（纯图片动态需要至少输入空格或简短描述）
+  if (trimmedLength < 1 && selectedImages.value.length === 0) {
+    showToast.value = true
+    const errorData = formatErrorForNotification({
+      title: '内容不能为空',
+      message: '请输入动态内容或添加图片',
+      actionSuggestion: '请填写动态内容',
+      severity: 'error'
+    })
+    toastData.value = {
+      ...errorData,
+      details: {}
+    }
+    return
+  }
+
+  if (trimmedLength > 1500) {
     showToast.value = true
     const errorData = formatErrorForNotification({
       title: '内容过长',
