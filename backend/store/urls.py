@@ -58,4 +58,16 @@ urlpatterns = [
 
     # 分享功能相关
     path('shared-tasks/', views.get_shared_tasks, name='get-shared-tasks'),
+
+    # 撤销奖品预留
+    path('items/<uuid:item_id>/revoke-prize/', views.revoke_item_prize, name='revoke-item-prize'),
+
+    # 角斗场游戏
+    path('arena-games/', views.create_arena_game, name='create-arena-game'),
+    path('arena-games/list/', views.list_arena_games, name='list-arena-games'),
+    path('arena-games/<uuid:game_id>/join/', views.join_arena_game, name='join-arena-game'),
+    path('arena-games/<uuid:game_id>/enter/', views.enter_arena_audience, name='enter-arena-audience'),
+    path('arena-games/<uuid:game_id>/vote/', views.vote_arena_game, name='vote-arena-game'),
+    path('arena-games/<uuid:game_id>/settle/', views.settle_arena_game, name='settle-arena-game'),
+    path('arena-games/<uuid:game_id>/status/', views.get_arena_game_status, name='arena-game-status'),
 ]

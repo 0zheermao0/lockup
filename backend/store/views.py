@@ -10,6 +10,7 @@ from django.core.files.base import ContentFile
 import random
 import json
 import logging
+import os
 from datetime import timedelta
 
 logger = logging.getLogger(__name__)
@@ -1661,6 +1662,100 @@ def cancel_game(request, game_id):
     except Exception as e:
         return Response({
             'error': f'取消游戏失败: {str(e)}'
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def revoke_item_prize(request, item_id):
+    """
+    撤销物品的奖品预留状态
+    1. 验证物品状态为 in_game
+    2. 验证用户是物品拥有者
+    3. 查找并取消关联的游戏
+    4. 返还物品到背包
+    """
+    try:
+        with transaction.atomic():
+            user = request.user
+
+            # 获取物品并验证
+            item = get_object_or_404(
+                Item,
+                id=item_id,
+                owner=user
+            )
+
+            # 验证物品状态为 in_game
+            if item.status != 'in_game':
+                return Response({
+                    'error': '该物品未被预留为游戏奖品，无法撤销'
+                }, status=status.HTTP_400_BAD_REQUEST)
+
+            # 查找关联的游戏
+            # 游戏通过 game_data.item_reward_id 引用物品
+            game = Game.objects.filter(
+                game_data__item_reward_id=str(item_id),
+                status='waiting'
+            ).first()
+
+            if not game:
+                return Response({
+                    'error': '未找到关联的等待中游戏，可能游戏已开始或已结束'
+                }, status=status.HTTP_400_BAD_REQUEST)
+
+            # 验证游戏创建者是当前用户
+            if game.creator != user:
+                return Response({
+                    'error': '只能撤销自己创建的游戏奖品'
+                }, status=status.HTTP_403_FORBIDDEN)
+
+            # 检查是否已有其他参与者
+            other_participants = GameParticipant.objects.filter(game=game).exclude(user=user)
+            if other_participants.exists():
+                return Response({
+                    'error': '已有其他玩家参与，无法撤销游戏'
+                }, status=status.HTTP_400_BAD_REQUEST)
+
+            # 返还积分给创建者
+            refunded_amount = 0
+            if hasattr(user, 'coins'):
+                user.coins += game.bet_amount
+                user.save()
+                refunded_amount = game.bet_amount
+
+            # 返还物品到背包
+            inventory, _ = UserInventory.objects.get_or_create(user=user)
+            item.inventory = inventory
+            item.status = 'available'
+            item.save()
+
+            # 删除游戏
+            game.delete()
+
+            # 创建通知
+            try:
+                Notification.objects.create(
+                    user=user,
+                    notification_type='game_cancelled',
+                    title='游戏已取消',
+                    message=f'您取消了掷骰子游戏，{game.bet_amount}积分和奖品{item.item_type.display_name}已返还到您的背包'
+                )
+            except Exception:
+                # 通知创建失败不影响主流程
+                pass
+
+            return Response({
+                'message': '奖品预留已撤销，游戏已取消',
+                'refunded_amount': refunded_amount,
+                'remaining_coins': getattr(user, 'coins', 0),
+                'item_returned': True,
+                'item_name': item.item_type.display_name
+            }, status=status.HTTP_200_OK)
+
+    except Exception as e:
+        return Response({
+            'error': f'撤销奖品预留失败: {str(e)}'
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
@@ -3529,4 +3624,770 @@ def get_frozen_tasks(request):
     except Exception as e:
         return Response({
             'error': f'获取冻结任务列表失败: {str(e)}'
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+# ============================================================================
+# 角斗场游戏 (Arena Game)
+# ============================================================================
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def create_arena_game(request):
+    """创建角斗场游戏"""
+    try:
+        with transaction.atomic():
+            user = request.user
+
+            # 获取请求参数并转换为整数
+            try:
+                bet_amount = int(request.data.get('bet_amount', 10))
+                audience_ticket_price = int(request.data.get('audience_ticket_price', 5))
+                max_audience = int(request.data.get('max_audience', 20))
+                deadline_hours = int(request.data.get('deadline_hours', 12))
+                winner_reward_percentage = int(request.data.get('winner_reward_percentage', 80))
+            except (ValueError, TypeError):
+                return Response({'error': '参数格式错误，请输入有效的数字'}, status=status.HTTP_400_BAD_REQUEST)
+
+            # 验证参数
+            if bet_amount < 1:
+                return Response({'error': '投注金额至少为1积分'}, status=status.HTTP_400_BAD_REQUEST)
+            if audience_ticket_price < 1:
+                return Response({'error': '门票价格至少为1积分'}, status=status.HTTP_400_BAD_REQUEST)
+            if max_audience < 5 or max_audience > 100:
+                return Response({'error': '观众人数上限必须在5-100之间'}, status=status.HTTP_400_BAD_REQUEST)
+            if deadline_hours < 1 or deadline_hours > 72:
+                return Response({'error': '截止时间必须在1-72小时之间'}, status=status.HTTP_400_BAD_REQUEST)
+            if winner_reward_percentage < 50 or winner_reward_percentage > 95:
+                return Response({'error': '胜者奖励比例必须在50%-95%之间'}, status=status.HTTP_400_BAD_REQUEST)
+
+            # 检查用户积分
+            if hasattr(user, 'coins') and user.coins < bet_amount:
+                return Response({'error': '积分不足'}, status=status.HTTP_400_BAD_REQUEST)
+
+            # 处理照片上传
+            creator_photo = request.FILES.get('photo')
+            if not creator_photo:
+                return Response({'error': '请上传照片'}, status=status.HTTP_400_BAD_REQUEST)
+
+            # 验证文件类型
+            import os
+            _, ext = os.path.splitext(creator_photo.name.lower())
+            if ext not in ['.jpg', '.jpeg', '.png', '.gif', '.webp']:
+                return Response({'error': '不支持的图片格式'}, status=status.HTTP_400_BAD_REQUEST)
+
+            # 生成时间戳命名格式: YYYYMMDD_HHMMSS_milliseconds.jpg (与发布动态相同)
+            now = timezone.now()
+            timestamp = now.strftime('%Y%m%d_%H%M%S')
+            milliseconds = f"{now.microsecond // 1000:03d}"
+            date_path = now.strftime('%Y/%m/%d')
+            secure_filename = f"{timestamp}_{milliseconds}{ext}"
+
+            # 保存照片文件
+            file_name = f"arena/{date_path}/{secure_filename}"
+
+            # 确保文件指针在开头并读取内容
+            creator_photo.seek(0)
+            file_content = creator_photo.read()
+            if not file_content:
+                return Response({'error': '照片文件内容为空'}, status=status.HTTP_400_BAD_REQUEST)
+
+            file_path = default_storage.save(file_name, ContentFile(file_content))
+            logger.info(f"Arena game creator photo saved: {file_path}")
+
+            # 扣除发起者赌注
+            if hasattr(user, 'coins'):
+                user.deduct_coins(
+                    amount=bet_amount,
+                    change_type='arena_game_bet',
+                    description='创建角斗场游戏赌注',
+                    metadata={'game_type': 'arena'}
+                )
+
+            # 计算截止时间
+            deadline = timezone.now() + timedelta(hours=deadline_hours)
+
+            # 创建游戏
+            game = Game.objects.create(
+                game_type='arena',
+                creator=user,
+                bet_amount=bet_amount,
+                max_players=max_audience + 2,  # 发起者 + 挑战者 + 观众
+                status='waiting',
+                game_data={
+                    'creator_photo': {
+                        'path': file_path,
+                        'uploaded_at': timezone.now().isoformat()
+                    },
+                    'challenger_photo': None,
+                    'config': {
+                        'audience_ticket_price': audience_ticket_price,
+                        'max_audience': max_audience,
+                        'deadline': deadline.isoformat(),
+                        'winner_reward_percentage': winner_reward_percentage
+                    },
+                    'audience': [],
+                    'votes': {
+                        'creator': 0,
+                        'challenger': 0
+                    }
+                },
+                result={}
+            )
+
+            # 创建发起者参与记录
+            GameParticipant.objects.create(
+                game=game,
+                user=user,
+                action={'role': 'creator', 'photo_uploaded': True}
+            )
+
+            return Response({
+                'message': '角斗场游戏创建成功',
+                'game': {
+                    'id': str(game.id),
+                    'bet_amount': bet_amount,
+                    'audience_ticket_price': audience_ticket_price,
+                    'max_audience': max_audience,
+                    'deadline': deadline.isoformat(),
+                    'status': 'waiting'
+                },
+                'remaining_coins': getattr(user, 'coins', 0)
+            }, status=status.HTTP_201_CREATED)
+
+    except Exception as e:
+        logger.error(f"create_arena_game error: {e}", exc_info=True)
+        return Response({
+            'error': f'创建游戏失败: {str(e)}'
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def join_arena_game(request, game_id):
+    """挑战者加入角斗场游戏"""
+    try:
+        with transaction.atomic():
+            user = request.user
+            game = get_object_or_404(Game, id=game_id, game_type='arena')
+
+            # 检查游戏状态
+            if game.status != 'waiting':
+                return Response({'error': '游戏已经开始或已结束'}, status=status.HTTP_400_BAD_REQUEST)
+
+            # 检查是否已经是参与者
+            if GameParticipant.objects.filter(game=game, user=user).exists():
+                return Response({'error': '您已经参与了此游戏'}, status=status.HTTP_400_BAD_REQUEST)
+
+            # 不能挑战自己的游戏
+            if game.creator == user:
+                return Response({'error': '不能挑战自己创建的游戏'}, status=status.HTTP_400_BAD_REQUEST)
+
+            # 检查是否已有挑战者
+            existing_participants = GameParticipant.objects.filter(game=game).count()
+            if existing_participants >= 2:
+                return Response({'error': '此游戏已有挑战者'}, status=status.HTTP_400_BAD_REQUEST)
+
+            # 检查用户积分
+            if hasattr(user, 'coins') and user.coins < game.bet_amount:
+                return Response({'error': '积分不足'}, status=status.HTTP_400_BAD_REQUEST)
+
+            # 处理照片上传
+            challenger_photo = request.FILES.get('photo')
+            if not challenger_photo:
+                return Response({'error': '请上传照片'}, status=status.HTTP_400_BAD_REQUEST)
+
+            # 验证文件类型
+            _, ext = os.path.splitext(challenger_photo.name.lower())
+            if ext not in ['.jpg', '.jpeg', '.png', '.gif', '.webp']:
+                return Response({'error': '不支持的图片格式'}, status=status.HTTP_400_BAD_REQUEST)
+
+            # 生成时间戳命名格式: YYYYMMDD_HHMMSS_milliseconds.jpg (与发布动态相同)
+            now = timezone.now()
+            timestamp = now.strftime('%Y%m%d_%H%M%S')
+            milliseconds = f"{now.microsecond // 1000:03d}"
+            date_path = now.strftime('%Y/%m/%d')
+            secure_filename = f"{timestamp}_{milliseconds}{ext}"
+
+            # 保存照片文件
+            file_name = f"arena/{date_path}/{secure_filename}"
+
+            # 确保文件指针在开头并读取内容
+            challenger_photo.seek(0)
+            file_content = challenger_photo.read()
+            if not file_content:
+                return Response({'error': '照片文件内容为空'}, status=status.HTTP_400_BAD_REQUEST)
+
+            file_path = default_storage.save(file_name, ContentFile(file_content))
+            logger.info(f"Arena game challenger photo saved: {file_path}")
+
+            # 扣除挑战者赌注
+            if hasattr(user, 'coins'):
+                user.deduct_coins(
+                    amount=game.bet_amount,
+                    change_type='arena_game_bet',
+                    description='加入角斗场游戏赌注',
+                    metadata={'game_id': str(game.id)}
+                )
+
+            # 更新游戏数据
+            game.game_data['challenger_photo'] = {
+                'path': file_path,
+                'uploaded_at': timezone.now().isoformat()
+            }
+            game.status = 'active'
+            game.started_at = timezone.now()
+            game.save()
+
+            # 创建挑战者参与记录
+            GameParticipant.objects.create(
+                game=game,
+                user=user,
+                action={'role': 'challenger', 'photo_uploaded': True}
+            )
+
+            # 发送通知给发起者
+            from users.models import Notification as NotificationModel
+            NotificationModel.create_notification(
+                recipient=game.creator,
+                notification_type='game_update',
+                actor=user,
+                title='角斗场挑战者已加入',
+                message=f'{user.username} 接受了您的角斗场挑战！游戏现在开始，等待观众入场投票。',
+                related_object_type='game',
+                related_object_id=game.id,
+                extra_data={
+                    'game_type': 'arena',
+                    'action': 'challenger_joined',
+                    'challenger_id': user.id,
+                    'challenger_username': user.username
+                },
+                priority='normal'
+            )
+
+            return Response({
+                'message': '成功加入角斗场游戏',
+                'game': {
+                    'id': str(game.id),
+                    'status': 'active',
+                    'bet_amount': game.bet_amount
+                },
+                'remaining_coins': getattr(user, 'coins', 0)
+            }, status=status.HTTP_200_OK)
+
+    except Exception as e:
+        logger.error(f"join_arena_game error: {e}", exc_info=True)
+        return Response({
+            'error': f'加入游戏失败: {str(e)}'
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def enter_arena_audience(request, game_id):
+    """观众入场"""
+    try:
+        with transaction.atomic():
+            user = request.user
+            game = get_object_or_404(Game, id=game_id, game_type='arena')
+
+            # 检查游戏状态
+            if game.status != 'active':
+                return Response({'error': '游戏不在进行中'}, status=status.HTTP_400_BAD_REQUEST)
+
+            # 检查是否是发起者或挑战者
+            participant = GameParticipant.objects.filter(game=game, user=user).first()
+            if participant:
+                role = participant.action.get('role')
+                if role in ['creator', 'challenger']:
+                    return Response({
+                        'error': '发起者和挑战者不能以观众身份入场',
+                        'has_access': True,
+                        'role': role
+                    }, status=status.HTTP_400_BAD_REQUEST)
+
+            # 检查是否已经在观众列表中
+            audience_list = game.game_data.get('audience', [])
+            existing_audience = [a for a in audience_list if a.get('user_id') == user.id]
+            if existing_audience:
+                return Response({
+                    'message': '您已经是观众',
+                    'has_access': True,
+                    'remaining_coins': getattr(user, 'coins', 0)
+                })
+
+            # 检查观众人数上限
+            if len(audience_list) >= game.game_data['config']['max_audience']:
+                return Response({'error': '观众人数已满'}, status=status.HTTP_400_BAD_REQUEST)
+
+            # 检查截止时间
+            from django.utils.dateparse import parse_datetime
+            deadline = parse_datetime(game.game_data['config']['deadline'])
+            if deadline and timezone.now() > deadline:
+                return Response({'error': '游戏已截止'}, status=status.HTTP_400_BAD_REQUEST)
+
+            # 获取门票价格
+            ticket_price = game.game_data['config']['audience_ticket_price']
+
+            # 检查用户积分
+            if hasattr(user, 'coins') and user.coins < ticket_price:
+                return Response({'error': '积分不足'}, status=status.HTTP_400_BAD_REQUEST)
+
+            # 扣除门票费用
+            if hasattr(user, 'coins'):
+                user.deduct_coins(
+                    amount=ticket_price,
+                    change_type='arena_ticket',
+                    description='角斗场观众门票',
+                    metadata={'game_id': str(game.id)}
+                )
+
+            # 添加观众到列表
+            new_audience = {
+                'user_id': user.id,
+                'username': user.username,
+                'joined_at': timezone.now().isoformat(),
+                'has_voted': False,
+                'vote_for': None
+            }
+            game.game_data['audience'].append(new_audience)
+            game.save()
+
+            # 创建观众参与记录
+            GameParticipant.objects.get_or_create(
+                game=game,
+                user=user,
+                defaults={'action': {'role': 'audience'}}
+            )
+
+            return Response({
+                'message': '入场成功，现在可以查看照片并投票',
+                'has_access': True,
+                'remaining_coins': getattr(user, 'coins', 0),
+                'ticket_price': ticket_price
+            }, status=status.HTTP_200_OK)
+
+    except Exception as e:
+        logger.error(f"enter_arena_audience error: {e}", exc_info=True)
+        return Response({
+            'error': f'入场失败: {str(e)}'
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def vote_arena_game(request, game_id):
+    """观众投票"""
+    try:
+        with transaction.atomic():
+            user = request.user
+            game = get_object_or_404(Game, id=game_id, game_type='arena')
+
+            # 检查游戏状态
+            if game.status != 'active':
+                return Response({'error': '游戏不在进行中'}, status=status.HTTP_400_BAD_REQUEST)
+
+            # 获取投票选择
+            vote_for = request.data.get('vote_for')
+            if vote_for not in ['creator', 'challenger']:
+                return Response({'error': '投票选择无效'}, status=status.HTTP_400_BAD_REQUEST)
+
+            # 检查用户是否是观众
+            audience_list = game.game_data.get('audience', [])
+            audience_entry = None
+            for a in audience_list:
+                if a.get('user_id') == user.id:
+                    audience_entry = a
+                    break
+
+            if not audience_entry:
+                return Response({'error': '您不是此游戏的观众'}, status=status.HTTP_403_FORBIDDEN)
+
+            # 检查是否已经投票
+            if audience_entry.get('has_voted'):
+                return Response({'error': '您已经投过票了'}, status=status.HTTP_400_BAD_REQUEST)
+
+            # 记录投票
+            audience_entry['has_voted'] = True
+            audience_entry['vote_for'] = vote_for
+            audience_entry['voted_at'] = timezone.now().isoformat()
+
+            # 更新票数统计
+            game.game_data['votes'][vote_for] += 1
+            game.save()
+
+            # 检查是否所有观众都已投票
+            all_voted = all(a.get('has_voted', False) for a in audience_list)
+            total_audience = len(audience_list)
+            max_audience = game.game_data.get('config', {}).get('max_audience', 20)
+
+            # 只有当达到最大观众数且全部投票后才自动结算
+            # 否则等待截止时间到达后手动结算
+            if all_voted and total_audience >= max_audience:
+                result = settle_arena_game_internal(game)
+                return Response({
+                    'message': '投票成功！所有观众已投票，游戏已结算',
+                    'vote_for': vote_for,
+                    'current_votes': game.game_data['votes'],
+                    'is_completed': True,
+                    'result': result
+                })
+
+            return Response({
+                'message': '投票成功',
+                'vote_for': vote_for,
+                'current_votes': game.game_data['votes'],
+                'is_completed': False,
+                'total_audience': total_audience,
+                'voted_count': sum(1 for a in audience_list if a.get('has_voted', False))
+            }, status=status.HTTP_200_OK)
+
+    except Exception as e:
+        logger.error(f"vote_arena_game error: {e}", exc_info=True)
+        return Response({
+            'error': f'投票失败: {str(e)}'
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def settle_arena_game(request, game_id):
+    """手动结算角斗场游戏（用于截止时间到达）"""
+    try:
+        game = get_object_or_404(Game, id=game_id, game_type='arena')
+
+        # 检查权限（只有发起者或管理员可以手动结算）
+        if game.creator != request.user and not request.user.is_staff:
+            return Response({'error': '无权结算此游戏'}, status=status.HTTP_403_FORBIDDEN)
+
+        # 检查游戏状态
+        if game.status == 'completed':
+            return Response({'error': '游戏已经结算过了'}, status=status.HTTP_400_BAD_REQUEST)
+
+        if game.status != 'active':
+            return Response({'error': '游戏尚未开始'}, status=status.HTTP_400_BAD_REQUEST)
+
+        result = settle_arena_game_internal(game)
+
+        return Response({
+            'message': '游戏结算成功',
+            'result': result
+        }, status=status.HTTP_200_OK)
+
+    except Exception as e:
+        logger.error(f"settle_arena_game error: {e}", exc_info=True)
+        return Response({
+            'error': f'结算失败: {str(e)}'
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+def settle_arena_game_internal(game):
+    """内部结算函数"""
+    from users.models import Notification as NotificationModel
+
+    with transaction.atomic():
+        votes = game.game_data.get('votes', {'creator': 0, 'challenger': 0})
+        audience_list = game.game_data.get('audience', [])
+        config = game.game_data.get('config', {})
+        winner_reward_percentage = config.get('winner_reward_percentage', 80)
+
+        # 确定胜者
+        if votes['creator'] > votes['challenger']:
+            winner = 'creator'
+        elif votes['challenger'] > votes['creator']:
+            winner = 'challenger'
+        else:
+            # 平局 - 按总票数比例分配（各50%）
+            winner = 'tie'
+
+        # 计算总奖池
+        total_bet = game.bet_amount * 2  # 发起者 + 挑战者
+        total_tickets = sum(config.get('audience_ticket_price', 5) for _ in audience_list)
+        total_pot = total_bet + total_tickets
+
+        # 计算奖励分配
+        if winner == 'creator':
+            winner_reward = int(total_pot * winner_reward_percentage / 100)
+            loser_reward = total_pot - winner_reward
+        elif winner == 'challenger':
+            winner_reward = int(total_pot * winner_reward_percentage / 100)
+            loser_reward = total_pot - winner_reward
+        else:
+            # 平局 - 平分
+            winner_reward = total_pot // 2
+            loser_reward = total_pot - winner_reward
+
+        # 获取参与用户
+        participants = GameParticipant.objects.filter(game=game)
+        creator_user = None
+        challenger_user = None
+
+        for p in participants:
+            role = p.action.get('role')
+            if role == 'creator':
+                creator_user = p.user
+            elif role == 'challenger':
+                challenger_user = p.user
+
+        # 发放奖励
+        if creator_user and hasattr(creator_user, 'coins'):
+            if winner == 'creator':
+                creator_user.add_coins(
+                    amount=winner_reward,
+                    change_type='arena_game_reward',
+                    description='角斗场游戏获胜奖励',
+                    metadata={'game_id': str(game.id), 'votes': votes}
+                )
+            else:
+                creator_user.add_coins(
+                    amount=loser_reward,
+                    change_type='arena_game_reward',
+                    description='角斗场游戏参与奖励',
+                    metadata={'game_id': str(game.id), 'votes': votes}
+                )
+
+        if challenger_user and hasattr(challenger_user, 'coins'):
+            if winner == 'challenger':
+                challenger_user.add_coins(
+                    amount=winner_reward,
+                    change_type='arena_game_reward',
+                    description='角斗场游戏获胜奖励',
+                    metadata={'game_id': str(game.id), 'votes': votes}
+                )
+            else:
+                challenger_user.add_coins(
+                    amount=loser_reward,
+                    change_type='arena_game_reward',
+                    description='角斗场游戏参与奖励',
+                    metadata={'game_id': str(game.id), 'votes': votes}
+                )
+
+        # 更新游戏状态
+        game.status = 'completed'
+        game.completed_at = timezone.now()
+        game.result = {
+            'winner': winner,
+            'total_pot': total_pot,
+            'creator_reward': winner_reward if winner == 'creator' else loser_reward,
+            'challenger_reward': winner_reward if winner == 'challenger' else loser_reward,
+            'final_votes': votes,
+            'audience_count': len(audience_list),
+            'completed_at': timezone.now().isoformat()
+        }
+        game.save()
+
+        # 发送通知
+        if creator_user:
+            title = '角斗场游戏结束'
+            if winner == 'creator':
+                message = f'恭喜！您在角斗场游戏中获胜，获得 {winner_reward} 积分奖励！'
+            elif winner == 'tie':
+                message = f'角斗场游戏平局，您获得 {winner_reward if winner == "creator" else loser_reward} 积分。'
+            else:
+                message = f'角斗场游戏结束，您获得 {loser_reward} 积分参与奖励。'
+
+            NotificationModel.create_notification(
+                recipient=creator_user,
+                notification_type='game_result',
+                actor=challenger_user or creator_user,
+                title=title,
+                message=message,
+                related_object_type='game',
+                related_object_id=game.id,
+                extra_data={
+                    'game_type': 'arena',
+                    'result': game.result
+                },
+                priority='normal'
+            )
+
+        if challenger_user:
+            title = '角斗场游戏结束'
+            if winner == 'challenger':
+                message = f'恭喜！您在角斗场游戏中获胜，获得 {winner_reward} 积分奖励！'
+            elif winner == 'tie':
+                message = f'角斗场游戏平局，您获得 {winner_reward if winner == "challenger" else loser_reward} 积分。'
+            else:
+                message = f'角斗场游戏结束，您获得 {loser_reward} 积分参与奖励。'
+
+            NotificationModel.create_notification(
+                recipient=challenger_user,
+                notification_type='game_result',
+                actor=creator_user or challenger_user,
+                title=title,
+                message=message,
+                related_object_type='game',
+                related_object_id=game.id,
+                extra_data={
+                    'game_type': 'arena',
+                    'result': game.result
+                },
+                priority='normal'
+            )
+
+        # 发送通知给所有观众
+        from users.models import User
+        for audience_member in audience_list:
+            try:
+                audience_user = User.objects.get(id=audience_member['user_id'])
+                voted_for = audience_member.get('vote_for', 'unknown')
+                vote_result = '猜中了！' if (voted_for == winner or (voted_for == 'creator' and winner == 'creator') or (voted_for == 'challenger' and winner == 'challenger')) else '很遗憾，您支持的一方没有获胜。'
+
+                NotificationModel.create_notification(
+                    recipient=audience_user,
+                    notification_type='game_result',
+                    actor=creator_user or challenger_user,
+                    title='角斗场游戏结束',
+                    message=f'您参与的角斗场对决已结束！最终投票：发起者 {votes["creator"]} 票 vs 挑战者 {votes["challenger"]} 票。{vote_result}',
+                    related_object_type='game',
+                    related_object_id=game.id,
+                    extra_data={
+                        'game_type': 'arena',
+                        'result': game.result,
+                        'your_vote': voted_for
+                    },
+                    priority='normal'
+                )
+            except User.DoesNotExist:
+                continue
+
+        return game.result
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def get_arena_game_status(request, game_id):
+    """获取角斗场游戏状态"""
+    try:
+        game = get_object_or_404(Game, id=game_id, game_type='arena')
+        user = request.user
+
+        # 检查用户权限
+        is_creator = game.creator == user
+        is_challenger = False
+        is_audience = False
+        has_access = False
+
+        participant = GameParticipant.objects.filter(game=game, user=user).first()
+        if participant:
+            role = participant.action.get('role')
+            if role == 'challenger':
+                is_challenger = True
+                has_access = True
+            elif role == 'creator':
+                has_access = True
+            elif role == 'audience':
+                is_audience = True
+                # 检查是否在观众列表中且已支付
+                for a in game.game_data.get('audience', []):
+                    if a.get('user_id') == user.id:
+                        has_access = True
+                        break
+
+        # 检查截止时间
+        from django.utils.dateparse import parse_datetime
+        deadline = parse_datetime(game.game_data['config']['deadline'])
+        is_expired = deadline and timezone.now() > deadline
+
+        # 如果游戏已截止但未结算，自动结算
+        if is_expired and game.status == 'active':
+            result = settle_arena_game_internal(game)
+            return Response({
+                'game': {
+                    'id': str(game.id),
+                    'status': 'completed',
+                    'result': result
+                }
+            })
+
+        # 构建响应数据
+        response_data = {
+            'id': str(game.id),
+            'status': game.status,
+            'bet_amount': game.bet_amount,
+            'creator': {
+                'id': game.creator.id,
+                'username': game.creator.username
+            },
+            'config': game.game_data.get('config', {}),
+            'votes': game.game_data.get('votes', {'creator': 0, 'challenger': 0}),
+            'audience_count': len(game.game_data.get('audience', [])),
+            'is_expired': is_expired,
+            'user_role': 'creator' if is_creator else ('challenger' if is_challenger else ('audience' if is_audience else 'none')),
+            'has_access': has_access
+        }
+
+        # 如果有权限，添加照片信息
+        if has_access or game.status == 'completed':
+            response_data['creator_photo'] = game.game_data.get('creator_photo')
+            response_data['challenger_photo'] = game.game_data.get('challenger_photo')
+
+        # 如果游戏已完成，添加结果
+        if game.status == 'completed':
+            response_data['result'] = game.result
+
+        return Response(response_data)
+
+    except Exception as e:
+        logger.error(f"get_arena_game_status error: {e}", exc_info=True)
+        return Response({
+            'error': f'获取游戏状态失败: {str(e)}'
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def list_arena_games(request):
+    """获取角斗场游戏列表"""
+    try:
+        status_filter = request.query_params.get('status', 'all')
+
+        games = Game.objects.filter(game_type='arena')
+
+        if status_filter != 'all':
+            games = games.filter(status=status_filter)
+
+        games = games.order_by('-created_at')[:50]
+
+        result = []
+        for game in games:
+            # 获取挑战者信息
+            challenger = None
+            for p in GameParticipant.objects.filter(game=game):
+                if p.action.get('role') == 'challenger':
+                    challenger = p.user
+                    break
+
+            result.append({
+                'id': str(game.id),
+                'creator': {
+                    'id': game.creator.id,
+                    'username': game.creator.username
+                },
+                'challenger': {
+                    'id': challenger.id,
+                    'username': challenger.username
+                } if challenger else None,
+                'bet_amount': game.bet_amount,
+                'status': game.status,
+                'config': {
+                    'audience_ticket_price': game.game_data.get('config', {}).get('audience_ticket_price', 5),
+                    'max_audience': game.game_data.get('config', {}).get('max_audience', 20)
+                },
+                'audience_count': len(game.game_data.get('audience', [])),
+                'audience': game.game_data.get('audience', []),
+                'votes': game.game_data.get('votes', {'creator': 0, 'challenger': 0}),
+                'result': game.result,
+                'created_at': game.created_at.isoformat()
+            })
+
+        return Response({
+            'games': result,
+            'count': len(result)
+        })
+
+    except Exception as e:
+        logger.error(f"list_arena_games error: {e}", exc_info=True)
+        return Response({
+            'error': f'获取游戏列表失败: {str(e)}'
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)

@@ -919,6 +919,179 @@ export const storeApi = {
       body: JSON.stringify(data),
     });
   },
+
+  // Revoke item prize reservation
+  async revokeItemPrize(itemId: string): Promise<{
+    message: string;
+    refunded_amount: number;
+    remaining_coins: number;
+    item_returned: boolean;
+    item_name: string;
+  }> {
+    return apiRequest(`/store/items/${itemId}/revoke-prize/`, {
+      method: 'POST',
+    });
+  },
+
+  // Arena Game API
+  async createArenaGame(data: {
+    bet_amount: number;
+    audience_ticket_price: number;
+    max_audience: number;
+    deadline_hours: number;
+    winner_reward_percentage: number;
+    photo: File;
+  }): Promise<{
+    message: string;
+    game: {
+      id: string;
+      bet_amount: number;
+      audience_ticket_price: number;
+      max_audience: number;
+      deadline: string;
+      status: string;
+    };
+    remaining_coins: number;
+  }> {
+    const formData = new FormData();
+    formData.append('bet_amount', data.bet_amount.toString());
+    formData.append('audience_ticket_price', data.audience_ticket_price.toString());
+    formData.append('max_audience', data.max_audience.toString());
+    formData.append('deadline_hours', data.deadline_hours.toString());
+    formData.append('winner_reward_percentage', data.winner_reward_percentage.toString());
+    formData.append('photo', data.photo);
+
+    const token = localStorage.getItem('token');
+    const response = await fetch(`${API_BASE_URL}/store/arena-games/`, {
+      method: 'POST',
+      headers: {
+        ...(token && { Authorization: `Token ${token}` }),
+      },
+      body: formData,
+    });
+
+    return handleResponse(response);
+  },
+
+  async listArenaGames(status?: string): Promise<{
+    games: Array<{
+      id: string;
+      creator: User;
+      challenger?: User;
+      bet_amount: number;
+      status: string;
+      config: {
+        audience_ticket_price: number;
+        max_audience: number;
+      };
+      audience_count: number;
+      votes: {
+        creator: number;
+        challenger: number;
+      };
+      created_at: string;
+      result?: Record<string, any>;
+    }>;
+    count: number;
+  }> {
+    const query = status ? `?status=${status}` : '';
+    return apiRequest(`/store/arena-games/list/${query}`);
+  },
+
+  async joinArenaGame(gameId: string, photo: File): Promise<{
+    message: string;
+    game: {
+      id: string;
+      status: string;
+      bet_amount: number;
+    };
+    remaining_coins: number;
+  }> {
+    const formData = new FormData();
+    formData.append('photo', photo);
+
+    const token = localStorage.getItem('token');
+    const response = await fetch(`${API_BASE_URL}/store/arena-games/${gameId}/join/`, {
+      method: 'POST',
+      headers: {
+        ...(token && { Authorization: `Token ${token}` }),
+      },
+      body: formData,
+    });
+
+    return handleResponse(response);
+  },
+
+  async enterArenaAsAudience(gameId: string): Promise<{
+    message: string;
+    has_access: boolean;
+    remaining_coins: number;
+    ticket_price: number;
+  }> {
+    return apiRequest(`/store/arena-games/${gameId}/enter/`, {
+      method: 'POST',
+    });
+  },
+
+  async voteArenaGame(gameId: string, voteFor: 'creator' | 'challenger'): Promise<{
+    message: string;
+    vote_for: string;
+    current_votes: {
+      creator: number;
+      challenger: number;
+    };
+    is_completed: boolean;
+    result?: Record<string, any>;
+  }> {
+    return apiRequest(`/store/arena-games/${gameId}/vote/`, {
+      method: 'POST',
+      body: JSON.stringify({ vote_for: voteFor }),
+    });
+  },
+
+  async getArenaGameStatus(gameId: string): Promise<{
+    id: string;
+    status: string;
+    bet_amount: number;
+    creator: {
+      id: number;
+      username: string;
+    };
+    config: {
+      audience_ticket_price: number;
+      max_audience: number;
+      deadline: string;
+      winner_reward_percentage: number;
+    };
+    votes: {
+      creator: number;
+      challenger: number;
+    };
+    audience_count: number;
+    is_expired: boolean;
+    user_role: string;
+    has_access: boolean;
+    creator_photo?: {
+      path: string;
+      uploaded_at: string;
+    };
+    challenger_photo?: {
+      path: string;
+      uploaded_at: string;
+    };
+    result?: Record<string, any>;
+  }> {
+    return apiRequest(`/store/arena-games/${gameId}/status/`);
+  },
+
+  async settleArenaGame(gameId: string): Promise<{
+    message: string;
+    result: Record<string, any>;
+  }> {
+    return apiRequest(`/store/arena-games/${gameId}/settle/`, {
+      method: 'POST',
+    });
+  },
 };
 
 // Tasks API

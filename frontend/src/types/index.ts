@@ -658,7 +658,7 @@ export interface Purchase {
 
 export interface Game {
   id: string
-  game_type: 'time_wheel' | 'rock_paper_scissors' | 'exploration' | 'dice'
+  game_type: 'time_wheel' | 'rock_paper_scissors' | 'exploration' | 'dice' | 'arena'
   creator: User
   participants: GameParticipant[]
   bet_amount: number

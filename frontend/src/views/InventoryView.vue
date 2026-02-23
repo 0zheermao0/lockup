@@ -349,6 +349,16 @@
               🗑️ 丢弃物品
             </MobileActionButton>
 
+            <!-- Revoke prize reservation (for in_game items) -->
+            <MobileActionButton
+              v-if="canRevokePrize(selectedItem)"
+              variant="warning"
+              :processing="revokingPrize"
+              @action="handleRevokePrize(selectedItem)"
+            >
+              🎮 撤销奖品预留
+            </MobileActionButton>
+
             <!-- Close button -->
             <MobileActionButton
               variant="secondary"
@@ -1533,6 +1543,9 @@ const buryData = ref({
 const showDiscardModal = ref(false)
 const discardingItem = ref(false)
 
+// Revoke prize
+const revokingPrize = ref(false)
+
 // Universal Key
 const showUniversalKeyModal = ref(false)
 const usingUniversalKey = ref(false)
@@ -1833,6 +1846,10 @@ const canDiscardItem = (item: Item): boolean => {
   return item.status === 'available'
 }
 
+const canRevokePrize = (item: Item): boolean => {
+  return item.status === 'in_game'
+}
+
 const canUseUniversalKey = (item: Item): boolean => {
   // Check if this is a Universal Key using the backend-provided flag
   return item.item_type.name === 'key' &&
@@ -2056,6 +2073,38 @@ const discardItem = async () => {
 const closeDiscardModal = () => {
   showDiscardModal.value = false
   selectedItem.value = null
+}
+
+const handleRevokePrize = async (item: Item) => {
+  try {
+    revokingPrize.value = true
+
+    // Show confirmation dialog
+    const confirmed = confirm(`确定要撤销 ${item.item_type.display_name} 的奖品预留吗？\n\n这将取消关联的游戏，返还您的积分和物品。`)
+    if (!confirmed) {
+      revokingPrize.value = false
+      return
+    }
+
+    const response = await storeApi.revokeItemPrize(item.id)
+
+    // Show success message
+    showNotification(
+      `奖品预留已撤销！${response.refunded_amount > 0 ? `返还 ${response.refunded_amount} 积分，` : ''}物品已回到背包`,
+      'success'
+    )
+
+    // Close the toast
+    selectedItem.value = null
+
+    // Refresh inventory
+    await loadInventory()
+  } catch (err) {
+    const errorMessage = err instanceof Error ? err.message : '撤销奖品预留失败'
+    showNotification(errorMessage, 'error')
+  } finally {
+    revokingPrize.value = false
+  }
 }
 
 const loadAvailableTasks = async () => {

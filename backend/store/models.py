@@ -82,6 +82,7 @@ class Item(models.Model):
         ('in_drift_bottle', '在漂流瓶中'),
         ('buried', '已掩埋'),
         ('shared', '已分享'),
+        ('in_game', '游戏中'),
     ]
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
@@ -156,6 +157,7 @@ class Game(models.Model):
         ('rock_paper_scissors', '石头剪刀布'),
         ('exploration', '探索'),
         ('dice', '掷骰子'),
+        ('arena', '角斗场'),
     ]
 
     STATUS_CHOICES = [

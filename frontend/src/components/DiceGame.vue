@@ -280,6 +280,15 @@
         </div>
       </div>
     </div>
+
+    <!-- Toast Notification -->
+    <NotificationToast
+      :is-visible="toastState.isVisible"
+      :type="toastState.type"
+      :title="toastState.title"
+      :message="toastState.message"
+      @close="closeToast"
+    />
   </div>
 </template>
 
@@ -289,6 +298,8 @@ import { useAuthStore } from '../stores/auth'
 import { storeApi } from '../lib/api'
 import { formatDistanceToNow } from '../lib/utils'
 import UserAvatar from './UserAvatar.vue'
+import NotificationToast from './NotificationToast.vue'
+import { toastState, closeToast } from '../composables/useGameToast'
 import type { Game, Item, UserInventory } from '../types'
 
 // Stores
@@ -415,7 +426,12 @@ const createGame = async () => {
     // 注意：积分更新现在由API响应拦截器自动处理，无需手动刷新
   } catch (error: any) {
     console.error('Failed to create game:', error)
-    alert(error.message || '创建游戏失败')
+    toastState.value = {
+      isVisible: true,
+      type: 'error',
+      title: '创建游戏失败',
+      message: error.message || '创建游戏失败'
+    }
   } finally {
     creating.value = false
   }
@@ -465,7 +481,12 @@ const joinGame = async () => {
 
   } catch (error: any) {
     console.error('Failed to join game:', error)
-    alert(error.message || '参与游戏失败')
+    toastState.value = {
+      isVisible: true,
+      type: 'error',
+      title: '参与游戏失败',
+      message: error.message || '参与游戏失败'
+    }
   } finally {
     joining.value = false
     joiningGameId.value = null
@@ -531,7 +552,12 @@ const cancelGame = async (gameId: string) => {
 
   } catch (error: any) {
     console.error('Failed to cancel game:', error)
-    alert(error.message || '取消游戏失败')
+    toastState.value = {
+      isVisible: true,
+      type: 'error',
+      title: '取消游戏失败',
+      message: error.message || '取消游戏失败'
+    }
   } finally {
     cancelingGame.value = false
   }
@@ -583,21 +609,24 @@ onMounted(() => {
   color: white;
   border: 3px solid #000;
   padding: 0.5rem 1rem;
-  border-radius: 4px;
-  font-weight: 700;
+  border-radius: 0;
+  font-weight: 900;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
   cursor: pointer;
   transition: all 0.2s ease;
   box-shadow: 3px 3px 0 #000;
 }
 
 .refresh-btn:hover:not(:disabled) {
-  transform: translate(-1px, -1px);
-  box-shadow: 4px 4px 0 #000;
+  transform: translate(1px, 1px);
+  box-shadow: 2px 2px 0 #000;
 }
 
 .refresh-btn:disabled {
-  opacity: 0.6;
+  background: #6c757d;
   cursor: not-allowed;
+  opacity: 0.6;
 }
 
 /* Create Form */
@@ -638,11 +667,11 @@ onMounted(() => {
 }
 
 .create-btn {
-  background: linear-gradient(135deg, #28a745, #20c997);
+  background: #28a745;
   color: white;
   border: 3px solid #000;
   padding: 1rem;
-  border-radius: 6px;
+  border-radius: 0;
   font-weight: 900;
   text-transform: uppercase;
   letter-spacing: 1px;
@@ -652,13 +681,14 @@ onMounted(() => {
 }
 
 .create-btn:hover:not(:disabled) {
-  transform: translate(-2px, -2px);
-  box-shadow: 6px 6px 0 #000;
+  transform: translate(2px, 2px);
+  box-shadow: 2px 2px 0 #000;
 }
 
 .create-btn:disabled {
-  opacity: 0.6;
+  background: #6c757d;
   cursor: not-allowed;
+  opacity: 0.6;
 }
 
 /* Games Grid */
@@ -670,16 +700,16 @@ onMounted(() => {
 
 .game-card {
   border: 3px solid #000;
-  border-radius: 6px;
+  border-radius: 0;
   padding: 1rem;
   background: white;
   transition: all 0.2s ease;
-  box-shadow: 3px 3px 0 #000;
+  box-shadow: 4px 4px 0 #000;
 }
 
 .game-card:hover {
-  transform: translate(-1px, -1px);
-  box-shadow: 4px 4px 0 #000;
+  transform: translate(-2px, -2px);
+  box-shadow: 6px 6px 0 #000;
 }
 
 .game-card.joining {
@@ -755,11 +785,11 @@ onMounted(() => {
 }
 
 .join-btn {
-  background: linear-gradient(135deg, #007bff, #0056b3);
+  background: #007bff;
   color: white;
   border: 3px solid #000;
   padding: 0.75rem;
-  border-radius: 4px;
+  border-radius: 0;
   font-weight: 900;
   text-transform: uppercase;
   letter-spacing: 1px;
@@ -767,16 +797,18 @@ onMounted(() => {
   box-shadow: 3px 3px 0 #000;
   transition: all 0.2s ease;
   width: 100%;
+  min-height: 48px;
 }
 
 .join-btn:hover:not(:disabled) {
-  transform: translate(-1px, -1px);
-  box-shadow: 4px 4px 0 #000;
+  transform: translate(1px, 1px);
+  box-shadow: 2px 2px 0 #000;
 }
 
 .join-btn:disabled {
-  opacity: 0.6;
+  background: #6c757d;
   cursor: not-allowed;
+  opacity: 0.6;
 }
 
 /* Loading and Empty States */
@@ -841,7 +873,7 @@ onMounted(() => {
 .result-modal {
   background: white;
   border: 4px solid #000;
-  border-radius: 8px;
+  border-radius: 0;
   box-shadow: 12px 12px 0 #000;
   max-width: 500px;
   width: 100%;
@@ -989,13 +1021,14 @@ onMounted(() => {
 .close-result-btn {
   padding: 0.75rem 1.5rem;
   border: 3px solid #000;
-  border-radius: 4px;
+  border-radius: 0;
   font-weight: 900;
   text-transform: uppercase;
   letter-spacing: 1px;
   cursor: pointer;
   box-shadow: 3px 3px 0 #000;
   transition: all 0.2s ease;
+  min-height: 48px;
 }
 
 .cancel-btn {
@@ -1012,13 +1045,14 @@ onMounted(() => {
 .cancel-btn:hover,
 .confirm-btn:hover:not(:disabled),
 .close-result-btn:hover {
-  transform: translate(-1px, -1px);
-  box-shadow: 4px 4px 0 #000;
+  transform: translate(1px, 1px);
+  box-shadow: 2px 2px 0 #000;
 }
 
 .confirm-btn:disabled {
-  opacity: 0.6;
+  background: #6c757d;
   cursor: not-allowed;
+  opacity: 0.6;
 }
 
 /* Dice Animation */
@@ -1133,7 +1167,7 @@ onMounted(() => {
 .creation-modal {
   background: white;
   border: 4px solid #000;
-  border-radius: 8px;
+  border-radius: 0;
   box-shadow: 12px 12px 0 #000;
   max-width: 500px;
   width: 100%;
@@ -1255,7 +1289,7 @@ onMounted(() => {
   color: white;
   border: 3px solid #000;
   padding: 0.5rem 1rem;
-  border-radius: 4px;
+  border-radius: 0;
   font-weight: 900;
   text-transform: uppercase;
   letter-spacing: 1px;
@@ -1263,16 +1297,18 @@ onMounted(() => {
   box-shadow: 3px 3px 0 #000;
   transition: all 0.2s ease;
   font-size: 0.875rem;
+  min-height: 40px;
 }
 
 .cancel-btn:hover:not(:disabled) {
-  transform: translate(-1px, -1px);
-  box-shadow: 4px 4px 0 #000;
+  transform: translate(1px, 1px);
+  box-shadow: 2px 2px 0 #000;
 }
 
 .cancel-btn:disabled {
-  opacity: 0.6;
+  background: #6c757d;
   cursor: not-allowed;
+  opacity: 0.6;
 }
 
 .disabled-info {
@@ -1293,8 +1329,20 @@ onMounted(() => {
 
 /* Mobile Responsive */
 @media (max-width: 768px) {
+  .dice-game {
+    gap: 1.5rem;
+  }
+
+  .game-section {
+    padding: 1rem;
+  }
+
   .games-grid {
     grid-template-columns: 1fr;
+  }
+
+  .game-card {
+    padding: 1rem;
   }
 
   .guess-options {
@@ -1303,12 +1351,47 @@ onMounted(() => {
 
   .modal-footer {
     flex-direction: column;
+    gap: 0.75rem;
+  }
+
+  .cancel-btn,
+  .confirm-btn,
+  .close-result-btn {
+    width: 100%;
   }
 
   .dice {
     width: 100px;
     height: 100px;
     font-size: 3rem;
+  }
+
+  .join-modal,
+  .result-modal,
+  .creation-modal {
+    margin: 0.5rem;
+    max-height: calc(100vh - 1rem);
+  }
+
+  .modal-header,
+  .modal-body,
+  .modal-footer {
+    padding: 1rem;
+  }
+
+  .game-header {
+    flex-direction: column;
+    gap: 0.5rem;
+    align-items: flex-start;
+  }
+
+  .creator-actions {
+    align-items: stretch;
+    width: 100%;
+  }
+
+  .cancel-btn {
+    width: 100%;
   }
 }
 </style>

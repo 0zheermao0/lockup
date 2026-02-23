@@ -303,6 +303,17 @@
         </div>
       </div>
 
+      <!-- Arena Game -->
+      <div v-if="activeTab === 'arena'" class="space-y-6">
+        <div class="game-section">
+          <h2 class="section-title">🏟️ 角斗场</h2>
+          <p class="section-description">
+            发起照片挑战，观众付费入场投票决胜负！胜者获得投注积分和门票奖励。
+          </p>
+          <ArenaGame />
+        </div>
+      </div>
+
       <!-- Degrees of Lewdity Game -->
       <div v-if="activeTab === 'dol'" class="space-y-6">
         <div class="game-section">
@@ -347,6 +358,15 @@
         </div>
       </div>
     </div>
+
+    <!-- Toast Notification -->
+    <NotificationToast
+      :is-visible="toastState.isVisible"
+      :type="toastState.type"
+      :title="toastState.title"
+      :message="toastState.message"
+      @close="closeToast"
+    />
   </div>
 </template>
 
@@ -358,7 +378,10 @@ import { useAuthStore } from '../stores/auth'
 import { smartGoBack } from '../utils/navigation'
 import TimeWheel from '../components/TimeWheel.vue'
 import DiceGame from '../components/DiceGame.vue'
+import ArenaGame from '../components/ArenaGame.vue'
 import NotificationBell from '../components/NotificationBell.vue'
+import NotificationToast from '../components/NotificationToast.vue'
+import { toastState, closeToast } from '../composables/useGameToast'
 import type { Game } from '../types'
 
 const router = useRouter()
@@ -366,7 +389,7 @@ const route = useRoute()
 const authStore = useAuthStore()
 
 // Valid tab IDs
-const validTabs = ['dice', 'rockPaperScissors', 'timeWheel', 'dol']
+const validTabs = ['dice', 'rockPaperScissors', 'timeWheel', 'arena', 'dol']
 
 // Methods
 const goBack = () => {
@@ -473,6 +496,7 @@ const tabs = [
   { id: 'dice', name: '掷骰子' },
   { id: 'rockPaperScissors', name: '石头剪刀布' },
   { id: 'timeWheel', name: '时间转盘' },
+  { id: 'arena', name: '角斗场' },
   { id: 'dol', name: '欲都孤儿' }
 ]
 
@@ -520,7 +544,12 @@ const handleCoinsChanged = (newCoins: number) => {
 
 const handleTimeWheelError = (message: string) => {
   console.error('Time wheel error:', message)
-  alert(`时间转盘错误: ${message}`)
+  toastState.value = {
+    isVisible: true,
+    type: 'error',
+    title: '时间转盘错误',
+    message
+  }
 }
 
 const handleTimeWheelClose = () => {
@@ -1009,11 +1038,20 @@ onUnmounted(() => {
   border: 4px solid #000;
   padding: 1rem;
   box-shadow: 8px 8px 0 #000;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.game-tabs::-webkit-scrollbar {
+  display: none;
 }
 
 .game-tab {
-  flex: 1;
-  padding: 1rem 2rem;
+  flex: 0 0 auto;
+  min-width: 120px;
+  padding: 1rem 1.5rem;
   border: 3px solid #000;
   background: #f8f9fa;
   color: #000;
@@ -1023,6 +1061,8 @@ onUnmounted(() => {
   cursor: pointer;
   transition: all 0.2s ease;
   box-shadow: 4px 4px 0 #000;
+  white-space: nowrap;
+  text-align: center;
 }
 
 .game-tab:hover {
@@ -1970,13 +2010,29 @@ onUnmounted(() => {
     font-size: 1.5rem;
   }
 
+  .header-stats {
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 0.5rem;
+  }
+
   .game-tabs {
-    flex-direction: column;
-    gap: 0.75rem;
+    gap: 0.5rem;
+    padding: 0.75rem;
+  }
+
+  .game-tab {
+    min-width: 100px;
+    padding: 0.75rem 1rem;
+    font-size: 0.875rem;
   }
 
   .game-section {
-    padding: 1.5rem;
+    padding: 1.25rem;
+  }
+
+  .section-title {
+    font-size: 1.25rem;
   }
 
   .game-creation {
@@ -1988,11 +2044,23 @@ onUnmounted(() => {
     flex-direction: column;
     align-items: stretch;
     gap: 1rem;
+    padding: 1.25rem;
   }
 
   .result-content {
     flex-direction: column;
     text-align: center;
+  }
+
+  .modal-content {
+    margin: 1rem;
+    max-height: calc(100vh - 2rem);
+  }
+
+  .modal-header,
+  .modal-body,
+  .modal-footer {
+    padding: 1.25rem;
   }
 
   .wheel-animation {
@@ -2070,9 +2138,19 @@ onUnmounted(() => {
     gap: 0.75rem;
   }
 
+  .choice-btn {
+    min-height: 48px;
+  }
+
   .join-actions {
     flex-direction: column;
     gap: 0.75rem;
+  }
+
+  .btn-primary,
+  .btn-secondary,
+  .btn-cancel {
+    min-height: 48px;
   }
 }
 

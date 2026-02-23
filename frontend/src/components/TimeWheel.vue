@@ -327,23 +327,27 @@ const animateWheel = async (spinResult: { isIncrease: boolean, baseTime: number 
 }
 
 .time-wheel-trigger {
-  background: linear-gradient(135deg, #ffc107, #ff8c00);
-  border: 2px solid #000;
-  border-radius: 8px;
-  padding: 0.75rem 1rem;
+  background: #ffc107;
+  border: 3px solid #000;
+  border-radius: 0;
+  padding: 1rem 2rem;
   cursor: pointer;
-  font-weight: bold;
+  font-weight: 900;
+  text-transform: uppercase;
+  letter-spacing: 1px;
   color: #000;
   box-shadow: 4px 4px 0 #000;
   transition: all 0.2s ease;
+  min-height: 48px;
 }
 
 .time-wheel-trigger:hover:not(:disabled) {
-  transform: translateY(-2px);
-  box-shadow: 6px 6px 0 #000;
+  transform: translate(2px, 2px);
+  box-shadow: 2px 2px 0 #000;
 }
 
 .time-wheel-trigger:disabled {
+  background: #6c757d;
   opacity: 0.6;
   cursor: not-allowed;
   transform: none;
@@ -365,8 +369,8 @@ const animateWheel = async (spinResult: { isIncrease: boolean, baseTime: number 
 
 .overlay-content {
   background: white;
-  border: 3px solid #000;
-  border-radius: 12px;
+  border: 4px solid #000;
+  border-radius: 0;
   padding: 2rem;
   max-width: 90vw;
   max-height: 90vh;
@@ -374,7 +378,7 @@ const animateWheel = async (spinResult: { isIncrease: boolean, baseTime: number 
   flex-direction: column;
   align-items: center;
   gap: 1.5rem;
-  box-shadow: 8px 8px 0 #000;
+  box-shadow: 12px 12px 0 #000;
 }
 
 .spinning-wheel {
@@ -451,55 +455,62 @@ const animateWheel = async (spinResult: { isIncrease: boolean, baseTime: number 
 
 .bet-section select,
 .bet-input {
-  padding: 0.5rem;
-  border: 2px solid #000;
-  border-radius: 4px;
-  font-weight: bold;
+  padding: 0.75rem;
+  border: 3px solid #000;
+  border-radius: 0;
+  font-weight: 900;
   background: white;
   min-width: 100px;
 }
 
 .spin-btn {
-  background: linear-gradient(135deg, #28a745, #20c997);
-  border: 2px solid #000;
-  border-radius: 8px;
+  background: #28a745;
+  border: 3px solid #000;
+  border-radius: 0;
   padding: 1rem 2rem;
   cursor: pointer;
-  font-weight: bold;
+  font-weight: 900;
+  text-transform: uppercase;
+  letter-spacing: 1px;
   color: white;
   font-size: 1.1rem;
   box-shadow: 4px 4px 0 #000;
   transition: all 0.2s ease;
+  min-height: 48px;
 }
 
 .spin-btn:hover:not(:disabled) {
-  transform: translateY(-2px);
-  box-shadow: 6px 6px 0 #000;
+  transform: translate(2px, 2px);
+  box-shadow: 2px 2px 0 #000;
 }
 
 .spin-btn:disabled {
+  background: #6c757d;
   opacity: 0.6;
   cursor: not-allowed;
   transform: none;
   box-shadow: 2px 2px 0 #000;
-  background: linear-gradient(135deg, #6c757d, #495057);
 }
 
 .close-btn {
   background: #dc3545;
-  border: 2px solid #000;
-  border-radius: 8px;
-  padding: 0.5rem 1rem;
+  border: 3px solid #000;
+  border-radius: 0;
+  padding: 0.75rem 1.5rem;
   cursor: pointer;
-  font-weight: bold;
+  font-weight: 900;
+  text-transform: uppercase;
+  letter-spacing: 1px;
   color: white;
-  box-shadow: 2px 2px 0 #000;
+  box-shadow: 3px 3px 0 #000;
+  transition: all 0.2s ease;
+  min-height: 48px;
 }
 
 .close-btn:hover {
   background: #c82333;
-  transform: translateY(-1px);
-  box-shadow: 3px 3px 0 #000;
+  transform: translate(1px, 1px);
+  box-shadow: 2px 2px 0 #000;
 }
 
 .result-display {
