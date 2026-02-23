@@ -1406,7 +1406,11 @@ onMounted(() => {
 .creator-info {
   display: flex;
   align-items: center;
-  gap: 0.5rem;
+  gap: 0.75rem;
+}
+
+.creator-info :deep(.user-avatar) {
+  flex-shrink: 0;
 }
 
 .creator-details {
@@ -1474,38 +1478,21 @@ onMounted(() => {
 }
 
 .fighter-avatar {
-  width: 64px;
-  height: 64px;
-  border-radius: 50%;
-  border: 3px solid #000;
-  overflow: hidden;
-  background: white;
-  box-shadow: 2px 2px 0 #000;
-  transition: all 0.2s ease;
-}
-
-.fighter-avatar:has(.user-avatar[clickable="true"]):hover {
-  transform: translate(-1px, -1px);
-  box-shadow: 3px 3px 0 #000;
-}
-
-.fighter-avatar.empty {
-  background: #ddd;
   display: flex;
   align-items: center;
   justify-content: center;
 }
 
-.fighter-avatar :deep(.user-avatar) {
-  width: 100%;
-  height: 100%;
-}
-
-.fighter-avatar :deep(.user-avatar img),
-.fighter-avatar :deep(.avatar-image) {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
+.fighter-avatar.empty {
+  width: 80px;
+  height: 80px;
+  background: #ddd;
+  border-radius: 50%;
+  border: 3px solid #000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 2px 2px 0 #000;
 }
 
 .empty-icon {
@@ -1518,7 +1505,7 @@ onMounted(() => {
   font-size: 0.75rem;
   font-weight: 700;
   text-align: center;
-  max-width: 80px;
+  max-width: 90px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
