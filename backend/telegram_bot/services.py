@@ -8,8 +8,8 @@ from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.utils import timezone
 from asgiref.sync import sync_to_async
-from telegram import Bot, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import Application, CommandHandler, CallbackQueryHandler, MessageHandler, filters
+from telegram import Bot, InlineKeyboardButton, InlineKeyboardMarkup, InlineQueryResultArticle, InputTextMessageContent
+from telegram.ext import Application, CommandHandler, CallbackQueryHandler, MessageHandler, InlineQueryHandler, filters
 from tasks.models import LockTask
 from users.models import Notification
 from tasks.utils import add_overtime_to_task
@@ -227,6 +227,9 @@ class TelegramBotService:
             self.application.add_handler(CommandHandler("share_games", self._handle_share_games))
             self.application.add_handler(CommandHandler("board", self._handle_board))
             self.application.add_handler(CommandHandler("help", self._handle_help))
+
+            # Inline Query 处理器（处理 @botname 查询）
+            self.application.add_handler(InlineQueryHandler(self._handle_inline_query))
 
             # 回调查询处理器（处理按钮点击）
             self.application.add_handler(CallbackQueryHandler(self._handle_callback_query))
@@ -1389,6 +1392,119 @@ Telegram 通知：{'✅ 已开启' if user.telegram_notifications_enabled else '
             import traceback
             logger.error(f"Traceback: {traceback.format_exc()}")
             await self._safe_callback_response(query, "❌ 参与游戏时出错，请稍后重试", show_alert=True)
+
+    async def _handle_inline_query(self, update, context):
+        """
+        处理 Inline Query - 用户在任何聊天中输入 @botname 时触发
+
+        支持以下查询格式：
+        - @botname - 显示帮助信息
+        - @botname 任务ID - 分享特定任务
+        - @botname share 任务ID - 分享特定任务
+        """
+        query = update.inline_query
+        user_id = query.from_user.id
+        query_text = query.query.strip().lower()
+
+        logger.info(f"Inline query from user {user_id}: '{query_text}'")
+
+        try:
+            results = []
+
+            # 如果没有查询内容，显示帮助信息
+            if not query_text:
+                results.append(
+                    InlineQueryResultArticle(
+                        id='help',
+                        title='🔒 Lockup Bot - 任务分享帮助',
+                        description='输入任务ID来分享任务，例如: abc123',
+                        input_message_content=InputTextMessageContent(
+                            message_text='🔒 Lockup Bot\n\n使用方法：\n在任何聊天中输入 @lock_heart_bot 任务ID\n即可分享任务给好友加时！',
+                            parse_mode='Markdown'
+                        ),
+                        thumb_url='https://telegram.org/img/t_logo.png'
+                    )
+                )
+            else:
+                # 尝试解析任务ID
+                task_id = None
+
+                # 支持格式: "share <task_id>" 或直接 "<task_id>"
+                if query_text.startswith('share '):
+                    task_id = query_text[6:].strip()
+                else:
+                    # 尝试将整个查询作为任务ID
+                    task_id = query_text
+
+                if task_id:
+                    try:
+                        # 查找任务
+                        task = await sync_to_async(LockTask.objects.get)(id=task_id)
+
+                        # 检查任务是否可以分享
+                        if task.task_type == 'lock' and task.status in ['active', 'voting']:
+                            # 生成分享消息
+                            message_text, keyboard = self.generate_task_share_message(task, task.user)
+
+                            # 创建 inline result
+                            results.append(
+                                InlineQueryResultArticle(
+                                    id=str(task.id),
+                                    title=f'📋 {task.title}',
+                                    description=f'难度: {task.difficulty} | 点击分享此任务',
+                                    input_message_content=InputTextMessageContent(
+                                        message_text=message_text,
+                                        parse_mode='Markdown'
+                                    ),
+                                    reply_markup=keyboard
+                                )
+                            )
+                        else:
+                            # 任务状态不允许分享
+                            results.append(
+                                InlineQueryResultArticle(
+                                    id='invalid_status',
+                                    title='❌ 任务无法分享',
+                                    description='该任务已完成或不是带锁任务',
+                                    input_message_content=InputTextMessageContent(
+                                        message_text='❌ 该任务无法分享，可能已完成或不是带锁任务。'
+                                    )
+                                )
+                            )
+
+                    except LockTask.DoesNotExist:
+                        # 任务不存在
+                        results.append(
+                            InlineQueryResultArticle(
+                                id='not_found',
+                                title='❌ 任务不存在',
+                                description=f'找不到任务ID: {task_id[:20]}',
+                                input_message_content=InputTextMessageContent(
+                                    message_text=f'❌ 找不到该任务，请检查任务ID是否正确。\n\n任务ID: {task_id}'
+                                )
+                            )
+                        )
+                    except Exception as e:
+                        logger.error(f"Error processing inline query for task {task_id}: {e}")
+                        results.append(
+                            InlineQueryResultArticle(
+                                id='error',
+                                title='❌ 查询出错',
+                                description='处理查询时发生错误',
+                                input_message_content=InputTextMessageContent(
+                                    message_text='❌ 处理查询时发生错误，请稍后重试。'
+                                )
+                            )
+                        )
+
+            # 回答 inline query
+            await query.answer(results, cache_time=10)
+            logger.info(f"Inline query answered with {len(results)} results")
+
+        except Exception as e:
+            logger.error(f"Error handling inline query: {e}")
+            import traceback
+            logger.error(f"Traceback: {traceback.format_exc()}")
 
     async def _handle_callback_query(self, update, context):
         """处理回调查询 - 用于处理分享任务的加时按钮"""

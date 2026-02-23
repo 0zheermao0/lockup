@@ -95,6 +95,7 @@
           :title="`${selectedItem.item_type.icon} ${selectedItem.item_type.display_name}`"
           :message="selectedItem.item_type.description"
           @close="selectedItem = null"
+          @closed="onToastClosed"
           :show-actions="false"
         >
           <!-- Custom content slot -->
@@ -157,237 +158,204 @@
                 @change="handlePhotoUpload"
                 class="hidden"
               >
-              <button
-                @click.stop.prevent="triggerPhotoInput"
-                @touchstart.prevent
-                class="action-btn primary"
+              <MobileActionButton
+                variant="primary"
+                @action="triggerPhotoInput"
               >
                 📸 上传照片
-              </button>
+              </MobileActionButton>
             </div>
 
             <!-- Photo view -->
-            <button
+            <MobileActionButton
               v-if="selectedItem.item_type.name === 'photo' && selectedItem.status === 'available'"
-              @click.stop.prevent="handleItemAction('photo_view', selectedItem)"
-              @touchstart.prevent
-              class="action-btn primary"
+              variant="primary"
+              @action="handleItemAction('photo_view', selectedItem)"
             >
               👁️ 查看照片
-            </button>
+            </MobileActionButton>
 
             <!-- Note edit -->
-            <button
+            <MobileActionButton
               v-if="selectedItem.item_type.name === 'note' && selectedItem.status === 'available' && (!selectedItem.properties?.content || selectedItem.properties.content.trim() === '')"
-              @click.stop.prevent="handleItemAction('note_edit', selectedItem)"
-              @touchstart.prevent
-              class="action-btn primary"
+              variant="primary"
+              @action="handleItemAction('note_edit', selectedItem)"
             >
               ✏️ 编写纸条
-            </button>
+            </MobileActionButton>
 
             <!-- Note edit (existing content) -->
-            <button
+            <MobileActionButton
               v-if="selectedItem.item_type.name === 'note' && selectedItem.status === 'available' && selectedItem.properties?.content && selectedItem.properties.content.trim() !== ''"
-              @click.stop.prevent="handleItemAction('note_edit', selectedItem)"
-              @touchstart.prevent
-              class="action-btn secondary"
+              variant="secondary"
+              @action="handleItemAction('note_edit', selectedItem)"
             >
               ✏️ 编辑纸条
-            </button>
+            </MobileActionButton>
 
             <!-- Note view -->
-            <button
+            <MobileActionButton
               v-if="selectedItem.item_type.name === 'note' && selectedItem.status === 'available' && selectedItem.properties?.content && selectedItem.properties.content.trim() !== ''"
-              @click.stop.prevent="handleItemAction('note_view', selectedItem)"
-              @touchstart.prevent
-              class="action-btn primary"
+              variant="primary"
+              @action="handleItemAction('note_view', selectedItem)"
             >
               👁️ 查看纸条
-            </button>
+            </MobileActionButton>
 
             <!-- Share item -->
-            <button
+            <MobileActionButton
               v-if="canShareItem(selectedItem)"
-              @click.stop.prevent="handleItemAction('share', selectedItem)"
-              @touchstart.prevent
-              class="action-btn secondary"
-              :disabled="sharingItem"
+              variant="secondary"
+              :processing="sharingItem"
+              @action="handleItemAction('share', selectedItem)"
             >
-              <span v-if="sharingItem">分享中...</span>
-              <span v-else>🔗 分享物品</span>
-            </button>
+              🔗 分享物品
+            </MobileActionButton>
 
             <!-- Bury item -->
-            <button
+            <MobileActionButton
               v-if="canBuryItem(selectedItem)"
-              @click.stop.prevent="handleItemAction('bury', selectedItem)"
-              @touchstart.prevent
-              class="action-btn secondary"
+              variant="secondary"
+              @action="handleItemAction('bury', selectedItem)"
             >
               ⛏️ 掩埋物品
-            </button>
+            </MobileActionButton>
 
             <!-- Universal Key usage -->
-            <button
+            <MobileActionButton
               v-if="canUseUniversalKey(selectedItem)"
-              @click.stop.prevent="handleItemAction('universal_key', selectedItem)"
-              @touchstart.prevent
-              class="action-btn universal-key"
-              :disabled="usingUniversalKey"
+              variant="primary"
+              :processing="usingUniversalKey"
+              @action="handleItemAction('universal_key', selectedItem)"
             >
-              <span v-if="usingUniversalKey">使用中...</span>
-              <span v-else>🗝️ 使用万能钥匙</span>
-            </button>
+              🗝️ 使用万能钥匙
+            </MobileActionButton>
 
             <!-- Treasury Item usage -->
-            <button
+            <MobileActionButton
               v-if="canUseTreasury(selectedItem)"
-              @click.stop.prevent="handleItemAction('treasury', selectedItem)"
-              @touchstart.prevent
-              class="action-btn primary"
+              variant="primary"
+              @action="handleItemAction('treasury', selectedItem)"
             >
               💰 管理小金库
-            </button>
+            </MobileActionButton>
 
             <!-- Detection Radar usage -->
-            <button
+            <MobileActionButton
               v-if="canUseDetectionRadar(selectedItem)"
-              @click.stop.prevent="handleItemAction('detection_radar', selectedItem)"
-              @touchstart.prevent
-              class="action-btn radar"
-              :disabled="usingDetectionRadar"
+              variant="primary"
+              :processing="usingDetectionRadar"
+              @action="handleItemAction('detection_radar', selectedItem)"
             >
-              <span v-if="usingDetectionRadar">探测中...</span>
-              <span v-else>🎯 使用探测雷达</span>
-            </button>
+              🎯 使用探测雷达
+            </MobileActionButton>
 
             <!-- Blizzard Bottle usage -->
-            <button
+            <MobileActionButton
               v-if="canUseBlizzardBottle(selectedItem)"
-              @click.stop.prevent="handleItemAction('blizzard_bottle', selectedItem)"
-              @touchstart.prevent
-              class="action-btn blizzard"
-              :disabled="usingBlizzardBottle"
+              variant="primary"
+              :processing="usingBlizzardBottle"
+              @action="handleItemAction('blizzard_bottle', selectedItem)"
             >
-              <span v-if="usingBlizzardBottle">释放中...</span>
-              <span v-else>🌨️ 使用暴雪瓶</span>
-            </button>
+              🌨️ 使用暴雪瓶
+            </MobileActionButton>
 
             <!-- Sun Bottle usage -->
-            <button
+            <MobileActionButton
               v-if="canUseSunBottle(selectedItem)"
-              @click.stop.prevent="handleItemAction('sun_bottle', selectedItem)"
-              @touchstart.prevent
-              class="action-btn sun"
-              :disabled="usingSunBottle"
+              variant="primary"
+              :processing="usingSunBottle"
+              @action="handleItemAction('sun_bottle', selectedItem)"
             >
-              <span v-if="usingSunBottle">使用中...</span>
-              <span v-else>☀️ 使用太阳瓶</span>
-            </button>
+              ☀️ 使用太阳瓶
+            </MobileActionButton>
 
             <!-- Time Hourglass usage -->
-            <button
+            <MobileActionButton
               v-if="canUseTimeHourglass(selectedItem)"
-              @click.stop.prevent="handleItemAction('time_hourglass', selectedItem)"
-              @touchstart.prevent
-              class="action-btn hourglass"
-              :disabled="usingTimeHourglass"
+              variant="primary"
+              :processing="usingTimeHourglass"
+              @action="handleItemAction('time_hourglass', selectedItem)"
             >
-              <span v-if="usingTimeHourglass">使用中...</span>
-              <span v-else>⏳ 使用时间沙漏</span>
-            </button>
+              ⏳ 使用时间沙漏
+            </MobileActionButton>
 
             <!-- Lucky Charm usage -->
-            <button
+            <MobileActionButton
               v-if="canUseLuckyCharm(selectedItem)"
-              @click.stop.prevent="handleItemAction('lucky_charm', selectedItem)"
-              @touchstart.prevent
-              class="action-btn lucky-charm"
-              :disabled="usingLuckyCharm"
+              variant="primary"
+              :processing="usingLuckyCharm"
+              @action="handleItemAction('lucky_charm', selectedItem)"
             >
-              <span v-if="usingLuckyCharm">使用中...</span>
-              <span v-else>🍀 使用幸运符</span>
-            </button>
+              🍀 使用幸运符
+            </MobileActionButton>
 
             <!-- Energy Potion usage -->
-            <button
+            <MobileActionButton
               v-if="canUseEnergyPotion(selectedItem)"
-              @click.stop.prevent="handleItemAction('energy_potion', selectedItem)"
-              @touchstart.prevent
-              class="action-btn energy-potion"
-              :disabled="usingEnergyPotion"
+              variant="primary"
+              :processing="usingEnergyPotion"
+              @action="handleItemAction('energy_potion', selectedItem)"
             >
-              <span v-if="usingEnergyPotion">使用中...</span>
-              <span v-else>⚡ 使用活力药水</span>
-            </button>
+              ⚡ 使用活力药水
+            </MobileActionButton>
 
             <!-- Time Anchor usage -->
-            <button
+            <MobileActionButton
               v-if="canUseTimeAnchor(selectedItem)"
-              @click.stop.prevent="handleItemAction('time_anchor', selectedItem)"
-              @touchstart.prevent
-              class="action-btn time-anchor"
-              :disabled="usingTimeAnchor"
+              variant="primary"
+              :processing="usingTimeAnchor"
+              @action="handleItemAction('time_anchor', selectedItem)"
             >
-              <span v-if="usingTimeAnchor">使用中...</span>
-              <span v-else>⚓ 使用时间锚点</span>
-            </button>
+              ⚓ 使用时间锚点
+            </MobileActionButton>
 
             <!-- Exploration Compass usage -->
-            <button
+            <MobileActionButton
               v-if="canUseExplorationCompass(selectedItem)"
-              @click.stop.prevent="handleItemAction('exploration_compass', selectedItem)"
-              @touchstart.prevent
-              class="action-btn exploration-compass"
-              :disabled="usingExplorationCompass"
+              variant="primary"
+              :processing="usingExplorationCompass"
+              @action="handleItemAction('exploration_compass', selectedItem)"
             >
-              <span v-if="usingExplorationCompass">使用中...</span>
-              <span v-else>🧭 使用探索指南针</span>
-            </button>
+              🧭 使用探索指南针
+            </MobileActionButton>
 
             <!-- Influence Crown usage -->
-            <button
+            <MobileActionButton
               v-if="canUseInfluenceCrown(selectedItem)"
-              @click.stop.prevent="handleItemAction('influence_crown', selectedItem)"
-              @touchstart.prevent
-              class="action-btn influence-crown"
-              :disabled="usingInfluenceCrown"
+              variant="primary"
+              :processing="usingInfluenceCrown"
+              @action="handleItemAction('influence_crown', selectedItem)"
             >
-              <span v-if="usingInfluenceCrown">使用中...</span>
-              <span v-else>👑 使用影响力皇冠</span>
-            </button>
+              👑 使用影响力皇冠
+            </MobileActionButton>
 
             <!-- Small Campfire usage -->
-            <button
+            <MobileActionButton
               v-if="canUseSmallCampfire(selectedItem)"
-              @click.stop.prevent="handleItemAction('small_campfire', selectedItem)"
-              @touchstart.prevent
-              class="action-btn small-campfire"
-              :disabled="usingSmallCampfire"
+              variant="primary"
+              :processing="usingSmallCampfire"
+              @action="handleItemAction('small_campfire', selectedItem)"
             >
-              <span v-if="usingSmallCampfire">使用中...</span>
-              <span v-else>🔥 使用小火堆</span>
-            </button>
+              🔥 使用小火堆
+            </MobileActionButton>
 
             <!-- Discard item -->
-            <button
+            <MobileActionButton
               v-if="canDiscardItem(selectedItem)"
-              @click.stop.prevent="handleItemAction('discard', selectedItem)"
-              @touchstart.prevent
-              class="action-btn danger"
+              variant="danger"
+              @action="handleItemAction('discard', selectedItem)"
             >
               🗑️ 丢弃物品
-            </button>
+            </MobileActionButton>
 
             <!-- Close button -->
-            <button
-              @click.stop.prevent="selectedItem = null"
-              @touchstart.prevent
-              class="action-btn secondary"
+            <MobileActionButton
+              variant="secondary"
+              @action="selectedItem = null"
             >
               关闭
-            </button>
+            </MobileActionButton>
           </template>
         </NotificationToast>
 
@@ -1466,6 +1434,15 @@
     </div>
   </div>
 
+  <!-- Unified Item Action Modals -->
+  <ItemActionModals
+    :active-modal="activeActionModal"
+    :active-item="activeActionItem"
+    :initial-data="modalData"
+    @close="closeActionModal"
+    @action="handleModalAction"
+  />
+
   <!-- Notification Toast Display -->
   <div class="notification-container">
     <div
@@ -1500,9 +1477,13 @@ import { tasksApi as tasksApiDetailed } from '../lib/api-tasks'
 import { smartGoBack } from '../utils/navigation'
 import { useAuthStore } from '../stores/auth'
 import { useNotificationToast } from '../composables/NotificationToast'
+import { useItemActionFlow } from '../composables/useItemActionFlow'
 import type { UserInventory, Item } from '../types'
 import TreasuryItemModal from '../components/TreasuryItemModal.vue'
 import NotificationToast from '../components/NotificationToast.vue'
+import ItemActionModals from '../components/ItemActionModals.vue'
+import MobileActionButton from '../components/MobileActionButton.vue'
+import type { ItemActionModalType } from '../components/ItemActionModals.vue'
 
 // Router
 const router = useRouter()
@@ -1635,6 +1616,16 @@ const frozenTasks = ref<Array<{
 }>>([])
 const selectedSmallCampfireTaskId = ref<string | null>(null)
 
+// New unified modal system
+const activeActionModal = ref<ItemActionModalType | null>(null)
+const activeActionItem = ref<Item | null>(null)
+const modalData = ref<Record<string, any>>({})
+
+// Use the new item action flow composable
+const { startActionFlow, flowState, resetFlow } = useItemActionFlow({
+  toastCloseDuration: 300,
+  maxWaitTime: 500
+})
 
 // Methods
 const goBack = () => {
@@ -2140,89 +2131,499 @@ const closeUniversalKeyModal = () => {
   selectedItem.value = null
 }
 
-// Unified item action handler to fix modal closing and opening issues
+// Toast closed callback - used by new flow system
+const onToastClosed = () => {
+  // This is called when the Toast transition completes
+  // The new flow system handles the modal opening
+}
+
+// Close the unified action modal
+const closeActionModal = () => {
+  activeActionModal.value = null
+  activeActionItem.value = null
+  modalData.value = {}
+  resetFlow()
+}
+
+// Handle actions from the unified modal
+const handleModalAction = async (action: string, data: any) => {
+  if (!activeActionItem.value) return
+
+  const item = activeActionItem.value
+
+  switch (action) {
+    case 'universal_key':
+      await executeUniversalKey(item, data.taskId)
+      break
+    case 'detection_radar':
+      await executeDetectionRadar(item)
+      break
+    case 'blizzard_bottle':
+      await executeBlizzardBottle(item)
+      break
+    case 'sun_bottle':
+      await executeSunBottle(item)
+      break
+    case 'time_hourglass':
+      await executeTimeHourglass(item)
+      break
+    case 'lucky_charm':
+      await executeLuckyCharm(item)
+      break
+    case 'energy_potion':
+      await executeEnergyPotion(item)
+      break
+    case 'time_anchor':
+      await executeTimeAnchor(item, data)
+      break
+    case 'exploration_compass':
+      await executeExplorationCompass(item, data.zone)
+      break
+    case 'influence_crown':
+      await executeInfluenceCrown(item)
+      break
+    case 'small_campfire':
+      await executeSmallCampfire(item)
+      break
+    case 'note_edit':
+      await executeNoteEdit(item, data.content)
+      break
+    case 'bury':
+      await executeBuryItem(item, data)
+      break
+    case 'discard':
+      await executeDiscardItem(item)
+      break
+  }
+}
+
+// Execute functions for each action type
+const executeUniversalKey = async (item: Item, taskId: string) => {
+  if (!taskId) return
+  try {
+    modalData.value.isProcessing = true
+    const response = await storeApi.useUniversalKey({
+      task_id: taskId,
+      universal_key_id: item.id
+    })
+    await loadInventory()
+    showNotification(`${response.message}\n获得奖励：${response.reward_coins} 积分`, 'success')
+    closeActionModal()
+  } catch (err) {
+    error.value = err instanceof Error ? err.message : '使用万能钥匙失败'
+    modalData.value.isProcessing = false
+  }
+}
+
+const executeDetectionRadar = async (item: Item) => {
+  try {
+    modalData.value.isProcessing = true
+    const tasks = await tasksApiDetailed.getTasksList({
+      task_type: 'lock',
+      status: 'active',
+      my_tasks: true
+    })
+    const votingTasks = await tasksApiDetailed.getTasksList({
+      task_type: 'lock',
+      status: 'voting',
+      my_tasks: true
+    })
+    const allTasks = [...tasks, ...votingTasks]
+    const hiddenTimeTasks = allTasks.filter(task => task.time_display_hidden)
+
+    if (hiddenTimeTasks.length === 0) {
+      showNotification('您没有时间被隐藏的带锁任务', 'warning')
+      modalData.value.isProcessing = false
+      return
+    }
+
+    const targetTask = hiddenTimeTasks[0]
+    const response = await tasksApiDetailed.useDetectionRadar(targetTask.id)
+
+    modalData.value.detectionResults = {
+      task_title: response.revealed_data.task_title,
+      status_text: response.revealed_data.status_text,
+      time_remaining_ms: response.revealed_data.time_remaining_ms,
+      is_frozen: response.revealed_data.is_frozen
+    }
+
+    await loadInventory()
+  } catch (err) {
+    showNotification(err instanceof Error ? err.message : '使用探测雷达失败', 'error')
+    modalData.value.isProcessing = false
+  }
+}
+
+const executeBlizzardBottle = async (item: Item) => {
+  try {
+    modalData.value.isProcessing = true
+    const response = await tasksApiDetailed.useBlizzardBottle()
+    modalData.value.blizzardResults = {
+      frozen_tasks_count: response.frozen_tasks_count,
+      affected_users_count: response.affected_users_count,
+      frozen_tasks: response.frozen_tasks,
+      item_destroyed: response.item_destroyed
+    }
+    await loadInventory()
+  } catch (err) {
+    showNotification(err instanceof Error ? err.message : '使用暴雪瓶失败', 'error')
+    modalData.value.isProcessing = false
+  }
+}
+
+const executeSunBottle = async (item: Item) => {
+  try {
+    modalData.value.isProcessing = true
+    const response = await tasksApiDetailed.useSunBottle()
+    modalData.value.sunBottleResults = {
+      unfrozen_tasks_count: response.unfrozen_tasks_count,
+      affected_users_count: response.affected_users_count,
+      unfrozen_tasks: response.unfrozen_tasks,
+      item_destroyed: response.item_destroyed
+    }
+    await loadInventory()
+  } catch (err) {
+    showNotification(err instanceof Error ? err.message : '使用太阳瓶失败', 'error')
+    modalData.value.isProcessing = false
+  }
+}
+
+const executeTimeHourglass = async (item: Item) => {
+  try {
+    modalData.value.isProcessing = true
+    const tasks = await tasksApiDetailed.getTasksList({
+      task_type: 'lock',
+      status: 'active',
+      my_tasks: true
+    })
+    const votingTasks = await tasksApiDetailed.getTasksList({
+      task_type: 'lock',
+      status: 'voting',
+      my_tasks: true
+    })
+    const allTasks = [...tasks, ...votingTasks]
+
+    if (allTasks.length === 0) {
+      showNotification('您当前没有活跃的带锁任务', 'warning')
+      modalData.value.isProcessing = false
+      return
+    }
+
+    const targetTask = allTasks[0]
+    const response = await tasksApiDetailed.useTimeHourglass(targetTask.id)
+
+    modalData.value.hourglassResults = {
+      reverted_events_count: response.rollback_data.reverted_events_count,
+      new_end_time: response.rollback_data.new_end_time,
+      is_frozen: response.rollback_data.is_frozen,
+      rollback_id: response.rollback_data.rollback_id
+    }
+
+    await loadInventory()
+  } catch (err) {
+    showNotification(err instanceof Error ? err.message : '使用时间沙漏失败', 'error')
+    modalData.value.isProcessing = false
+  }
+}
+
+const executeLuckyCharm = async (item: Item) => {
+  try {
+    modalData.value.isProcessing = true
+    await storeApi.useLuckyCharm(item.id)
+    await loadInventory()
+    showNotification('幸运符使用成功！下一个任务的小时奖励概率+20%', 'success')
+    closeActionModal()
+  } catch (err) {
+    showNotification(err instanceof Error ? err.message : '使用幸运符失败', 'error')
+    modalData.value.isProcessing = false
+  }
+}
+
+const executeEnergyPotion = async (item: Item) => {
+  try {
+    modalData.value.isProcessing = true
+    await storeApi.useEnergyPotion(item.id)
+    await loadInventory()
+    showNotification('活力药水使用成功！24小时内活跃度衰减减少50%', 'success')
+    closeActionModal()
+  } catch (err) {
+    showNotification(err instanceof Error ? err.message : '使用活力药水失败', 'error')
+    modalData.value.isProcessing = false
+  }
+}
+
+const executeTimeAnchor = async (item: Item, data: { action: 'save' | 'restore'; taskId?: string }) => {
+  try {
+    modalData.value.isProcessing = true
+    // Implementation depends on API
+    await loadInventory()
+    showNotification(`时间锚点${data.action === 'save' ? '保存' : '恢复'}成功！`, 'success')
+    closeActionModal()
+  } catch (err) {
+    showNotification(err instanceof Error ? err.message : '使用时间锚点失败', 'error')
+    modalData.value.isProcessing = false
+  }
+}
+
+const executeExplorationCompass = async (item: Item, zone: string) => {
+  if (!zone) return
+  try {
+    modalData.value.isProcessing = true
+    const response = await storeApi.useExplorationCompass({
+      item_id: item.id,
+      zone_name: zone
+    })
+    modalData.value.compassResults = {
+      zone_name: response.zone_name,
+      zone_display_name: response.zone_display_name,
+      treasures: response.treasures,
+      treasure_count: response.treasure_count,
+      compass_used_at: response.compass_used_at
+    }
+    await loadInventory()
+    showNotification(response.message, 'success')
+    // Keep modal open to show results
+    modalData.value.isProcessing = false
+  } catch (err) {
+    showNotification(err instanceof Error ? err.message : '使用探索指南针失败', 'error')
+    modalData.value.isProcessing = false
+  }
+}
+
+const executeInfluenceCrown = async (item: Item) => {
+  try {
+    modalData.value.isProcessing = true
+    await storeApi.useInfluenceCrown(item.id)
+    await loadInventory()
+    showNotification('影响力皇冠使用成功！48小时内投票权重变为3倍', 'success')
+    closeActionModal()
+  } catch (err) {
+    showNotification(err instanceof Error ? err.message : '使用影响力皇冠失败', 'error')
+    modalData.value.isProcessing = false
+  }
+}
+
+const executeSmallCampfire = async (item: Item) => {
+  try {
+    modalData.value.isProcessing = true
+    // Implementation depends on API
+    await loadInventory()
+    showNotification('小火堆使用成功！任务已解冻', 'success')
+    closeActionModal()
+  } catch (err) {
+    showNotification(err instanceof Error ? err.message : '使用小火堆失败', 'error')
+    modalData.value.isProcessing = false
+  }
+}
+
+const executeNoteEdit = async (item: Item, content: string) => {
+  if (!content.trim()) return
+  try {
+    modalData.value.isProcessing = true
+    await storeApi.editNote(item.id, content.trim())
+    await loadInventory()
+    showNotification('纸条编辑成功！', 'success')
+    closeActionModal()
+  } catch (err) {
+    showNotification(err instanceof Error ? err.message : '编辑纸条失败', 'error')
+    modalData.value.isProcessing = false
+  }
+}
+
+const executeBuryItem = async (item: Item, data: { locationZone: string; locationHint: string }) => {
+  if (!data.locationZone || !data.locationHint.trim()) return
+  try {
+    modalData.value.isProcessing = true
+    await storeApi.buryItem({
+      item_id: item.id,
+      location_zone: data.locationZone,
+      location_hint: data.locationHint
+    })
+    await loadInventory()
+    showNotification('物品掩埋成功！', 'success')
+    closeActionModal()
+  } catch (err) {
+    showNotification(err instanceof Error ? err.message : '掩埋物品失败', 'error')
+    modalData.value.isProcessing = false
+  }
+}
+
+const executeDiscardItem = async (item: Item) => {
+  try {
+    modalData.value.isProcessing = true
+    await storeApi.discardItem(item.id)
+    await loadInventory()
+    showNotification('物品已丢弃', 'success')
+    closeActionModal()
+  } catch (err) {
+    showNotification(err instanceof Error ? err.message : '丢弃物品失败', 'error')
+    modalData.value.isProcessing = false
+  }
+}
+
+// Prepare modal data for each action type
+const prepareModalData = async (action: string, item: Item) => {
+  const data: Record<string, any> = {}
+
+  switch (action) {
+    case 'universal_key':
+      // Load available tasks
+      const tasks = await tasksApi.getTasksList({
+        task_type: 'lock',
+        status: 'active',
+        my_tasks: true
+      })
+      const votingTasks = await tasksApi.getTasksList({
+        task_type: 'lock',
+        status: 'voting',
+        my_tasks: true
+      })
+      data.availableTasks = [...tasks, ...votingTasks]
+      if (data.availableTasks.length > 0) {
+        data.selectedTaskId = data.availableTasks[0].id
+      }
+      break
+
+    case 'time_anchor':
+      // Load tasks for time anchor
+      const anchorTasks = await tasksApiDetailed.getTasksList({
+        task_type: 'lock',
+        status: 'active',
+        my_tasks: true
+      })
+      const anchorVotingTasks = await tasksApiDetailed.getTasksList({
+        task_type: 'lock',
+        status: 'voting',
+        my_tasks: true
+      })
+      data.timeAnchorTasks = [...anchorTasks, ...anchorVotingTasks].map(task => ({
+        id: task.id,
+        title: task.title,
+        status: task.status,
+        difficulty: task.difficulty,
+        description: task.description
+      }))
+      // Check for saved state
+      if (item.properties?.saved_task_id) {
+        data.savedTaskInfo = {
+          taskId: item.properties.saved_task_id,
+          taskTitle: item.properties.saved_task_title,
+          savedStatus: item.properties.saved_status,
+          savedAt: item.properties.saved_at
+        }
+      }
+      break
+
+    case 'small_campfire':
+      // Load frozen tasks
+      const allTasks = await tasksApiDetailed.getTasksList({
+        task_type: 'lock',
+        my_tasks: true
+      })
+      data.frozenTasks = allTasks
+        .filter((task: any) => task.is_frozen)
+        .map((task: any) => ({
+          id: task.id,
+          title: task.title,
+          description: task.description,
+          difficulty: task.difficulty,
+          status: task.status,
+          frozen_at: task.frozen_at
+        }))
+      break
+
+    case 'note_edit':
+      data.noteContent = item.properties?.content || ''
+      break
+  }
+
+  return data
+}
+
+// Unified item action handler using the new flow system
 const handleItemAction = async (action: string, item: Item | null) => {
   if (!item) return
 
-  // 1. Immediately close toast by clearing selectedItem
-  selectedItem.value = null
+  // Special cases that don't use the modal system
+  if (action === 'photo_view') {
+    selectedItem.value = null
+    await nextTick()
+    viewPhoto(item)
+    return
+  }
 
-  // 2. Wait for DOM update to ensure toast is fully closed
-  await nextTick()
-
-  // 3. Small delay to ensure Transition animations complete
-  await new Promise(resolve => setTimeout(resolve, 50))
-
-  // 4. Open the corresponding modal based on action type
-  switch (action) {
-    case 'treasury':
-      selectedTreasuryItem.value = item
-      showTreasuryModal.value = true
-      break
-    case 'universal_key':
-      showUniversalKeyModal.value = true
-      await loadAvailableTasks()
-      break
-    case 'detection_radar':
-      showDetectionRadarModal.value = true
-      break
-    case 'blizzard_bottle':
-      showBlizzardBottleModal.value = true
-      break
-    case 'sun_bottle':
-      showSunBottleModal.value = true
-      break
-    case 'time_hourglass':
-      showTimeHourglassModal.value = true
-      break
-    case 'lucky_charm':
-      showLuckyCharmModal.value = true
-      break
-    case 'energy_potion':
-      showEnergyPotionModal.value = true
-      break
-    case 'time_anchor':
-      showTimeAnchorModal.value = true
-      break
-    case 'exploration_compass':
-      showExplorationCompassModal.value = true
-      break
-    case 'influence_crown':
-      showInfluenceCrownModal.value = true
-      break
-    case 'small_campfire':
-      showSmallCampfireModal.value = true
-      break
-    case 'note_edit':
-      // Load existing content if available
-      noteContent.value = item.properties?.content || ''
-      showNoteEditModal.value = true
-      break
-    case 'note_view':
-      showNoteViewModal.value = true
-      // viewNote needs selectedItem to be set, so temporarily set it
-      selectedItem.value = item
-      viewNote()
-      // Clear selectedItem after viewNote is called
+  if (action === 'share') {
+    // First close toast using the flow, then share
+    await startActionFlow(() => {
       selectedItem.value = null
-      break
-    case 'photo_view':
-      viewPhoto(item)
-      break
-    case 'share':
-      // shareItem needs selectedItem to be set, so temporarily set it
-      selectedItem.value = item
-      await shareItem()
-      break
-    case 'bury':
-      itemToBury.value = item
-      showBuryModal.value = true
-      break
-    case 'discard':
-      showDiscardModal.value = true
-      break
-    default:
-      console.warn('Unknown action:', action)
+    })
+    await shareItemWithItem(item)
+    return
+  }
+
+  if (action === 'treasury') {
+    await startActionFlow(() => {
+      selectedItem.value = null
+    })
+    selectedTreasuryItem.value = item
+    showTreasuryModal.value = true
+    return
+  }
+
+  if (action === 'note_view') {
+    await startActionFlow(() => {
+      selectedItem.value = null
+    })
+    viewNoteWithItem(item)
+    return
+  }
+
+  // Use the new flow system for modal-based actions
+  const modalType = action as ItemActionModalType
+
+  // Step 1: Close toast and wait for animation
+  await startActionFlow(() => {
+    selectedItem.value = null
+  })
+
+  // Step 2: Prepare modal data after toast is closed
+  modalData.value = await prepareModalData(action, item)
+
+  // Step 3: Open the modal
+  activeActionItem.value = item
+  activeActionModal.value = modalType
+}
+
+// Helper function for sharing with a specific item
+const shareItemWithItem = async (item: Item) => {
+  try {
+    sharingItem.value = true
+    sharedItem.value = item
+    const response = await storeApi.createShareLink(item.id)
+    shareLink.value = response.share_url
+    shareExpiresAt.value = response.expires_at
+    showShareModal.value = true
+  } catch (err) {
+    error.value = err instanceof Error ? err.message : '创建分享链接失败'
+    sharedItem.value = null
+  } finally {
+    sharingItem.value = false
+  }
+}
+
+// Helper function for viewing note with a specific item
+const viewNoteWithItem = async (item: Item) => {
+  try {
+    viewingNote.value = true
+    const response = await storeApi.viewNote(item.id)
+    noteContent.value = response.content
+    showNoteViewModal.value = true
+    noteTimeRemaining.value = 30
+    startNoteAutoCloseTimer()
+  } catch (err) {
+    error.value = err instanceof Error ? err.message : '查看纸条失败'
+  } finally {
+    viewingNote.value = false
   }
 }
 

@@ -69,6 +69,19 @@ export interface TelegramTaskShareResult {
   share_data: TelegramTaskShareData;
 }
 
+export interface TelegramViaBotShareData {
+  message_id: number;
+  chat_id: string | number;
+  task_id: string;
+  task_title: string;
+  share_type: 'via_bot';
+}
+
+export interface TelegramViaBotShareResult {
+  message: string;
+  share_data: TelegramViaBotShareData;
+}
+
 export interface TelegramGameShareData {
   message_text: string;
   telegram_share_url: string;
@@ -291,6 +304,74 @@ export const telegramApi = {
     } catch (error) {
       console.error('Error sharing game to Telegram:', error);
       throw error;
+    }
+  },
+
+  /**
+   * 准备 via-bot 分享（使用 Telegram Mini App shareMessage API）
+   *
+   * 这种方式分享的消息会显示 "via @botname"
+   * 需要 Telegram Mini App 环境支持
+   */
+  async prepareViaBotShare(taskId: string): Promise<TelegramViaBotShareResult> {
+    return apiRequest('/telegram/prepare-via-bot-share/', {
+      method: 'POST',
+      body: JSON.stringify({
+        task_id: taskId,
+      }),
+    });
+  },
+
+  /**
+   * 生成 Inline Bot 分享链接
+   *
+   * 用户点击后可以在任意聊天中输入 @botname 任务ID 来分享任务
+   * 格式: https://t.me/{bot_username}?start=inline_share_{task_id}
+   */
+  generateInlineBotShareUrl(taskId: string, botUsername: string = 'lock_heart_bot'): string {
+    return `https://t.me/${botUsername}?start=inline_share_${taskId}`;
+  },
+
+  /**
+   * Via-bot 分享任务（使用 Telegram Mini App shareMessage）
+   *
+   * 这种方式分享的消息会显示 "via @botname"
+   * 流程：
+   * 1. 后端 Bot 发送消息到存储聊天获取 message_id
+   * 2. 前端调用 telegram.shareMessage(message_id)
+   * 3. 用户选择目标聊天
+   * 4. 消息以 "via @bot" 形式转发
+   */
+  async shareTaskViaBot(taskId: string): Promise<{ success: boolean; message_id?: number; error?: string }> {
+    try {
+      // 检查是否在 Telegram Mini App 环境中
+      const tg = window.Telegram?.WebApp;
+      if (!tg) {
+        throw new Error('请在 Telegram 中打开此功能');
+      }
+
+      // 检查是否支持 shareMessage
+      if (!tg.shareMessage) {
+        throw new Error('您的 Telegram 版本不支持 via-bot 分享');
+      }
+
+      // 获取 message_id
+      const result = await this.prepareViaBotShare(taskId);
+      const { message_id } = result.share_data;
+
+      // 调用 Telegram Mini App shareMessage API
+      tg.shareMessage(message_id.toString());
+
+      return {
+        success: true,
+        message_id,
+      };
+    } catch (error: any) {
+      console.error('Error sharing task via bot:', error);
+      return {
+        success: false,
+        error: error.message || 'Via-bot 分享失败',
+      };
     }
   }
 };

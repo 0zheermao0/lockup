@@ -63,8 +63,9 @@
 
           <!-- 图片上传 -->
           <div class="form-group">
-            <label>图片 (可选)</label>
+            <label>图片 <span class="image-count">{{ selectedImages.length }}/9</span></label>
             <div class="image-upload-area">
+              <!-- Hidden file inputs -->
               <input
                 ref="fileInput"
                 type="file"
@@ -74,26 +75,72 @@
                 class="file-input"
                 :disabled="isLoading"
               />
-              <div @click="triggerFileInput" class="upload-zone">
-                <div v-if="selectedImages.length === 0" class="upload-placeholder">
-                  📷 点击选择图片
-                  <span class="upload-hint">最多9张，每张不超过2.5MB</span>
+              <input
+                ref="cameraInput"
+                type="file"
+                accept="image/*"
+                capture="environment"
+                @change="handleImageSelect"
+                class="file-input"
+                :disabled="isLoading"
+              />
+
+              <!-- Upload Zone -->
+              <div v-if="selectedImages.length === 0" class="upload-zone-empty">
+                <div class="upload-options">
+                  <button
+                    type="button"
+                    @click="openCamera"
+                    class="upload-option-btn camera-btn"
+                    :disabled="isLoading"
+                  >
+                    <span class="option-icon">📷</span>
+                    <span class="option-label">拍照</span>
+                  </button>
+                  <div class="option-divider"></div>
+                  <button
+                    type="button"
+                    @click="openGallery"
+                    class="upload-option-btn gallery-btn"
+                    :disabled="isLoading"
+                  >
+                    <span class="option-icon">🖼️</span>
+                    <span class="option-label">相册</span>
+                  </button>
                 </div>
-                <div v-else class="selected-images">
+                <span class="upload-hint">最多9张，每张不超过2.5MB</span>
+              </div>
+
+              <!-- Image Grid with Add Button -->
+              <div v-else class="image-grid-container">
+                <div class="selected-images">
                   <div
                     v-for="(image, index) in selectedImages"
                     :key="index"
                     class="image-preview"
+                    :style="{ animationDelay: `${index * 0.05}s` }"
                   >
                     <img :src="image.preview" :alt="`图片 ${index + 1}`" />
                     <button
                       type="button"
-                      @click.stop="removeImage(index)"
+                      @click="removeImage(index)"
                       class="remove-image"
+                      :disabled="isLoading"
                     >
                       ×
                     </button>
                   </div>
+                  <!-- Add More Button -->
+                  <button
+                    v-if="selectedImages.length < 9"
+                    type="button"
+                    @click="showImageSourceOptions"
+                    class="add-more-btn"
+                    :disabled="isLoading"
+                  >
+                    <span class="add-icon">+</span>
+                    <span class="add-label">添加</span>
+                  </button>
                 </div>
               </div>
             </div>
@@ -127,6 +174,51 @@
       </div>
     </div>
 
+    <!-- Image Source Action Sheet -->
+    <Transition name="slide-up">
+      <div v-if="showImageSourceSheet" class="action-sheet-overlay" @click="showImageSourceSheet = false">
+        <div class="action-sheet" @click.stop>
+          <div class="action-sheet-header">
+            <span>选择图片来源</span>
+          </div>
+          <button
+            type="button"
+            @click="selectCameraSource"
+            class="action-sheet-btn primary"
+          >
+            <span class="btn-icon">📷</span>
+            <span>拍照</span>
+          </button>
+          <button
+            type="button"
+            @click="selectGallerySource"
+            class="action-sheet-btn primary"
+          >
+            <span class="btn-icon">🖼️</span>
+            <span>从相册选择</span>
+          </button>
+          <div class="action-sheet-divider"></div>
+          <button
+            type="button"
+            @click="showImageSourceSheet = false"
+            class="action-sheet-btn cancel"
+          >
+            取消
+          </button>
+        </div>
+      </div>
+    </Transition>
+
+    <!-- Camera Modal -->
+    <CameraModal
+      v-if="showCameraModal"
+      :max-size="cameraMaxSize"
+      :title="isCheckinMode ? '拍照打卡' : '拍照'"
+      @click.stop
+      @close="showCameraModal = false"
+      @capture="handleCameraCapture"
+    />
+
     <!-- NotificationToast for error handling -->
     <NotificationToast
       :is-visible="showToast"
@@ -147,6 +239,7 @@ import { useAuthStore } from '../stores/auth'
 import { tasksApi } from '../lib/api'
 import RichTextEditor from './RichTextEditor.vue'
 import NotificationToast from './NotificationToast.vue'
+import CameraModal from './CameraModal.vue'
 import type { LockTask } from '../types/index'
 import { handleApiError, formatErrorForNotification } from '../utils/errorHandling'
 
@@ -207,7 +300,11 @@ const verificationCodeText = computed(() => {
 
 // 图片相关
 const fileInput = ref<HTMLInputElement>()
+const cameraInput = ref<HTMLInputElement>()
 const selectedImages = ref<Array<{ file: File; preview: string }>>([])
+const showImageSourceSheet = ref(false)
+const showCameraModal = ref(false)
+const cameraMaxSize = 2.5 * 1024 * 1024 // 2.5MB
 
 // 监听props变化
 watch(() => props.isVisible, (visible) => {
@@ -271,6 +368,8 @@ const resetForm = () => {
   selectedImages.value = []
   successMessage.value = ''
   showToast.value = false
+  showImageSourceSheet.value = false
+  showCameraModal.value = false
   isCheckinMode.value = props.defaultCheckinMode
   activeStrictTask.value = null
 }
@@ -285,11 +384,104 @@ const handleOverlayClick = () => {
   closeModal()
 }
 
-// 图片处理
-const triggerFileInput = () => {
-  if (!isLoading.value) {
-    fileInput.value?.click()
+// 图片处理 - 图片来源选择
+const showImageSourceOptions = () => {
+  if (isLoading.value || selectedImages.value.length >= 9) return
+  showImageSourceSheet.value = true
+}
+
+const selectCameraSource = () => {
+  showImageSourceSheet.value = false
+  // Small delay to allow sheet to close before opening camera
+  setTimeout(() => {
+    openCamera()
+  }, 100)
+}
+
+const selectGallerySource = () => {
+  showImageSourceSheet.value = false
+  // Small delay to allow sheet to close before opening gallery
+  setTimeout(() => {
+    openGallery()
+  }, 100)
+}
+
+const openCamera = () => {
+  if (isLoading.value || selectedImages.value.length >= 9) return
+
+  // Check if we're on a mobile device with camera support
+  const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent)
+
+  if (isMobile && cameraInput.value) {
+    // Use native camera capture on mobile
+    cameraInput.value.click()
+  } else {
+    // Use CameraModal on desktop or as fallback
+    showCameraModal.value = true
   }
+}
+
+const openGallery = () => {
+  if (!isLoading.value && fileInput.value) {
+    fileInput.value.click()
+  }
+}
+
+const handleCameraCapture = (file: File) => {
+  // Check image count limit
+  if (selectedImages.value.length >= 9) {
+    showToast.value = true
+    const errorData = formatErrorForNotification({
+      title: '图片数量过多',
+      message: '最多只能上传9张图片',
+      actionSuggestion: '请删除一些图片后再添加新的',
+      severity: 'warning'
+    })
+    toastData.value = {
+      ...errorData,
+      details: {}
+    }
+    return
+  }
+
+  // Validate file size
+  if (file.size > cameraMaxSize) {
+    showToast.value = true
+    const errorData = formatErrorForNotification({
+      title: '文件过大',
+      message: '图片超过了2.5MB大小限制',
+      actionSuggestion: '请压缩图片或选择较小的文件',
+      severity: 'error'
+    })
+    toastData.value = {
+      ...errorData,
+      details: {}
+    }
+    return
+  }
+
+  // Create preview and add to selected images
+  const reader = new FileReader()
+  reader.onload = (e) => {
+    selectedImages.value.push({
+      file: file,
+      preview: e.target?.result as string
+    })
+  }
+  reader.onerror = () => {
+    showToast.value = true
+    const errorData = formatErrorForNotification({
+      title: '图片读取失败',
+      message: '无法读取拍摄的图片',
+      actionSuggestion: '请检查文件是否损坏或重新拍摄',
+      severity: 'error'
+    })
+    toastData.value = {
+      ...errorData,
+      details: {}
+    }
+  }
+  reader.readAsDataURL(file)
 }
 
 const handleImageSelect = (event: Event) => {
@@ -588,35 +780,90 @@ onUnmounted(() => {
   display: none;
 }
 
-.upload-zone {
+/* Image count label */
+.image-count {
+  font-size: 0.875rem;
+  color: #666;
+  font-weight: 500;
+  margin-left: 0.5rem;
+}
+
+/* Empty upload zone with dual options */
+.upload-zone-empty {
   border: 2px dashed #ddd;
   border-radius: 8px;
-  padding: 2rem;
+  padding: 1.5rem;
   text-align: center;
-  cursor: pointer;
-  transition: border-color 0.2s;
+  transition: all 0.2s ease;
 }
 
-.upload-zone:hover {
+.upload-zone-empty:hover {
   border-color: #007bff;
+  background-color: #f8f9fa;
 }
 
-.upload-placeholder {
-  color: #666;
-  font-size: 1.1rem;
+.upload-options {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0;
+  margin-bottom: 0.75rem;
+}
+
+.upload-option-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 1rem 2rem;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  min-width: 100px;
+}
+
+.upload-option-btn:hover:not(:disabled) {
+  transform: scale(1.05);
+}
+
+.upload-option-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.option-icon {
+  font-size: 2rem;
+  line-height: 1;
+}
+
+.option-label {
+  font-size: 0.875rem;
+  color: #333;
+  font-weight: 500;
+}
+
+.option-divider {
+  width: 1px;
+  height: 48px;
+  background: #ddd;
 }
 
 .upload-hint {
   display: block;
-  font-size: 0.875rem;
+  font-size: 0.75rem;
   color: #999;
-  margin-top: 0.5rem;
+}
+
+/* Image grid container */
+.image-grid-container {
+  padding: 0.5rem 0;
 }
 
 .selected-images {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
-  gap: 1rem;
+  grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
+  gap: 0.75rem;
 }
 
 .image-preview {
@@ -625,6 +872,16 @@ onUnmounted(() => {
   border-radius: 8px;
   overflow: hidden;
   border: 2px solid #ddd;
+  animation: fadeInScale 0.3s ease-out forwards;
+  opacity: 0;
+  transform: scale(0.9);
+}
+
+@keyframes fadeInScale {
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
 }
 
 .image-preview img {
@@ -648,10 +905,151 @@ onUnmounted(() => {
   align-items: center;
   justify-content: center;
   font-size: 14px;
+  transition: all 0.2s ease;
 }
 
-.remove-image:hover {
+.remove-image:hover:not(:disabled) {
   background: rgba(0, 0, 0, 0.9);
+  transform: scale(1.1);
+}
+
+.remove-image:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Add more button */
+.add-more-btn {
+  aspect-ratio: 1;
+  border-radius: 8px;
+  border: 2px dashed #ddd;
+  background: transparent;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.25rem;
+  transition: all 0.2s ease;
+  min-height: 100px;
+}
+
+.add-more-btn:hover:not(:disabled) {
+  border-color: #007bff;
+  background-color: #f8f9fa;
+  transform: scale(1.02);
+}
+
+.add-more-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.add-icon {
+  font-size: 1.5rem;
+  color: #666;
+  line-height: 1;
+}
+
+.add-label {
+  font-size: 0.75rem;
+  color: #666;
+}
+
+/* Action Sheet */
+.action-sheet-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  z-index: 1100;
+  backdrop-filter: blur(2px);
+}
+
+.action-sheet {
+  background: white;
+  width: 100%;
+  max-width: 500px;
+  border-radius: 16px 16px 0 0;
+  padding: 0.5rem;
+  margin: 0 auto;
+  box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.15);
+}
+
+.action-sheet-header {
+  text-align: center;
+  padding: 1rem;
+  font-size: 0.875rem;
+  color: #666;
+  font-weight: 500;
+}
+
+.action-sheet-btn {
+  width: 100%;
+  padding: 1rem;
+  border: none;
+  background: transparent;
+  font-size: 1rem;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  border-radius: 8px;
+  transition: background 0.2s ease;
+  min-height: 56px;
+}
+
+.action-sheet-btn:hover {
+  background: #f8f9fa;
+}
+
+.action-sheet-btn.primary {
+  color: #007bff;
+  font-weight: 500;
+}
+
+.action-sheet-btn.cancel {
+  color: #666;
+  font-weight: 500;
+}
+
+.action-sheet-divider {
+  height: 8px;
+  background: #f8f9fa;
+  margin: 0.25rem -0.5rem;
+  border-top: 1px solid #e9ecef;
+  border-bottom: 1px solid #e9ecef;
+}
+
+.btn-icon {
+  font-size: 1.25rem;
+}
+
+/* Slide-up transition */
+.slide-up-enter-active,
+.slide-up-leave-active {
+  transition: all 0.3s ease-out;
+}
+
+.slide-up-enter-from,
+.slide-up-leave-to {
+  opacity: 0;
+}
+
+.slide-up-enter-from .action-sheet,
+.slide-up-leave-to .action-sheet {
+  transform: translateY(100%);
+}
+
+.slide-up-enter-active .action-sheet,
+.slide-up-leave-active .action-sheet {
+  transition: transform 0.3s ease-out;
 }
 
 
@@ -810,8 +1208,40 @@ onUnmounted(() => {
     flex-direction: column;
   }
 
+  .upload-options {
+    gap: 0.5rem;
+  }
+
+  .upload-option-btn {
+    padding: 0.75rem 1.5rem;
+    min-width: 80px;
+  }
+
+  .option-icon {
+    font-size: 1.75rem;
+  }
+
   .selected-images {
-    grid-template-columns: repeat(2, 1fr);
+    grid-template-columns: repeat(3, 1fr);
+    gap: 0.5rem;
+  }
+
+  .image-preview {
+    min-height: 80px;
+  }
+
+  .add-more-btn {
+    min-height: 80px;
+  }
+
+  .remove-image {
+    width: 20px;
+    height: 20px;
+    font-size: 12px;
+  }
+
+  .action-sheet {
+    max-width: 100%;
   }
 
   .form-actions {
@@ -821,6 +1251,13 @@ onUnmounted(() => {
   .cancel-btn,
   .submit-btn {
     width: 100%;
+  }
+}
+
+/* Small mobile screens */
+@media (max-width: 360px) {
+  .selected-images {
+    grid-template-columns: repeat(2, 1fr);
   }
 }
 </style>

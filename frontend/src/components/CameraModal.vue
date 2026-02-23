@@ -2,7 +2,7 @@
   <div class="camera-modal" @click.self="close">
     <div class="camera-container">
       <div class="camera-header">
-        <h3>拍照验证</h3>
+        <h3>{{ title }}</h3>
         <button @click="close" class="btn-close">✕</button>
       </div>
 
@@ -22,10 +22,13 @@
           class="captured-preview"
           alt="Captured"
         />
+
+        <!-- 快门闪光效果 -->
+        <div v-if="showFlash" class="shutter-flash"></div>
       </div>
 
       <div class="camera-controls">
-        <p class="hint">请拍摄清晰的验证照片</p>
+        <p class="hint">{{ hintText }}</p>
 
         <div v-if="!capturedImage" class="capture-btn-container">
           <button @click="capture" class="btn-capture">
@@ -58,11 +61,19 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
 
-const props = defineProps<{
+const props = withDefaults(defineProps<{
   maxSize: number  // 最大文件大小（字节）
-}>()
+  title?: string   // 可选的标题
+  hint?: string    // 可选的提示文字
+}>(), {
+  title: '拍照验证',
+  hint: '请拍摄清晰的照片'
+})
+
+// 计算提示文字
+const hintText = computed(() => props.hint)
 
 const emit = defineEmits<{
   close: []
@@ -74,6 +85,7 @@ const canvasRef = ref<HTMLCanvasElement>()
 const capturedImage = ref<string>()
 const processing = ref(false)
 const processingMessage = ref('')
+const showFlash = ref(false)
 let stream: MediaStream | null = null
 
 // 启动摄像头
@@ -106,6 +118,12 @@ const stopCamera = () => {
 
 const capture = () => {
   if (!videoRef.value || !canvasRef.value) return
+
+  // Trigger flash animation
+  showFlash.value = true
+  setTimeout(() => {
+    showFlash.value = false
+  }, 150)
 
   const video = videoRef.value
   const canvas = canvasRef.value
@@ -283,6 +301,27 @@ const close = () => {
   position: absolute;
   top: 0;
   left: 0;
+}
+
+.shutter-flash {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: white;
+  opacity: 0.8;
+  animation: flash 0.15s ease-out forwards;
+  pointer-events: none;
+}
+
+@keyframes flash {
+  0% {
+    opacity: 0.8;
+  }
+  100% {
+    opacity: 0;
+  }
 }
 
 .camera-controls {

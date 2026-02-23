@@ -71,4 +71,8 @@ urlpatterns = [
     path('<uuid:pk>/temporary-unlock/end/', views.TemporaryUnlockEndView.as_view(), name='temporary-unlock-end'),
     path('<uuid:pk>/temporary-unlock/cancel/', views.TemporaryUnlockCancelView.as_view(), name='temporary-unlock-cancel'),
     path('<uuid:pk>/temporary-unlock/records/', views.TemporaryUnlockRecordsView.as_view(), name='temporary-unlock-records'),
+
+    # 日常任务相关 URL
+    path('<uuid:pk>/cancel_daily/', views.cancel_daily_task, name='cancel-daily-task'),
+    path('<uuid:pk>/daily_status/', views.get_daily_task_status, name='daily-task-status'),
 ]

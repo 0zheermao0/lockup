@@ -311,7 +311,7 @@ const parseRegistrationError = (err: any): {
   clearFieldErrors()
 
   // Default error response structure
-  let errorResult = {
+  const errorResult = {
     type: 'error' as const,
     title: '注册失败',
     message: '注册过程中发生错误',

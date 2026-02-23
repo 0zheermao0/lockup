@@ -180,7 +180,7 @@ export async function handleResponse<T>(response: Response, requestUrl?: string)
     // ---------------------------------------------------------------
     // response not okay, now doing error handling process
     // ---------------------------------------------------------------
-    let apiError = await parseRawError({ response });
+    const apiError = await parseRawError({ response });
 
     console.log('API Error: Message:', apiError.message, 'Status:', apiError.status, 'Data:', apiError.data);
     throw apiError;

@@ -303,6 +303,8 @@ onUnmounted(() => {
   -webkit-backdrop-filter: blur(4px);
   padding: 2rem; /* 四周留白而不是只有顶部 */
   overflow: hidden;
+  /* Prevent clicks from propagating to underlying elements (like modal overlays) */
+  pointer-events: auto;
 }
 
 /* 移动端优化定位 */
@@ -499,7 +501,8 @@ onUnmounted(() => {
   border-top: 3px solid #000;
   display: flex;
   justify-content: flex-end;
-  gap: 1rem;
+  flex-wrap: wrap;
+  gap: 0.75rem;
 }
 
 .toast-action-btn {
@@ -507,15 +510,16 @@ onUnmounted(() => {
   color: white;
   border: 3px solid #000;
   border-radius: 6px;
-  padding: 0.75rem 1.5rem;
-  font-weight: 800;
-  font-size: 0.9rem;
+  padding: 0.5rem 1rem;
+  font-weight: 700;
+  font-size: 0.85rem;
   text-transform: uppercase;
   letter-spacing: 0.5px;
   cursor: pointer;
   box-shadow: 3px 3px 0 #000;
   transition: all 0.2s ease;
-  min-width: 100px;
+  min-width: 80px;
+  white-space: nowrap;
 }
 
 .toast-action-btn:hover {

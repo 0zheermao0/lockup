@@ -50,6 +50,17 @@
               <span class="share-icon">🤖</span>
               <span class="share-text">Telegram Bot 加时分享</span>
             </button>
+
+            <!-- Via-bot sharing (shows "via @botname") -->
+            <button
+              v-if="canShareViaBot"
+              @click="shareViaBot"
+              class="share-btn via-bot-btn"
+              title="通过 Bot 直接分享，消息会显示 via @botname"
+            >
+              <span class="share-icon">✨</span>
+              <span class="share-text">Via-Bot 分享</span>
+            </button>
           </div>
         </div>
 
@@ -124,6 +135,21 @@ const canShareToTelegramBot = computed(() => {
          props.taskStatus &&
          ['active', 'voting'].includes(props.taskStatus) &&
          authStore.isAuthenticated
+})
+
+// Check if via-bot sharing is available (requires Telegram Mini App environment)
+const canShareViaBot = computed(() => {
+  return props.taskType === 'lock' &&
+         props.taskId &&
+         props.taskStatus &&
+         ['active', 'voting'].includes(props.taskStatus) &&
+         authStore.isAuthenticated &&
+         isInTelegramMiniApp.value
+})
+
+// Check if running inside Telegram Mini App
+const isInTelegramMiniApp = computed(() => {
+  return !!window.Telegram?.WebApp
 })
 
 // Check if user is the task owner
@@ -245,6 +271,52 @@ const shareToTelegramBot = async () => {
     setTimeout(() => {
       showToast.value = false
     }, 4000)
+  }
+}
+
+/**
+ * Via-bot 分享 - 使用 Telegram Mini App shareMessage API
+ * 分享的消息会显示 "via @botname"
+ */
+const shareViaBot = async () => {
+  if (!props.taskId || !canShareViaBot.value) {
+    showToast.value = true
+    toastMessage.value = '无法使用 Via-Bot 分享'
+    setTimeout(() => {
+      showToast.value = false
+    }, 3000)
+    return
+  }
+
+  try {
+    showToast.value = true
+    toastMessage.value = '准备 Via-Bot 分享...'
+
+    // 调用 via-bot 分享 API
+    const result = await telegramApi.shareTaskViaBot(props.taskId)
+
+    if (result.success) {
+      toastMessage.value = '✅ 请选择要分享到的聊天'
+      setTimeout(() => {
+        showToast.value = false
+        emit('close')
+      }, 2000)
+    } else {
+      // 如果 via-bot 分享失败，回退到标准分享
+      toastMessage.value = 'Via-Bot 分享不可用，切换到标准分享...'
+      setTimeout(() => {
+        shareToTelegramBot()
+      }, 1500)
+    }
+
+  } catch (error: any) {
+    console.error('Error in via-bot sharing:', error)
+
+    // 回退到标准分享
+    toastMessage.value = 'Via-Bot 分享失败，尝试标准分享...'
+    setTimeout(() => {
+      shareToTelegramBot()
+    }, 1500)
   }
 }
 
@@ -486,6 +558,34 @@ const truncateText = (text: string, maxLength: number): string => {
 }
 
 .telegram-bot-btn:hover::before {
+  left: 100%;
+}
+
+.via-bot-btn {
+  background: linear-gradient(135deg, #ff6b6b, #feca57);
+  color: white;
+  position: relative;
+  overflow: hidden;
+}
+
+.via-bot-btn:hover {
+  background: linear-gradient(135deg, #feca57, #ff9ff3);
+  transform: translateY(-3px);
+  box-shadow: 6px 6px 0 #000;
+}
+
+.via-bot-btn::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -100%;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.3), transparent);
+  transition: left 0.5s;
+}
+
+.via-bot-btn:hover::before {
   left: 100%;
 }
 

@@ -530,6 +530,21 @@ export interface TaskCreateRequest {
   max_duration?: number
   max_participants?: number
   completion_rate_threshold?: number
+  // 日常任务相关字段
+  is_daily_task?: boolean              // 是否为日常任务
+  daily_task_duration?: number         // 持续天数
+  daily_task_publish_time?: string     // 每日发布时间 (HH:mm格式)
+  daily_task_total_cost?: number       // 总扣除积分（计算字段）
+}
+
+// 日常任务配置类型
+export interface DailyTaskConfig {
+  is_enabled: boolean
+  duration_days: number                // 持续天数
+  publish_time: string                 // 发布时间 HH:mm
+  total_cost: number                   // 总消耗积分
+  remaining_days?: number              // 剩余天数
+  next_publish_at?: string             // 下次发布时间
 }
 
 export interface SimplePasswordChangeRequest {

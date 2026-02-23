@@ -528,6 +528,98 @@ def share_task_to_telegram(request):
 
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
+def prepare_via_bot_share(request):
+    """
+    准备 via-bot 分享消息
+
+    使用 Telegram Mini App 的 shareMessage 方法实现 via-bot 分享：
+    1. Bot 预先发送消息到存储聊天（获取 message_id）
+    2. 返回 message_id 给前端
+    3. 前端调用 telegram.shareMessage(message_id) 实现 via-bot 分享
+
+    这样分享的消息会显示 "via @botname"
+    """
+    try:
+        task_id = request.data.get('task_id')
+
+        if not task_id:
+            return Response(
+                {'error': 'task_id is required'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        try:
+            task = LockTask.objects.get(id=task_id)
+        except LockTask.DoesNotExist:
+            return Response(
+                {'error': '任务不存在'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        # 检查任务状态
+        if task.task_type != 'lock' or task.status not in ['active', 'voting']:
+            return Response(
+                {'error': '只能分享进行中的带锁任务'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # 获取存储聊天 ID
+        storage_chat_id = getattr(settings, 'TELEGRAM_STORAGE_CHAT_ID', None)
+        if not storage_chat_id:
+            return Response(
+                {'error': 'Via-bot 分享未配置，请联系管理员'},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE
+            )
+
+        # 生成分享消息
+        message_text, keyboard = telegram_service.generate_task_share_message(task, task.user)
+
+        # Bot 发送消息到存储聊天
+        try:
+            import asyncio
+            from asgiref.sync import async_to_sync
+
+            async def send_storage_message():
+                await telegram_service._ensure_initialized()
+                message = await telegram_service.bot.send_message(
+                    chat_id=storage_chat_id,
+                    text=message_text,
+                    reply_markup=keyboard,
+                    parse_mode='Markdown'
+                )
+                return message
+
+            # 执行异步发送
+            message = async_to_sync(send_storage_message)()
+
+            return Response({
+                'message': 'Via-bot 分享准备成功',
+                'share_data': {
+                    'message_id': message.message_id,
+                    'chat_id': storage_chat_id,
+                    'task_id': str(task.id),
+                    'task_title': task.title,
+                    'share_type': 'via_bot'
+                }
+            })
+
+        except Exception as e:
+            logger.error(f"Error sending storage message: {e}")
+            return Response(
+                {'error': '准备分享消息失败，请重试'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+    except Exception as e:
+        logger.error(f"Error preparing via-bot share: {e}")
+        return Response(
+            {'error': '准备 via-bot 分享失败'},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
 def share_game_to_telegram(request):
     """分享游戏挑战到Telegram"""
     try:

@@ -16,6 +16,7 @@ urlpatterns = [
     path('add-overtime/', views.telegram_add_overtime, name='telegram_add_overtime'),
     path('search-users/', views.search_users_for_overtime, name='search_users_for_overtime'),
     path('share-task/', views.share_task_to_telegram, name='share_task_to_telegram'),
+    path('prepare-via-bot-share/', views.prepare_via_bot_share, name='prepare_via_bot_share'),
 
     # 游戏分享 API
     path('share-game/', views.share_game_to_telegram, name='share_game_to_telegram'),

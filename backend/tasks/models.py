@@ -173,6 +173,27 @@ class LockTask(models.Model):
         help_text='是否需要拍照证明'
     )
 
+    # 日常任务字段
+    is_daily_task = models.BooleanField(
+        default=False,
+        help_text='是否为日常任务'
+    )
+    daily_task_duration = models.IntegerField(
+        blank=True,
+        null=True,
+        help_text='日常任务持续天数'
+    )
+    daily_task_publish_time = models.TimeField(
+        blank=True,
+        null=True,
+        help_text='日常任务每日发布时间'
+    )
+    daily_task_total_cost = models.IntegerField(
+        blank=True,
+        null=True,
+        help_text='日常任务总预扣积分'
+    )
+
     class Meta:
         ordering = ['-created_at']
 
@@ -893,4 +914,110 @@ class TemporaryUnlockRecord(models.Model):
             now = timezone.now()
             if self.max_end_time > now:
                 return int((self.max_end_time - now).total_seconds() / 60)
+        return 0
+
+
+class DailyTaskConfig(models.Model):
+    """日常任务配置 - 用于管理日常任务的发布"""
+
+    STATUS_CHOICES = [
+        ('active', '进行中'),
+        ('completed', '已完成'),
+        ('cancelled', '已取消'),
+    ]
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+
+    # 关联任务
+    parent_task = models.ForeignKey(
+        LockTask,
+        on_delete=models.CASCADE,
+        related_name='daily_task_configs',
+        help_text='父任务（创建日常任务的原始任务）'
+    )
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name='daily_task_configs',
+        help_text='创建者'
+    )
+
+    # 日常任务配置
+    duration_days = models.IntegerField(
+        help_text='总持续天数'
+    )
+    publish_time = models.TimeField(
+        help_text='每日发布时间'
+    )
+    total_cost = models.IntegerField(
+        help_text='总预扣积分'
+    )
+
+    # 状态追踪
+    status = models.CharField(
+        max_length=20,
+        choices=STATUS_CHOICES,
+        default='active',
+        help_text='日常任务状态'
+    )
+    remaining_days = models.IntegerField(
+        default=0,
+        help_text='剩余天数'
+    )
+    published_count = models.IntegerField(
+        default=0,
+        help_text='已发布天数'
+    )
+    next_publish_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text='下次发布时间'
+    )
+
+    # 退款追踪
+    refunded_coins = models.IntegerField(
+        default=0,
+        help_text='已退还积分'
+    )
+
+    # 时间戳
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    cancelled_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text='取消时间'
+    )
+
+    class Meta:
+        ordering = ['-created_at']
+        verbose_name = '日常任务配置'
+        verbose_name_plural = '日常任务配置'
+        indexes = [
+            models.Index(fields=['user', 'status']),
+            models.Index(fields=['status', 'next_publish_at']),
+            models.Index(fields=['created_at']),
+        ]
+
+    def __str__(self):
+        return f"{self.user.username} - 日常任务 ({self.duration_days}天) - {self.get_status_display()}"
+
+    def calculate_refund(self):
+        """计算应退还的积分"""
+        if self.status != 'active':
+            return 0
+        # 退还剩余天数的积分
+        daily_reward = self.total_cost // self.duration_days if self.duration_days > 0 else 0
+        return daily_reward * self.remaining_days
+
+    def cancel(self):
+        """取消日常任务"""
+        if self.status == 'active':
+            refund = self.calculate_refund()
+            self.status = 'cancelled'
+            self.cancelled_at = timezone.now()
+            self.refunded_coins = refund
+            self.remaining_days = 0
+            self.save(update_fields=['status', 'cancelled_at', 'refunded_coins', 'remaining_days'])
+            return refund
         return 0

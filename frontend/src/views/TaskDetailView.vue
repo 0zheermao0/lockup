@@ -230,6 +230,48 @@
               </div>
             </div>
 
+            <!-- Daily Task Info Section -->
+            <div v-if="task && (task as any).is_daily_task" class="daily-task-section">
+              <div class="daily-task-header">
+                <h3>🔄 日常任务信息</h3>
+                <span class="daily-task-badge">日常任务</span>
+              </div>
+              <div class="daily-task-details">
+                <div class="daily-task-item">
+                  <span class="daily-task-label">总持续天数</span>
+                  <span class="daily-task-value">{{ (task as any).daily_task_config?.duration_days || (task as any).daily_task_duration }} 天</span>
+                </div>
+                <div class="daily-task-item">
+                  <span class="daily-task-label">每日发布时间</span>
+                  <span class="daily-task-value">{{ (task as any).daily_task_config?.publish_time || (task as any).daily_task_publish_time }}</span>
+                </div>
+                <div v-if="(task as any).daily_task_config?.remaining_days !== undefined" class="daily-task-item">
+                  <span class="daily-task-label">剩余天数</span>
+                  <span class="daily-task-value">{{ (task as any).daily_task_config.remaining_days }} 天</span>
+                </div>
+                <div v-if="(task as any).daily_task_config?.next_publish_at" class="daily-task-item">
+                  <span class="daily-task-label">下次发布</span>
+                  <span class="daily-task-value">{{ formatDateTime((task as any).daily_task_config.next_publish_at) }}</span>
+                </div>
+                <div class="daily-task-item">
+                  <span class="daily-task-label">总预扣积分</span>
+                  <span class="daily-task-value daily-task-cost">{{ (task as any).daily_task_config?.total_cost || (task as any).daily_task_total_cost }} 积分</span>
+                </div>
+              </div>
+              <!-- Cancel Daily Task Button (for task owner) -->
+              <div v-if="isOwnTask && canCancelDailyTask" class="daily-task-actions">
+                <button
+                  @click="cancelDailyTask"
+                  :disabled="cancellingDaily"
+                  class="cancel-daily-btn"
+                >
+                  <span v-if="cancellingDaily" class="spinner-small"></span>
+                  <span>{{ cancellingDaily ? '取消中...' : '取消日常任务' }}</span>
+                </button>
+                <span class="cancel-hint">取消后将停止自动发布，剩余积分将返还</span>
+              </div>
+            </div>
+
             <!-- Multi-person Task Participants Section -->
             <div v-if="task && task.task_type === 'board' && task.max_participants > 1 && (task as any).participants" class="participants-section">
               <div class="participants-header">
@@ -1355,6 +1397,9 @@ const freezingInProgress = ref(false)
 // Shield state
 const shieldToggling = ref(false)
 
+// Daily task state
+const cancellingDaily = ref(false)
+
 // Exclusive task state
 const showExclusiveTaskModal = ref(false)
 const creatingExclusiveTask = ref(false)
@@ -1581,6 +1626,22 @@ const canReviewTask = computed(() => {
   return task.value.task_type === 'board' &&
          task.value.status === 'submitted' &&
          task.value.user.id === authStore.user?.id
+})
+
+const canCancelDailyTask = computed(() => {
+  if (!task.value || !isOwnTask.value) return false
+  if (!(task.value as any).is_daily_task) return false
+
+  // Check if there are remaining days to cancel
+  const config = (task.value as any).daily_task_config
+  if (config && config.remaining_days > 0) {
+    return true
+  }
+  // Fallback check if config is not available yet
+  if ((task.value as any).daily_task_duration && !(task.value as any).daily_task_config) {
+    return true
+  }
+  return false
 })
 
 const canEndTask = computed(() => {
@@ -2938,6 +2999,60 @@ const addOvertime = async () => {
   }
 }
 
+const cancelDailyTask = async () => {
+  if (!task.value || !canCancelDailyTask.value) return
+
+  // Confirm dialog
+  if (!confirm('确定要取消日常任务吗？取消后将停止自动发布，剩余积分将返还到您的账户。')) {
+    return
+  }
+
+  cancellingDaily.value = true
+  try {
+    const result = await tasksApi.cancelDailyTask(task.value.id)
+
+    // Update task data
+    const updatedTask = await tasksApi.getTask(task.value.id)
+    task.value = updatedTask
+
+    // Refresh user data to update coins
+    await authStore.refreshUser()
+
+    // Show success notification
+    showToast.value = true
+    toastData.value = {
+      type: 'success',
+      title: '日常任务已取消',
+      message: `成功取消日常任务，返还 ${result.refunded_coins} 积分`,
+      secondaryMessage: `剩余 ${result.remaining_days} 天未发布的任务已取消`,
+      details: {
+        '返还积分': `${result.refunded_coins} 积分`,
+        '取消天数': `${result.remaining_days} 天`,
+        '当前余额': `${authStore.user?.coins || 0} 积分`
+      }
+    }
+  } catch (error: any) {
+    console.error('Error cancelling daily task:', error)
+
+    let errorMessage = '取消日常任务失败'
+    if (error.data?.error) {
+      errorMessage = error.data.error
+    } else if (error.message) {
+      errorMessage = error.message
+    }
+
+    showToast.value = true
+    toastData.value = {
+      type: 'error',
+      title: '取消失败',
+      message: errorMessage,
+      secondaryMessage: '请稍后重试或联系管理员'
+    }
+  } finally {
+    cancellingDaily.value = false
+  }
+}
+
 const endTask = async () => {
   if (!task.value || !canEndTask.value) return
 
@@ -3092,7 +3207,7 @@ const returnKeyToOriginalOwner = async () => {
 
     // 处理特定错误消息
     let errorMessage = '归还钥匙失败，请重试'
-    let secondaryMessage = '请稍后重试或联系管理员'
+    const secondaryMessage = '请稍后重试或联系管理员'
 
     if (error.data?.error) {
       errorMessage = error.data.error
@@ -3524,7 +3639,7 @@ const freezeTask = async () => {
     console.error('Error freezing task:', error)
 
     let errorMessage = '冻结任务失败，请重试'
-    let secondaryMessage = '请稍后重试或联系管理员'
+    const secondaryMessage = '请稍后重试或联系管理员'
 
     if (error.data?.error) {
       errorMessage = error.data.error
@@ -3590,7 +3705,7 @@ const unfreezeTask = async () => {
     console.error('Error unfreezing task:', error)
 
     let errorMessage = '解冻任务失败，请重试'
-    let secondaryMessage = '请稍后重试或联系管理员'
+    const secondaryMessage = '请稍后重试或联系管理员'
 
     if (error.data?.error) {
       errorMessage = error.data.error
@@ -8507,6 +8622,125 @@ const formatRemainingTime = (minutes: number) => {
   .image-modal-img {
     max-height: 70vh;
   }
+}
+
+/* Daily Task Section Styles */
+.daily-task-section {
+  background: linear-gradient(135deg, #f8fafc 0%, #eef2ff 100%);
+  border: 3px solid #6366f1;
+  border-radius: 1rem;
+  box-shadow: 0 4px 6px -1px rgba(99, 102, 241, 0.1), 0 2px 4px -1px rgba(99, 102, 241, 0.06);
+  padding: 1.5rem;
+  margin-top: 1.5rem;
+}
+
+.daily-task-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 1rem;
+  padding-bottom: 0.75rem;
+  border-bottom: 2px solid #e0e7ff;
+}
+
+.daily-task-header h3 {
+  margin: 0;
+  font-size: 1.125rem;
+  font-weight: 700;
+  color: #1e293b;
+}
+
+.daily-task-badge {
+  background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
+  color: white;
+  padding: 0.375rem 0.875rem;
+  border-radius: 9999px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.daily-task-details {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 1rem;
+}
+
+.daily-task-item {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.daily-task-label {
+  font-size: 0.75rem;
+  color: #64748b;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.daily-task-value {
+  font-size: 1rem;
+  font-weight: 600;
+  color: #1e293b;
+}
+
+.daily-task-value.daily-task-cost {
+  color: #6366f1;
+  font-size: 1.125rem;
+}
+
+.daily-task-actions {
+  margin-top: 1.25rem;
+  padding-top: 1rem;
+  border-top: 1px solid #e0e7ff;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.cancel-daily-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 0.625rem 1.25rem;
+  background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
+  color: white;
+  border: none;
+  border-radius: 0.5rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  max-width: fit-content;
+}
+
+.cancel-daily-btn:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(239, 68, 68, 0.4);
+}
+
+.cancel-daily-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.spinner-small {
+  width: 14px;
+  height: 14px;
+  border: 2px solid rgba(255, 255, 255, 0.3);
+  border-top-color: white;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+.cancel-hint {
+  font-size: 0.75rem;
+  color: #64748b;
+  font-style: italic;
 }
 
 /* Multi-person Task Participants Styles */

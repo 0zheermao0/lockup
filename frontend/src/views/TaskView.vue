@@ -171,6 +171,9 @@
                       <span v-if="task.task_type === 'board' && task.reward" class="task-reward">
                         {{ task.reward }} 积分
                       </span>
+                      <span v-if="(task as any).is_daily_task" class="task-daily-badge">
+                        🔄 日常
+                      </span>
                       <span class="task-status" :class="task.status">
                         {{ getStatusText(task.status) }}
                       </span>
@@ -1795,6 +1798,16 @@ onUnmounted(() => {
 .task-reward {
   background-color: #ffc107;
   color: #212529;
+}
+
+.task-daily-badge {
+  background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
+  color: white;
+  padding: 0.25rem 0.5rem;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  font-weight: bold;
+  text-transform: uppercase;
 }
 
 .task-difficulty.easy {

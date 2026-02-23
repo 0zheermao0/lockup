@@ -2,79 +2,401 @@
   <div v-if="isVisible" class="modal-overlay" @click="closeModal">
     <div class="modal-content" @click.stop>
       <div class="modal-header">
-        <h2>创建任务</h2>
-        <button @click="closeModal" class="close-btn">×</button>
+        <div class="modal-header__title-group">
+          <h2>📋 创建新任务</h2>
+          <p class="modal-header__subtitle">选择任务类型并配置详细信息</p>
+        </div>
+        <button @click="closeModal" class="close-btn" :disabled="submitting">×</button>
       </div>
 
       <form @submit.prevent="handleSubmit" class="modal-body">
         <!-- Task Type Selection -->
-        <div class="form-group">
-          <div class="form-row-inline">
-            <label class="inline-label">任务类型</label>
-            <div class="task-type-selector-compact">
-              <button
-                type="button"
-                @click="form.task_type = 'lock'"
-                :class="['task-type-btn-compact', { active: form.task_type === 'lock' }]"
-              >
-                🔒 带锁任务
-              </button>
-              <button
-                type="button"
-                @click="form.task_type = 'board'"
-                :class="['task-type-btn-compact', { active: form.task_type === 'board' }]"
-              >
-                📋 任务板
-              </button>
+        <TaskFormSection
+          title="任务类型"
+          subtitle="选择您要创建的任务类型"
+          icon="🎯"
+        >
+          <div class="task-type-selector">
+            <button
+              type="button"
+              @click="form.task_type = 'lock'"
+              :class="['task-type-card', { active: form.task_type === 'lock' }]"
+            >
+              <span class="task-type-card__icon">🔒</span>
+              <span class="task-type-card__title">带锁任务</span>
+              <span class="task-type-card__desc">创建自律挑战，设定锁定时间</span>
+            </button>
+            <button
+              type="button"
+              @click="form.task_type = 'board'"
+              :class="['task-type-card', { active: form.task_type === 'board' }]"
+            >
+              <span class="task-type-card__icon">📋</span>
+              <span class="task-type-card__title">任务板</span>
+              <span class="task-type-card__desc">发布悬赏任务，设置积分奖励</span>
+            </button>
+          </div>
+        </TaskFormSection>
+
+        <!-- Basic Information -->
+        <TaskFormSection
+          title="基础信息"
+          subtitle="填写任务的基本信息"
+          icon="📝"
+        >
+          <div class="form-fields">
+            <div class="form-field">
+              <label class="form-field__label" for="title">
+                任务标题 <span class="required">*</span>
+              </label>
+              <input
+                id="title"
+                v-model="form.title"
+                type="text"
+                placeholder="输入任务标题..."
+                maxlength="100"
+                required
+                class="form-field__input"
+              />
+            </div>
+
+            <div class="form-field">
+              <label class="form-field__label" for="description">
+                任务描述 <span class="optional">(可选)</span>
+              </label>
+              <RichTextEditor
+                v-model="form.description"
+                :placeholder="form.task_type === 'lock' ? '描述一下你的自律挑战...' : '详细描述任务需求和要求...'"
+                :max-length="500"
+                min-height="100px"
+              />
             </div>
           </div>
-        </div>
+        </TaskFormSection>
 
-        <div class="form-group">
-          <label for="title">任务标题</label>
-          <input
-            id="title"
-            v-model="form.title"
-            type="text"
-            placeholder="输入任务标题..."
-            maxlength="100"
-            required
-          />
-        </div>
+        <!-- Lock Task Configuration -->
+        <template v-if="form.task_type === 'lock'">
+          <TaskFormSection
+            title="任务配置"
+            subtitle="配置带锁任务的详细参数"
+            icon="⚙️"
+          >
+            <div class="form-fields">
+              <!-- Duration Type -->
+              <div class="form-row">
+                <div class="form-field form-field--half">
+                  <label class="form-field__label">持续类型</label>
+                  <div class="radio-group">
+                    <label class="radio-option">
+                      <input
+                        type="radio"
+                        v-model="form.duration_type"
+                        value="fixed"
+                      />
+                      <span class="radio-option__text">固定时间</span>
+                    </label>
+                    <label class="radio-option">
+                      <input
+                        type="radio"
+                        v-model="form.duration_type"
+                        value="random"
+                      />
+                      <span class="radio-option__text">随机时间</span>
+                    </label>
+                  </div>
+                </div>
 
-        <div class="form-group">
-          <label for="description">任务描述 <span class="optional">(可选)</span></label>
-          <RichTextEditor
-            v-model="form.description"
-            :placeholder="form.task_type === 'lock' ? '描述一下你的自律挑战...' : '详细描述任务需求和要求...'"
-            :max-length="500"
-            min-height="100px"
-          />
-        </div>
+                <div class="form-field form-field--half">
+                  <label class="form-field__label">解锁方式</label>
+                  <div class="radio-group">
+                    <label class="radio-option">
+                      <input
+                        type="radio"
+                        v-model="form.unlock_type"
+                        value="time"
+                      />
+                      <span class="radio-option__text">定时解锁</span>
+                    </label>
+                    <label class="radio-option">
+                      <input
+                        type="radio"
+                        v-model="form.unlock_type"
+                        value="vote"
+                      />
+                      <span class="radio-option__text">投票解锁</span>
+                    </label>
+                  </div>
+                </div>
+              </div>
 
-        <!-- Publish Options and Image Upload Row -->
-        <div class="form-group">
-          <div class="publish-image-row">
-            <!-- Left Column: Publish Options -->
-            <div class="publish-options-column">
-              <label class="section-label">发布选项</label>
-              <label class="checkbox-label-enhanced">
-                <input
-                  type="checkbox"
-                  v-model="form.autoPost"
-                  class="checkbox-input-enhanced"
+              <!-- Difficulty -->
+              <div class="form-field">
+                <label class="form-field__label" for="difficulty">难度等级</label>
+                <select id="difficulty" v-model="form.difficulty" required class="form-field__select">
+                  <option value="easy">简单 - 适合初学者</option>
+                  <option value="normal">普通 - 日常挑战</option>
+                  <option value="hard">困难 - 需要坚强意志</option>
+                  <option value="hell">地狱 - 极限挑战</option>
+                </select>
+              </div>
+
+              <!-- Duration -->
+              <div class="duration-section">
+                <DurationSelector
+                  v-model="form.duration_value!"
+                  :label="form.duration_type === 'fixed' ? '持续时间' : '最短时间'"
+                  :min-minutes="1"
+                  :required="true"
                 />
-                <span class="checkbox-text-enhanced">
-                  自动发布动态
-                  <small class="checkbox-desc-enhanced">创建任务后自动分享到动态</small>
-                </span>
-              </label>
+
+                <DurationSelector
+                  v-if="form.duration_type === 'random'"
+                  v-model="form.duration_max!"
+                  label="最长时间"
+                  :min-minutes="form.duration_value || 1"
+                  :required="true"
+                />
+              </div>
+
+              <!-- Vote Agreement Ratio -->
+              <div v-if="form.unlock_type === 'vote'" class="form-field">
+                <label class="form-field__label" for="vote_agreement_ratio">同意比例要求</label>
+                <select id="vote_agreement_ratio" v-model="form.vote_agreement_ratio" required class="form-field__select">
+                  <option value="0.5">50% - 简单多数</option>
+                  <option value="0.6">60% - 普通多数</option>
+                  <option value="0.7">70% - 绝对多数</option>
+                  <option value="0.8">80% - 超级多数</option>
+                  <option value="0.9">90% - 压倒性多数</option>
+                </select>
+                <small class="form-field__hint">
+                  只要有人投票且同意比例达到要求即可解锁，无最低投票人数限制
+                </small>
+              </div>
+
+              <!-- Strict Mode -->
+              <div class="form-field form-field--toggle">
+                <ToggleSwitch
+                  v-model="form.strict_mode"
+                  label="启用严格模式"
+                  size="small"
+                />
+                <span class="form-field__hint-below">打卡时自动添加验证码</span>
+              </div>
+
+                <!-- Temporary Unlock Config -->
+              <div class="temporary-unlock-section">
+                <div class="temporary-unlock-header" @click="form.allow_temporary_unlock = !form.allow_temporary_unlock">
+                  <div class="temporary-unlock-toggle">
+                    <ToggleSwitch
+                      v-model="form.allow_temporary_unlock"
+                      label="启用临时开锁"
+                      size="small"
+                      @click.stop
+                    />
+                    <span class="temporary-unlock-hint">允许任务执行过程中临时解除锁定</span>
+                  </div>
+                </div>
+
+                <transition name="slide-fade">
+                  <div v-if="form.allow_temporary_unlock" class="temporary-unlock-config">
+                    <div class="form-row">
+                      <div class="form-field form-field--half">
+                        <label class="form-field__label">限制类型</label>
+                        <div class="radio-group">
+                          <label class="radio-option">
+                            <input
+                              type="radio"
+                              v-model="form.temporary_unlock_limit_type"
+                              value="daily_count"
+                            />
+                            <span class="radio-option__text">每日次数</span>
+                          </label>
+                          <label class="radio-option">
+                            <input
+                              type="radio"
+                              v-model="form.temporary_unlock_limit_type"
+                              value="cooldown"
+                            />
+                            <span class="radio-option__text">冷却间隔</span>
+                          </label>
+                        </div>
+                      </div>
+
+                      <div class="form-field form-field--half">
+                        <label class="form-field__label">
+                          {{ form.temporary_unlock_limit_type === 'daily_count' ? '每日次数' : '冷却间隔（小时）' }}
+                        </label>
+                        <input
+                          type="number"
+                          v-model.number="form.temporary_unlock_limit_value"
+                          :min="1"
+                          :max="form.temporary_unlock_limit_type === 'daily_count' ? 10 : 168"
+                          class="form-field__input"
+                          required
+                        />
+                        <small class="form-field__hint">
+                          {{ form.temporary_unlock_limit_type === 'daily_count' ? '每天最多开锁次数' : '两次开锁之间的最小间隔' }}
+                        </small>
+                      </div>
+                    </div>
+
+                    <div class="form-field">
+                      <label class="form-field__label">单次最大时长</label>
+                      <div class="slider-group">
+                        <input
+                          type="range"
+                          v-model.number="form.temporary_unlock_max_duration"
+                          min="5"
+                          max="240"
+                          step="5"
+                          class="slider"
+                        />
+                        <span class="slider-value">{{ form.temporary_unlock_max_duration }} 分钟</span>
+                      </div>
+                      <small class="form-field__hint">超时将自动结束并惩罚（自动置顶30分钟）</small>
+                    </div>
+
+                    <div class="form-row form-row--toggles">
+                      <div class="form-field form-field--toggle">
+                        <ToggleSwitch
+                          v-model="form.temporary_unlock_require_approval"
+                          label="需要钥匙持有者同意"
+                          size="small"
+                        />
+                      </div>
+                      <div class="form-field form-field--toggle">
+                        <ToggleSwitch
+                          v-model="form.temporary_unlock_require_photo"
+                          label="需要拍照证明"
+                          size="small"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                </transition>
+              </div>
+            </div>
+          </TaskFormSection>
+        </template>
+
+        <!-- Board Task Configuration -->
+        <template v-if="form.task_type === 'board'">
+          <TaskFormSection
+            title="任务配置"
+            subtitle="配置任务板的奖励和限制"
+            icon="⚙️"
+          >
+            <div class="form-fields">
+              <div class="form-row">
+                <div class="form-field form-field--half">
+                  <label class="form-field__label" for="reward">
+                    奖励金额 <span class="required">*</span>
+                  </label>
+                  <div class="input-with-suffix">
+                    <input
+                      id="reward"
+                      v-model.number="form.reward"
+                      type="number"
+                      min="1"
+                      max="10000"
+                      placeholder="输入奖励积分"
+                      required
+                      class="form-field__input"
+                    />
+                    <span class="input-suffix">积分</span>
+                  </div>
+                </div>
+
+                <div class="form-field form-field--half">
+                  <label class="form-field__label" for="max_duration">
+                    最大完成时间 <span class="required">*</span>
+                  </label>
+                  <div class="input-with-suffix">
+                    <input
+                      id="max_duration"
+                      v-model.number="form.max_duration"
+                      type="number"
+                      min="1"
+                      placeholder="任务最长完成时间"
+                      required
+                      class="form-field__input"
+                    />
+                    <span class="input-suffix">小时</span>
+                  </div>
+                </div>
+              </div>
+
+              <div class="form-field">
+                <label class="form-field__label" for="max_participants">
+                  最大参与人数 <span class="optional">(默认1为单人任务)</span>
+                </label>
+                <input
+                  id="max_participants"
+                  v-model.number="form.max_participants"
+                  type="number"
+                  min="1"
+                  max="50"
+                  placeholder="多人任务的最大参与人数"
+                  class="form-field__input"
+                />
+                <small class="form-field__hint">
+                  设置为空或1为单人任务，设置为2或以上为多人任务。多人任务允许多人同时参与并提交作品。
+                </small>
+              </div>
+
+              <div class="form-field">
+                <label class="form-field__label" for="completion_rate_threshold">
+                  任务完成率门槛 <span class="optional">(可选，默认0%无限制)</span>
+                </label>
+                <div class="input-with-suffix">
+                  <input
+                    id="completion_rate_threshold"
+                    v-model.number="form.completion_rate_threshold"
+                    type="number"
+                    min="0"
+                    max="100"
+                    step="1"
+                    placeholder="0"
+                    class="form-field__input"
+                  />
+                  <span class="input-suffix">%</span>
+                </div>
+                <small class="form-field__hint">
+                  设置参与者的最低任务完成率要求。完成率低于此门槛的用户无法接取任务。设置为0或留空表示无限制。
+                </small>
+              </div>
+            </div>
+          </TaskFormSection>
+
+          <!-- Daily Task Configuration (Board Tasks Only) -->
+          <DailyTaskConfig
+            v-model="dailyTaskConfig"
+            :reward="form.reward || 0"
+            :user-coins="userCoins"
+            @validation-change="onDailyTaskValidationChange"
+          />
+        </template>
+
+        <!-- Publish Options -->
+        <TaskFormSection
+          title="发布选项"
+          subtitle="配置任务的发布方式"
+          icon="🚀"
+        >
+          <div class="publish-options">
+            <div class="form-field form-field--toggle">
+              <ToggleSwitch
+                v-model="form.autoPost"
+                label="自动发布动态"
+                size="small"
+              />
+              <span class="form-field__hint-below">创建任务后自动分享到动态</span>
             </div>
 
-            <!-- Right Column: Image Upload (conditional) -->
-            <div class="image-upload-column">
-              <label class="section-label">任务图片 <span class="optional">(可选)</span></label>
-              <div v-if="form.autoPost" class="image-upload-container-mini">
+            <!-- Image Upload (conditional) -->
+            <div v-if="form.autoPost" class="image-upload-section">
+              <label class="form-field__label">任务图片 <span class="optional">(可选)</span></label>
+              <div class="image-upload-container">
                 <input
                   id="image"
                   type="file"
@@ -85,346 +407,79 @@
                 />
                 <div
                   v-if="!imagePreview"
-                  class="upload-placeholder-mini"
+                  class="upload-placeholder"
                   @click="triggerImageUpload"
                 >
-                  <div class="upload-icon-mini">📷</div>
-                  <div class="upload-text-mini">点击上传</div>
-                  <div class="upload-hint-mini">JPG、PNG、SVG、GIF</div>
-                  <div class="upload-size-hint-mini">最大2.5MB</div>
+                  <div class="upload-icon">📷</div>
+                  <div class="upload-text">点击上传图片</div>
+                  <div class="upload-hint">支持 JPG、PNG、SVG、GIF 格式</div>
+                  <div class="upload-size-hint">最大 2.5MB</div>
                 </div>
-                <div v-else class="image-preview-mini">
+                <div v-else class="image-preview">
                   <img :src="imagePreview" alt="预览图片" />
                   <button
                     type="button"
                     @click="removeImage"
-                    class="remove-image-btn-mini"
+                    class="remove-image-btn"
                     title="移除图片"
                   >
                     ×
                   </button>
                 </div>
               </div>
-              <div v-else class="upload-disabled-hint">
-                <span>勾选自动发布动态后可上传图片</span>
-              </div>
             </div>
           </div>
-        </div>
+        </TaskFormSection>
 
-        <!-- Duration Type and Strict Mode (for lock tasks) -->
-        <div v-if="form.task_type === 'lock'" class="form-group">
-          <div class="form-row-inline-combined">
-            <!-- Duration Type -->
-            <div class="form-section-compact">
-              <label class="inline-label">持续类型</label>
-              <div class="radio-group-compact">
-                <label class="radio-option-compact">
-                  <input
-                    type="radio"
-                    v-model="form.duration_type"
-                    value="fixed"
-                  />
-                  <span>固定时间</span>
-                </label>
-                <label class="radio-option-compact">
-                  <input
-                    type="radio"
-                    v-model="form.duration_type"
-                    value="random"
-                  />
-                  <span>随机时间</span>
-                </label>
-              </div>
-            </div>
-            <!-- Strict Mode -->
-            <div class="form-section-compact">
-              <label class="inline-label">严格模式</label>
-              <label class="checkbox-label-compact">
-                <input
-                  type="checkbox"
-                  v-model="form.strict_mode"
-                  class="checkbox-input-compact"
-                />
-                <span class="checkbox-text-compact">
-                  启用严格模式
-                  <small class="checkbox-desc-compact">打卡时自动添加验证码</small>
-                </span>
-              </label>
-            </div>
-          </div>
-        </div>
-
-        <!-- Lock Task Fields -->
-        <template v-if="form.task_type === 'lock'">
-          <div class="form-row">
-            <div class="form-group">
-              <label for="difficulty">难度等级</label>
-              <select id="difficulty" v-model="form.difficulty" required>
-                <option value="easy">简单 - 适合初学者</option>
-                <option value="normal">普通 - 日常挑战</option>
-                <option value="hard">困难 - 需要坚强意志</option>
-                <option value="hell">地狱 - 极限挑战</option>
-              </select>
-            </div>
-
-            <div class="form-group">
-              <label for="unlock_type">解锁方式</label>
-              <select id="unlock_type" v-model="form.unlock_type" required>
-                <option value="time">定时解锁</option>
-                <option value="vote">投票解锁</option>
-              </select>
-            </div>
-          </div>
-
-
-          <div class="duration-section">
-            <DurationSelector
-              v-model="form.duration_value!"
-              :label="form.duration_type === 'fixed' ? '持续时间' : '最短时间'"
-              :min-minutes="1"
-              :required="true"
-            />
-
-            <DurationSelector
-              v-if="form.duration_type === 'random'"
-              v-model="form.duration_max!"
-              label="最长时间"
-              :min-minutes="form.duration_value || 1"
-              :required="true"
-            />
-          </div>
-
-          <div v-if="form.unlock_type === 'vote'" class="form-group">
-            <label for="vote_agreement_ratio">同意比例要求</label>
-            <select id="vote_agreement_ratio" v-model="form.vote_agreement_ratio" required>
-              <option value="0.5">50% - 简单多数</option>
-              <option value="0.6">60% - 普通多数</option>
-              <option value="0.7">70% - 绝对多数</option>
-              <option value="0.8">80% - 超级多数</option>
-              <option value="0.9">90% - 压倒性多数</option>
-            </select>
-            <small class="help-text">
-              只要有人投票且同意比例达到要求即可解锁，无最低投票人数限制
-            </small>
-          </div>
-
-          <!-- 临时开锁配置 -->
-          <div class="temporary-unlock-section">
-            <div class="section-header" @click="form.allow_temporary_unlock = !form.allow_temporary_unlock">
-              <label class="checkbox-label-enhanced">
-                <input
-                  type="checkbox"
-                  v-model="form.allow_temporary_unlock"
-                  class="checkbox-input-enhanced"
-                />
-                <span class="checkbox-text-enhanced">
-                  <span class="icon">🔓</span>
-                  启用临时开锁
-                  <small class="checkbox-desc-enhanced">允许任务执行过程中临时解除锁定</small>
-                </span>
-              </label>
-            </div>
-
-            <transition name="slide-fade">
-              <div v-if="form.allow_temporary_unlock" class="unlock-config">
-                <!-- 限制类型选择 -->
-                <div class="form-row">
-                  <div class="form-group">
-                    <label>限制类型</label>
-                    <div class="radio-group-compact">
-                      <label class="radio-option-compact">
-                        <input
-                          type="radio"
-                          v-model="form.temporary_unlock_limit_type"
-                          value="daily_count"
-                        />
-                        <span>每日次数</span>
-                      </label>
-                      <label class="radio-option-compact">
-                        <input
-                          type="radio"
-                          v-model="form.temporary_unlock_limit_type"
-                          value="cooldown"
-                        />
-                        <span>冷却间隔</span>
-                      </label>
-                    </div>
-                  </div>
-
-                  <!-- 限制值 -->
-                  <div class="form-group">
-                    <label>
-                      {{ form.temporary_unlock_limit_type === 'daily_count' ? '每日次数' : '冷却间隔（小时）' }}
-                    </label>
-                    <input
-                      type="number"
-                      v-model.number="form.temporary_unlock_limit_value"
-                      :min="1"
-                      :max="form.temporary_unlock_limit_type === 'daily_count' ? 10 : 168"
-                      class="form-input"
-                      required
-                    />
-                    <small class="form-hint">
-                      {{ form.temporary_unlock_limit_type === 'daily_count' ? '每天最多开锁次数' : '两次开锁之间的最小间隔' }}
-                    </small>
-                  </div>
-                </div>
-
-                <!-- 最大时长 -->
-                <div class="form-group">
-                  <label>单次最大时长</label>
-                  <div class="duration-slider">
-                    <input
-                      type="range"
-                      v-model.number="form.temporary_unlock_max_duration"
-                      min="5"
-                      max="240"
-                      step="5"
-                      class="slider"
-                    />
-                    <span class="slider-value">{{ form.temporary_unlock_max_duration }} 分钟</span>
-                  </div>
-                  <small class="form-hint">超时将自动结束并惩罚（自动置顶30分钟）</small>
-                </div>
-
-                <!-- 额外选项 -->
-                <div class="form-row">
-                  <div class="form-group">
-                    <label class="checkbox-label-compact">
-                      <input
-                        type="checkbox"
-                        v-model="form.temporary_unlock_require_approval"
-                        class="checkbox-input-compact"
-                      />
-                      <span class="checkbox-text-compact">
-                        需要钥匙持有者同意
-                        <small class="checkbox-desc-compact">（仅当钥匙持有者不是本人时）</small>
-                      </span>
-                    </label>
-                  </div>
-
-                  <div class="form-group">
-                    <label class="checkbox-label-compact">
-                      <input
-                        type="checkbox"
-                        v-model="form.temporary_unlock_require_photo"
-                        class="checkbox-input-compact"
-                      />
-                      <span class="checkbox-text-compact">
-                        需要拍照证明
-                        <small class="checkbox-desc-compact">（结束临时开锁时需要拍摄验证照片）</small>
-                      </span>
-                    </label>
-                  </div>
-                </div>
-              </div>
-            </transition>
-          </div>
-
-        </template>
-
-        <!-- Task Board Fields -->
-        <template v-if="form.task_type === 'board'">
-          <div class="form-row">
-            <div class="form-group">
-              <label for="reward">奖励金额</label>
-              <input
-                id="reward"
-                v-model.number="form.reward"
-                type="number"
-                min="1"
-                max="10000"
-                placeholder="完成任务的奖励"
-                required
-              />
-            </div>
-            <div class="form-group">
-              <label for="max_duration">最大完成时间 (小时)</label>
-              <input
-                id="max_duration"
-                v-model.number="form.max_duration"
-                type="number"
-                min="1"
-                placeholder="任务最长完成时间"
-                required
-              />
-            </div>
-          </div>
-
-          <div class="form-group">
-            <label for="max_participants">最大参与人数 <span class="optional">(默认1为单人任务)</span></label>
-            <input
-              id="max_participants"
-              v-model.number="form.max_participants"
-              type="number"
-              min="1"
-              max="50"
-              placeholder="多人任务的最大参与人数"
-            />
-            <small class="form-hint">
-              设置为空或1为单人任务，设置为2或以上为多人任务。多人任务允许多人同时参与并提交作品。
-            </small>
-          </div>
-
-          <div class="form-group">
-            <label for="completion_rate_threshold">
-              任务完成率门槛 <span class="optional">(可选，默认0%无限制)</span>
-            </label>
-            <div class="threshold-input-group">
-              <input
-                id="completion_rate_threshold"
-                v-model.number="form.completion_rate_threshold"
-                type="number"
-                min="0"
-                max="100"
-                step="1"
-                placeholder="0"
-              />
-              <span class="threshold-unit">%</span>
-            </div>
-            <small class="form-hint">
-              设置参与者的最低任务完成率要求。完成率低于此门槛的用户无法接取任务。
-              设置为0或留空表示无限制。
-            </small>
-          </div>
-
-        </template>
-
+        <!-- Submit Button -->
         <div class="modal-footer">
-          <button type="button" @click="closeModal" class="cancel-btn">取消</button>
-          <button type="submit" :disabled="submitting" class="submit-btn">
-            {{ submitting ? '创建中...' : '创建任务' }}
+          <button type="button" @click="closeModal" class="cancel-btn" :disabled="submitting">
+            取消
+          </button>
+          <button
+            type="submit"
+            :disabled="submitting || !isFormValid"
+            class="submit-btn"
+            :class="{ 'is-loading': submitting }"
+          >
+            <span v-if="submitting" class="spinner"></span>
+            <span>{{ submitting ? '创建中...' : '创建任务' }}</span>
           </button>
         </div>
       </form>
 
       <div v-if="successMessage" class="success-message">
-        {{ successMessage }}
+        <div class="success-icon">✅</div>
+        <div class="success-text">{{ successMessage }}</div>
       </div>
     </div>
 
-    <!-- NotificationToast for error handling -->
-    <NotificationToast
-      :is-visible="showToast"
-      :type="toastData.type"
-      :title="toastData.title"
-      :message="toastData.message"
-      :secondary-message="toastData.secondaryMessage"
-      :details="toastData.details"
-      @close="showToast = false"
-    />
+    <!-- NotificationToast for error handling - rendered as sibling to prevent event bubbling -->
+    <Teleport to="body">
+      <NotificationToast
+        :is-visible="showToast"
+        :type="toastData.type"
+        :title="toastData.title"
+        :message="toastData.message"
+        :secondary-message="toastData.secondaryMessage"
+        :details="toastData.details"
+        @close="showToast = false"
+      />
+    </Teleport>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, watch, onUnmounted } from 'vue'
+import { ref, reactive, watch, onUnmounted, computed, Teleport } from 'vue'
 import { tasksApi } from '../lib/api-tasks'
-import { postsApi } from '../lib/api'
 import type { TaskCreateRequest } from '../types/index'
+import { useAuthStore } from '../stores/auth'
 import DurationSelector from './DurationSelector.vue'
 import RichTextEditor from './RichTextEditor.vue'
 import NotificationToast from './NotificationToast.vue'
+import TaskFormSection from './task/TaskFormSection.vue'
+import DailyTaskConfig from './task/DailyTaskConfig.vue'
+import ToggleSwitch from './ui/ToggleSwitch.vue'
 import { handleApiError, formatErrorForNotification } from '../utils/errorHandling'
 
 interface Props {
@@ -440,11 +495,21 @@ interface Emits {
 const props = defineProps<Props>()
 const emit = defineEmits<Emits>()
 
+const authStore = useAuthStore()
+
 const submitting = ref(false)
 const successMessage = ref('')
 const imageInput = ref<HTMLInputElement>()
 const imagePreview = ref<string>('')
 const imageFile = ref<File | null>(null)
+const isDailyTaskValid = ref(true)
+
+// Daily task config
+const dailyTaskConfig = ref({
+  isEnabled: false,
+  duration: 7,
+  publishTime: '08:00'
+})
 
 // NotificationToast 状态
 const showToast = ref(false)
@@ -460,14 +525,14 @@ const form = reactive<TaskCreateRequest>({
   task_type: 'lock',
   title: '',
   description: '',
-  autoPost: true, // 默认勾选自动发布动态
+  autoPost: true,
   // Lock task fields
   duration_type: 'fixed',
-  duration_value: 60, // 默认1小时
+  duration_value: 60,
   duration_max: undefined,
   difficulty: 'normal',
   unlock_type: 'time',
-  strict_mode: false, // 默认不启用严格模式
+  strict_mode: false,
   // 临时开锁配置
   allow_temporary_unlock: false,
   temporary_unlock_limit_type: 'daily_count',
@@ -477,25 +542,66 @@ const form = reactive<TaskCreateRequest>({
   temporary_unlock_require_photo: false,
   // Board task fields
   reward: undefined,
-  max_duration: 24, // 默认24小时
-  max_participants: 1, // 默认单人任务
-  completion_rate_threshold: 0 // 默认0%（无限制）
+  max_duration: 24,
+  max_participants: 1,
+  completion_rate_threshold: 0,
+  // Daily task fields
+  is_daily_task: false,
+  daily_task_duration: undefined,
+  daily_task_publish_time: undefined,
+  daily_task_total_cost: undefined
+})
+
+// Computed
+const userCoins = computed(() => authStore.user?.coins || 0)
+
+const isFormValid = computed(() => {
+  if (!form.title.trim()) return false
+  if (form.task_type === 'board') {
+    if (!form.reward || form.reward < 1) return false
+    if (!form.max_duration || form.max_duration < 1) return false
+    // If daily task is enabled, check validation
+    if (dailyTaskConfig.value.isEnabled && !isDailyTaskValid.value) return false
+  }
+  if (form.task_type === 'lock') {
+    if (form.duration_type === 'random') {
+      if (!form.duration_max || !form.duration_value || form.duration_max <= form.duration_value) {
+        return false
+      }
+    }
+    if (form.unlock_type === 'vote' && !form.vote_agreement_ratio) {
+      return false
+    }
+  }
+  return true
 })
 
 // Watch for modal visibility changes
 watch(() => props.isVisible, (newValue) => {
   if (newValue) {
     resetForm()
-    // 禁用body滚动
     document.body.style.overflow = 'hidden'
   } else {
-    // 恢复body滚动
     document.body.style.overflow = ''
   }
 })
 
+// Watch for daily task config changes
+watch(dailyTaskConfig, (newValue) => {
+  form.is_daily_task = newValue.isEnabled
+  form.daily_task_duration = newValue.isEnabled ? newValue.duration : undefined
+  form.daily_task_publish_time = newValue.isEnabled ? newValue.publishTime : undefined
+  form.daily_task_total_cost = newValue.isEnabled ? (form.reward || 0) * newValue.duration : undefined
+}, { deep: true })
+
+// Watch for reward changes to update daily task total cost
+watch(() => form.reward, (newValue) => {
+  if (dailyTaskConfig.value.isEnabled) {
+    form.daily_task_total_cost = (newValue || 0) * dailyTaskConfig.value.duration
+  }
+})
+
 const resetForm = () => {
-  // Use initial task type if provided, otherwise default to 'lock'
   form.task_type = props.initialTaskType || 'lock'
   form.title = ''
   form.description = ''
@@ -505,9 +611,9 @@ const resetForm = () => {
   form.duration_value = 60
   form.difficulty = 'normal'
   form.unlock_type = 'time'
-  form.duration_max = 120 // 默认2小时作为随机时间的最大值
+  form.duration_max = 120
   form.vote_agreement_ratio = undefined
-  form.strict_mode = false // 默认不启用严格模式
+  form.strict_mode = false
   // Board task fields
   form.reward = undefined
   form.max_duration = 24
@@ -520,6 +626,17 @@ const resetForm = () => {
   form.temporary_unlock_max_duration = 30
   form.temporary_unlock_require_approval = false
   form.temporary_unlock_require_photo = false
+  // Daily task fields
+  form.is_daily_task = false
+  form.daily_task_duration = undefined
+  form.daily_task_publish_time = undefined
+  form.daily_task_total_cost = undefined
+  // Reset daily task config
+  dailyTaskConfig.value = {
+    isEnabled: false,
+    duration: 7,
+    publishTime: '08:00'
+  }
   // Reset image
   imagePreview.value = ''
   imageFile.value = null
@@ -535,6 +652,10 @@ const closeModal = () => {
   if (!submitting.value) {
     emit('close')
   }
+}
+
+const onDailyTaskValidationChange = (isValid: boolean) => {
+  isDailyTaskValid.value = isValid
 }
 
 // Image handling methods
@@ -616,7 +737,6 @@ const removeImage = () => {
     imageInput.value.value = ''
   }
 }
-
 
 const handleSubmit = async () => {
   if (submitting.value) return
@@ -703,6 +823,29 @@ const handleSubmit = async () => {
       }
       return
     }
+
+    // Daily task validation
+    if (dailyTaskConfig.value.isEnabled) {
+      const totalCost = (form.reward || 0) * dailyTaskConfig.value.duration
+      if (userCoins.value < totalCost) {
+        showToast.value = true
+        const errorData = formatErrorForNotification({
+          title: '积分不足',
+          message: `创建日常任务需要 ${totalCost} 积分，您的余额不足`,
+          actionSuggestion: '请减少持续天数或降低每日奖励',
+          severity: 'error'
+        })
+        toastData.value = {
+          ...errorData,
+          details: {
+            '所需积分': totalCost,
+            '当前余额': userCoins.value,
+            '还需积分': totalCost - userCoins.value
+          }
+        }
+        return
+      }
+    }
   }
 
   submitting.value = true
@@ -715,13 +858,17 @@ const handleSubmit = async () => {
     if (form.autoPost !== undefined) {
       cleanedForm.auto_publish = form.autoPost
     }
-    delete cleanedForm.autoPost
+    delete (cleanedForm as any).autoPost
 
     if (form.task_type === 'lock') {
       // Remove board-specific fields for lock tasks
       delete cleanedForm.reward
       delete cleanedForm.max_duration
       delete cleanedForm.completion_rate_threshold
+      delete cleanedForm.is_daily_task
+      delete cleanedForm.daily_task_duration
+      delete cleanedForm.daily_task_publish_time
+      delete cleanedForm.daily_task_total_cost
 
       // If temporary unlock is not enabled, remove related fields
       if (!cleanedForm.allow_temporary_unlock) {
@@ -755,46 +902,65 @@ const handleSubmit = async () => {
           cleanedForm.completion_rate_threshold === undefined) {
         delete cleanedForm.completion_rate_threshold
       }
+
+      // If daily task is not enabled, remove related fields
+      if (!dailyTaskConfig.value.isEnabled) {
+        delete cleanedForm.is_daily_task
+        delete cleanedForm.daily_task_duration
+        delete cleanedForm.daily_task_publish_time
+        delete cleanedForm.daily_task_total_cost
+      } else {
+        // Set daily task fields
+        cleanedForm.is_daily_task = true
+        cleanedForm.daily_task_duration = dailyTaskConfig.value.duration
+        cleanedForm.daily_task_publish_time = dailyTaskConfig.value.publishTime
+        cleanedForm.daily_task_total_cost = (form.reward || 0) * dailyTaskConfig.value.duration
+      }
     }
 
     // Debug: Log the data being sent
     console.log('Form data before cleaning:', form)
     console.log('Cleaned form data being sent:', cleanedForm)
 
-    // Create the task through API (auto-publish is now handled on backend)
+    // Create the task through API
     let newTask
     if (imageFile.value && form.autoPost) {
-      // 如果有图片且选择了自动发布，使用FormData
+      // If image exists and auto-publish is selected, use FormData
       const formData = new FormData()
 
-      // 添加所有任务字段
+      // Add all task fields
       Object.keys(cleanedForm).forEach(key => {
         const typedKey = key as keyof typeof cleanedForm
-        if (cleanedForm[typedKey] !== undefined && cleanedForm[typedKey] !== null) {
-          formData.append(key, String(cleanedForm[typedKey]))
+        const value = cleanedForm[typedKey]
+        if (value !== undefined && value !== null) {
+          formData.append(key, String(value))
         }
       })
 
-      // 添加图片
+      // Add image
       formData.append('images', imageFile.value)
 
       newTask = await tasksApi.createTaskWithImages(formData)
       console.log('Task created successfully with images:', newTask)
     } else {
-      // 没有图片或不自动发布，使用JSON
+      // No image or no auto-publish, use JSON
       newTask = await tasksApi.createTask(cleanedForm)
       console.log('Task created successfully:', newTask)
     }
 
-    // 显示成功消息
+    // Show success message
     const successMsg = form.autoPost
       ? `${form.task_type === 'lock' ? '带锁任务' : '任务板'}创建成功，并已自动发布动态！`
       : `${form.task_type === 'lock' ? '带锁任务' : '任务板'}创建成功！`
     successMessage.value = successMsg
-    // 传递是否自动发布了动态的信息
+
+    // Refresh user data to update coins
+    await authStore.refreshUser()
+
+    // Emit success event
     emit('success', !!form.autoPost)
 
-    // 延迟1.5秒后关闭窗口
+    // Close modal after delay
     setTimeout(() => {
       if (successMessage.value) {
         closeModal()
@@ -804,7 +970,7 @@ const handleSubmit = async () => {
   } catch (error: any) {
     console.error('Error creating task:', error)
 
-    // 使用新的错误处理工具函数
+    // Use error handling utility
     const userFriendlyError = handleApiError(error, 'task')
     const formattedError = formatErrorForNotification(userFriendlyError)
 
@@ -844,6 +1010,8 @@ watch(() => form.task_type, (newValue) => {
     form.temporary_unlock_max_duration = 30
     form.temporary_unlock_require_approval = false
     form.temporary_unlock_require_photo = false
+    // Reset daily task
+    dailyTaskConfig.value.isEnabled = false
   } else if (newValue === 'board') {
     // Reset lock fields
     form.duration_type = 'fixed'
@@ -873,10 +1041,9 @@ watch(() => form.unlock_type, (newValue) => {
 // Watch for duration_type changes to reset duration_max
 watch(() => form.duration_type, (newValue) => {
   if (newValue === 'random') {
-    // 如果切换到随机时间，设置默认的最大时间
     const minValue = form.duration_value || 60
     if (!form.duration_max || form.duration_max <= minValue) {
-      form.duration_max = Math.max(minValue * 2, 120) // 至少是最短时间的2倍，或2小时
+      form.duration_max = Math.max(minValue * 2, 120)
     }
   } else {
     form.duration_max = undefined
@@ -886,7 +1053,6 @@ watch(() => form.duration_type, (newValue) => {
 // Watch for strict_mode changes to show notification when enabled
 watch(() => form.strict_mode, (newValue) => {
   if (newValue) {
-    // 显示严格模式说明的 toast 通知
     showToast.value = true
     toastData.value = {
       type: 'warning',
@@ -903,122 +1069,334 @@ watch(() => form.strict_mode, (newValue) => {
   }
 })
 
-// 组件卸载时确保恢复滚动
+// Ensure body scroll is restored on unmount
 onUnmounted(() => {
   document.body.style.overflow = ''
 })
-
 </script>
 
 <style scoped>
+/* Modal Overlay */
 .modal-overlay {
   position: fixed;
   top: 0;
   left: 0;
   width: 100%;
   height: 100%;
-  background-color: rgba(0, 0, 0, 0.7);
+  background-color: rgba(0, 0, 0, 0.6);
+  backdrop-filter: blur(4px);
   display: flex;
   align-items: flex-start;
   justify-content: center;
   z-index: 1000;
-  padding-top: 5vh;
-  overflow: hidden;
+  padding: 2vh 1rem;
+  overflow-y: auto;
 }
 
+/* Modal Content */
 .modal-content {
-  background: white;
-  border-radius: 8px;
-  border: 2px solid #000;
-  box-shadow: 8px 8px 0 #000;
+  background: #f8fafc;
+  border-radius: 1.25rem;
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
   width: 100%;
-  max-width: 600px;
-  max-height: 90vh;
+  max-width: 640px;
+  max-height: 96vh;
   overflow-y: auto;
   position: relative;
 }
 
+/* Modal Header */
 .modal-header {
   display: flex;
   justify-content: space-between;
-  align-items: center;
-  padding: 1.5rem;
-  border-bottom: 2px solid #e9ecef;
+  align-items: flex-start;
+  padding: 1.5rem 1.5rem 0.75rem;
+  background: white;
+  border-bottom: 1px solid #e2e8f0;
+  position: sticky;
+  top: 0;
+  z-index: 10;
 }
 
-.modal-header h2 {
+.modal-header__title-group h2 {
+  margin: 0 0 0.25rem 0;
+  font-size: 1.375rem;
+  font-weight: 700;
+  color: #1e293b;
+}
+
+.modal-header__subtitle {
   margin: 0;
-  font-size: 1.5rem;
-  font-weight: 900;
-  text-transform: uppercase;
-  letter-spacing: 1px;
+  font-size: 0.875rem;
+  color: #64748b;
 }
 
 .close-btn {
-  background: none;
+  background: #f1f5f9;
   border: none;
   font-size: 1.5rem;
   cursor: pointer;
-  padding: 0.5rem;
-  border-radius: 4px;
-  width: 40px;
-  height: 40px;
+  padding: 0;
+  border-radius: 0.5rem;
+  width: 2.25rem;
+  height: 2.25rem;
   display: flex;
   align-items: center;
   justify-content: center;
+  color: #64748b;
+  transition: all 0.2s ease;
 }
 
-.close-btn:hover {
-  background-color: #f8f9fa;
+.close-btn:hover:not(:disabled) {
+  background: #e2e8f0;
+  color: #1e293b;
 }
 
+.close-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Modal Body */
 .modal-body {
-  padding: 1.5rem;
+  padding: 1.25rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.875rem;
 }
 
-.form-group {
-  margin-bottom: 1.5rem;
-}
-
-.form-row {
+/* Task Type Selector */
+.task-type-selector {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 1rem;
 }
 
-.form-group label {
-  display: block;
+.task-type-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 1.25rem 1rem;
+  background: white;
+  border: 2px solid #e2e8f0;
+  border-radius: 1rem;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  text-align: center;
+}
+
+.task-type-card:hover {
+  border-color: #6366f1;
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(99, 102, 241, 0.15);
+}
+
+.task-type-card.active {
+  border-color: #6366f1;
+  background: linear-gradient(135deg, #eef2ff 0%, #e0e7ff 100%);
+}
+
+.task-type-card__icon {
+  font-size: 2rem;
   margin-bottom: 0.5rem;
-  font-weight: 600;
-  color: #333;
 }
 
-.form-group input,
-.form-group textarea,
-.form-group select {
-  width: 100%;
-  padding: 0.75rem;
-  border: 2px solid #ddd;
-  border-radius: 4px;
+.task-type-card__title {
   font-size: 1rem;
-  box-sizing: border-box;
+  font-weight: 600;
+  color: #1e293b;
+  margin: 0 0 0.25rem 0;
 }
 
-.form-group input:focus,
-.form-group textarea:focus,
-.form-group select:focus {
+.task-type-card__desc {
+  font-size: 0.75rem;
+  color: #64748b;
+  line-height: 1.4;
+}
+
+/* Form Fields */
+.form-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+/* Toggle Field Layout - Fixes overlap issues */
+.form-field--toggle {
+  display: flex;
+  flex-direction: column;
+  gap: 0.375rem;
+  align-items: flex-start;
+}
+
+.form-field--toggle :deep(.toggle-switch) {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.form-field--toggle :deep(.toggle-switch__label) {
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: #374151;
+  white-space: nowrap;
+}
+
+.form-field__hint-below {
+  font-size: 0.8125rem;
+  color: #6b7280;
+  margin-left: calc(36px + 0.5rem); /* Align with toggle label */
+  line-height: 1.4;
+}
+
+/* Toggle row layout */
+.form-row--toggles {
+  display: flex;
+  gap: 1.5rem;
+  flex-wrap: wrap;
+}
+
+.form-row--toggles .form-field--toggle {
+  flex: 1;
+  min-width: fit-content;
+}
+
+.form-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.375rem;
+}
+
+.form-field--half {
+  flex: 1;
+  min-width: 0;
+}
+
+.form-field--inline {
+  flex-direction: row;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: nowrap;
+}
+
+/* ToggleSwitch在inline布局中的样式 */
+.form-field--inline :deep(.toggle-switch) {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-shrink: 0;
+}
+
+.form-field--inline :deep(.toggle-switch__track) {
+  flex-shrink: 0;
+}
+
+.form-field--inline .toggle-wrapper {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+}
+
+.form-field--inline :deep(.toggle-switch__label) {
+  white-space: nowrap;
+  font-size: 0.875rem;
+  color: #374151;
+}
+
+.form-field--inline .form-field__hint-inline {
+  color: #6b7280;
+  font-size: 0.8125rem;
+  flex: 1;
+  min-width: 0;
+}
+
+.form-field__label {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: #374151;
+}
+
+.required {
+  color: #dc2626;
+}
+
+.optional {
+  font-weight: 400;
+  color: #9ca3af;
+  font-size: 0.8125rem;
+}
+
+.form-field__input,
+.form-field__select {
+  padding: 0.625rem 0.875rem;
+  font-size: 0.9375rem;
+  color: #1f2937;
+  background: white;
+  border: 2px solid #e5e7eb;
+  border-radius: 0.5rem;
+  transition: all 0.2s ease;
+}
+
+.form-field__input:hover,
+.form-field__select:hover {
+  border-color: #d1d5db;
+}
+
+.form-field__input:focus,
+.form-field__select:focus {
   outline: none;
-  border-color: #007bff;
+  border-color: #6366f1;
+  box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.1);
 }
 
-.form-group textarea {
-  resize: vertical;
-  min-height: 80px;
+.form-field__hint {
+  font-size: 0.75rem;
+  color: #6b7280;
+  line-height: 1.4;
 }
 
+.form-field__hint-inline {
+  font-size: 0.8125rem;
+  color: #6b7280;
+}
+
+/* Form Row */
+.form-row {
+  display: flex;
+  gap: 1rem;
+}
+
+/* Form Row with inline fields */
+.form-row .form-field--inline {
+  flex: 1;
+  min-width: fit-content;
+}
+
+/* Input with Suffix */
+.input-with-suffix {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.input-with-suffix .form-field__input {
+  width: 100%;
+  padding-right: 3.5rem;
+}
+
+.input-suffix {
+  position: absolute;
+  right: 0.875rem;
+  font-size: 0.875rem;
+  color: #6b7280;
+  font-weight: 500;
+}
+
+/* Radio Group */
 .radio-group {
   display: flex;
   gap: 1rem;
+  flex-wrap: wrap;
 }
 
 .radio-option {
@@ -1026,142 +1404,133 @@ onUnmounted(() => {
   align-items: center;
   gap: 0.5rem;
   cursor: pointer;
-  font-weight: normal;
+  font-size: 0.875rem;
+  color: #4b5563;
 }
 
 .radio-option input[type="radio"] {
-  width: auto;
-  margin: 0;
+  width: 1.125rem;
+  height: 1.125rem;
+  accent-color: #6366f1;
 }
 
-.task-type-selector {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 1rem;
-  margin-bottom: 0.5rem;
-}
-
-.task-type-btn {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  padding: 1rem;
-  border: 2px solid #ddd;
-  border-radius: 8px;
-  background: white;
-  cursor: pointer;
-  transition: all 0.2s;
-  font-size: 1rem;
-  font-weight: 600;
-}
-
-.task-type-btn:hover {
-  border-color: #007bff;
-  background-color: #f8f9fa;
-}
-
-.task-type-btn.active {
-  border-color: #007bff;
-  background-color: #007bff;
-  color: white;
-}
-
-.task-type-desc {
-  font-size: 0.75rem;
-  font-weight: normal;
-  margin-top: 0.25rem;
-  opacity: 0.8;
-}
-
-.modal-footer {
-  display: flex;
-  justify-content: flex-end;
-  gap: 1rem;
-  padding-top: 1rem;
-  border-top: 1px solid #e9ecef;
-}
-
-.cancel-btn, .submit-btn {
-  padding: 0.75rem 1.5rem;
-  border: none;
-  border-radius: 4px;
-  cursor: pointer;
-  font-weight: 600;
-  font-size: 1rem;
-}
-
-.cancel-btn {
-  background-color: #6c757d;
-  color: white;
-}
-
-.cancel-btn:hover {
-  background-color: #5a6268;
-}
-
-.submit-btn {
-  background-color: #28a745;
-  color: white;
-}
-
-.submit-btn:hover:not(:disabled) {
-  background-color: #218838;
-}
-
-.submit-btn:disabled {
-  background-color: #6c757d;
-  cursor: not-allowed;
-}
-
-.success-message {
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  background-color: #d4edda;
-  color: #155724;
-  padding: 1rem 2rem;
-  border: 1px solid #c3e6cb;
-  border-radius: 4px;
-  font-weight: 600;
-  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
-  z-index: 10;
-}
-
-.help-text {
-  display: block;
-  margin-top: 0.5rem;
-  font-size: 0.75rem;
-  color: #666;
-  font-style: italic;
-}
-
+/* Duration Section */
 .duration-section {
   display: flex;
   flex-direction: column;
-  gap: 1.5rem;
-  margin-bottom: 1.5rem;
+  gap: 1rem;
 }
 
-.optional {
-  font-size: 0.75rem;
-  color: #666;
-  font-weight: normal;
-  font-style: italic;
+/* Temporary Unlock Section */
+.temporary-unlock-section {
+  background: #f8fafc;
+  border: 2px solid #e2e8f0;
+  border-radius: 0.75rem;
+  overflow: hidden;
 }
 
-/* Image Upload Styles */
+.temporary-unlock-header {
+  padding: 0.875rem 1rem;
+  cursor: pointer;
+  transition: background-color 0.2s ease;
+}
+
+.temporary-unlock-header:hover {
+  background-color: #f1f5f9;
+}
+
+.temporary-unlock-toggle {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.temporary-unlock-toggle .toggle-switch {
+  flex-shrink: 0;
+}
+
+.temporary-unlock-hint {
+  font-size: 0.8125rem;
+  color: #6b7280;
+  flex: 1;
+  min-width: 0;
+}
+
+.temporary-unlock-config {
+  padding: 0 1rem 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+/* Slider */
+.slider-group {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.slider {
+  flex: 1;
+  height: 6px;
+  border-radius: 3px;
+  background: #e5e7eb;
+  outline: none;
+  -webkit-appearance: none;
+}
+
+.slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #6366f1;
+  cursor: pointer;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+}
+
+.slider::-moz-range-thumb {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #6366f1;
+  cursor: pointer;
+  border: none;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+}
+
+.slider-value {
+  min-width: 80px;
+  font-weight: 600;
+  color: #374151;
+  font-size: 0.875rem;
+}
+
+/* Publish Options */
+.publish-options {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+/* Image Upload */
+.image-upload-section {
+  margin-top: 0.5rem;
+}
+
 .image-upload-container {
   position: relative;
-  border: 2px dashed #ddd;
-  border-radius: 8px;
+  border: 2px dashed #d1d5db;
+  border-radius: 0.75rem;
   overflow: hidden;
-  transition: all 0.2s;
+  transition: all 0.2s ease;
 }
 
 .image-upload-container:hover {
-  border-color: #007bff;
-  background-color: #f8f9fa;
+  border-color: #6366f1;
+  background-color: #f8fafc;
 }
 
 .image-input {
@@ -1178,31 +1547,33 @@ onUnmounted(() => {
   padding: 2rem;
   cursor: pointer;
   text-align: center;
-  min-height: 120px;
-  background-color: #fafafa;
-  transition: all 0.2s;
-}
-
-.upload-placeholder:hover {
-  background-color: #f0f0f0;
+  min-height: 140px;
+  background: white;
+  transition: all 0.2s ease;
 }
 
 .upload-icon {
   font-size: 2rem;
   margin-bottom: 0.5rem;
-  opacity: 0.6;
 }
 
 .upload-text {
-  font-size: 1rem;
+  font-size: 0.9375rem;
   font-weight: 600;
-  color: #333;
+  color: #374151;
   margin-bottom: 0.25rem;
 }
 
 .upload-hint {
   font-size: 0.75rem;
-  color: #666;
+  color: #6b7280;
+  margin-bottom: 0.125rem;
+}
+
+.upload-size-hint {
+  font-size: 0.6875rem;
+  color: #6366f1;
+  font-weight: 500;
 }
 
 .image-preview {
@@ -1210,33 +1581,34 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   justify-content: center;
-  background-color: #f8f9fa;
-  min-height: 120px;
+  background: #f8fafc;
+  min-height: 140px;
 }
 
 .image-preview img {
   max-width: 100%;
   max-height: 200px;
   object-fit: contain;
-  border-radius: 4px;
+  border-radius: 0.5rem;
 }
 
 .remove-image-btn {
   position: absolute;
   top: 0.5rem;
   right: 0.5rem;
+  width: 28px;
+  height: 28px;
   background: rgba(220, 53, 69, 0.9);
   color: white;
   border: none;
   border-radius: 50%;
-  width: 24px;
-  height: 24px;
   cursor: pointer;
-  font-size: 1rem;
+  font-size: 1.125rem;
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: all 0.2s;
+  transition: all 0.2s ease;
+  line-height: 1;
 }
 
 .remove-image-btn:hover {
@@ -1244,495 +1616,105 @@ onUnmounted(() => {
   transform: scale(1.1);
 }
 
-/* Checkbox Styles */
-.checkbox-label {
+/* Modal Footer */
+.modal-footer {
   display: flex;
-  align-items: flex-start;
-  gap: 0.75rem;
-  cursor: pointer;
-  padding: 1rem;
-  border: 2px solid #e9ecef;
-  border-radius: 8px;
-  transition: all 0.2s;
-  background-color: #fafafa;
-}
-
-.checkbox-label:hover {
-  border-color: #007bff;
-  background-color: #f8f9fa;
-}
-
-.checkbox-input {
-  width: auto !important;
-  margin: 0;
-  transform: scale(1.2);
-}
-
-.checkbox-input:checked + .checkbox-text {
-  color: #007bff;
-  font-weight: 600;
-}
-
-.checkbox-text {
-  display: flex;
-  flex-direction: column;
-  gap: 0.25rem;
-  font-weight: 500;
-}
-
-.checkbox-desc {
-  font-size: 0.75rem;
-  color: #666;
-  font-weight: normal;
-  font-style: italic;
-}
-
-/* Compact Layout Styles */
-.form-row-inline {
-  display: flex;
-  align-items: center;
-  gap: 1rem;
-}
-
-.form-row-inline-combined {
-  display: flex;
-  align-items: flex-start;
-  gap: 1.5rem;
-  flex-wrap: wrap;
-}
-
-.form-section-compact {
-  display: flex;
-  align-items: center;
-  gap: 1rem;
-  flex: 1;
-  min-width: 250px;
-}
-
-.inline-label {
-  font-weight: 600;
-  color: #333;
-  font-size: 1rem;
-  min-width: 80px;
-  flex-shrink: 0;
-}
-
-/* Compact Task Type Selector */
-.task-type-selector-compact {
-  display: flex;
-  gap: 0.75rem;
-  flex: 1;
-}
-
-.task-type-btn-compact {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 0.5rem 1rem;
-  border: 2px solid #ddd;
-  border-radius: 6px;
+  justify-content: flex-end;
+  gap: 0.875rem;
+  padding: 1.25rem 1.5rem;
   background: white;
-  cursor: pointer;
-  transition: all 0.2s;
-  font-size: 0.875rem;
-  font-weight: 600;
-  flex: 1;
-  min-height: 40px;
+  border-top: 1px solid #e2e8f0;
+  position: sticky;
+  bottom: 0;
+  z-index: 10;
 }
 
-.task-type-btn-compact:hover {
-  border-color: #007bff;
-  background-color: #f8f9fa;
-}
-
-.task-type-btn-compact.active {
-  border-color: #007bff;
-  background-color: #007bff;
-  color: white;
-}
-
-/* Compact Checkbox */
-.checkbox-label-compact {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  cursor: pointer;
-  flex: 1;
-}
-
-.checkbox-input-compact {
-  width: auto !important;
-  margin: 0;
-  transform: scale(1.1);
-}
-
-.checkbox-text-compact {
-  display: flex;
-  flex-direction: column;
-  gap: 0.1rem;
-  font-weight: 500;
-  font-size: 0.9rem;
-}
-
-.checkbox-desc-compact {
-  font-size: 0.7rem;
-  color: #666;
-  font-weight: normal;
-  font-style: italic;
-}
-
-/* Compact Radio Group */
-.radio-group-compact {
-  display: flex;
-  gap: 0.75rem;
-  flex: 1;
-}
-
-.radio-option-compact {
-  display: flex;
-  align-items: center;
-  gap: 0.4rem;
-  cursor: pointer;
-  font-weight: 500;
-  font-size: 0.85rem;
-  white-space: nowrap;
-}
-
-.radio-option-compact input[type="radio"] {
-  width: auto !important;
-  margin: 0;
-  transform: scale(1.1);
-}
-
-/* Compact Image Upload */
-.image-upload-container-compact {
-  position: relative;
-  border: 2px dashed #ddd;
-  border-radius: 6px;
-  overflow: hidden;
-  transition: all 0.2s;
-}
-
-.image-upload-container-compact:hover {
-  border-color: #007bff;
-  background-color: #f8f9fa;
-}
-
-.upload-placeholder-compact {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  padding: 1rem;
-  cursor: pointer;
-  text-align: center;
-  min-height: 80px;
-  background-color: #fafafa;
-  transition: all 0.2s;
-}
-
-.upload-placeholder-compact:hover {
-  background-color: #f0f0f0;
-}
-
-.upload-icon-compact {
-  font-size: 1.5rem;
-  margin-bottom: 0.25rem;
-  opacity: 0.6;
-}
-
-.upload-text-compact {
-  font-size: 0.875rem;
-  font-weight: 600;
-  color: #333;
-  margin-bottom: 0.1rem;
-}
-
-.upload-hint-compact {
-  font-size: 0.7rem;
-  color: #666;
-}
-
-.image-preview-compact {
-  position: relative;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background-color: #f8f9fa;
-  min-height: 80px;
-}
-
-.image-preview-compact img {
-  max-width: 100%;
-  max-height: 120px;
-  object-fit: contain;
-  border-radius: 4px;
-}
-
-.remove-image-btn-compact {
-  position: absolute;
-  top: 0.25rem;
-  right: 0.25rem;
-  background: rgba(220, 53, 69, 0.9);
-  color: white;
+.cancel-btn,
+.submit-btn {
+  padding: 0.625rem 1.25rem;
   border: none;
-  border-radius: 50%;
-  width: 20px;
-  height: 20px;
+  border-radius: 0.5rem;
   cursor: pointer;
-  font-size: 0.8rem;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: all 0.2s;
-}
-
-.remove-image-btn-compact:hover {
-  background: rgba(220, 53, 69, 1);
-  transform: scale(1.1);
-}
-
-/* Enhanced Publish and Image Upload Layout */
-.publish-image-row {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 1.5rem;
-  align-items: start;
-}
-
-.publish-options-column,
-.image-upload-column {
-  display: flex;
-  flex-direction: column;
-}
-
-.section-label {
   font-weight: 600;
-  font-size: 0.9rem;
-  color: #333;
-  margin-bottom: 0.75rem;
-  display: block;
-}
-
-/* Enhanced checkbox styling */
-.checkbox-label-enhanced {
-  display: flex;
-  align-items: flex-start;
-  gap: 0.5rem;
-  cursor: pointer;
-  padding: 0.75rem;
-  border: 2px solid #e9ecef;
-  border-radius: 6px;
-  background: #fafafa;
+  font-size: 0.9375rem;
   transition: all 0.2s ease;
 }
 
-.checkbox-label-enhanced:hover {
-  border-color: #007bff;
-  background: #f8f9fa;
+.cancel-btn {
+  background-color: #f1f5f9;
+  color: #4b5563;
 }
 
-.checkbox-input-enhanced {
-  width: 18px;
-  height: 18px;
-  margin: 0;
-  cursor: pointer;
-  flex-shrink: 0;
-  margin-top: 2px;
+.cancel-btn:hover:not(:disabled) {
+  background-color: #e2e8f0;
 }
 
-.checkbox-text-enhanced {
-  display: flex;
-  flex-direction: column;
-  gap: 0.25rem;
-  font-weight: 600;
-  color: #333;
-}
-
-.checkbox-desc-enhanced {
-  font-size: 0.75rem;
-  font-weight: 400;
-  color: #666;
-  line-height: 1.3;
-}
-
-/* Mini image upload component */
-.image-upload-container-mini {
-  position: relative;
-  border: 2px dashed #ddd;
-  border-radius: 6px;
-  overflow: hidden;
-  transition: all 0.2s;
-  max-width: 200px;
-}
-
-.image-upload-container-mini:hover {
-  border-color: #007bff;
-  background-color: #f8f9fa;
-}
-
-.upload-placeholder-mini {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  padding: 0.75rem;
-  cursor: pointer;
-  text-align: center;
-  min-height: 100px;
-  background-color: #fafafa;
-  transition: all 0.2s;
-}
-
-.upload-placeholder-mini:hover {
-  background-color: #f0f0f0;
-}
-
-.upload-icon-mini {
-  font-size: 1.2rem;
-  margin-bottom: 0.25rem;
-  opacity: 0.6;
-}
-
-.upload-text-mini {
-  font-size: 0.8rem;
-  font-weight: 600;
-  color: #333;
-  margin-bottom: 0.25rem;
-}
-
-.upload-hint-mini {
-  font-size: 0.7rem;
-  color: #666;
-  line-height: 1.2;
-}
-
-.upload-size-hint-mini {
-  font-size: 0.65rem;
-  color: #007bff;
-  font-weight: 600;
-  margin-top: 0.125rem;
-  line-height: 1.2;
-}
-
-.image-preview-mini {
-  position: relative;
-  width: 100%;
-  height: 100px;
-}
-
-.image-preview-mini img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  display: block;
-}
-
-.remove-image-btn-mini {
-  position: absolute;
-  top: 4px;
-  right: 4px;
-  width: 20px;
-  height: 20px;
-  border: none;
-  background: rgba(220, 53, 69, 0.8);
+.submit-btn {
+  background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
   color: white;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-width: 120px;
+  justify-content: center;
+}
+
+.submit-btn:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(99, 102, 241, 0.4);
+}
+
+.submit-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.submit-btn.is-loading {
+  cursor: wait;
+}
+
+.spinner {
+  width: 16px;
+  height: 16px;
+  border: 2px solid rgba(255, 255, 255, 0.3);
+  border-top-color: white;
   border-radius: 50%;
-  cursor: pointer;
-  font-size: 12px;
-  font-weight: bold;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: all 0.2s;
-  line-height: 1;
+  animation: spin 0.8s linear infinite;
 }
 
-.remove-image-btn-mini:hover {
-  background: rgba(220, 53, 69, 1);
-  transform: scale(1.1);
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 
-.upload-disabled-hint {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  min-height: 100px;
-  max-width: 200px;
-  padding: 0.75rem;
-  background: #f8f9fa;
-  border: 2px dashed #dee2e6;
-  border-radius: 6px;
+/* Success Message */
+.success-message {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  background: white;
+  padding: 2rem;
+  border-radius: 1rem;
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
   text-align: center;
+  z-index: 20;
+  min-width: 280px;
 }
 
-.upload-disabled-hint span {
-  font-size: 0.75rem;
-  color: #6c757d;
-  font-style: italic;
-  line-height: 1.3;
+.success-icon {
+  font-size: 3rem;
+  margin-bottom: 1rem;
 }
 
-/* 临时开锁配置样式 */
-.temporary-unlock-section {
-  margin-top: 1.5rem;
-  padding: 1rem;
-  background: #f8f9fa;
-  border-radius: 8px;
-  border: 1px solid #e9ecef;
-}
-
-.section-header {
-  cursor: pointer;
-}
-
-.unlock-config {
-  margin-top: 1rem;
-  padding-top: 1rem;
-  border-top: 1px solid #dee2e6;
-}
-
-.duration-slider {
-  display: flex;
-  align-items: center;
-  gap: 1rem;
-}
-
-.slider {
-  flex: 1;
-  height: 6px;
-  border-radius: 3px;
-  background: #dee2e6;
-  outline: none;
-  -webkit-appearance: none;
-}
-
-.slider::-webkit-slider-thumb {
-  -webkit-appearance: none;
-  appearance: none;
-  width: 18px;
-  height: 18px;
-  border-radius: 50%;
-  background: #4CAF50;
-  cursor: pointer;
-}
-
-.slider::-moz-range-thumb {
-  width: 18px;
-  height: 18px;
-  border-radius: 50%;
-  background: #4CAF50;
-  cursor: pointer;
-  border: none;
-}
-
-.slider-value {
-  min-width: 80px;
+.success-text {
+  font-size: 1.125rem;
   font-weight: 600;
-  color: #333;
+  color: #1e293b;
 }
 
-/* Slide fade transition */
+/* Transitions */
 .slide-fade-enter-active {
   transition: all 0.3s ease-out;
 }
@@ -1743,144 +1725,88 @@ onUnmounted(() => {
 
 .slide-fade-enter-from,
 .slide-fade-leave-to {
-  transform: translateY(-10px);
   opacity: 0;
+  transform: translateY(-10px);
 }
 
-/* Mobile responsive */
-@media (max-width: 768px) {
+/* Mobile Responsive */
+@media (max-width: 640px) {
   .modal-overlay {
-    padding: 0.5rem;
+    padding: 0;
+  }
+
+  .modal-content {
+    max-height: 100vh;
+    border-radius: 0;
   }
 
   .modal-header {
-    padding: 1rem;
+    padding: 1rem 1rem 0.75rem;
+  }
+
+  .modal-header__title-group h2 {
+    font-size: 1.125rem;
   }
 
   .modal-body {
-    padding: 1rem;
-  }
-
-  .form-row {
-    grid-template-columns: 1fr;
-  }
-
-  .radio-group {
-    flex-direction: column;
-    gap: 0.5rem;
-  }
-
-  .modal-footer {
-    flex-direction: column;
-  }
-
-  /* Mobile compact layout */
-  .form-row-inline {
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 0.5rem;
-  }
-
-  .form-row-inline-combined {
-    flex-direction: column;
-    gap: 1rem;
-  }
-
-  .form-section-compact {
-    min-width: auto;
-    width: 100%;
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 0.5rem;
-  }
-
-  /* Mobile layout for publish-image row */
-  .publish-image-row {
-    grid-template-columns: 1fr;
-    gap: 1rem;
-  }
-
-  .image-upload-container-mini {
-    max-width: 100%;
-  }
-
-  .upload-disabled-hint {
-    max-width: 100%;
-  }
-
-  .inline-label {
-    min-width: auto;
-    margin-bottom: 0.25rem;
-  }
-
-  .task-type-selector-compact {
-    width: 100%;
-  }
-
-  .task-type-btn-compact {
-    font-size: 0.8rem;
-    padding: 0.4rem 0.8rem;
-  }
-
-  .checkbox-label-compact {
-    width: 100%;
-  }
-
-  .checkbox-text-compact {
-    font-size: 0.85rem;
-  }
-
-  .checkbox-desc-compact {
-    font-size: 0.65rem;
-  }
-
-  .radio-group-compact {
-    width: 100%;
+    padding: 0.875rem;
     gap: 0.75rem;
   }
 
-  .radio-option-compact {
-    font-size: 0.85rem;
+  .task-type-selector {
+    gap: 0.75rem;
+  }
+
+  .task-type-card {
+    padding: 1rem 0.75rem;
+  }
+
+  .task-type-card__icon {
+    font-size: 1.75rem;
+  }
+
+  .task-type-card__title {
+    font-size: 0.9375rem;
+  }
+
+  .task-type-card__desc {
+    font-size: 0.6875rem;
+  }
+
+  .form-row {
+    flex-direction: column;
+    gap: 1rem;
+  }
+
+  .form-row--toggles {
+    flex-direction: column;
+    gap: 1rem;
+  }
+
+  .form-field__hint-below {
+    margin-left: 0;
+    font-size: 0.75rem;
+  }
+
+  .temporary-unlock-toggle {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.5rem;
+  }
+
+  .temporary-unlock-hint {
+    margin-left: calc(36px + 0.5rem);
+  }
+
+  .modal-footer {
+    padding: 1rem;
+    flex-direction: column-reverse;
+  }
+
+  .cancel-btn,
+  .submit-btn {
+    width: 100%;
+    justify-content: center;
   }
 }
-
-/* Threshold input styles */
-.threshold-input-group {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.threshold-input-group input {
-  flex: 1;
-  max-width: 100px;
-}
-
-.threshold-unit {
-  font-weight: 500;
-  color: var(--text-secondary, #6c757d);
-  font-size: 0.9rem;
-}
-
-.form-hint {
-  display: block;
-  margin-top: 4px;
-  font-size: 0.875rem;
-  color: var(--text-muted, #6c757d);
-  line-height: 1.4;
-}
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 </style>

@@ -283,6 +283,10 @@ TELEGRAM_BOT_CONFIG = {
     'AUTO_START_BOT': os.getenv('TELEGRAM_AUTO_START_BOT', 'True').lower() == 'true',
 }
 
+# Telegram Storage Chat ID for via-bot sharing
+# This is the chat where the bot sends messages to get message_id for shareMessage API
+TELEGRAM_STORAGE_CHAT_ID = os.getenv('TELEGRAM_STORAGE_CHAT_ID', '')
+
 # Application URLs Configuration
 TELEGRAM_APP_CONFIG = {
     'BASE_URL': os.getenv('BASE_URL', 'https://lock-down.zheermao.top'),

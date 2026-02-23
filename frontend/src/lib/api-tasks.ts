@@ -574,5 +574,37 @@ export const tasksApi = {
   }> => {
     const url = page ? `/tasks/${id}/temporary-unlock/records/?page=${page}` : `/tasks/${id}/temporary-unlock/records/`
     return apiRequest(url)
+  },
+
+  // ============================================================================
+  // 日常任务 API
+  // ============================================================================
+
+  // 取消日常任务
+  cancelDailyTask: async (id: string): Promise<{
+    message: string
+    refunded_coins: number
+    remaining_days: number
+  }> => {
+    return apiRequest(`/tasks/${id}/cancel_daily/`, {
+      method: 'POST'
+    })
+  },
+
+  // 获取日常任务状态
+  getDailyTaskStatus: async (id: string): Promise<{
+    is_daily_task: boolean
+    daily_task_config?: {
+      is_enabled: boolean
+      duration_days: number
+      publish_time: string
+      total_cost: number
+      remaining_days: number
+      next_publish_at: string
+      published_count: number
+    }
+    can_cancel: boolean
+  }> => {
+    return apiRequest(`/tasks/${id}/daily_status/`)
   }
 }

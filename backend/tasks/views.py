@@ -13,7 +13,7 @@ from .validators import validate_task_completion_conditions
 
 logger = logging.getLogger(__name__)
 
-from .models import LockTask, TaskKey, TaskVote, OvertimeAction, TaskTimelineEvent, HourlyReward, TaskParticipant, PinnedUser
+from .models import LockTask, TaskKey, TaskVote, OvertimeAction, TaskTimelineEvent, HourlyReward, TaskParticipant, PinnedUser, DailyTaskConfig
 from store.models import ItemType, UserInventory, Item
 from users.models import Notification
 from .utils import destroy_task_keys, calculate_weighted_vote_counts
@@ -4807,3 +4807,119 @@ class TemporaryUnlockRecordsView(generics.ListAPIView):
             return TemporaryUnlockRecord.objects.none()
 
         return TemporaryUnlockRecord.objects.filter(task=task).order_by('-created_at')
+
+
+# =============================================================================
+# 日常任务 API
+# =============================================================================
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def cancel_daily_task(request, pk):
+    """取消日常任务"""
+    task = get_object_or_404(LockTask, pk=pk)
+
+    # 只有任务所有者可以取消日常任务
+    if task.user != request.user:
+        return Response(
+            {'error': '只有任务所有者可以取消日常任务'},
+            status=status.HTTP_403_FORBIDDEN
+        )
+
+    # 检查是否为日常任务
+    if not task.is_daily_task:
+        return Response(
+            {'error': '该任务不是日常任务'},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+
+    # 查找活跃的日常任务配置
+    daily_config = DailyTaskConfig.objects.filter(
+        parent_task=task,
+        status='active'
+    ).first()
+
+    if not daily_config:
+        return Response(
+            {'error': '未找到活跃的日常任务配置'},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+
+    # 计算退款金额
+    refund_amount = daily_config.calculate_refund()
+
+    # 取消日常任务
+    daily_config.cancel()
+
+    # 退还积分给用户
+    if refund_amount > 0:
+        request.user.coins += refund_amount
+        request.user.save(update_fields=['coins'])
+
+        # 创建积分变动记录
+        from users.models import CoinsLog
+        CoinsLog.objects.create(
+            user=request.user,
+            change_type='daily_task_cancelled',
+            amount=refund_amount,
+            balance_after=request.user.coins,
+            description=f'取消日常任务退还积分: {task.title}'
+        )
+
+    return Response({
+        'message': '日常任务已取消',
+        'refunded_coins': refund_amount,
+        'remaining_days': daily_config.remaining_days
+    })
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def get_daily_task_status(request, pk):
+    """获取日常任务状态"""
+    task = get_object_or_404(LockTask, pk=pk)
+
+    # 检查是否为日常任务
+    if not task.is_daily_task:
+        return Response({
+            'is_daily_task': False,
+            'can_cancel': False
+        })
+
+    # 查找日常任务配置
+    daily_config = DailyTaskConfig.objects.filter(
+        parent_task=task
+    ).first()
+
+    if not daily_config:
+        return Response({
+            'is_daily_task': True,
+            'daily_task_config': {
+                'is_enabled': True,
+                'duration_days': task.daily_task_duration or 0,
+                'publish_time': task.daily_task_publish_time.strftime('%H:%M') if task.daily_task_publish_time else '08:00',
+                'total_cost': task.daily_task_total_cost or 0,
+                'remaining_days': task.daily_task_duration or 0,
+                'next_publish_at': None,
+                'published_count': 0
+            },
+            'can_cancel': task.user == request.user and (task.daily_task_duration or 0) > 0
+        })
+
+    return Response({
+        'is_daily_task': True,
+        'daily_task_config': {
+            'is_enabled': daily_config.status == 'active',
+            'duration_days': daily_config.duration_days,
+            'publish_time': daily_config.publish_time.strftime('%H:%M'),
+            'total_cost': daily_config.total_cost,
+            'remaining_days': daily_config.remaining_days,
+            'next_publish_at': daily_config.next_publish_at.isoformat() if daily_config.next_publish_at else None,
+            'published_count': daily_config.published_count
+        },
+        'can_cancel': (
+            task.user == request.user and
+            daily_config.status == 'active' and
+            daily_config.remaining_days > 0
+        )
+    })
