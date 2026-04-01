@@ -27,6 +27,19 @@ from .serializers import (
 
 
 
+def _teleport_to_faction_zone(user, zone_name):
+    """直接传送玩家到指定区域，绕过邻接检查（用于阵营切换时的自动出生）"""
+    from phantom_city.models import GameZone, PlayerZonePresence
+    try:
+        zone = GameZone.objects.get(name=zone_name)
+        PlayerZonePresence.objects.filter(
+            user=user, exited_at__isnull=True
+        ).update(exited_at=timezone.now())
+        PlayerZonePresence.objects.create(user=user, zone=zone)
+    except GameZone.DoesNotExist:
+        pass
+
+
 class IsOwnerOrAdmin(permissions.BasePermission):
     """只有拥有者或管理员可以操作"""
 
@@ -631,6 +644,10 @@ def start_task(request, pk):
     task.end_time = end_time
     task.save()
 
+    # 带锁任务开始 → 传送至拟态者安全区（沙龙）
+    if task.task_type == 'lock':
+        _teleport_to_faction_zone(task.user, 'salon')
+
     serializer = LockTaskSerializer(task)
     return Response(serializer.data)
 
@@ -722,6 +739,10 @@ def complete_task(request, pk):
 
     task.save()
 
+    # 带锁任务完成 → 传送至巡逻队安全区（检查站）
+    if task.task_type == 'lock':
+        _teleport_to_faction_zone(task.user, 'checkpoint')
+
     # 创建任务完成事件
     completion_metadata = {
         'completed_by': 'manual',
@@ -810,6 +831,10 @@ def stop_task(request, pk):
     task.status = 'failed'
     task.end_time = timezone.now()
     task.save()
+
+    # 带锁任务停止 → 传送至巡逻队安全区（检查站）
+    if task.task_type == 'lock':
+        _teleport_to_faction_zone(task.user, 'checkpoint')
 
     # 检查并失效幸运符效果（如果应用到此任务）
     from store.models import UserEffect

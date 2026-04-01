@@ -130,6 +130,73 @@ const router = createRouter({
       name: 'community-stats',
       component: CommunityStatsView,
       meta: { requiresAuth: true, title: '社区排行榜', transition: 'page-fade' }
+    },
+    // 男娘幻城
+    {
+      path: '/phantom-city',
+      name: 'phantom-city',
+      component: () => import('../views/PhantomCityView.vue'),
+      meta: { requiresAuth: true, title: '男娘幻城', transition: 'page-fade' }
+    },
+    {
+      path: '/phantom-city/checkpoint',
+      name: 'phantom-city-checkpoint',
+      component: () => import('../views/CheckpointView.vue'),
+      meta: { requiresAuth: true, title: '安检口', transition: 'page-slide' }
+    },
+    {
+      path: '/phantom-city/ruins',
+      name: 'phantom-city-ruins',
+      component: () => import('../views/RuinsView.vue'),
+      meta: { requiresAuth: true, title: '备皮间', transition: 'page-slide' }
+    },
+    {
+      path: '/phantom-city/salon',
+      name: 'phantom-city-salon',
+      component: () => import('../views/SalonView.vue'),
+      meta: { requiresAuth: true, title: '闺房', transition: 'page-slide' }
+    },
+    {
+      path: '/phantom-city/profile',
+      name: 'phantom-city-profile',
+      component: () => import('../views/GameProfileView.vue'),
+      meta: { requiresAuth: true, title: '游戏档案', transition: 'page-scale' }
+    },
+    {
+      path: '/phantom-city/black-market',
+      name: 'phantom-city-black-market',
+      component: () => import('../views/BlackMarketView.vue'),
+      meta: { requiresAuth: true, title: '黑市', transition: 'page-slide' }
+    },
+    {
+      path: '/phantom-city/abandoned-camp',
+      name: 'phantom-city-abandoned-camp',
+      component: () => import('../views/AbandonedCampView.vue'),
+      meta: { requiresAuth: true, title: '更衣室', transition: 'page-slide' }
+    },
+    {
+      path: '/phantom-city/ruins-deep',
+      name: 'phantom-city-ruins-deep',
+      component: () => import('../views/RuinsDeepView.vue'),
+      meta: { requiresAuth: true, title: '深处备皮间', transition: 'page-slide' }
+    },
+    {
+      path: '/phantom-city/armory',
+      name: 'phantom-city-armory',
+      component: () => import('../views/ArmoryView.vue'),
+      meta: { requiresAuth: true, title: '储物柜', transition: 'page-slide' }
+    },
+    {
+      path: '/phantom-city/sewer',
+      name: 'phantom-city-sewer',
+      component: () => import('../views/SewerView.vue'),
+      meta: { requiresAuth: true, title: '下水道', transition: 'page-slide' }
+    },
+    {
+      path: '/phantom-city/ruins-outer',
+      name: 'phantom-city-ruins-outer',
+      component: () => import('../views/RuinsOuterView.vue'),
+      meta: { requiresAuth: true, title: '外围备皮间', transition: 'page-slide' }
     }
   ]
 })

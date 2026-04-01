@@ -2,6 +2,7 @@ import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import { tasksApi } from '../lib/api-tasks'
 import type { PaginatedResponse, LockTask, BoardTask, Task } from '../types/index'
+import { usePhantomCityStore } from './phantomCity'
 
 export const useTasksStore = defineStore('tasks', () => {
   // State
@@ -99,6 +100,9 @@ export const useTasksStore = defineStore('tasks', () => {
         tasks.value[taskIndex] = { ...tasks.value[taskIndex], ...result } as Task
       }
 
+      // Refresh game profile so faction/zone updates immediately
+      usePhantomCityStore().loadProfile()
+
       return result as Task
     } catch (err) {
       console.error('Error starting task:', err)
@@ -116,6 +120,9 @@ export const useTasksStore = defineStore('tasks', () => {
         tasks.value[taskIndex] = { ...tasks.value[taskIndex], ...result } as Task
       }
 
+      // Refresh game profile so faction/zone updates immediately
+      usePhantomCityStore().loadProfile()
+
       return result as Task
     } catch (err) {
       console.error('Error completing task:', err)
@@ -132,6 +139,9 @@ export const useTasksStore = defineStore('tasks', () => {
       if (taskIndex !== -1) {
         tasks.value[taskIndex] = { ...tasks.value[taskIndex], ...result } as Task
       }
+
+      // Refresh game profile so faction/zone updates immediately
+      usePhantomCityStore().loadProfile()
 
       return result as Task
     } catch (err) {

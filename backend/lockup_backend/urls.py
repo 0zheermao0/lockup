@@ -28,6 +28,7 @@ urlpatterns = [
     path('api/tasks/', include('tasks.urls')),  # 任务功能
     path('api/store/', include('store.urls')),  # 商店和游戏功能
     path('api/telegram/', include('telegram_bot.urls')),  # Telegram Bot 功能
+    path('api/game/', include('phantom_city.urls')),  # 幻城游戏
 ]
 
 # 提供媒体文件访问（开发环境和生产环境）

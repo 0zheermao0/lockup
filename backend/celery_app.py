@@ -57,6 +57,19 @@ app.conf.update(
 
         # Voting and verification tasks (community operations)
         'tasks.celery_tasks.process_checkin_voting_results': {'queue': 'voting'},
+
+        # Phantom City game tasks
+        'phantom_city.celery_tasks.generate_tell_events': {'queue': 'game'},
+        'phantom_city.celery_tasks.accumulate_suppression': {'queue': 'game'},
+        'phantom_city.celery_tasks.decay_depilation_charge': {'queue': 'game'},
+        'phantom_city.celery_tasks.expire_control_transfers': {'queue': 'game'},
+        'phantom_city.celery_tasks.process_detention_releases': {'queue': 'game'},
+        'phantom_city.celery_tasks.regen_authority_values': {'queue': 'game'},
+        'phantom_city.celery_tasks.respawn_crystals': {'queue': 'game'},
+        'phantom_city.celery_tasks.recalculate_market_rates': {'queue': 'game'},
+        'phantom_city.celery_tasks.generate_checkpoint_npcs': {'queue': 'game'},
+        'phantom_city.celery_tasks.cleanup_expired_channels': {'queue': 'game'},
+        'phantom_city.celery_tasks.reset_inspection_tokens': {'queue': 'game'},
     },
 
     # Worker configuration

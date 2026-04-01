@@ -27,7 +27,7 @@
         <button
           v-for="tab in tabs"
           :key="tab.id"
-          @click="activeTab = tab.id"
+          @click="tab.id === 'phantomCity' ? router.push('/phantom-city') : (activeTab = tab.id)"
           :class="[
             'game-tab',
             activeTab === tab.id ? 'active' : ''
@@ -357,6 +357,20 @@
           </div>
         </div>
       </div>
+
+      <!-- Phantom City redirect card (shown briefly before navigation) -->
+      <div v-if="activeTab === 'phantomCity'" class="space-y-6">
+        <div class="game-section" style="text-align:center; padding: 3rem 2rem;">
+          <div style="font-size: 3rem; margin-bottom: 1rem;">🏙️</div>
+          <h2 class="section-title">男娘幻城</h2>
+          <p class="section-description" style="margin-bottom: 2rem;">
+            文字版溜走塔科夫 × 狼人杀。伪装、走私、骗过审查，安全返航。
+          </p>
+          <button @click="router.push('/phantom-city')" class="btn-primary" style="font-size: 1.1rem; padding: 0.75rem 2rem;">
+            进入男娘幻城 →
+          </button>
+        </div>
+      </div>
     </div>
 
     <!-- Toast Notification -->
@@ -497,7 +511,8 @@ const tabs = [
   { id: 'rockPaperScissors', name: '石头剪刀布' },
   { id: 'timeWheel', name: '时间转盘' },
   { id: 'arena', name: '角斗场' },
-  { id: 'dol', name: '欲都孤儿' }
+  { id: 'dol', name: '欲都孤儿' },
+  { id: 'phantomCity', name: '🏙️ 男娘幻城' },
 ]
 
 const choices = [

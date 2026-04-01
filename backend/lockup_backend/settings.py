@@ -57,6 +57,7 @@ INSTALLED_APPS = [
     'telegram_bot',
     'events',
     'utils',
+    'phantom_city',
 ]
 
 MIDDLEWARE = [

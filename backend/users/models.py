@@ -886,6 +886,20 @@ class Notification(models.Model):
         ('temporary_unlock_rejected', '临时开锁被拒绝'),
         ('temporary_unlock_completed', '临时开锁已完成'),
         ('temporary_unlock_timeout', '临时开锁超时'),
+
+        # 幻城游戏类
+        ('game_interrogated', '被审讯'),
+        ('game_pat_down', '被搜身'),
+        ('game_arrested', '被逮捕'),
+        ('game_crossing_passed', '通关成功'),
+        ('game_bribe_received', '收到贿赂'),
+        ('game_extortion_received', '收到勒索'),
+        ('game_charm_attempt', '魅惑尝试'),
+        ('game_faction_converted', '阵营转化'),
+        ('game_suppression_critical', '压抑值临界'),
+        ('game_depilation_low', '脱毛仪电量不足'),
+        ('game_detention_released', '拘禁解除'),
+        ('game_control_transfer_expired', '控制权到期'),
     ]
 
     PRIORITY_CHOICES = [
